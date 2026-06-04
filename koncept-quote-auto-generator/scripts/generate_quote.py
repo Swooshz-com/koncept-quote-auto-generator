@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Koncept quotation XLSX and PDF files.
+"""Generate Koncept quotation XLSX files with optional PDF export.
 
 This script intentionally uses Python standard library only. It reads the
 bundled XLSX cost template through ZIP/XML parsing and fills a preserved quote
@@ -41,7 +41,10 @@ NS_PACKAGE_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}
 NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}"
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 XMLNS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+XMLNS_X14 = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
 XMLNS_X14AC = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"
+XMLNS_X15 = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+XMLNS_X16R2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/02/main"
 XMLNS_XR = "http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
 XMLNS_XR2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"
 XMLNS_XR3 = "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3"
@@ -50,7 +53,10 @@ EXPORT_STATUS_CUSTOMER_READY = {"libreoffice_exported", "excel_exported"}
 ET.register_namespace("", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
 ET.register_namespace("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
 ET.register_namespace("mc", XMLNS_MC)
+ET.register_namespace("x14", XMLNS_X14)
 ET.register_namespace("x14ac", XMLNS_X14AC)
+ET.register_namespace("x15", XMLNS_X15)
+ET.register_namespace("x16r2", XMLNS_X16R2)
 ET.register_namespace("xr", XMLNS_XR)
 ET.register_namespace("xr2", XMLNS_XR2)
 ET.register_namespace("xr3", XMLNS_XR3)
@@ -60,7 +66,7 @@ ET.register_namespace("a16", "http://schemas.microsoft.com/office/drawing/2014/m
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate Koncept quotation XLSX and PDF files.")
+    parser = argparse.ArgumentParser(description="Generate Koncept quotation XLSX files.")
     parser.add_argument("--brief", required=True, type=Path, help="Path to quote brief JSON.")
     parser.add_argument(
         "--out",
@@ -69,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Cost template XLSX path.")
     parser.add_argument("--layout-template", type=Path, default=DEFAULT_LAYOUT_TEMPLATE, help="Customer quotation layout XLSX path.")
-    parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="auto", help="PDF export mode. auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback, none skips PDF.")
+    parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
     parser.add_argument("--allow-ambiguous", action="store_true", help="Use the best pricing match even when multiple rows match.")
     return parser.parse_args()
 
@@ -843,7 +849,7 @@ def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
         "grand_amount": clone_cell_style(styles_root, "96", border_id=grand_border, num_fmt_id="4"),
         "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border),
     }
-    parts["xl/styles.xml"] = ET.tostring(styles_root, encoding="utf-8", xml_declaration=True)
+    parts["xl/styles.xml"] = serialize_excel_styles(styles_root)
     return style_ids
 
 
@@ -1095,13 +1101,35 @@ def write_table_header(root: ET.Element, row_number: int, currency_row: int | No
         set_ooxml_cell(root, currency_row, 5, "SGD", "95")
 
 
+def ensure_root_namespace_declarations(xml: str, root_name: str, required_declarations: dict[str, str]) -> str:
+    root_start_index = xml.find(f"<{root_name}")
+    root_tag_end = xml.find(">", root_start_index)
+    if root_start_index == -1 or root_tag_end == -1:
+        return xml
+
+    insertions = []
+    root_start = xml[root_start_index:root_tag_end]
+    for name, uri in required_declarations.items():
+        if f"{name}=" not in root_start:
+            insertions.append(f' {name}="{uri}"')
+    if not insertions:
+        return xml
+    return xml[:root_tag_end] + "".join(insertions) + xml[root_tag_end:]
+
+
+def serialize_excel_styles(root: ET.Element) -> bytes:
+    xml = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
+    required_declarations = {
+        "xmlns:mc": XMLNS_MC,
+        "xmlns:x14ac": XMLNS_X14AC,
+        "xmlns:x16r2": XMLNS_X16R2,
+        "xmlns:xr": XMLNS_XR,
+    }
+    return ensure_root_namespace_declarations(xml, "styleSheet", required_declarations).encode("utf-8")
+
+
 def serialize_excel_worksheet(root: ET.Element) -> bytes:
     xml = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
-    worksheet_start_index = xml.find("<worksheet")
-    worksheet_tag_end = xml.find(">", worksheet_start_index)
-    if worksheet_tag_end == -1:
-        return xml.encode("utf-8")
-
     required_declarations = {
         "xmlns:mc": XMLNS_MC,
         "xmlns:x14ac": XMLNS_X14AC,
@@ -1109,14 +1137,7 @@ def serialize_excel_worksheet(root: ET.Element) -> bytes:
         "xmlns:xr2": XMLNS_XR2,
         "xmlns:xr3": XMLNS_XR3,
     }
-    insertions = []
-    worksheet_start = xml[worksheet_start_index:worksheet_tag_end]
-    for name, uri in required_declarations.items():
-        if f"{name}=" not in worksheet_start:
-            insertions.append(f' {name}="{uri}"')
-    if insertions:
-        xml = xml[:worksheet_tag_end] + "".join(insertions) + xml[worksheet_tag_end:]
-    return xml.encode("utf-8")
+    return ensure_root_namespace_declarations(xml, "worksheet", required_declarations).encode("utf-8")
 
 
 def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, Any], lines: list[QuoteLine]) -> None:
@@ -1597,7 +1618,10 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
 
 
 def write_export_status(path: Path, status: str, pdf_mode: str) -> None:
-    readiness = "customer_ready" if status in EXPORT_STATUS_CUSTOMER_READY else "review_only"
+    if status == "skipped":
+        readiness = "not_generated"
+    else:
+        readiness = "customer_ready" if status in EXPORT_STATUS_CUSTOMER_READY else "review_only"
     path.write_text(
         "\n".join([
             f"pdf_status={status}",
@@ -1631,6 +1655,8 @@ def main() -> int:
         print(f"Quotation layout template not found, writing minimal XLSX fallback: {args.layout_template}")
         write_minimal_xlsx(xlsx_path, rows)
     pdf_status = "skipped"
+    if args.pdf_mode == "none" and pdf_path.exists():
+        pdf_path.unlink()
     if args.pdf_mode == "auto":
         pdf_status = export_layout_pdf(xlsx_path, pdf_path) or ""
         if not pdf_status:

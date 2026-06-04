@@ -13,7 +13,7 @@ Use this guide to format Koncept quotation outputs. Past quotation files are ref
 - Add the quote date below the attention block.
 - Add `RE: <project title>` before the line-item table.
 - Add company details and bank details near the top-right for Koncept Image-style quotes when generating XLSX.
-- For a customer-ready PDF, export the XLSX through Excel or LibreOffice. Treat generated fallback PDFs as review-only.
+- Treat the formatted XLSX as the customer-ready output. Generate PDF only when explicitly requested, and keep it secondary to the XLSX.
 
 ## Company Identities
 
@@ -77,15 +77,15 @@ Use only sections needed by the quote brief.
   - `Less goodwill discount`
   - `Total Final Price`
 - Add exclusions before terms when provided.
-- Add special notes in red styling in XLSX when possible and normal emphasized text in PDF.
+- Add special notes in red styling in XLSX when possible.
 - Keep note numbering plain and sequential. Do not make a single note number bold/italic unless every note number uses the same style.
 - Keep acceptance/signature text out of the terms and notes body so it cannot overlap long note lines.
 
 ## Export Status
 
 - `quotation.xlsx` is the master output.
-- `quotation.pdf` is customer-ready only when `export_status.txt` reports `pdf_status=libreoffice_exported` or `pdf_status=excel_exported`.
-- `pdf_status=fallback_review_only` means the PDF is for internal review and may not visually match Excel output exactly.
+- PDF generation is disabled by default; `export_status.txt` should report `pdf_status=skipped` and `pdf_mode=none` for normal runs.
+- If a PDF is explicitly requested, generate it with `--pdf-mode auto` and treat it as secondary because the XLSX is the formatting source of truth.
 
 ## Terms
 
@@ -116,4 +116,4 @@ Include two signature areas:
 - Left: Koncept company name, signature line, Francies Cheng or Francis Cheng as specified, title if provided.
 - Right: `We accept the quotation amount and the terms`, signature line, `Person in charge`, `Company name & stamp`, `Date:`.
 - When a Koncept signatory title or designation is supplied, place it directly below the signatory name.
-- Keep the logo and company-detail text together inside the `A:I` print area, not against the right page edge. Place the details below, not beside or behind, the logo, with only a tight normal line gap below the logo. Print the company-detail text on page 1 only; repeated pages should keep the logo/header without the address/bank text chunk. Align company-detail text to the logo's left edge, use 9 pt text, left-align every detail line, keep the specified address and bank line breaks, add a normal 9 pt blank line before `Bank Detail:`, and keep the detail text readable in Excel PDF exports.
+- Keep the logo and company-detail text together inside the `A:I` print area, not against the right page edge. Place the details below, not beside or behind, the logo, with only a tight normal line gap below the logo. Print the company-detail text on page 1 only; repeated pages should keep the logo/header without the address/bank text chunk. Align company-detail text to the logo's left edge, use 9 pt text, left-align every detail line, keep the specified address and bank line breaks, add a normal 9 pt blank line before `Bank Detail:`, and keep the detail text readable in Excel.
