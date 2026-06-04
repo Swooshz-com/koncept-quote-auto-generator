@@ -934,13 +934,12 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         "Tel: +65 6817 7477",
         "",
         "Bank Details:",
-        "United Overseas Bank",
-        "Limited",
+        "United Overseas Bank Limited",
         "Account: 335-3020-445",
         "Swift Code: UOVBSGSG",
     ]
     if project_number:
-        lines.extend(["Project No:", project_number])
+        lines.extend(["", "Project No:", project_number])
 
     for line in lines:
         paragraph = ET.SubElement(tx_body, f"{NS_A}p")
@@ -950,7 +949,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
             continue
         run = ET.SubElement(paragraph, f"{NS_A}r")
         run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "1300", "b": "0", "i": "0", "baseline": "0"})
+        run_props.attrib.update({"lang": "en-US", "sz": "1000", "b": "0", "i": "0", "baseline": "0"})
         ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
         ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
         ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"

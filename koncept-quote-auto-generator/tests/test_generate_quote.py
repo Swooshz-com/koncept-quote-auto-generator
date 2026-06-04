@@ -247,6 +247,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         ]
         bank_index = paragraphs.index("Bank Details:")
         self.assertEqual(paragraphs[bank_index - 1], "")
+        project_index = paragraphs.index("Project No:")
+        self.assertEqual(paragraphs[project_index - 1], "")
 
         run_sizes = [
             int(run_props.attrib["sz"])
@@ -254,7 +256,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             if "sz" in run_props.attrib
         ]
         self.assertTrue(run_sizes)
-        self.assertGreaterEqual(min(run_sizes), 1300)
+        self.assertEqual(min(run_sizes), 1000)
+        self.assertEqual(max(run_sizes), 1000)
 
     def test_table_headers_bold_and_quantity_centered(self):
         tmp, path = generate_layout_workbook()
