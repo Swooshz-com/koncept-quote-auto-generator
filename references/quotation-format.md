@@ -1,0 +1,108 @@
+# Quotation Format Reference
+
+Use this guide to format Koncept quotation outputs. Past quotation files are reference-only and are not packaged into this skill. The packaged `quotation-layout.xlsx` is a cleaned layout template, not an old customer quote.
+
+## Page Header
+
+- Put `ESTIMATE` near the top-right for Koncept Image-style quotes when space allows.
+- Put the client block at top-left:
+  - Client company name.
+  - Address lines.
+  - Country or city line.
+- Add `Attention: <name>` and the contact title on the next line if available.
+- Add the quote date below the attention block.
+- Add `RE: <project title>` before the line-item table.
+- Add company details and bank details near the top-right for Koncept Image-style quotes when generating XLSX.
+- For a customer-ready PDF, export the XLSX through Excel or LibreOffice. Treat generated fallback PDFs as review-only.
+
+## Company Identities
+
+### Koncept Image
+
+- Legal/payment name in terms: `Koncept Image Pte Ltd` or `Koncept Image Pte Limited`, matching the quote brief.
+- Known address: `61 Kaki Bukit Avenue 1, #02-26, Shunli Industrial Park, Singapore 417943`.
+- Known telephone: `+65 6817 7477`.
+- Known bank detail: United Overseas Bank Limited, 80 Raffles Place, Singapore 048624.
+
+### Koncept World
+
+- Legal/payment name in terms: `Koncept World Pte Ltd` or `Koncept World Private Limited`, matching the quote brief.
+- Known address: `61 Kaki Bukit Avenue 1, #02-26, Shun Li Industrial Park, Singapore 417943`.
+- Known telephone: `+65 9180 3079`.
+- Website/email may appear when provided by the user.
+
+Always ask which identity to use. Do not choose by default.
+
+## Line Item Table
+
+- Columns: `Pos.`, `Quantity`, `Service`, `Estimate`.
+- Currency: usually `SGD`.
+- Use `sqm` for square-metre quantities, not `m2`.
+- Section rows use numbering such as `1.0`, `2.0`, `3.0`.
+- Detail rows use numbering such as `1.1`, `1.2`, `2.1`.
+- Section rows may carry a lump-sum amount while child rows have blank estimates.
+- Structure sections such as booth structure, wall structure, or stand structure should use the lump-sum section-row style unless the user asks for itemized pricing.
+- Detail rows can display numeric price, `FOC`, or `Included`.
+- Multi-line service descriptions are acceptable.
+- Do not show internal cost, GST, markup, or red remark labels in the customer quote.
+
+## Common Sections
+
+- Floor Design or Flooring.
+- Booth Structure or Wall Structure.
+- Special Components.
+- Furniture and miscellaneous rental.
+- AV/IT equipment rental.
+- Stand illumination and electrical fittings.
+- Graphic work.
+- Assembly / Disassembly.
+- Transportation.
+- Project Management.
+- Waste disposal.
+
+Use only sections needed by the quote brief.
+
+## Totals And Notes
+
+- Add `Grand Total` near the end of line items.
+- If discount is provided, show:
+  - `Total Estimates items ...`
+  - `Less goodwill discount`
+  - `Total Final Price`
+- Add exclusions before terms when provided.
+- Add special notes in red styling in XLSX when possible and normal emphasized text in PDF.
+
+## Export Status
+
+- `quotation.xlsx` is the master output.
+- `quotation.pdf` is customer-ready only when `export_status.txt` reports `pdf_status=libreoffice_exported` or `pdf_status=excel_exported`.
+- `pdf_status=fallback_review_only` means the PDF is for internal review and may not visually match Excel output exactly.
+
+## Terms
+
+Common payment terms:
+
+- `80% payment upon confirmation and signing of contract.`
+- `20% balance 7 days after delivery`
+- `60% payment upon confirmation and signing of contract.`
+- `40% balance 14 days after delivery`
+
+Common notes:
+
+- The quote excludes application fees to relevant authorities and organiser electrical connection fees unless stated otherwise.
+- Design changes during work may delay completion and are at the client's cost.
+- Changes after confirmation are treated as additional orders.
+- Designs and dimensions are subject to final site verification.
+- Quotation must be confirmed minimum 20 working days before the event for production.
+- Graphic cost may have a surcharge if files are late.
+- Design and artwork of graphics are not included unless stated.
+- Cancellation is subject to 75% of the agreement amount.
+- Deposits are non-refundable upon cancellation.
+- Late payment charge may apply after due date.
+
+## Signature
+
+Include two signature areas:
+
+- Left: Koncept company name, signature line, Francies Cheng or Francis Cheng as specified, title if provided.
+- Right: `We accept the quotation amount and the terms`, signature line, `Person in charge`, `Company name & stamp`, `Date:`.
