@@ -201,6 +201,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         with zipfile.ZipFile(path) as zf:
             drawing = ET.fromstring(zf.read("xl/drawings/drawing1.xml"))
+            workbook = ET.fromstring(zf.read("xl/workbook.xml"))
 
         anchors = drawing.findall(f"{NS_DRAWING}twoCellAnchor")
         text_anchor = next(anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None)
@@ -212,8 +213,10 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         logo_ext = logo_anchor.find(f"{NS_DRAWING}pic/{NS_DRAWING}spPr/{NS_A}xfrm/{NS_A}ext")
         logo_off = logo_anchor.find(f"{NS_DRAWING}pic/{NS_DRAWING}spPr/{NS_A}xfrm/{NS_A}off")
         text_left = int(text_off.attrib["x"])
+        text_top = int(text_off.attrib["y"])
         text_width = int(text_ext.attrib["cx"])
         logo_left = int(logo_off.attrib["x"])
+        logo_top = int(logo_off.attrib["y"])
         logo_width = int(logo_ext.attrib["cx"])
         logo_height = int(logo_ext.attrib["cy"])
         text_from_col = int(text_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}col").text)
@@ -224,8 +227,12 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         logo_from_row_off = int(logo_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}rowOff").text)
         logo_to_row_off = int(logo_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}rowOff").text)
 
+        print_titles = workbook.find(f"{NS_MAIN}definedNames/{NS_MAIN}definedName[@name='_xlnm.Print_Titles']")
+        self.assertIsNotNone(print_titles)
+        self.assertEqual(print_titles.text, "Quotation!$1:$3")
         self.assertGreater(text_from_row, logo_to_row)
-        self.assertGreaterEqual(text_from_row, 5)
+        self.assertEqual(text_from_row, 3)
+        self.assertLessEqual(text_top - (logo_top + logo_height), 220000)
         self.assertLessEqual(text_left, logo_left)
         self.assertGreaterEqual(text_left + text_width, logo_left + logo_width)
         self.assertGreaterEqual(logo_width, 2950000)
