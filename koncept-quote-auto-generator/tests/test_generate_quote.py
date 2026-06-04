@@ -219,13 +219,13 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         text_from_col = int(text_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}col").text)
         text_to_col = int(text_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}col").text)
         text_from_col_off = int(text_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}colOff").text)
-        text_to_col_off = int(text_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}colOff").text)
         logo_from_col_off = int(logo_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}colOff").text)
         logo_to_col_off = int(logo_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}colOff").text)
         logo_from_row_off = int(logo_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}rowOff").text)
         logo_to_row_off = int(logo_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}rowOff").text)
 
         self.assertGreater(text_from_row, logo_to_row)
+        self.assertGreaterEqual(text_from_row, 5)
         self.assertLessEqual(text_left, logo_left)
         self.assertGreaterEqual(text_left + text_width, logo_left + logo_width)
         self.assertGreaterEqual(logo_width, 2950000)
@@ -236,19 +236,47 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreaterEqual(logo_to_row_off, 410000)
         self.assertGreaterEqual(text_width, 3300000)
         self.assertLessEqual(text_width, 3500000)
-        self.assertLessEqual(text_from_col, 5)
+        self.assertEqual(text_from_col, 7)
         self.assertGreaterEqual(text_to_col, 9)
-        self.assertGreaterEqual(text_from_col_off, 180000)
-        self.assertGreaterEqual(text_to_col_off, 180000)
+        self.assertEqual(text_from_col_off, 0)
+        self.assertEqual(text_left, logo_left)
+
+        paragraph_alignments = [
+            paragraph.find(f"{NS_A}pPr").attrib.get("algn")
+            for paragraph in text_anchor.findall(f"{NS_DRAWING}sp/{NS_DRAWING}txBody/{NS_A}p")
+            if paragraph.find(f"{NS_A}pPr") is not None
+        ]
+        self.assertTrue(paragraph_alignments)
+        self.assertEqual(set(paragraph_alignments), {"l"})
 
         paragraphs = [
             "".join(text_node.text or "" for text_node in paragraph.findall(f".//{NS_A}t"))
             for paragraph in text_anchor.findall(f"{NS_DRAWING}sp/{NS_DRAWING}txBody/{NS_A}p")
         ]
-        bank_index = paragraphs.index("Bank Details:")
+        self.assertEqual(
+            paragraphs,
+            [
+                "Koncept Image Pte Limited",
+                "61 Kaki Bukit Ave 1, #02-26,",
+                "Shunli Industrial Park",
+                "Singapore 417943",
+                "Telephone: +6568177477",
+                "",
+                "Bank Detail:",
+                "United Overseas Bank Limited, 80",
+                "Raffles Place",
+                "Singapore 048624",
+                "Account: 335-3020-445",
+                "Swift Code: UOVBSGSG",
+                "",
+                "Project No: KI-TEST-001",
+            ],
+        )
+        bank_index = paragraphs.index("Bank Detail:")
         self.assertEqual(paragraphs[bank_index - 1], "")
-        project_index = paragraphs.index("Project No:")
+        project_index = paragraphs.index("Project No: KI-TEST-001")
         self.assertEqual(paragraphs[project_index - 1], "")
+        self.assertFalse(any(current == "" and following == "" for current, following in zip(paragraphs, paragraphs[1:])))
 
         run_sizes = [
             int(run_props.attrib["sz"])
@@ -256,8 +284,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             if "sz" in run_props.attrib
         ]
         self.assertTrue(run_sizes)
-        self.assertEqual(min(run_sizes), 1000)
-        self.assertEqual(max(run_sizes), 1000)
+        self.assertEqual(min(run_sizes), 900)
+        self.assertEqual(max(run_sizes), 900)
 
     def test_table_headers_bold_and_quantity_centered(self):
         tmp, path = generate_layout_workbook()
