@@ -11,6 +11,7 @@ quotation.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import datetime as dt
 import html
@@ -467,8 +468,21 @@ def write_text_pdf(path: Path, title: str, lines: list[str]) -> None:
     path.write_bytes(b"".join(chunks))
 
 
-def money(value: float | None) -> str:
-    return "" if value is None else f"{value:,.2f}"
+def money(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:,.2f}"
+    return clean_text(value)
+
+
+def spreadsheet_safe_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if stripped and stripped[0] in {"=", "+", "-", "@"}:
+        return "'" + value
+    return value
 
 
 def is_draft_or_placeholder_note(note: str) -> bool:
@@ -663,10 +677,6 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
     clear_cell(cell)
     if value in (None, ""):
         return
-    if isinstance(value, str) and value.startswith("="):
-        formula = ET.SubElement(cell, f"{NS_MAIN}f")
-        formula.text = value[1:]
-        return
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         number = ET.SubElement(cell, f"{NS_MAIN}v")
         number.text = str(value)
@@ -677,6 +687,44 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
     text.text = str(value)
     if str(value) != str(value).strip():
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
+
+
+def set_ooxml_formula(root: ET.Element, row_number: int, col_number: int, formula: str, style: str | None = None) -> None:
+    sheet_data = root.find(f"{NS_MAIN}sheetData")
+    if sheet_data is None:
+        raise ValueError("Layout workbook is missing sheetData.")
+    row = get_or_create_row(sheet_data, row_number)
+    cell = get_or_create_cell(row, row_number, col_number, style)
+    clear_cell(cell)
+    formula_node = ET.SubElement(cell, f"{NS_MAIN}f")
+    formula_node.text = formula[1:] if formula.startswith("=") else formula
+
+
+def set_ooxml_column_width(root: ET.Element, col_number: int, width: float) -> None:
+    cols = root.find(f"{NS_MAIN}cols")
+    if cols is None:
+        cols = ET.Element(f"{NS_MAIN}cols")
+        root.insert(0, cols)
+
+    for col in cols.findall(f"{NS_MAIN}col"):
+        min_col = int(col.attrib.get("min", "0"))
+        max_col = int(col.attrib.get("max", "0"))
+        if min_col == col_number and max_col == col_number:
+            col.attrib["width"] = str(width)
+            col.attrib["customWidth"] = "1"
+            return
+
+    cols.append(
+        ET.Element(
+            f"{NS_MAIN}col",
+            {
+                "min": str(col_number),
+                "max": str(col_number),
+                "width": str(width),
+                "customWidth": "1",
+            },
+        )
+    )
 
 
 def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int, max_col: int) -> None:
@@ -717,6 +765,88 @@ def strip_stale_workbook_parts(parts: dict[str, bytes]) -> None:
         parts["xl/_rels/workbook.xml.rels"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def append_border(styles_root: ET.Element, top: str | None = None, bottom: str | None = None) -> int:
+    borders = styles_root.find(f"{NS_MAIN}borders")
+    if borders is None:
+        borders = ET.SubElement(styles_root, f"{NS_MAIN}borders")
+
+    border = ET.Element(f"{NS_MAIN}border")
+    ET.SubElement(border, f"{NS_MAIN}left")
+    ET.SubElement(border, f"{NS_MAIN}right")
+    top_node = ET.SubElement(border, f"{NS_MAIN}top")
+    if top:
+        top_node.attrib["style"] = top
+        ET.SubElement(top_node, f"{NS_MAIN}color", {"auto": "1"})
+    bottom_node = ET.SubElement(border, f"{NS_MAIN}bottom")
+    if bottom:
+        bottom_node.attrib["style"] = bottom
+        ET.SubElement(bottom_node, f"{NS_MAIN}color", {"auto": "1"})
+    ET.SubElement(border, f"{NS_MAIN}diagonal")
+
+    borders.append(border)
+    borders.attrib["count"] = str(len(borders))
+    return len(borders) - 1
+
+
+def clone_cell_style(
+    styles_root: ET.Element,
+    base_style: str,
+    *,
+    border_id: int | None = None,
+    font_id: str | None = None,
+    num_fmt_id: str | None = None,
+    horizontal: str | None = None,
+    vertical: str | None = None,
+) -> str:
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    if cell_xfs is None:
+        raise ValueError("Layout workbook is missing cellXfs styles.")
+
+    style = copy.deepcopy(cell_xfs[int(base_style)])
+    if border_id is not None:
+        style.attrib["borderId"] = str(border_id)
+        style.attrib["applyBorder"] = "1"
+    if font_id is not None:
+        style.attrib["fontId"] = font_id
+        style.attrib["applyFont"] = "1"
+    if num_fmt_id is not None:
+        style.attrib["numFmtId"] = num_fmt_id
+        style.attrib["applyNumberFormat"] = "1"
+    if horizontal is not None or vertical is not None:
+        alignment = style.find(f"{NS_MAIN}alignment")
+        if alignment is None:
+            alignment = ET.SubElement(style, f"{NS_MAIN}alignment")
+        if horizontal is not None:
+            alignment.attrib["horizontal"] = horizontal
+        if vertical is not None:
+            alignment.attrib["vertical"] = vertical
+        style.attrib["applyAlignment"] = "1"
+    cell_xfs.append(style)
+    cell_xfs.attrib["count"] = str(len(cell_xfs))
+    return str(len(cell_xfs) - 1)
+
+
+def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
+    styles_root = ET.fromstring(parts["xl/styles.xml"])
+    gst_border = append_border(styles_root, top="thin")
+    grand_border = append_border(styles_root, top="thin", bottom="double")
+    bold_header_font = "13"
+    style_ids = {
+        "header_pos": clone_cell_style(styles_root, "23", font_id=bold_header_font),
+        "header_quantity": clone_cell_style(styles_root, "24", font_id=bold_header_font, horizontal="center", vertical="center"),
+        "header_service": clone_cell_style(styles_root, "21", font_id=bold_header_font, horizontal="left", vertical="center"),
+        "price_amount": clone_cell_style(styles_root, "96", num_fmt_id="4"),
+        "gst_label": clone_cell_style(styles_root, "34", border_id=gst_border),
+        "gst_amount": clone_cell_style(styles_root, "96", border_id=gst_border, num_fmt_id="4"),
+        "gst_currency": clone_cell_style(styles_root, "84", border_id=gst_border),
+        "grand_label": clone_cell_style(styles_root, "34", border_id=grand_border),
+        "grand_amount": clone_cell_style(styles_root, "96", border_id=grand_border, num_fmt_id="4"),
+        "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border),
+    }
+    parts["xl/styles.xml"] = ET.tostring(styles_root, encoding="utf-8", xml_declaration=True)
+    return style_ids
+
+
 def update_drawing_project_number(xml: bytes, project_number: str) -> bytes:
     project_number = clean_text(project_number)
     if not project_number:
@@ -737,23 +867,44 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     root = ET.fromstring(xml)
     anchors = root.findall(f"{NS_DRAWING}twoCellAnchor")
     text_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None), None)
+    logo_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}pic") is not None), None)
     if text_anchor is None:
         return xml
 
-    from_node = text_anchor.find(f"{NS_DRAWING}from")
-    to_node = text_anchor.find(f"{NS_DRAWING}to")
-    if from_node is not None:
-        values = {"col": "8", "colOff": "17369", "row": "2", "rowOff": "50000"}
+    def update_marker(anchor: ET.Element, marker: str, values: dict[str, str]) -> None:
+        marker_node = anchor.find(f"{NS_DRAWING}{marker}")
+        if marker_node is None:
+            return
         for tag, value in values.items():
-            node = from_node.find(f"{NS_DRAWING}{tag}")
+            node = marker_node.find(f"{NS_DRAWING}{tag}")
             if node is not None:
                 node.text = value
-    if to_node is not None:
-        values = {"col": "8", "colOff": "1722344", "row": "5", "rowOff": "0"}
-        for tag, value in values.items():
-            node = to_node.find(f"{NS_DRAWING}{tag}")
-            if node is not None:
-                node.text = value
+
+    if logo_anchor is not None:
+        update_marker(
+            logo_anchor,
+            "from",
+            {"col": "7", "colOff": "0", "row": "1", "rowOff": "0"},
+        )
+        update_marker(
+            logo_anchor,
+            "to",
+            {"col": "8", "colOff": "1720000", "row": "2", "rowOff": "415000"},
+        )
+        pic = logo_anchor.find(f"{NS_DRAWING}pic")
+        pic_pr = pic.find(f"{NS_DRAWING}spPr") if pic is not None else None
+        pic_xfrm = pic_pr.find(f"{NS_A}xfrm") if pic_pr is not None else None
+        logo_off = pic_xfrm.find(f"{NS_A}off") if pic_xfrm is not None else None
+        if logo_off is not None:
+            logo_off.attrib["x"] = "4550000"
+            logo_off.attrib["y"] = "260000"
+        logo_ext = pic_xfrm.find(f"{NS_A}ext") if pic_xfrm is not None else None
+        if logo_ext is not None:
+            logo_ext.attrib["cx"] = "2970000"
+            logo_ext.attrib["cy"] = "635000"
+
+    update_marker(text_anchor, "from", {"col": "7", "colOff": "0", "row": "3", "rowOff": "90000"})
+    update_marker(text_anchor, "to", {"col": "9", "colOff": "200000", "row": "13", "rowOff": "90000"})
 
     sp = text_anchor.find(f"{NS_DRAWING}sp")
     tx_body = sp.find(f"{NS_DRAWING}txBody") if sp is not None else None
@@ -765,6 +916,11 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         body_pr.attrib["vertOverflow"] = "overflow"
         body_pr.attrib["wrap"] = "square"
         body_pr.attrib["anchor"] = "t"
+        body_pr.attrib["anchorCtr"] = "0"
+        body_pr.attrib["lIns"] = "0"
+        body_pr.attrib["rIns"] = "0"
+        body_pr.attrib["tIns"] = "0"
+        body_pr.attrib["bIns"] = "0"
 
     for child in list(tx_body):
         if child.tag == f"{NS_A}p":
@@ -772,26 +928,44 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
 
     lines = [
         "Koncept Image Pte Limited",
-        "61 Kaki Bukit Ave 1, #02-26, Shunli Industrial Park",
-        "Singapore 417943  Tel: +65 6817 7477",
-        "Bank Detail: United Overseas Bank Limited",
-        "Account: 335-3020-445  Swift Code: UOVBSGSG",
+        "61 Kaki Bukit Ave 1, #02-26,",
+        "Shunli Industrial Park",
+        "Singapore 417943",
+        "Telephone: +6568177477",
+        "",
+        "Bank Detail:",
+        "United Overseas Bank Limited, 80",
+        "Raffles Place",
+        "Singapore 048624",
+        "Account: 335-3020-445",
+        "Swift Code: UOVBSGSG",
     ]
     if project_number:
-        lines.append(f"Project No: {project_number}")
+        lines.extend(["", f"Project No: {project_number}"])
 
     for line in lines:
         paragraph = ET.SubElement(tx_body, f"{NS_A}p")
         paragraph_props = ET.SubElement(paragraph, f"{NS_A}pPr")
-        paragraph_props.attrib["algn"] = "ctr"
+        paragraph_props.attrib["algn"] = "l"
         run = ET.SubElement(paragraph, f"{NS_A}r")
         run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "600", "b": "0", "i": "0", "baseline": "0"})
+        run_props.attrib.update({"lang": "en-US", "sz": "900", "b": "0", "i": "0", "baseline": "0"})
         ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
         ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
         ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
         text = ET.SubElement(run, f"{NS_A}t")
         text.text = line
+
+    sp_pr = sp.find(f"{NS_DRAWING}spPr") if sp is not None else None
+    xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
+    off = xfrm.find(f"{NS_A}off") if xfrm is not None else None
+    if off is not None:
+        off.attrib["x"] = "4550000"
+        off.attrib["y"] = "950000"
+    ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
+    if ext is not None:
+        ext.attrib["cx"] = "3350000"
+        ext.attrib["cy"] = "3300000"
 
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -800,7 +974,7 @@ def update_print_titles(xml: bytes) -> bytes:
     text = xml.decode("utf-8")
     updated = re.sub(
         r"(<definedName[^>]*name=\"_xlnm\.Print_Titles\"[^>]*>[^<]*!\$1:\$)[0-9]+(</definedName>)",
-        r"\g<1>5\2",
+        r"\g<1>3\2",
         text,
         count=1,
     )
@@ -911,10 +1085,11 @@ def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = 
     return entries
 
 
-def write_table_header(root: ET.Element, row_number: int, currency_row: int | None = None) -> None:
-    set_ooxml_cell(root, row_number, 1, "Pos.", "23")
-    set_ooxml_cell(root, row_number, 2, "Quantity", "24")
-    set_ooxml_cell(root, row_number, 3, "Service", "21")
+def write_table_header(root: ET.Element, row_number: int, currency_row: int | None = None, styles: dict[str, str] | None = None) -> None:
+    styles = styles or {}
+    set_ooxml_cell(root, row_number, 1, "Pos.", styles.get("header_pos", "23"))
+    set_ooxml_cell(root, row_number, 2, "Quantity", styles.get("header_quantity", "24"))
+    set_ooxml_cell(root, row_number, 3, "Service", styles.get("header_service", "21"))
     set_ooxml_cell(root, row_number, 5, "Estimate", "87")
     if currency_row is not None:
         set_ooxml_cell(root, currency_row, 5, "SGD", "95")
@@ -951,9 +1126,12 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     with zipfile.ZipFile(layout_template) as zf:
         parts = {name: zf.read(name) for name in zf.namelist()}
 
+    layout_styles = add_quote_layout_styles(parts)
     root = ET.fromstring(parts["xl/worksheets/sheet1.xml"])
     clear_ooxml_range(root, 1, 300, 1, 100)
-    price_style = "96"
+    set_ooxml_column_width(root, 2, 14.25)
+    set_ooxml_column_width(root, 3, 45.5)
+    price_style = layout_styles["price_amount"]
 
     client = brief["client"]
     project = brief["project"]
@@ -967,7 +1145,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), "101")
     set_ooxml_cell(root, 18, 1, f"RE: {project.get('title', '')}", "26")
 
-    write_table_header(root, 20, 21)
+    write_table_header(root, 20, 21, layout_styles)
     set_ooxml_cell(root, 21, 5, currency, "95")
 
     entries = render_quote_entries(lines, brief)
@@ -1005,15 +1183,15 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             set_ooxml_cell(root, row_number, 3, extra, "5")
         row_number += 2
 
-    write_table_header(root, 53)
+    write_table_header(root, 53, styles=layout_styles)
     gst_rate = quote_gst_rate(lines)
     if gst_rate:
-        set_ooxml_cell(root, 93, 4, gst_label(lines), "34")
-        set_ooxml_cell(root, 93, 5, f"=ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", price_style)
-        set_ooxml_cell(root, 93, 6, currency, "84")
-    set_ooxml_cell(root, 94, 4, "Grand Total", "34")
-    set_ooxml_cell(root, 94, 5, "=SUM(E22:E93)", price_style)
-    set_ooxml_cell(root, 94, 6, currency, "84")
+        set_ooxml_cell(root, 93, 4, gst_label(lines), layout_styles["gst_label"])
+        set_ooxml_formula(root, 93, 5, f"ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", layout_styles["gst_amount"])
+        set_ooxml_cell(root, 93, 6, currency, layout_styles["gst_currency"])
+    set_ooxml_cell(root, 94, 4, "Grand Total", layout_styles["grand_label"])
+    set_ooxml_formula(root, 94, 5, "SUM(E22:E93)", layout_styles["grand_amount"])
+    set_ooxml_cell(root, 94, 6, currency, layout_styles["grand_currency"])
 
     payment_terms = brief.get("payment_terms") or [
         "80% payment upon confirmation and signing of contract.",
@@ -1039,25 +1217,20 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
         "Late payment charge of 1.5% per month will be charge after the due date.",
     ]
-    set_ooxml_cell(root, 103, 1, "Note : ", "47")
+    set_ooxml_cell(root, 103, 1, "Note : ", "37")
     for index, note in enumerate(standard_notes, start=1):
         target_row = 103 + index
-        if target_row == 114:
-            set_ooxml_cell(root, target_row, 1, "11.00", "47")
-            set_ooxml_cell(root, target_row, 2, note, "41")
-        elif target_row == 115:
-            set_ooxml_cell(root, target_row, 2, note, "41")
-        else:
-            set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
-            set_ooxml_cell(root, target_row, 2, note, "41")
-    set_ooxml_cell(root, 106, 5, "We accept the quotation amount and the terms", "2")
+        set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
+        set_ooxml_cell(root, target_row, 2, note, "41")
 
     company_name = f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd"
     set_ooxml_cell(root, 117, 2, company_name, "2")
+    set_ooxml_cell(root, 117, 5, "We accept the quotation amount and the terms", "2")
     set_ooxml_cell(root, 121, 2, "_____________________________", "33")
     set_ooxml_cell(root, 121, 5, "_____________________________________", "33")
     set_ooxml_cell(root, 122, 2, brief.get("signature", {}).get("koncept_signatory", "Francies Cheng"), "33")
     set_ooxml_cell(root, 122, 5, "Person in charge", "33")
+    set_ooxml_cell(root, 123, 2, brief.get("signature", {}).get("koncept_title", ""), "33")
     set_ooxml_cell(root, 123, 5, "Company name & stamp", "33")
     set_ooxml_cell(root, 124, 5, "Date:", "33")
 
@@ -1075,24 +1248,49 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             zf.writestr(name, content)
 
 
-def powershell_pdf_export(xlsx_path: Path, pdf_path: Path) -> str | None:
-    if os.name != "nt" or shutil.which("powershell") is None:
-        return None
+def powershell_literal(path: Path) -> str:
+    return str(path.resolve()).replace("'", "''")
+
+
+def powershell_export_script(xlsx_path: Path, pdf_path: Path) -> str:
     xlsx_export_path = xlsx_path.resolve()
     pdf_export_path = pdf_path.resolve()
-    script = f"""
+    return f"""
 $ErrorActionPreference = 'Stop'
+$xlsxPath = '{powershell_literal(xlsx_export_path)}'
+$pdfPath = '{powershell_literal(pdf_export_path)}'
+$repairedWorkbookPath = [System.IO.Path]::Combine(
+  [System.IO.Path]::GetDirectoryName($xlsxPath),
+  ([System.IO.Path]::GetFileNameWithoutExtension($xlsxPath) + '.excel-repaired.xlsx')
+)
+if (Test-Path -LiteralPath $repairedWorkbookPath) {{
+  Remove-Item -LiteralPath $repairedWorkbookPath -Force
+}}
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
-$workbook = $excel.Workbooks.Open('{str(xlsx_export_path).replace("'", "''")}')
 try {{
-  $workbook.ExportAsFixedFormat(0, '{str(pdf_export_path).replace("'", "''")}')
+  # CorruptLoad 1 lets Excel repair stale template metadata before print export.
+  $workbook = $excel.Workbooks.Open($xlsxPath, 0, $false, 5, '', '', $true, 1, '', $false, $false, $null, $false, $true, 1)
+  try {{
+    $workbook.SaveAs($repairedWorkbookPath, 51)
+    $workbook.ExportAsFixedFormat(0, $pdfPath)
+  }} finally {{
+    $workbook.Close($false)
+  }}
 }} finally {{
-  $workbook.Close($false)
   $excel.Quit()
 }}
+if (Test-Path -LiteralPath $repairedWorkbookPath) {{
+  Move-Item -LiteralPath $repairedWorkbookPath -Destination $xlsxPath -Force
+}}
 """
+
+
+def powershell_pdf_export(xlsx_path: Path, pdf_path: Path) -> str | None:
+    if os.name != "nt" or shutil.which("powershell") is None:
+        return None
+    script = powershell_export_script(xlsx_path, pdf_path)
     result = subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
         stdout=subprocess.DEVNULL,
@@ -1299,7 +1497,8 @@ def company_header_lines() -> list[str]:
         "Koncept Image Pte Limited",
         "61 Kaki Bukit Ave 1, #02-26, Shunli Industrial Park",
         "Singapore 417943  Tel: +65 6817 7477",
-        "Bank Detail: United Overseas Bank Limited",
+        "",
+        "Bank Details: United Overseas Bank Limited",
         "Account: 335-3020-445  Swift Code: UOVBSGSG",
     ]
 
@@ -1385,7 +1584,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
         writer.writerow(["status", "section", "description", "keyword", "template_row", "template_description", "unit_price", "amount"])
         for line in lines:
             match = line.matched_price
-            writer.writerow([
+            writer.writerow([spreadsheet_safe_text(value) for value in [
                 line.match_status,
                 line.section,
                 line.description,
@@ -1394,7 +1593,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
                 match.description if match else "",
                 f"{match.sale_unit_price:.2f}" if match else "",
                 money(line.amount),
-            ])
+            ]])
 
 
 def write_export_status(path: Path, status: str, pdf_mode: str) -> None:
