@@ -36,7 +36,10 @@ Always ask which identity to use. Do not choose by default.
 ## Line Item Table
 
 - Columns: `Pos.`, `Quantity`, `Service`, `Estimate`.
+- Make `Pos.`, `Quantity`, and `Service` bold.
+- Center-align quantity values and the `Quantity` header.
 - Currency: usually `SGD`.
+- Format all numeric price/estimate cells with thousands separators, for example `1,000.00` and `10,000.00`.
 - Use `sqm` for square-metre quantities, not `m2`.
 - Keep the `Quantity` column wide enough that entries such as `24 m length` and `36 sqm` do not clip in Excel print-to-PDF output.
 - Write customer/brief-sourced values as literal spreadsheet text. Do not turn values beginning with `=`, `+`, `-`, or `@` into active formulas in XLSX or CSV outputs.
@@ -75,6 +78,8 @@ Use only sections needed by the quote brief.
   - `Total Final Price`
 - Add exclusions before terms when provided.
 - Add special notes in red styling in XLSX when possible and normal emphasized text in PDF.
+- Keep note numbering plain and sequential. Do not make a single note number bold/italic unless every note number uses the same style.
+- Keep acceptance/signature text out of the terms and notes body so it cannot overlap long note lines.
 
 ## Export Status
 
@@ -111,4 +116,4 @@ Include two signature areas:
 - Left: Koncept company name, signature line, Francies Cheng or Francis Cheng as specified, title if provided.
 - Right: `We accept the quotation amount and the terms`, signature line, `Person in charge`, `Company name & stamp`, `Date:`.
 - When a Koncept signatory title or designation is supplied, place it directly below the signatory name.
-- Keep the company-detail text beneath the logo top-aligned inside a wide enough text box so address, bank, and project-number lines do not appear cramped in Excel PDF exports.
+- Keep the company-detail text below, not beside or behind, the logo. Top-align it inside a wide enough text box so address, bank, and project-number lines do not appear cramped in Excel PDF exports.

@@ -44,6 +44,23 @@ def border_for_style(styles_root, style_id):
     return borders[border_id]
 
 
+def font_for_style(styles_root, style_id):
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    fonts = styles_root.find(f"{NS_MAIN}fonts")
+    font_id = int(cell_xfs[style_id].attrib.get("fontId", "0"))
+    return fonts[font_id]
+
+
+def alignment_for_style(styles_root, style_id):
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    return cell_xfs[style_id].find(f"{NS_MAIN}alignment")
+
+
+def num_fmt_for_style(styles_root, style_id):
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    return cell_xfs[style_id].attrib.get("numFmtId")
+
+
 def worksheet_formulas(root):
     return [formula.text or "" for formula in root.iter(f"{NS_MAIN}f")]
 
@@ -177,6 +194,63 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertGreater(to_col, from_col)
         self.assertEqual(body_pr.attrib.get("anchor"), "t")
+
+    def test_company_detail_drawing_starts_below_logo(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            drawing = ET.fromstring(zf.read("xl/drawings/drawing1.xml"))
+
+        anchors = drawing.findall(f"{NS_DRAWING}twoCellAnchor")
+        text_anchor = next(anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None)
+        logo_anchor = next(anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}pic") is not None)
+        text_from_row = int(text_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}row").text)
+        logo_to_row = int(logo_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}row").text)
+        to_col = int(text_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}col").text)
+
+        self.assertGreater(text_from_row, logo_to_row)
+        self.assertGreaterEqual(to_col, 11)
+
+    def test_table_headers_bold_and_quantity_centered(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        for ref in ("A20", "B20", "C20"):
+            self.assertIsNotNone(font_for_style(styles, cell_style(sheet, ref)).find(f"{NS_MAIN}b"))
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "B20")).attrib.get("horizontal"), "center")
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "B24")).attrib.get("horizontal"), "center")
+
+    def test_price_cells_use_thousands_separator_number_format(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E24")), "4")
+        self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E93")), "4")
+        self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E94")), "4")
+
+    def test_notes_are_plain_numbered_and_acceptance_text_stays_out_of_notes(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        self.assertEqual(cell_value(sheet, "A114"), "11.00")
+        self.assertEqual(cell_value(sheet, "A115"), "12.00")
+        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A103")).find(f"{NS_MAIN}i"))
+        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A114")).find(f"{NS_MAIN}i"))
+        self.assertEqual(cell_value(sheet, "E106"), "")
+        self.assertEqual(cell_value(sheet, "E117"), "We accept the quotation amount and the terms")
 
     def test_excel_pdf_export_script_repairs_and_saves_workbook_before_export(self):
         script = quote.powershell_export_script(Path("quotation.xlsx"), Path("quotation.pdf"))
