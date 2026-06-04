@@ -1,7 +1,10 @@
 import csv
+import json
+import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -16,6 +19,7 @@ import generate_quote as quote
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}"
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+NS_MC_IGNORABLE = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable"
 
 
 def cell_value(root, ref):
@@ -63,6 +67,13 @@ def num_fmt_for_style(styles_root, style_id):
 
 def worksheet_formulas(root):
     return [formula.text or "" for formula in root.iter(f"{NS_MAIN}f")]
+
+
+def declared_xml_prefixes(xml_text, root_name):
+    match = re.search(rf"<{root_name}\b[^>]*>", xml_text)
+    if not match:
+        raise AssertionError(f"Could not find <{root_name}> start tag")
+    return set(re.findall(r"\sxmlns:([A-Za-z0-9_]+)=", match.group(0)))
 
 
 def generate_layout_workbook():
@@ -113,6 +124,62 @@ def generate_layout_workbook():
 
 
 class GenerateQuoteRowsTest(unittest.TestCase):
+    def test_pdf_generation_is_opt_in_by_default(self):
+        with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", "brief.json"]):
+            args = quote.parse_args()
+
+        self.assertEqual(args.pdf_mode, "none")
+
+    def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            styles_xml = zf.read("xl/styles.xml").decode("utf-8")
+            styles = ET.fromstring(styles_xml)
+
+        declared = declared_xml_prefixes(styles_xml, "styleSheet")
+        ignorable = styles.attrib.get(NS_MC_IGNORABLE, "").split()
+
+        self.assertTrue(ignorable)
+        self.assertEqual([prefix for prefix in ignorable if prefix not in declared], [])
+
+    def test_default_generation_removes_stale_pdf_output(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [
+                {
+                    "section": "Furniture",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": "Furniture package",
+                    "display_price": "Included",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            brief_path = tmp_path / "brief.json"
+            out_dir = tmp_path / "out"
+            out_dir.mkdir()
+            stale_pdf = out_dir / "quotation.pdf"
+            stale_pdf.write_bytes(b"old pdf")
+            brief_path.write_text(json.dumps(brief), encoding="utf-8")
+
+            with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", str(brief_path), "--out", str(out_dir)]):
+                self.assertEqual(quote.main(), 0)
+
+            self.assertTrue((out_dir / "quotation.xlsx").exists())
+            self.assertFalse(stale_pdf.exists())
+
     def test_build_quote_rows_preserves_display_price_text(self):
         brief = {
             "company_identity": "Koncept Image",
