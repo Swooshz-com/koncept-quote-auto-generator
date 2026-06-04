@@ -1,0 +1,11 @@
+_output/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Excel temporary lock files
+~$*.xls*
+
+# Local automation/runtime noise
+.DS_Store
+Thumbs.db
