@@ -215,15 +215,23 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         text_width = int(text_ext.attrib["cx"])
         logo_left = int(logo_off.attrib["x"])
         logo_width = int(logo_ext.attrib["cx"])
+        text_from_col = int(text_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}col").text)
+        text_to_col = int(text_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}col").text)
 
         self.assertGreater(text_from_row, logo_to_row)
         self.assertLessEqual(text_left, logo_left)
         self.assertGreaterEqual(text_left + text_width, logo_left + logo_width)
-        self.assertLessEqual(text_width, 2600000)
-        self.assertLessEqual(text_left + text_width, 7800000)
-        text_center = text_left + text_width // 2
-        logo_center = logo_left + logo_width // 2
-        self.assertLessEqual(abs(text_center - logo_center), 10000)
+        self.assertGreaterEqual(text_width, 3200000)
+        self.assertLessEqual(text_width, 3400000)
+        self.assertLessEqual(text_from_col, 5)
+        self.assertGreaterEqual(text_to_col, 9)
+
+        paragraphs = [
+            "".join(text_node.text or "" for text_node in paragraph.findall(f".//{NS_A}t"))
+            for paragraph in text_anchor.findall(f"{NS_DRAWING}sp/{NS_DRAWING}txBody/{NS_A}p")
+        ]
+        bank_index = paragraphs.index("Bank Details: United Overseas Bank Limited")
+        self.assertEqual(paragraphs[bank_index - 1], "")
 
         run_sizes = [
             int(run_props.attrib["sz"])
@@ -231,7 +239,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             if "sz" in run_props.attrib
         ]
         self.assertTrue(run_sizes)
-        self.assertGreaterEqual(min(run_sizes), 550)
+        self.assertGreaterEqual(min(run_sizes), 650)
 
     def test_table_headers_bold_and_quantity_centered(self):
         tmp, path = generate_layout_workbook()
