@@ -903,8 +903,8 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
             logo_ext.attrib["cx"] = "2970000"
             logo_ext.attrib["cy"] = "635000"
 
-    update_marker(text_anchor, "from", {"col": "7", "colOff": "0", "row": "5", "rowOff": "0"})
-    update_marker(text_anchor, "to", {"col": "9", "colOff": "200000", "row": "15", "rowOff": "0"})
+    update_marker(text_anchor, "from", {"col": "7", "colOff": "0", "row": "3", "rowOff": "90000"})
+    update_marker(text_anchor, "to", {"col": "9", "colOff": "200000", "row": "13", "rowOff": "90000"})
 
     sp = text_anchor.find(f"{NS_DRAWING}sp")
     tx_body = sp.find(f"{NS_DRAWING}txBody") if sp is not None else None
@@ -961,7 +961,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     off = xfrm.find(f"{NS_A}off") if xfrm is not None else None
     if off is not None:
         off.attrib["x"] = "4550000"
-        off.attrib["y"] = "1350000"
+        off.attrib["y"] = "950000"
     ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
     if ext is not None:
         ext.attrib["cx"] = "3350000"
@@ -974,7 +974,7 @@ def update_print_titles(xml: bytes) -> bytes:
     text = xml.decode("utf-8")
     updated = re.sub(
         r"(<definedName[^>]*name=\"_xlnm\.Print_Titles\"[^>]*>[^<]*!\$1:\$)[0-9]+(</definedName>)",
-        r"\g<1>5\2",
+        r"\g<1>3\2",
         text,
         count=1,
     )
