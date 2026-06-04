@@ -221,6 +221,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreaterEqual(text_left + text_width, logo_left + logo_width)
         self.assertLessEqual(text_width, 2600000)
         self.assertLessEqual(text_left + text_width, 7800000)
+        text_center = text_left + text_width // 2
+        logo_center = logo_left + logo_width // 2
+        self.assertLessEqual(abs(text_center - logo_center), 10000)
 
         run_sizes = [
             int(run_props.attrib["sz"])

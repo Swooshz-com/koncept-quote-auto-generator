@@ -953,7 +953,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
     off = xfrm.find(f"{NS_A}off") if xfrm is not None else None
     if off is not None:
-        off.attrib["x"] = "5300000"
+        off.attrib["x"] = "5200000"
         off.attrib["y"] = "760000"
     ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
     if ext is not None:
