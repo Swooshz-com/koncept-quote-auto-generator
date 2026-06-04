@@ -38,6 +38,7 @@ Always ask which identity to use. Do not choose by default.
 - Columns: `Pos.`, `Quantity`, `Service`, `Estimate`.
 - Currency: usually `SGD`.
 - Use `sqm` for square-metre quantities, not `m2`.
+- Keep the `Quantity` column wide enough that entries such as `24 m length` and `36 sqm` do not clip in Excel print-to-PDF output.
 - Section rows use numbering such as `1.0`, `2.0`, `3.0`.
 - Detail rows use numbering such as `1.1`, `1.2`, `2.1`.
 - Section rows may carry a lump-sum amount while child rows have blank estimates.
@@ -65,6 +66,8 @@ Use only sections needed by the quote brief.
 ## Totals And Notes
 
 - Add `Grand Total` near the end of line items.
+- Keep GST and Grand Total in the bottom totals area of the estimate page when the preserved layout has room.
+- Add a clean top rule above GST and a stronger bottom rule under Grand Total across the label, amount, and currency cells.
 - If discount is provided, show:
   - `Total Estimates items ...`
   - `Less goodwill discount`
@@ -106,3 +109,5 @@ Include two signature areas:
 
 - Left: Koncept company name, signature line, Francies Cheng or Francis Cheng as specified, title if provided.
 - Right: `We accept the quotation amount and the terms`, signature line, `Person in charge`, `Company name & stamp`, `Date:`.
+- When a Koncept signatory title or designation is supplied, place it directly below the signatory name.
+- Keep the company-detail text beneath the logo top-aligned inside a wide enough text box so address, bank, and project-number lines do not appear cramped in Excel PDF exports.
