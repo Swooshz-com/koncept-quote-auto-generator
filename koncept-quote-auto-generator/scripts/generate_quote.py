@@ -788,30 +788,60 @@ def append_border(styles_root: ET.Element, top: str | None = None, bottom: str |
     return len(borders) - 1
 
 
-def clone_cell_style_with_border(styles_root: ET.Element, base_style: str, border_id: int) -> str:
+def clone_cell_style(
+    styles_root: ET.Element,
+    base_style: str,
+    *,
+    border_id: int | None = None,
+    font_id: str | None = None,
+    num_fmt_id: str | None = None,
+    horizontal: str | None = None,
+    vertical: str | None = None,
+) -> str:
     cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
     if cell_xfs is None:
         raise ValueError("Layout workbook is missing cellXfs styles.")
 
     style = copy.deepcopy(cell_xfs[int(base_style)])
-    style.attrib["borderId"] = str(border_id)
-    style.attrib["applyBorder"] = "1"
+    if border_id is not None:
+        style.attrib["borderId"] = str(border_id)
+        style.attrib["applyBorder"] = "1"
+    if font_id is not None:
+        style.attrib["fontId"] = font_id
+        style.attrib["applyFont"] = "1"
+    if num_fmt_id is not None:
+        style.attrib["numFmtId"] = num_fmt_id
+        style.attrib["applyNumberFormat"] = "1"
+    if horizontal is not None or vertical is not None:
+        alignment = style.find(f"{NS_MAIN}alignment")
+        if alignment is None:
+            alignment = ET.SubElement(style, f"{NS_MAIN}alignment")
+        if horizontal is not None:
+            alignment.attrib["horizontal"] = horizontal
+        if vertical is not None:
+            alignment.attrib["vertical"] = vertical
+        style.attrib["applyAlignment"] = "1"
     cell_xfs.append(style)
     cell_xfs.attrib["count"] = str(len(cell_xfs))
     return str(len(cell_xfs) - 1)
 
 
-def add_total_border_styles(parts: dict[str, bytes]) -> dict[str, str]:
+def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     styles_root = ET.fromstring(parts["xl/styles.xml"])
     gst_border = append_border(styles_root, top="thin")
     grand_border = append_border(styles_root, top="thin", bottom="double")
+    bold_header_font = "13"
     style_ids = {
-        "gst_label": clone_cell_style_with_border(styles_root, "34", gst_border),
-        "gst_amount": clone_cell_style_with_border(styles_root, "96", gst_border),
-        "gst_currency": clone_cell_style_with_border(styles_root, "84", gst_border),
-        "grand_label": clone_cell_style_with_border(styles_root, "34", grand_border),
-        "grand_amount": clone_cell_style_with_border(styles_root, "96", grand_border),
-        "grand_currency": clone_cell_style_with_border(styles_root, "84", grand_border),
+        "header_pos": clone_cell_style(styles_root, "23", font_id=bold_header_font),
+        "header_quantity": clone_cell_style(styles_root, "24", font_id=bold_header_font, horizontal="center", vertical="center"),
+        "header_service": clone_cell_style(styles_root, "21", font_id=bold_header_font, horizontal="left", vertical="center"),
+        "price_amount": clone_cell_style(styles_root, "96", num_fmt_id="4"),
+        "gst_label": clone_cell_style(styles_root, "34", border_id=gst_border),
+        "gst_amount": clone_cell_style(styles_root, "96", border_id=gst_border, num_fmt_id="4"),
+        "gst_currency": clone_cell_style(styles_root, "84", border_id=gst_border),
+        "grand_label": clone_cell_style(styles_root, "34", border_id=grand_border),
+        "grand_amount": clone_cell_style(styles_root, "96", border_id=grand_border, num_fmt_id="4"),
+        "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border),
     }
     parts["xl/styles.xml"] = ET.tostring(styles_root, encoding="utf-8", xml_declaration=True)
     return style_ids
@@ -843,13 +873,13 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     from_node = text_anchor.find(f"{NS_DRAWING}from")
     to_node = text_anchor.find(f"{NS_DRAWING}to")
     if from_node is not None:
-        values = {"col": "8", "colOff": "17369", "row": "2", "rowOff": "50000"}
+        values = {"col": "8", "colOff": "17369", "row": "3", "rowOff": "0"}
         for tag, value in values.items():
             node = from_node.find(f"{NS_DRAWING}{tag}")
             if node is not None:
                 node.text = value
     if to_node is not None:
-        values = {"col": "10", "colOff": "0", "row": "5", "rowOff": "0"}
+        values = {"col": "11", "colOff": "0", "row": "6", "rowOff": "0"}
         for tag, value in values.items():
             node = to_node.find(f"{NS_DRAWING}{tag}")
             if node is not None:
@@ -887,7 +917,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         paragraph_props.attrib["algn"] = "ctr"
         run = ET.SubElement(paragraph, f"{NS_A}r")
         run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "600", "b": "0", "i": "0", "baseline": "0"})
+        run_props.attrib.update({"lang": "en-US", "sz": "500", "b": "0", "i": "0", "baseline": "0"})
         ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
         ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
         ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
@@ -898,8 +928,8 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
     ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
     if ext is not None:
-        ext.attrib["cx"] = "2700000"
-        ext.attrib["cy"] = "1150000"
+        ext.attrib["cx"] = "3900000"
+        ext.attrib["cy"] = "1000000"
 
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -1019,10 +1049,11 @@ def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = 
     return entries
 
 
-def write_table_header(root: ET.Element, row_number: int, currency_row: int | None = None) -> None:
-    set_ooxml_cell(root, row_number, 1, "Pos.", "23")
-    set_ooxml_cell(root, row_number, 2, "Quantity", "24")
-    set_ooxml_cell(root, row_number, 3, "Service", "21")
+def write_table_header(root: ET.Element, row_number: int, currency_row: int | None = None, styles: dict[str, str] | None = None) -> None:
+    styles = styles or {}
+    set_ooxml_cell(root, row_number, 1, "Pos.", styles.get("header_pos", "23"))
+    set_ooxml_cell(root, row_number, 2, "Quantity", styles.get("header_quantity", "24"))
+    set_ooxml_cell(root, row_number, 3, "Service", styles.get("header_service", "21"))
     set_ooxml_cell(root, row_number, 5, "Estimate", "87")
     if currency_row is not None:
         set_ooxml_cell(root, currency_row, 5, "SGD", "95")
@@ -1059,12 +1090,12 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     with zipfile.ZipFile(layout_template) as zf:
         parts = {name: zf.read(name) for name in zf.namelist()}
 
-    total_styles = add_total_border_styles(parts)
+    layout_styles = add_quote_layout_styles(parts)
     root = ET.fromstring(parts["xl/worksheets/sheet1.xml"])
     clear_ooxml_range(root, 1, 300, 1, 100)
     set_ooxml_column_width(root, 2, 14.25)
     set_ooxml_column_width(root, 3, 45.5)
-    price_style = "96"
+    price_style = layout_styles["price_amount"]
 
     client = brief["client"]
     project = brief["project"]
@@ -1078,7 +1109,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), "101")
     set_ooxml_cell(root, 18, 1, f"RE: {project.get('title', '')}", "26")
 
-    write_table_header(root, 20, 21)
+    write_table_header(root, 20, 21, layout_styles)
     set_ooxml_cell(root, 21, 5, currency, "95")
 
     entries = render_quote_entries(lines, brief)
@@ -1116,15 +1147,15 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             set_ooxml_cell(root, row_number, 3, extra, "5")
         row_number += 2
 
-    write_table_header(root, 53)
+    write_table_header(root, 53, styles=layout_styles)
     gst_rate = quote_gst_rate(lines)
     if gst_rate:
-        set_ooxml_cell(root, 93, 4, gst_label(lines), total_styles["gst_label"])
-        set_ooxml_formula(root, 93, 5, f"ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", total_styles["gst_amount"])
-        set_ooxml_cell(root, 93, 6, currency, total_styles["gst_currency"])
-    set_ooxml_cell(root, 94, 4, "Grand Total", total_styles["grand_label"])
-    set_ooxml_formula(root, 94, 5, "SUM(E22:E93)", total_styles["grand_amount"])
-    set_ooxml_cell(root, 94, 6, currency, total_styles["grand_currency"])
+        set_ooxml_cell(root, 93, 4, gst_label(lines), layout_styles["gst_label"])
+        set_ooxml_formula(root, 93, 5, f"ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", layout_styles["gst_amount"])
+        set_ooxml_cell(root, 93, 6, currency, layout_styles["gst_currency"])
+    set_ooxml_cell(root, 94, 4, "Grand Total", layout_styles["grand_label"])
+    set_ooxml_formula(root, 94, 5, "SUM(E22:E93)", layout_styles["grand_amount"])
+    set_ooxml_cell(root, 94, 6, currency, layout_styles["grand_currency"])
 
     payment_terms = brief.get("payment_terms") or [
         "80% payment upon confirmation and signing of contract.",
@@ -1150,21 +1181,15 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
         "Late payment charge of 1.5% per month will be charge after the due date.",
     ]
-    set_ooxml_cell(root, 103, 1, "Note : ", "47")
+    set_ooxml_cell(root, 103, 1, "Note : ", "37")
     for index, note in enumerate(standard_notes, start=1):
         target_row = 103 + index
-        if target_row == 114:
-            set_ooxml_cell(root, target_row, 1, "11.00", "47")
-            set_ooxml_cell(root, target_row, 2, note, "41")
-        elif target_row == 115:
-            set_ooxml_cell(root, target_row, 2, note, "41")
-        else:
-            set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
-            set_ooxml_cell(root, target_row, 2, note, "41")
-    set_ooxml_cell(root, 106, 5, "We accept the quotation amount and the terms", "2")
+        set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
+        set_ooxml_cell(root, target_row, 2, note, "41")
 
     company_name = f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd"
     set_ooxml_cell(root, 117, 2, company_name, "2")
+    set_ooxml_cell(root, 117, 5, "We accept the quotation amount and the terms", "2")
     set_ooxml_cell(root, 121, 2, "_____________________________", "33")
     set_ooxml_cell(root, 121, 5, "_____________________________________", "33")
     set_ooxml_cell(root, 122, 2, brief.get("signature", {}).get("koncept_signatory", "Francies Cheng"), "33")
