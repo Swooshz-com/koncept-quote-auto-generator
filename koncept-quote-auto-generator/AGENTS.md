@@ -20,7 +20,7 @@ Generate customer-facing quotations for `Koncept Image` or `Koncept World` from 
 
 - Use `_Quotation Cost Template V1.1.xlsx` beside this file as the only pricing source.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: readable quantity column width, bordered GST and Grand Total rows in the bottom totals area, signatory title under the Koncept signatory name when provided, and top-aligned company-detail text below the logo.
+- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: readable quantity column width, bordered GST and Grand Total rows in the bottom totals area, signatory title under the Koncept signatory name when provided, and a logo/detail header group that stays inside the print area with top-aligned company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
 - Do not hardcode absolute machine paths in generated briefs, scripts, or docs.
 - Do not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other third-party dependencies for XLSX generation.
