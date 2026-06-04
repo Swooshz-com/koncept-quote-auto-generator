@@ -899,7 +899,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
             logo_off.attrib["x"] = "5600000"
             logo_off.attrib["y"] = "323850"
 
-    update_marker(text_anchor, "from", {"col": "6", "colOff": "600000", "row": "3", "rowOff": "0"})
+    update_marker(text_anchor, "from", {"col": "5", "colOff": "0", "row": "3", "rowOff": "0"})
     update_marker(text_anchor, "to", {"col": "9", "colOff": "0", "row": "8", "rowOff": "0"})
 
     sp = text_anchor.find(f"{NS_DRAWING}sp")
@@ -924,14 +924,11 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
 
     lines = [
         "Koncept Image Pte Limited",
-        "61 Kaki Bukit Ave 1, #02-26",
-        "Shunli Industrial Park",
-        "Singapore 417943",
-        "Tel: +65 6817 7477",
-        "Bank Detail:",
-        "United Overseas Bank Limited",
-        "Account: 335-3020-445",
-        "Swift Code: UOVBSGSG",
+        "61 Kaki Bukit Ave 1, #02-26, Shunli Industrial Park",
+        "Singapore 417943   Tel: +65 6817 7477",
+        "",
+        "Bank Details: United Overseas Bank Limited",
+        "Account: 335-3020-445   Swift Code: UOVBSGSG",
     ]
     if project_number:
         lines.append(f"Project No: {project_number}")
@@ -940,9 +937,11 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         paragraph = ET.SubElement(tx_body, f"{NS_A}p")
         paragraph_props = ET.SubElement(paragraph, f"{NS_A}pPr")
         paragraph_props.attrib["algn"] = "ctr"
+        if not line:
+            continue
         run = ET.SubElement(paragraph, f"{NS_A}r")
         run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "600", "b": "0", "i": "0", "baseline": "0"})
+        run_props.attrib.update({"lang": "en-US", "sz": "650", "b": "0", "i": "0", "baseline": "0"})
         ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
         ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
         ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
@@ -953,11 +952,11 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
     off = xfrm.find(f"{NS_A}off") if xfrm is not None else None
     if off is not None:
-        off.attrib["x"] = "5200000"
+        off.attrib["x"] = "4170000"
         off.attrib["y"] = "760000"
     ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
     if ext is not None:
-        ext.attrib["cx"] = "2450000"
+        ext.attrib["cx"] = "3200000"
         ext.attrib["cy"] = "1500000"
 
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
@@ -1490,7 +1489,8 @@ def company_header_lines() -> list[str]:
         "Koncept Image Pte Limited",
         "61 Kaki Bukit Ave 1, #02-26, Shunli Industrial Park",
         "Singapore 417943  Tel: +65 6817 7477",
-        "Bank Detail: United Overseas Bank Limited",
+        "",
+        "Bank Details: United Overseas Bank Limited",
         "Account: 335-3020-445  Swift Code: UOVBSGSG",
     ]
 

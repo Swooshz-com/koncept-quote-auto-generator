@@ -116,4 +116,4 @@ Include two signature areas:
 - Left: Koncept company name, signature line, Francies Cheng or Francis Cheng as specified, title if provided.
 - Right: `We accept the quotation amount and the terms`, signature line, `Person in charge`, `Company name & stamp`, `Date:`.
 - When a Koncept signatory title or designation is supplied, place it directly below the signatory name.
-- Keep the logo and company-detail text together inside the `A:I` print area, not against the right page edge. Place the details below, not beside or behind, the logo; top-align the text, split long address/bank lines, and keep the detail text readable in Excel PDF exports.
+- Keep the logo and company-detail text together inside the `A:I` print area, not against the right page edge. Place the details below, not beside or behind, the logo; top-align the text, center it under the full visible logo, split long address/bank lines, add a blank line before `Bank Details:`, and keep the detail text readable in Excel PDF exports.
