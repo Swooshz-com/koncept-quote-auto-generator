@@ -18,11 +18,11 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Use sample-style section totals for structure sections such as booth structure, wall structure, or stand structure: put the subtotal on the section row and leave child-row estimates blank.
 - Use `_Quotation Cost Template V1.1.xlsx` beside this `SKILL.md` as the only pricing source.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, GST and Grand Total rows must have clear top/bottom rules, totals should stay near the bottom of the estimate page, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
+- Preserve the customer-facing XLSX layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, GST and Grand Total rows must have clear top/bottom rules, totals should stay near the bottom of the estimate page, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
 - Do not hardcode absolute user machine paths.
 - Do not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other installed dependencies for XLSX generation.
-- For a customer-ready PDF, let `scripts/generate_quote.py` use Excel or LibreOffice export. Fallback PDFs are review-only.
+- Do not generate PDFs by default. Treat `quotation.xlsx` as the customer-ready master output; use `--pdf-mode auto` only when the user explicitly asks for a PDF.
 - Use `scripts/generate_quote.py`; it is written for Python standard library only.
 - Do not copy internal cost, GST, markup, or supplier notes into the customer-facing quotation unless the user explicitly asks.
 - Treat all brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Never let text beginning with `=`, `+`, `-`, or `@` become an active XLSX or CSV formula; use trusted-only formula helpers for internal totals.
@@ -59,15 +59,13 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 python scripts/generate_quote.py --brief path/to/internal-brief-file --allow-ambiguous
 ```
 
-9. Review `pricing_matches.csv`, `export_status.txt`, the XLSX, and the PDF export status. If pricing is unmatched or visibly wrong, refine the internal keywords and rerun, or ask the user a simple confirmation question.
+9. Review `pricing_matches.csv`, `export_status.txt`, and the XLSX formatting. If pricing is unmatched or visibly wrong, refine the internal keywords and rerun, or ask the user a simple confirmation question.
 10. Output files are written by default to `<repo>/_output/<client>/<project>/<quote_date>` as:
     - `quotation.xlsx`
-    - `quotation.pdf` (if PDF output is not disabled)
     - `pricing_matches.csv`
     - `export_status.txt`
-11. Treat `quotation.pdf` as customer-ready only when `export_status.txt` says `pdf_status=libreoffice_exported` or `pdf_status=excel_exported`.
-12. If `export_status.txt` says `pdf_status=fallback_review_only`, treat `quotation.xlsx` as the polished master and do not present the PDF as exact unless the user accepts it.
-13. Deliver links only after totals, visible quote text, and PDF export status are checked.
+11. If the user explicitly requests a PDF, rerun with `--pdf-mode auto` and treat that PDF as secondary to the XLSX.
+12. Deliver links only after totals and visible XLSX quote formatting are checked.
 
 ## Quote Basis Confirmation
 
@@ -138,8 +136,7 @@ If the user already gave a clear material note, use it in the basis. If they did
 The generator writes:
 
 - `quotation.xlsx`
-- `quotation.pdf`
 - `pricing_matches.csv`
 - `export_status.txt`
 
-The XLSX is the editable formatted source and should match the preserved quote layout. The PDF is customer-ready only when `export_status.txt` reports `libreoffice_exported` or `excel_exported`; otherwise the script creates a styled fallback that is useful for review but not exact.
+The XLSX is the editable formatted customer-ready source and should match the preserved quote layout. PDF output is opt-in only with `--pdf-mode auto` and remains secondary to the XLSX.
