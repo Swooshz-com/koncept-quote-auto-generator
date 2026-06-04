@@ -26,6 +26,7 @@ Generate customer-facing quotations for `Koncept Image` or `Koncept World` from 
 - For a customer-ready PDF, let `scripts/generate_quote.py` use Excel or LibreOffice export. Fallback PDFs are review-only.
 - Run `scripts/generate_quote.py`; it uses Python standard library only.
 - Do not expose internal cost, GST, markup, or supplier notes in customer-facing output unless the user explicitly asks.
+- Treat all brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Text beginning with `=`, `+`, `-`, or `@` must not become an active XLSX or CSV formula; use trusted-only formula helpers for internal totals.
 - If required information is missing or pricing is unclear, report it under `Missing / Need Confirmation`.
 
 ## Basic Workflow

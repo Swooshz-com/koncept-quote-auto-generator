@@ -476,6 +476,15 @@ def money(value: Any) -> str:
     return clean_text(value)
 
 
+def spreadsheet_safe_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if stripped and stripped[0] in {"=", "+", "-", "@"}:
+        return "'" + value
+    return value
+
+
 def is_draft_or_placeholder_note(note: str) -> bool:
     lowered = clean_text(note).lower()
     return any(word in lowered for word in ("draft", "placeholder"))
@@ -668,10 +677,6 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
     clear_cell(cell)
     if value in (None, ""):
         return
-    if isinstance(value, str) and value.startswith("="):
-        formula = ET.SubElement(cell, f"{NS_MAIN}f")
-        formula.text = value[1:]
-        return
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         number = ET.SubElement(cell, f"{NS_MAIN}v")
         number.text = str(value)
@@ -682,6 +687,17 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
     text.text = str(value)
     if str(value) != str(value).strip():
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
+
+
+def set_ooxml_formula(root: ET.Element, row_number: int, col_number: int, formula: str, style: str | None = None) -> None:
+    sheet_data = root.find(f"{NS_MAIN}sheetData")
+    if sheet_data is None:
+        raise ValueError("Layout workbook is missing sheetData.")
+    row = get_or_create_row(sheet_data, row_number)
+    cell = get_or_create_cell(row, row_number, col_number, style)
+    clear_cell(cell)
+    formula_node = ET.SubElement(cell, f"{NS_MAIN}f")
+    formula_node.text = formula[1:] if formula.startswith("=") else formula
 
 
 def set_ooxml_column_width(root: ET.Element, col_number: int, width: float) -> None:
@@ -1104,10 +1120,10 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     gst_rate = quote_gst_rate(lines)
     if gst_rate:
         set_ooxml_cell(root, 93, 4, gst_label(lines), total_styles["gst_label"])
-        set_ooxml_cell(root, 93, 5, f"=ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", total_styles["gst_amount"])
+        set_ooxml_formula(root, 93, 5, f"ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", total_styles["gst_amount"])
         set_ooxml_cell(root, 93, 6, currency, total_styles["gst_currency"])
     set_ooxml_cell(root, 94, 4, "Grand Total", total_styles["grand_label"])
-    set_ooxml_cell(root, 94, 5, "=SUM(E22:E93)", total_styles["grand_amount"])
+    set_ooxml_formula(root, 94, 5, "SUM(E22:E93)", total_styles["grand_amount"])
     set_ooxml_cell(root, 94, 6, currency, total_styles["grand_currency"])
 
     payment_terms = brief.get("payment_terms") or [
@@ -1506,7 +1522,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
         writer.writerow(["status", "section", "description", "keyword", "template_row", "template_description", "unit_price", "amount"])
         for line in lines:
             match = line.matched_price
-            writer.writerow([
+            writer.writerow([spreadsheet_safe_text(value) for value in [
                 line.match_status,
                 line.section,
                 line.description,
@@ -1515,7 +1531,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
                 match.description if match else "",
                 f"{match.sale_unit_price:.2f}" if match else "",
                 money(line.amount),
-            ])
+            ]])
 
 
 def write_export_status(path: Path, status: str, pdf_mode: str) -> None:

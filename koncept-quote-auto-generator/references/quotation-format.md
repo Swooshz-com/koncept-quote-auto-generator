@@ -39,6 +39,7 @@ Always ask which identity to use. Do not choose by default.
 - Currency: usually `SGD`.
 - Use `sqm` for square-metre quantities, not `m2`.
 - Keep the `Quantity` column wide enough that entries such as `24 m length` and `36 sqm` do not clip in Excel print-to-PDF output.
+- Write customer/brief-sourced values as literal spreadsheet text. Do not turn values beginning with `=`, `+`, `-`, or `@` into active formulas in XLSX or CSV outputs.
 - Section rows use numbering such as `1.0`, `2.0`, `3.0`.
 - Detail rows use numbering such as `1.1`, `1.2`, `2.1`.
 - Section rows may carry a lump-sum amount while child rows have blank estimates.
