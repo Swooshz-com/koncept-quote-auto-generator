@@ -1,3 +1,4 @@
+import csv
 import sys
 import tempfile
 import unittest
@@ -41,6 +42,10 @@ def border_for_style(styles_root, style_id):
     borders = styles_root.find(f"{NS_MAIN}borders")
     border_id = int(cell_xfs[style_id].attrib.get("borderId", "0"))
     return borders[border_id]
+
+
+def worksheet_formulas(root):
+    return [formula.text or "" for formula in root.iter(f"{NS_MAIN}f")]
 
 
 def generate_layout_workbook():
@@ -179,6 +184,72 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIn("CorruptLoad", script)
         self.assertIn("$workbook.SaveAs($repairedWorkbookPath, 51)", script)
         self.assertIn("Move-Item -LiteralPath $repairedWorkbookPath -Destination $xlsxPath -Force", script)
+
+    def test_brief_text_is_written_as_literal_xlsx_text_not_formulas(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "=WEBSERVICE(\"https://example.test/client\")",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "=HYPERLINK(\"https://example.test/project\",\"project\")",
+            },
+            "line_items": [],
+            "payment_terms": [
+                "=WEBSERVICE(\"https://example.test/terms\")",
+            ],
+        }
+        line = quote.QuoteLine(
+            section="=WEBSERVICE(\"https://example.test/section\")",
+            quantity=1,
+            unit="lot",
+            description="=HYPERLINK(\"https://example.test/line\",\"line\")",
+            pricing_keyword="",
+            display_price="=HYPERLINK(\"https://example.test/price\",\"price\")",
+            matched_price=None,
+            amount=None,
+            match_status="manual-display",
+            match_candidates=[],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(ROOT / "references" / "quotation-layout.xlsx", path, brief, [line])
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E93)"])
+        self.assertEqual(cell_value(sheet, "A6"), brief["client"]["name"])
+        self.assertEqual(cell_value(sheet, "C22"), line.section)
+        self.assertEqual(cell_value(sheet, "E24"), line.display_price)
+        self.assertEqual(cell_value(sheet, "B100"), brief["payment_terms"][0])
+
+    def test_csv_match_report_neutralizes_formula_leading_text(self):
+        line = quote.QuoteLine(
+            section="=WEBSERVICE(\"https://example.test/section\")",
+            quantity=1,
+            unit="lot",
+            description="+HYPERLINK(\"https://example.test/line\",\"line\")",
+            pricing_keyword="-10+20",
+            display_price="",
+            matched_price=None,
+            amount=None,
+            match_status="@manual",
+            match_candidates=[],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pricing_matches.csv"
+            quote.write_match_csv(path, [line])
+            with path.open(newline="", encoding="utf-8") as f:
+                rows = list(csv.reader(f))
+
+        data = rows[1]
+        self.assertEqual(data[0], "'@manual")
+        self.assertEqual(data[1], "'=WEBSERVICE(\"https://example.test/section\")")
+        self.assertEqual(data[2], "'+HYPERLINK(\"https://example.test/line\",\"line\")")
+        self.assertEqual(data[3], "'-10+20")
 
 
 if __name__ == "__main__":

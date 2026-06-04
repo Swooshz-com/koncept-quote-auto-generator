@@ -24,6 +24,7 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - For a customer-ready PDF, let `scripts/generate_quote.py` use Excel or LibreOffice export. Fallback PDFs are review-only.
 - Use `scripts/generate_quote.py`; it is written for Python standard library only.
 - Do not copy internal cost, GST, markup, or supplier notes into the customer-facing quotation unless the user explicitly asks.
+- Treat all brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Never let text beginning with `=`, `+`, `-`, or `@` become an active XLSX or CSV formula; use trusted-only formula helpers for internal totals.
 
 ## Image-Drop Quote Workflow
 
