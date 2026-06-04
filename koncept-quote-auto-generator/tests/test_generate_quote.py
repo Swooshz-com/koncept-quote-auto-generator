@@ -207,10 +207,28 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         logo_anchor = next(anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}pic") is not None)
         text_from_row = int(text_anchor.find(f"{NS_DRAWING}from/{NS_DRAWING}row").text)
         logo_to_row = int(logo_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}row").text)
-        to_col = int(text_anchor.find(f"{NS_DRAWING}to/{NS_DRAWING}col").text)
+        text_ext = text_anchor.find(f"{NS_DRAWING}sp/{NS_DRAWING}spPr/{NS_A}xfrm/{NS_A}ext")
+        text_off = text_anchor.find(f"{NS_DRAWING}sp/{NS_DRAWING}spPr/{NS_A}xfrm/{NS_A}off")
+        logo_ext = logo_anchor.find(f"{NS_DRAWING}pic/{NS_DRAWING}spPr/{NS_A}xfrm/{NS_A}ext")
+        logo_off = logo_anchor.find(f"{NS_DRAWING}pic/{NS_DRAWING}spPr/{NS_A}xfrm/{NS_A}off")
+        text_left = int(text_off.attrib["x"])
+        text_width = int(text_ext.attrib["cx"])
+        logo_left = int(logo_off.attrib["x"])
+        logo_width = int(logo_ext.attrib["cx"])
 
         self.assertGreater(text_from_row, logo_to_row)
-        self.assertGreaterEqual(to_col, 11)
+        self.assertLessEqual(text_left, logo_left)
+        self.assertGreaterEqual(text_left + text_width, logo_left + logo_width)
+        self.assertLessEqual(text_width, 2600000)
+        self.assertLessEqual(text_left + text_width, 7800000)
+
+        run_sizes = [
+            int(run_props.attrib["sz"])
+            for run_props in text_anchor.findall(f".//{NS_A}rPr")
+            if "sz" in run_props.attrib
+        ]
+        self.assertTrue(run_sizes)
+        self.assertGreaterEqual(min(run_sizes), 550)
 
     def test_table_headers_bold_and_quantity_centered(self):
         tmp, path = generate_layout_workbook()

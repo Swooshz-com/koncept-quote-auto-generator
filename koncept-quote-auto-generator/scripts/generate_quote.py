@@ -867,23 +867,40 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     root = ET.fromstring(xml)
     anchors = root.findall(f"{NS_DRAWING}twoCellAnchor")
     text_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None), None)
+    logo_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}pic") is not None), None)
     if text_anchor is None:
         return xml
 
-    from_node = text_anchor.find(f"{NS_DRAWING}from")
-    to_node = text_anchor.find(f"{NS_DRAWING}to")
-    if from_node is not None:
-        values = {"col": "8", "colOff": "17369", "row": "3", "rowOff": "0"}
+    def update_marker(anchor: ET.Element, marker: str, values: dict[str, str]) -> None:
+        marker_node = anchor.find(f"{NS_DRAWING}{marker}")
+        if marker_node is None:
+            return
         for tag, value in values.items():
-            node = from_node.find(f"{NS_DRAWING}{tag}")
+            node = marker_node.find(f"{NS_DRAWING}{tag}")
             if node is not None:
                 node.text = value
-    if to_node is not None:
-        values = {"col": "11", "colOff": "0", "row": "6", "rowOff": "0"}
-        for tag, value in values.items():
-            node = to_node.find(f"{NS_DRAWING}{tag}")
-            if node is not None:
-                node.text = value
+
+    if logo_anchor is not None:
+        update_marker(
+            logo_anchor,
+            "from",
+            {"col": "7", "colOff": "420000", "row": "1", "rowOff": "85725"},
+        )
+        update_marker(
+            logo_anchor,
+            "to",
+            {"col": "8", "colOff": "1180000", "row": "2", "rowOff": "200025"},
+        )
+        pic = logo_anchor.find(f"{NS_DRAWING}pic")
+        pic_pr = pic.find(f"{NS_DRAWING}spPr") if pic is not None else None
+        pic_xfrm = pic_pr.find(f"{NS_A}xfrm") if pic_pr is not None else None
+        logo_off = pic_xfrm.find(f"{NS_A}off") if pic_xfrm is not None else None
+        if logo_off is not None:
+            logo_off.attrib["x"] = "5600000"
+            logo_off.attrib["y"] = "323850"
+
+    update_marker(text_anchor, "from", {"col": "6", "colOff": "600000", "row": "3", "rowOff": "0"})
+    update_marker(text_anchor, "to", {"col": "9", "colOff": "0", "row": "8", "rowOff": "0"})
 
     sp = text_anchor.find(f"{NS_DRAWING}sp")
     tx_body = sp.find(f"{NS_DRAWING}txBody") if sp is not None else None
@@ -896,6 +913,10 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         body_pr.attrib["wrap"] = "square"
         body_pr.attrib["anchor"] = "t"
         body_pr.attrib["anchorCtr"] = "0"
+        body_pr.attrib["lIns"] = "0"
+        body_pr.attrib["rIns"] = "0"
+        body_pr.attrib["tIns"] = "0"
+        body_pr.attrib["bIns"] = "0"
 
     for child in list(tx_body):
         if child.tag == f"{NS_A}p":
@@ -903,10 +924,14 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
 
     lines = [
         "Koncept Image Pte Limited",
-        "61 Kaki Bukit Ave 1, #02-26, Shunli Industrial Park",
-        "Singapore 417943  Tel: +65 6817 7477",
-        "Bank Detail: United Overseas Bank Limited",
-        "Account: 335-3020-445  Swift Code: UOVBSGSG",
+        "61 Kaki Bukit Ave 1, #02-26",
+        "Shunli Industrial Park",
+        "Singapore 417943",
+        "Tel: +65 6817 7477",
+        "Bank Detail:",
+        "United Overseas Bank Limited",
+        "Account: 335-3020-445",
+        "Swift Code: UOVBSGSG",
     ]
     if project_number:
         lines.append(f"Project No: {project_number}")
@@ -917,7 +942,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         paragraph_props.attrib["algn"] = "ctr"
         run = ET.SubElement(paragraph, f"{NS_A}r")
         run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "500", "b": "0", "i": "0", "baseline": "0"})
+        run_props.attrib.update({"lang": "en-US", "sz": "600", "b": "0", "i": "0", "baseline": "0"})
         ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
         ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
         ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
@@ -926,10 +951,14 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
 
     sp_pr = sp.find(f"{NS_DRAWING}spPr") if sp is not None else None
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
+    off = xfrm.find(f"{NS_A}off") if xfrm is not None else None
+    if off is not None:
+        off.attrib["x"] = "5300000"
+        off.attrib["y"] = "760000"
     ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
     if ext is not None:
-        ext.attrib["cx"] = "3900000"
-        ext.attrib["cy"] = "1000000"
+        ext.attrib["cx"] = "2450000"
+        ext.attrib["cy"] = "1500000"
 
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 

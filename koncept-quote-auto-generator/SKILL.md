@@ -18,7 +18,7 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Use sample-style section totals for structure sections such as booth structure, wall structure, or stand structure: put the subtotal on the section row and leave child-row estimates blank.
 - Use `_Quotation Cost Template V1.1.xlsx` beside this `SKILL.md` as the only pricing source.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, GST and Grand Total rows must have clear top/bottom rules, totals should stay near the bottom of the estimate page, the Koncept signatory title should appear below the signatory name when provided, and the company-detail text below the logo must be top-aligned and not cramped.
+- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, GST and Grand Total rows must have clear top/bottom rules, totals should stay near the bottom of the estimate page, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
 - Do not hardcode absolute user machine paths.
 - Do not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other installed dependencies for XLSX generation.
