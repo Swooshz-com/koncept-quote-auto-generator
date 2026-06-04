@@ -903,8 +903,8 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
             logo_ext.attrib["cx"] = "2970000"
             logo_ext.attrib["cy"] = "635000"
 
-    update_marker(text_anchor, "from", {"col": "5", "colOff": "200000", "row": "3", "rowOff": "220000"})
-    update_marker(text_anchor, "to", {"col": "9", "colOff": "200000", "row": "13", "rowOff": "0"})
+    update_marker(text_anchor, "from", {"col": "7", "colOff": "0", "row": "5", "rowOff": "0"})
+    update_marker(text_anchor, "to", {"col": "9", "colOff": "200000", "row": "15", "rowOff": "0"})
 
     sp = text_anchor.find(f"{NS_DRAWING}sp")
     tx_body = sp.find(f"{NS_DRAWING}txBody") if sp is not None else None
@@ -928,28 +928,28 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
 
     lines = [
         "Koncept Image Pte Limited",
-        "61 Kaki Bukit Ave 1, #02-26",
+        "61 Kaki Bukit Ave 1, #02-26,",
         "Shunli Industrial Park",
         "Singapore 417943",
-        "Tel: +65 6817 7477",
+        "Telephone: +6568177477",
         "",
-        "Bank Details:",
-        "United Overseas Bank Limited",
+        "Bank Detail:",
+        "United Overseas Bank Limited, 80",
+        "Raffles Place",
+        "Singapore 048624",
         "Account: 335-3020-445",
         "Swift Code: UOVBSGSG",
     ]
     if project_number:
-        lines.extend(["", "Project No:", project_number])
+        lines.extend(["", f"Project No: {project_number}"])
 
     for line in lines:
         paragraph = ET.SubElement(tx_body, f"{NS_A}p")
         paragraph_props = ET.SubElement(paragraph, f"{NS_A}pPr")
-        paragraph_props.attrib["algn"] = "ctr"
-        if not line:
-            continue
+        paragraph_props.attrib["algn"] = "l"
         run = ET.SubElement(paragraph, f"{NS_A}r")
         run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "1000", "b": "0", "i": "0", "baseline": "0"})
+        run_props.attrib.update({"lang": "en-US", "sz": "900", "b": "0", "i": "0", "baseline": "0"})
         ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
         ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
         ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
@@ -960,8 +960,8 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
     off = xfrm.find(f"{NS_A}off") if xfrm is not None else None
     if off is not None:
-        off.attrib["x"] = "4370000"
-        off.attrib["y"] = "1100000"
+        off.attrib["x"] = "4550000"
+        off.attrib["y"] = "1350000"
     ext = xfrm.find(f"{NS_A}ext") if xfrm is not None else None
     if ext is not None:
         ext.attrib["cx"] = "3350000"
