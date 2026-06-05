@@ -14,14 +14,15 @@ This folder is agent-neutral. Any AI coding agent or local automation can use it
 
 ## Purpose
 
-Generate customer-facing quotations for `Koncept Image` or `Koncept World` from image-based booth takeoff, user finish notes, and the bundled pricing workbook.
+Generate customer-facing quotations for `Koncept Image` or `Koncept World` from image-based booth takeoff, user finish notes, and the bundled Markdown pricing source.
 
 ## Important Rules
 
-- Use `_Quotation Cost Template V1.1.xlsx` beside this file as the only pricing source.
+- Use `references/quotation-cost-template.md` as the only authoritative pricing source.
+- Keep `references/quotation-cost-template.md` as a sectioned pricing template that preserves all pricing rows, notes, extra values, and retrieval anchors.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: readable quantity column width, bordered GST and Grand Total rows in the bottom totals area, signatory title under the Koncept signatory name when provided, and a logo/detail header group that stays inside the print area with top-aligned company-detail text below the logo.
-- Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
+- Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: readable quantity column width, a bottom totals block with `Total`, `GST 9%` when GST applies, and `Total including GST` using the sample border treatment, signatory title under the Koncept signatory name when provided, and a logo/detail header group that stays inside the print area with top-aligned company-detail text below the logo.
+- Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, bold the default payment-term text and the payee name in the cheque line, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
 - Do not hardcode absolute machine paths in generated briefs, scripts, or docs.
 - Do not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other third-party dependencies for XLSX generation.
 - For a customer-ready PDF, let `scripts/generate_quote.py` use Excel or LibreOffice export. Fallback PDFs are review-only.
