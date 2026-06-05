@@ -69,9 +69,11 @@ Use only sections needed by the quote brief.
 
 ## Totals And Notes
 
-- Add `Grand Total` near the end of line items.
-- Keep GST and Grand Total in the bottom totals area of the estimate page when the preserved layout has room.
-- Add a clean top rule above GST and a stronger bottom rule under Grand Total across the label, amount, and currency cells.
+- Add `Total` near the end of line items before GST.
+- When GST applies, show `GST 9%` under `Total` without `@`.
+- Show `Total including GST` as the final total label.
+- Keep `Total`, GST, and `Total including GST` in the bottom totals area of the estimate page when the preserved layout has room.
+- Add a clean top rule above `Total`, a clean top rule above `Total including GST`, and a stronger bottom rule under `Total including GST` across the label, amount, and currency cells.
 - If discount is provided, show:
   - `Total Estimates items ...`
   - `Less goodwill discount`
@@ -91,10 +93,12 @@ Use only sections needed by the quote brief.
 
 Common payment terms:
 
-- `80% payment upon confirmation and signing of contract.`
-- `20% balance 7 days after delivery`
+- `70% payment upon confirmation and signing of contract.`
+- `30% balance upon handover before show starts`
 - `60% payment upon confirmation and signing of contract.`
 - `40% balance 14 days after delivery`
+
+Bold the payment-term text in the customer quote. In the cheque instruction line, keep the sentence regular and bold only the payee name, for example `Koncept Image Pte Ltd`.
 
 Common notes:
 

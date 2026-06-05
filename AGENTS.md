@@ -99,7 +99,9 @@ Do not only bold the first few words. The entire user-action question must be bo
 
 ## Git Completion
 
-Git Completion is the explicit scoped exception to the Approval Rules for version-control publication after requested repo edits. Unless the user asked for local-only/no-push work, finish by running relevant local validation, committing to a non-main branch, pushing, and opening or updating the pull request.
+Git Completion is not an exception to the Approval Rules for version-control publication. Do not commit, push, or open/update a pull request unless the user explicitly requests that git completion step in the current turn.
+
+When the user explicitly requests git completion:
 
 Before pushing:
 
@@ -221,7 +223,3 @@ If the task involves n8n workflows, workflow templates, helper scripts, MCP, imp
 If that skill or its full rules are unavailable, stop and report the limitation instead of continuing.
 Do not run live n8n, Docker, import/export, sync, activation, execution, publish/unpublish, credential, deployment, or production actions without explicit current-turn approval naming the target and allowed operation.
 <!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:END N8N-AGENT-RULES-ADAPTER -->
-
-## Local Git Authentication Rule
-
-If `git push` or `gh` commands fail with an invalid or expired token error, the `GITHUB_TOKEN` environment variable was likely injected by the agent environment. Clear it for the current command by running `$env:GITHUB_TOKEN="";` in PowerShell before trying the push again to fall back to the system's actual credential manager.
