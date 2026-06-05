@@ -19,7 +19,7 @@ Generate customer-facing quotations for `Koncept Image` or `Koncept World` from 
 ## Important Rules
 
 - Use `references/quotation-cost-template.md` as the only authoritative pricing source.
-- Keep `references/quotation-cost-template.md` as a sectioned pricing template that preserves all pricing rows, notes, extra values, and retrieval anchors.
+- Keep `references/quotation-cost-template.md` as a clean sectioned RAG pricing source that preserves all pricing items, notes, default quantities/amounts, extra values, and search terms.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
 - Preserve the customer-facing XLSX/PDF layout rules in `references/quotation-format.md`: readable quantity column width, a bottom totals block with `Total`, `GST 9%` when GST applies, and `Total including GST` using the sample border treatment, signatory title under the Koncept signatory name when provided, and a logo/detail header group that stays inside the print area with top-aligned company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, bold the default payment-term text and the payee name in the cheque line, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
