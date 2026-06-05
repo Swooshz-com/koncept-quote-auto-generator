@@ -223,7 +223,3 @@ If the task involves n8n workflows, workflow templates, helper scripts, MCP, imp
 If that skill or its full rules are unavailable, stop and report the limitation instead of continuing.
 Do not run live n8n, Docker, import/export, sync, activation, execution, publish/unpublish, credential, deployment, or production actions without explicit current-turn approval naming the target and allowed operation.
 <!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:END N8N-AGENT-RULES-ADAPTER -->
-
-## Local Git Authentication Rule
-
-If `git push` or `gh` commands fail with an invalid or expired token error, stop and report the authentication failure. Do not clear `GITHUB_TOKEN`, change credential scope, or fall back to the system credential manager unless the user gives explicit current-turn approval naming that fallback.
