@@ -19,6 +19,8 @@ import generate_quote as quote
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}"
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+NS_CP = "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}"
+NS_DC = "{http://purl.org/dc/elements/1.1/}"
 NS_MC_IGNORABLE = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable"
 
 
@@ -32,6 +34,29 @@ def cell_value(root, ref):
         value = cell.find(f"{NS_MAIN}v")
         return value.text if value is not None else ""
     return ""
+
+
+def cell(root, ref):
+    for item in root.iter(f"{NS_MAIN}c"):
+        if item.attrib.get("r") == ref:
+            return item
+    raise AssertionError(f"Cell {ref} was not written")
+
+
+def cell_inline_runs(root, ref):
+    inline = cell(root, ref).find(f"{NS_MAIN}is")
+    if inline is None:
+        return []
+    runs = inline.findall(f"{NS_MAIN}r")
+    if not runs:
+        text = inline.find(f"{NS_MAIN}t")
+        return [((text.text if text is not None else ""), False)]
+    result = []
+    for run in runs:
+        text = "".join(text_node.text or "" for text_node in run.findall(f"{NS_MAIN}t"))
+        run_props = run.find(f"{NS_MAIN}rPr")
+        result.append((text, run_props is not None and run_props.find(f"{NS_MAIN}b") is not None))
+    return result
 
 
 def cell_style(root, ref):
@@ -130,6 +155,73 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertEqual(args.pdf_mode, "none")
 
+    def test_markdown_pricing_source_is_default_template(self):
+        with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", "brief.json"]):
+            args = quote.parse_args()
+
+        self.assertEqual(args.template, ROOT / "references" / "quotation-cost-template.md")
+
+    def test_extract_price_rows_reads_authoritative_markdown_without_empty_rows(self):
+        markdown_path = ROOT / "references" / "quotation-cost-template.md"
+        markdown_text = markdown_path.read_text(encoding="utf-8-sig")
+        markdown_rows = quote.extract_price_rows(markdown_path)
+        raw_table_rows = []
+        header = None
+        for line in markdown_text.splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = quote.markdown_table_cells(line)
+            if not cells:
+                continue
+            lowered_cells = [cell.lower() for cell in cells]
+            if lowered_cells[0] == "row" and "item" in lowered_cells and "cost" in lowered_cells:
+                header = [quote.markdown_key(cell) for cell in cells]
+                continue
+            if header is None or cells[0].strip("-: ") == "":
+                continue
+            if len(cells) != len(header):
+                continue
+            raw_table_rows.append(dict(zip(header, cells)))
+
+        raw_by_row = {int(quote.as_float(row["row"])): row for row in raw_table_rows}
+        self.assertIn("### 1. Floor Design", markdown_text)
+        self.assertNotIn("### . Unsectioned", markdown_text)
+        self.assertNotIn("source_workbook", markdown_text)
+        self.assertNotIn("_Quotation Cost Template", markdown_text)
+        self.assertNotIn("| Aux N |", markdown_text)
+        self.assertNotIn("| Aux O |", markdown_text)
+        self.assertNotIn("| Formulas |", markdown_text)
+        self.assertNotIn("| Section No |", markdown_text)
+        self.assertIn("| Price rows | 103 |", markdown_text)
+        self.assertIn("| Priceable rows | 103 |", markdown_text)
+        self.assertIn("| Continuation rows folded | 36 |", markdown_text)
+        self.assertIn("| Section header rows represented as headings | 11 |", markdown_text)
+        self.assertEqual(len(raw_table_rows), 103)
+        self.assertEqual(len(markdown_rows), 103)
+        self.assertTrue(all(row.description and row.cost > 0 and row.markup > 0 for row in markdown_rows))
+        self.assertTrue(all(any(value for key, value in row.items() if key != "row") for row in raw_table_rows))
+        self.assertEqual(raw_by_row[4]["item"], "m2 needle punch carpet in           colour")
+        self.assertNotIn(2, raw_by_row)
+        self.assertNotIn(17, raw_by_row)
+        self.assertNotIn(20, raw_by_row)
+        self.assertNotIn(266, raw_by_row)
+        self.assertEqual(raw_by_row[19]["item"], "m length single side partition wall at height 2.4m<br>wooden construct in painted finished as per design proposal")
+        self.assertEqual(raw_by_row[19]["remarks"], "Backwall or any partition<br>PAINTED")
+        self.assertEqual(raw_by_row[62]["remarks"], "Acrylic System Partition. Extra calculations: 150+15+20<br>Octanorm")
+        self.assertEqual(raw_by_row[125]["remarks"], "PE. Extra values: 780; 68. Extra calculations: 90+690; 17*4<br>Extra values: 1000; 14.705882352941176. Extra calculations: 1000/68")
+        self.assertIn("nos. 42\u201d LED TV Monitor (With Speaker \u2013 Full HD)", markdown_text)
+        self.assertEqual(markdown_rows[0].row_number, 4)
+        self.assertEqual(markdown_rows[0].section, "Floor Design")
+        self.assertEqual(markdown_rows[0].description, "m2 needle punch carpet in colour")
+        self.assertEqual(markdown_rows[0].unit_hint, "sqm")
+        self.assertEqual(markdown_rows[0].cost, 7)
+        self.assertEqual(markdown_rows[0].gst_multiplier, 1.09)
+        self.assertEqual(markdown_rows[0].markup, 1.5)
+        self.assertEqual(markdown_rows[0].sale_unit_price, 10.5)
+        wall_row = next(row for row in markdown_rows if row.row_number == 19)
+        self.assertEqual(wall_row.description, "m length single side partition wall at height 2.4m wooden construct in painted finished as per design proposal")
+        self.assertEqual(wall_row.remark, "Backwall or any partition PAINTED")
+
     def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
@@ -143,6 +235,29 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertTrue(ignorable)
         self.assertEqual([prefix for prefix in ignorable if prefix not in declared], [])
+
+    def test_layout_workbook_scrubs_customer_visible_template_metadata(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            core_xml = zf.read("docProps/core.xml").decode("utf-8")
+            core = ET.fromstring(core_xml)
+            workbook_xml = zf.read("xl/workbook.xml").decode("utf-8")
+
+        creator = core.find(f"{NS_DC}creator")
+        last_modified_by = core.find(f"{NS_CP}lastModifiedBy")
+        workbook = ET.fromstring(workbook_xml)
+        declared = declared_xml_prefixes(workbook_xml, "workbook")
+        ignorable = workbook.attrib.get(NS_MC_IGNORABLE, "").split()
+
+        self.assertEqual(creator.text, "Koncept Quote Auto-Generator")
+        self.assertEqual(last_modified_by.text, "Koncept Quote Auto-Generator")
+        self.assertNotIn("absPath", workbook_xml)
+        self.assertNotIn("/Users/", workbook_xml)
+        self.assertNotIn("Dropbox", workbook_xml)
+        self.assertEqual([prefix for prefix in ignorable if prefix not in declared], [])
+        self.assertNotIn("<mc:Choice Requires=\"x15\" />", workbook_xml)
 
     def test_default_generation_removes_stale_pdf_output(self):
         brief = {
@@ -234,14 +349,52 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
-        for ref in ("D93", "E93", "F93"):
+        self.assertEqual(cell_value(sheet, "D92"), "Total")
+        self.assertEqual(cell_value(sheet, "D93"), "GST 9%")
+        self.assertEqual(cell_value(sheet, "D94"), "Total including GST")
+        self.assertEqual(cell_value(sheet, "F92"), "SGD")
+        self.assertEqual(cell_value(sheet, "F93"), "SGD")
+        self.assertEqual(cell_value(sheet, "F94"), "SGD")
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E91)", "ROUND(E92*0.090000,0)", "SUM(E92:E93)"])
+
+        for ref in ("D92", "E92", "F92"):
             border = border_for_style(styles, cell_style(sheet, ref))
             self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
+
+        for ref in ("D93", "E93", "F93"):
+            border = border_for_style(styles, cell_style(sheet, ref))
+            self.assertIsNone(border.find(f"{NS_MAIN}top").attrib.get("style"))
+            self.assertIsNone(border.find(f"{NS_MAIN}bottom").attrib.get("style"))
 
         for ref in ("D94", "E94", "F94"):
             border = border_for_style(styles, cell_style(sheet, ref))
             self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
             self.assertEqual(border.find(f"{NS_MAIN}bottom").attrib.get("style"), "double")
+
+    def test_default_terms_match_sample_text_and_bold_emphasis(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        self.assertEqual(cell_value(sheet, "A99"), "Terms & Conditions :")
+        self.assertIsNotNone(font_for_style(styles, cell_style(sheet, "A99")).find(f"{NS_MAIN}b"))
+        self.assertEqual(cell_value(sheet, "A100"), "1.00")
+        self.assertEqual(cell_value(sheet, "B100"), "70% payment upon confirmation and signing of contract.")
+        self.assertEqual(cell_inline_runs(sheet, "B100"), [("70% payment upon confirmation and signing of contract.", True)])
+        self.assertEqual(cell_value(sheet, "A101"), "2.00")
+        self.assertEqual(cell_value(sheet, "B101"), "30% balance upon handover before show starts")
+        self.assertEqual(cell_inline_runs(sheet, "B101"), [("30% balance upon handover before show starts", True)])
+        self.assertEqual(cell_value(sheet, "B102"), "All cheques should be crossed and made payable to Koncept Image Pte Ltd")
+        self.assertEqual(
+            cell_inline_runs(sheet, "B102"),
+            [
+                ("All cheques should be crossed and made payable to ", False),
+                ("Koncept Image Pte Ltd", True),
+            ],
+        )
 
     def test_company_detail_drawing_is_wide_and_top_aligned(self):
         tmp, path = generate_layout_workbook()
@@ -443,7 +596,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
 
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E93)"])
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E91)", "SUM(E92:E93)"])
         self.assertEqual(cell_value(sheet, "A6"), brief["client"]["name"])
         self.assertEqual(cell_value(sheet, "C22"), line.section)
         self.assertEqual(cell_value(sheet, "E24"), line.display_price)

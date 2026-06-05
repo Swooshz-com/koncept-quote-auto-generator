@@ -1,4 +1,5 @@
 _output/
+_tmp/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,3 +10,8 @@ __pycache__/
 # Local automation/runtime noise
 .DS_Store
 Thumbs.db
+.superpowers/
+
+# Local secrets
+.env
+.env.local

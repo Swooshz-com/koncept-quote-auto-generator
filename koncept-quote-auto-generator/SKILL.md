@@ -1,6 +1,6 @@
 ---
 name: koncept-quote-auto-generator
-description: Generate company quotation documents for Koncept Image or Koncept World using the bundled `_Quotation Cost Template V1.1.xlsx` as the pricing source. Use when an AI agent or local automation needs to create, revise, price-check, or export a Koncept-style booth quotation from uploaded booth render images plus a plain-English user request. Image attachments are mandatory; if no booth images are shared, ask the user to upload them before preparing the quote.
+description: Generate company quotation documents for Koncept Image or Koncept World using the bundled `references/quotation-cost-template.md` as the authoritative pricing source. Use when an AI agent or local automation needs to create, revise, price-check, or export a Koncept-style booth quotation from uploaded booth render images plus a plain-English user request. Image attachments are mandatory; if no booth images are shared, ask the user to upload them before preparing the quote.
 ---
 
 # Koncept Quote Auto-Generator
@@ -16,10 +16,11 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Do not silently assume materials, finishes, dimensions, or inclusions. Suggest a quote basis from images and user notes, then ask the user to confirm it before generating.
 - Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
 - Use sample-style section totals for structure sections such as booth structure, wall structure, or stand structure: put the subtotal on the section row and leave child-row estimates blank.
-- Use `_Quotation Cost Template V1.1.xlsx` beside this `SKILL.md` as the only pricing source.
+- Use `references/quotation-cost-template.md` as the only authoritative pricing source.
+- Keep `references/quotation-cost-template.md` as a sectioned pricing template that preserves all pricing rows, notes, extra values, and retrieval anchors.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the customer-facing XLSX layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, GST and Grand Total rows must have clear top/bottom rules, totals should stay near the bottom of the estimate page, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
-- Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
+- Preserve the customer-facing XLSX layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, the bottom totals block must show `Total`, `GST 9%` when GST applies, and `Total including GST` with the same border treatment as the sample layout, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
+- Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, bold the default payment-term text and the payee name in the cheque line, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
 - Do not hardcode absolute user machine paths.
 - Do not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other installed dependencies for XLSX generation.
 - Do not generate PDFs by default. Treat `quotation.xlsx` as the customer-ready master output; use `--pdf-mode auto` only when the user explicitly asks for a PDF.

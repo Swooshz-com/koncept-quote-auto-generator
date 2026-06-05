@@ -2,7 +2,7 @@
 """Generate Koncept quotation XLSX files with optional PDF export.
 
 This script intentionally uses Python standard library only. It reads the
-bundled XLSX cost template through ZIP/XML parsing and fills a preserved quote
+authoritative Markdown pricing table by default and fills a preserved quote
 layout workbook through ZIP/XML updates so the customer-facing XLSX keeps the
 same styling, print setup, drawings, and pagination rules as the reference
 quotation.
@@ -31,7 +31,7 @@ from xml.etree import ElementTree as ET
 
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_TEMPLATE = SKILL_DIR / "_Quotation Cost Template V1.1.xlsx"
+DEFAULT_TEMPLATE = SKILL_DIR / "references" / "quotation-cost-template.md"
 DEFAULT_LAYOUT_TEMPLATE = SKILL_DIR / "references" / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = SKILL_DIR / "_output"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -41,21 +41,27 @@ NS_PACKAGE_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}
 NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}"
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 XMLNS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+XMLNS_CP = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+XMLNS_DC = "http://purl.org/dc/elements/1.1/"
 XMLNS_X14 = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
 XMLNS_X14AC = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"
 XMLNS_X15 = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+XMLNS_X15AC = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/ac"
 XMLNS_X16R2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/02/main"
 XMLNS_XR = "http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
 XMLNS_XR2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"
 XMLNS_XR3 = "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3"
 EXPORT_STATUS_CUSTOMER_READY = {"libreoffice_exported", "excel_exported"}
 
+ET.register_namespace("cp", XMLNS_CP)
+ET.register_namespace("dc", XMLNS_DC)
 ET.register_namespace("", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
 ET.register_namespace("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
 ET.register_namespace("mc", XMLNS_MC)
 ET.register_namespace("x14", XMLNS_X14)
 ET.register_namespace("x14ac", XMLNS_X14AC)
 ET.register_namespace("x15", XMLNS_X15)
+ET.register_namespace("x15ac", XMLNS_X15AC)
 ET.register_namespace("x16r2", XMLNS_X16R2)
 ET.register_namespace("xr", XMLNS_XR)
 ET.register_namespace("xr2", XMLNS_XR2)
@@ -73,7 +79,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output folder. Defaults to _output/<client>/<project>/<YYYYMMDD> when omitted.",
     )
-    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Cost template XLSX path.")
+    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Pricing source path. Defaults to the authoritative Markdown pricing table.")
     parser.add_argument("--layout-template", type=Path, default=DEFAULT_LAYOUT_TEMPLATE, help="Customer quotation layout XLSX path.")
     parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
     parser.add_argument("--allow-ambiguous", action="store_true", help="Use the best pricing match even when multiple rows match.")
@@ -171,6 +177,25 @@ def read_first_sheet_rows(xlsx_path: Path) -> list[list[Any]]:
     return rows
 
 
+def read_first_sheet_rows_with_numbers(xlsx_path: Path) -> list[tuple[int, list[Any]]]:
+    with zipfile.ZipFile(xlsx_path) as zf:
+        shared_strings = read_shared_strings(zf)
+        sheet_xml = zf.read("xl/worksheets/sheet1.xml")
+    root = ET.fromstring(sheet_xml)
+    rows: list[tuple[int, list[Any]]] = []
+    for row in root.iter(f"{NS_MAIN}row"):
+        row_number = int(row.attrib.get("r", str(len(rows) + 1)))
+        values: list[Any] = []
+        for cell in row.findall(f"{NS_MAIN}c"):
+            ref = cell.attrib.get("r", "A1")
+            col_index = col_to_index(ref)
+            while len(values) <= col_index:
+                values.append(None)
+            values[col_index] = cell_value(cell, shared_strings)
+        rows.append((row_number, values))
+    return rows
+
+
 def as_float(value: Any, default: float = 0.0) -> float:
     if value in (None, ""):
         return default
@@ -218,11 +243,148 @@ def infer_unit(description: str) -> str:
     return ""
 
 
-def extract_price_rows(template_path: Path) -> list[PriceRow]:
-    rows = read_first_sheet_rows(template_path)
+def markdown_table_cells(line: str) -> list[str]:
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for char in text:
+        if escaped:
+            current.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == "|":
+            cells.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    cells.append("".join(current).strip())
+    return cells
+
+
+def markdown_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+
+
+def markdown_plain_text(value: Any) -> str:
+    return clean_text(str(value or "").replace("<br>", " "))
+
+
+def extract_price_rows_from_markdown(template_path: Path) -> list[PriceRow]:
+    lines = template_path.read_text(encoding="utf-8-sig").splitlines()
+    header: list[str] | None = None
     price_rows: list[PriceRow] = []
     current_section = ""
-    for index, row in enumerate(rows, start=1):
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            heading = stripped[4:].strip()
+            _, separator, section_title = heading.partition(". ")
+            current_section = section_title.strip() if separator else heading
+            header = None
+            continue
+        if not line.startswith("|"):
+            continue
+        cells = markdown_table_cells(line)
+        if not cells:
+            continue
+        if cells[0].strip("-: ") == "":
+            continue
+        lowered_cells = [cell.lower() for cell in cells]
+        if (
+            "source row" in lowered_cells[0]
+            and "description" in lowered_cells
+        ) or (
+            lowered_cells[0] == "row"
+            and "c" in lowered_cells
+            and "h" in lowered_cells
+        ) or (
+            lowered_cells[0] == "excel row"
+            and "item text" in lowered_cells
+            and "cost" in lowered_cells
+        ) or (
+            lowered_cells[0] == "row"
+            and "item" in lowered_cells
+            and "cost" in lowered_cells
+        ):
+            header = [markdown_key(cell) for cell in cells]
+            continue
+        if header is None:
+            continue
+        if len(cells) != len(header):
+            continue
+        row = dict(zip(header, cells))
+        if "row" in row and "item" in row and "cost" in row:
+            source_row = int(as_float(row.get("row"), 0.0))
+            description = markdown_plain_text(row.get("item"))
+            cost = as_float(row.get("cost"), 0.0)
+            gst = as_float(row.get("gst_multiplier"), 1.0)
+            markup = as_float(row.get("mark_up"), 1.0)
+            remark = markdown_plain_text(row.get("remarks"))
+            if as_float(row.get("section_no"), 0.0) and description and cost == 0:
+                current_section = description
+                continue
+            unit_hint = infer_unit(description)
+        elif "excel_row" in row and "item_text" in row and "cost" in row:
+            source_row = int(as_float(row.get("excel_row"), 0.0))
+            description = markdown_plain_text(row.get("item_text"))
+            cost = as_float(row.get("cost"), 0.0)
+            gst = as_float(row.get("gst_multiplier"), 1.0)
+            markup = as_float(row.get("mark_up"), 1.0)
+            remark = markdown_plain_text(row.get("remarks"))
+            if as_float(row.get("section_no"), 0.0) and description and cost == 0:
+                current_section = description
+                continue
+            unit_hint = infer_unit(description)
+        elif "row" in row and "c" in row and "h" in row:
+            source_row = int(as_float(row.get("row"), 0.0))
+            description = markdown_plain_text(row.get("c"))
+            cost = as_float(row.get("h"), 0.0)
+            gst = as_float(row.get("i"), 1.0)
+            markup = as_float(row.get("j"), 1.0)
+            remark = markdown_plain_text(row.get("l"))
+            if as_float(row.get("a"), 0.0) and description and cost == 0:
+                current_section = description
+                continue
+            unit_hint = infer_unit(description)
+        else:
+            description = clean_text(row.get("description"))
+            cost = as_float(row.get("cost"), 0.0)
+            markup = as_float(row.get("mark_up"), 1.0)
+            source_row = int(as_float(row.get("source_row"), 0.0))
+            gst = as_float(row.get("gst_multiplier"), 1.0)
+            remark = clean_text(row.get("remarks"))
+            current_section = clean_text(row.get("section"))
+            unit_hint = normalize_unit(row.get("unit_hint")) or infer_unit(description)
+        if not description or cost <= 0:
+            continue
+        price_rows.append(
+            PriceRow(
+                row_number=source_row,
+                section=current_section,
+                description=description,
+                unit_hint=unit_hint,
+                cost=cost,
+                gst_multiplier=gst or 1.0,
+                markup=markup or 1.0,
+                remark=remark,
+            )
+        )
+    return price_rows
+
+
+def extract_price_rows_from_xlsx(template_path: Path) -> list[PriceRow]:
+    rows = read_first_sheet_rows_with_numbers(template_path)
+    price_rows: list[PriceRow] = []
+    current_section = ""
+    for row_number, row in rows:
         padded = row + [None] * 15
         col_a = padded[0]
         description = clean_text(padded[2])
@@ -236,7 +398,7 @@ def extract_price_rows(template_path: Path) -> list[PriceRow]:
         if description and cost > 0:
             price_rows.append(
                 PriceRow(
-                    row_number=index,
+                    row_number=row_number,
                     section=current_section,
                     description=description,
                     unit_hint=infer_unit(description),
@@ -247,6 +409,12 @@ def extract_price_rows(template_path: Path) -> list[PriceRow]:
                 )
             )
     return price_rows
+
+
+def extract_price_rows(template_path: Path) -> list[PriceRow]:
+    if template_path.suffix.lower() in {".md", ".markdown"}:
+        return extract_price_rows_from_markdown(template_path)
+    return extract_price_rows_from_xlsx(template_path)
 
 
 def tokens(text: str) -> set[str]:
@@ -524,7 +692,7 @@ def gst_label(lines: list[QuoteLine]) -> str:
         percent_text = str(int(round(percent)))
     else:
         percent_text = f"{percent:.2f}".rstrip("0").rstrip(".")
-    return f"GST @ {percent_text}%"
+    return f"GST {percent_text}%"
 
 
 def quote_subtotal(entries: list[dict[str, Any]]) -> float:
@@ -574,13 +742,18 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
     subtotal = max(quote_subtotal(entries) - discount, 0.0)
     gst_amount = round(subtotal * quote_gst_rate(lines)) if quote_gst_rate(lines) else 0
     final_total = subtotal + gst_amount
-    rows.extend([[], ["", "", "Grand Total", money(final_total), currency]])
+    rows.extend([[], ["", "", "Total", money(subtotal), currency]])
     if discount:
         rows.insert(-1, ["", "", "Less goodwill discount", money(discount), currency])
     if gst_amount:
-        rows.insert(-1, ["", "", gst_label(lines), money(gst_amount), currency])
+        rows.append(["", "", gst_label(lines), money(gst_amount), currency])
+    rows.append(["", "", "Total including GST", money(final_total), currency])
     rows.extend([[], ["Terms & Conditions :"]])
-    for idx, term in enumerate(brief.get("payment_terms", []), start=1):
+    payment_terms = brief.get("payment_terms") or [
+        "70% payment upon confirmation and signing of contract.",
+        "30% balance upon handover before show starts",
+    ]
+    for idx, term in enumerate(payment_terms, start=1):
         rows.append([idx, term])
     rows.extend([
         ["Note :"],
@@ -695,6 +868,39 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
 
 
+def append_ooxml_text_run(inline: ET.Element, text_value: str, *, bold: bool = False) -> None:
+    run = ET.SubElement(inline, f"{NS_MAIN}r")
+    if bold:
+        run_props = ET.SubElement(run, f"{NS_MAIN}rPr")
+        ET.SubElement(run_props, f"{NS_MAIN}b")
+    text = ET.SubElement(run, f"{NS_MAIN}t")
+    text.text = text_value
+    if text_value != text_value.strip():
+        text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
+
+
+def set_ooxml_rich_text_cell(
+    root: ET.Element,
+    row_number: int,
+    col_number: int,
+    runs: list[tuple[Any, bool]],
+    style: str | None = None,
+) -> None:
+    sheet_data = root.find(f"{NS_MAIN}sheetData")
+    if sheet_data is None:
+        raise ValueError("Layout workbook is missing sheetData.")
+    row = get_or_create_row(sheet_data, row_number)
+    cell = get_or_create_cell(row, row_number, col_number, style)
+    clear_cell(cell)
+    cleaned_runs = [(str(text), bold) for text, bold in runs if str(text)]
+    if not cleaned_runs:
+        return
+    cell.attrib["t"] = "inlineStr"
+    inline = ET.SubElement(cell, f"{NS_MAIN}is")
+    for text, bold in cleaned_runs:
+        append_ooxml_text_run(inline, text, bold=bold)
+
+
 def set_ooxml_formula(root: ET.Element, row_number: int, col_number: int, formula: str, style: str | None = None) -> None:
     sheet_data = root.find(f"{NS_MAIN}sheetData")
     if sheet_data is None:
@@ -747,7 +953,36 @@ def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int
                 clear_cell(cell)
 
 
+def sanitize_core_properties(parts: dict[str, bytes]) -> None:
+    core = ET.Element(f"{{{XMLNS_CP}}}coreProperties")
+    tool_name = "Koncept Quote Auto-Generator"
+    ET.SubElement(core, f"{{{XMLNS_DC}}}creator").text = tool_name
+    ET.SubElement(core, f"{{{XMLNS_CP}}}lastModifiedBy").text = tool_name
+    parts["docProps/core.xml"] = ET.tostring(core, encoding="utf-8", xml_declaration=True)
+
+
+def remove_workbook_absolute_paths(parts: dict[str, bytes]) -> None:
+    workbook_xml = parts.get("xl/workbook.xml")
+    if workbook_xml is None:
+        return
+    text = workbook_xml.decode("utf-8")
+    text = re.sub(
+        r"<mc:AlternateContent\b(?=[\s\S]*?\babsPath\b)[\s\S]*?</mc:AlternateContent>",
+        "",
+        text,
+        count=1,
+    )
+    text = re.sub(
+        r"<x15ac:absPath\b[^>]*/>",
+        "",
+        text,
+    )
+    parts["xl/workbook.xml"] = text.encode("utf-8")
+
+
 def strip_stale_workbook_parts(parts: dict[str, bytes]) -> None:
+    sanitize_core_properties(parts)
+    remove_workbook_absolute_paths(parts)
     parts.pop("xl/sharedStrings.xml", None)
     parts.pop("xl/calcChain.xml", None)
     if "[Content_Types].xml" in parts:
@@ -832,19 +1067,39 @@ def clone_cell_style(
     return str(len(cell_xfs) - 1)
 
 
+def ensure_bold_font_for_style(styles_root: ET.Element, base_style: str) -> str:
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    fonts = styles_root.find(f"{NS_MAIN}fonts")
+    if cell_xfs is None or fonts is None:
+        raise ValueError("Layout workbook is missing cellXfs or fonts styles.")
+
+    base_font_id = int(cell_xfs[int(base_style)].attrib.get("fontId", "0"))
+    base_font = fonts[base_font_id]
+    if base_font.find(f"{NS_MAIN}b") is not None:
+        return str(base_font_id)
+
+    bold_font = copy.deepcopy(base_font)
+    bold_font.insert(0, ET.Element(f"{NS_MAIN}b"))
+    fonts.append(bold_font)
+    fonts.attrib["count"] = str(len(fonts))
+    return str(len(fonts) - 1)
+
+
 def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     styles_root = ET.fromstring(parts["xl/styles.xml"])
-    gst_border = append_border(styles_root, top="thin")
+    total_border = append_border(styles_root, top="thin")
     grand_border = append_border(styles_root, top="thin", bottom="double")
-    bold_header_font = "13"
     style_ids = {
-        "header_pos": clone_cell_style(styles_root, "23", font_id=bold_header_font),
-        "header_quantity": clone_cell_style(styles_root, "24", font_id=bold_header_font, horizontal="center", vertical="center"),
-        "header_service": clone_cell_style(styles_root, "21", font_id=bold_header_font, horizontal="left", vertical="center"),
+        "header_pos": clone_cell_style(styles_root, "23", font_id=ensure_bold_font_for_style(styles_root, "23")),
+        "header_quantity": clone_cell_style(styles_root, "24", font_id=ensure_bold_font_for_style(styles_root, "24"), horizontal="center", vertical="center"),
+        "header_service": clone_cell_style(styles_root, "21", font_id=ensure_bold_font_for_style(styles_root, "21"), horizontal="left", vertical="center"),
         "price_amount": clone_cell_style(styles_root, "96", num_fmt_id="4"),
-        "gst_label": clone_cell_style(styles_root, "34", border_id=gst_border),
-        "gst_amount": clone_cell_style(styles_root, "96", border_id=gst_border, num_fmt_id="4"),
-        "gst_currency": clone_cell_style(styles_root, "84", border_id=gst_border),
+        "total_label": clone_cell_style(styles_root, "34", border_id=total_border),
+        "total_amount": clone_cell_style(styles_root, "96", border_id=total_border, num_fmt_id="4"),
+        "total_currency": clone_cell_style(styles_root, "84", border_id=total_border),
+        "gst_label": clone_cell_style(styles_root, "34"),
+        "gst_amount": clone_cell_style(styles_root, "96", num_fmt_id="4"),
+        "gst_currency": clone_cell_style(styles_root, "84"),
         "grand_label": clone_cell_style(styles_root, "34", border_id=grand_border),
         "grand_amount": clone_cell_style(styles_root, "96", border_id=grand_border, num_fmt_id="4"),
         "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border),
@@ -1175,7 +1430,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         row_number = next_quote_row(row_number)
         if row_number >= 53 and row_number < 55:
             row_number = 55
-        if row_number > 92:
+        if row_number > 91:
             raise ValueError("Quote has too many rows for the preserved layout. Split or shorten line item descriptions.")
 
         if entry["kind"] == "section":
@@ -1199,30 +1454,42 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             row_number += 1
             if row_number == 53:
                 row_number = 55
-            if row_number > 92:
+            if row_number > 91:
                 raise ValueError("Quote has too many rows for the preserved layout. Split or shorten line item descriptions.")
             set_ooxml_cell(root, row_number, 3, extra, "5")
         row_number += 2
 
     write_table_header(root, 53, styles=layout_styles)
     gst_rate = quote_gst_rate(lines)
+    set_ooxml_cell(root, 92, 4, "Total", layout_styles["total_label"])
+    set_ooxml_formula(root, 92, 5, "SUM(E22:E91)", layout_styles["total_amount"])
+    set_ooxml_cell(root, 92, 6, currency, layout_styles["total_currency"])
     if gst_rate:
         set_ooxml_cell(root, 93, 4, gst_label(lines), layout_styles["gst_label"])
-        set_ooxml_formula(root, 93, 5, f"ROUND(SUM(E22:E92)*{gst_rate:.6f},0)", layout_styles["gst_amount"])
+        set_ooxml_formula(root, 93, 5, f"ROUND(E92*{gst_rate:.6f},0)", layout_styles["gst_amount"])
         set_ooxml_cell(root, 93, 6, currency, layout_styles["gst_currency"])
-    set_ooxml_cell(root, 94, 4, "Grand Total", layout_styles["grand_label"])
-    set_ooxml_formula(root, 94, 5, "SUM(E22:E93)", layout_styles["grand_amount"])
+    set_ooxml_cell(root, 94, 4, "Total including GST", layout_styles["grand_label"])
+    set_ooxml_formula(root, 94, 5, "SUM(E92:E93)", layout_styles["grand_amount"])
     set_ooxml_cell(root, 94, 6, currency, layout_styles["grand_currency"])
 
     payment_terms = brief.get("payment_terms") or [
-        "80% payment upon confirmation and signing of contract.",
-        "20% balance 7 days after delivery.",
+        "70% payment upon confirmation and signing of contract.",
+        "30% balance upon handover before show starts",
     ]
     set_ooxml_cell(root, 99, 1, "Terms & Conditions :", "37")
     for index, term in enumerate(payment_terms[:2], start=1):
         set_ooxml_cell(root, 99 + index, 1, f"{index:.2f}", "40")
-        set_ooxml_cell(root, 99 + index, 2, term, "41")
-    set_ooxml_cell(root, 102, 2, "All cheques should be crossed and made payable to Koncept Image Pte Ltd", "41")
+        set_ooxml_rich_text_cell(root, 99 + index, 2, [(term, True)], "41")
+    set_ooxml_rich_text_cell(
+        root,
+        102,
+        2,
+        [
+            ("All cheques should be crossed and made payable to ", False),
+            ("Koncept Image Pte Ltd", True),
+        ],
+        "41",
+    )
 
     standard_notes = [
         "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
@@ -1411,8 +1678,10 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         (53, 2): "Quantity",
         (53, 3): "Service",
         (53, 5): "Estimate",
+        (92, 4): "Total",
+        (92, 6): currency,
         (93, 4): gst_label(lines) if quote_gst_rate(lines) else "",
-        (94, 4): "Grand Total",
+        (94, 4): "Total including GST",
         (94, 6): currency,
         (99, 1): "Terms & Conditions :",
         (102, 2): "All cheques should be crossed and made payable to Koncept Image Pte Ltd",
@@ -1435,7 +1704,7 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         row_number = next_quote_row(row_number)
         if row_number >= 53 and row_number < 55:
             row_number = 55
-        if row_number > 92:
+        if row_number > 91:
             break
         if entry["kind"] == "section":
             cells[(row_number, 1)] = entry["number"]
@@ -1456,20 +1725,21 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
             row_number += 1
             if row_number == 53:
                 row_number = 55
-            if row_number > 92:
+            if row_number > 91:
                 break
             cells[(row_number, 3)] = extra
         row_number += 2
 
     subtotal = quote_subtotal(entries)
     gst_amount = round(subtotal * quote_gst_rate(lines)) if quote_gst_rate(lines) else 0
+    cells[(92, 5)] = subtotal
     if gst_amount:
         cells[(93, 5)] = gst_amount
         cells[(93, 6)] = currency
     cells[(94, 5)] = subtotal + gst_amount
     payment_terms = brief.get("payment_terms") or [
-        "80% payment upon confirmation and signing of contract.",
-        "20% balance 7 days after delivery.",
+        "70% payment upon confirmation and signing of contract.",
+        "30% balance upon handover before show starts",
     ]
     for index, term in enumerate(payment_terms[:2], start=1):
         cells[(99 + index, 1)] = f"{index:.2f}"
@@ -1557,9 +1827,9 @@ def write_styled_pdf_fallback(path: Path, brief: dict[str, Any], lines: list[Quo
             if all(value in (None, "") for value in row_values.values()):
                 continue
             is_section = row_values.get(1) not in (None, "") and row_values.get(2) in (None, "") and row_values.get(3) not in (None, "") and row_number not in {20, 53}
-            is_bold = row_number in {1, 6, 12, 18, 20, 53, 94, 99, 103, 117} or is_section
+            is_bold = row_number in {1, 6, 12, 18, 20, 53, 92, 93, 94, 99, 103, 117} or is_section
             c.setFont("Helvetica-Bold" if is_bold else "Helvetica", 10 if row_number < 96 else 8.4)
-            if row_number == 94:
+            if row_number in {92, 94}:
                 c.setLineWidth(1.4)
                 c.line(284, y + 6.5, width - 28, y + 6.5)
             for col_number, value in row_values.items():
