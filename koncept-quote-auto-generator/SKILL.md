@@ -17,7 +17,7 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
 - Use sample-style section totals for structure sections such as booth structure, wall structure, or stand structure: put the subtotal on the section row and leave child-row estimates blank.
 - Use `references/quotation-cost-template.md` as the only authoritative pricing source.
-- Keep `references/quotation-cost-template.md` as a sectioned pricing template that preserves all pricing rows, notes, extra values, and retrieval anchors.
+- Keep `references/quotation-cost-template.md` as a clean sectioned RAG pricing source that preserves all pricing items, notes, default quantities/amounts, extra values, and search terms.
 - Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
 - Preserve the customer-facing XLSX layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, the bottom totals block must show `Total`, `GST 9%` when GST applies, and `Total including GST` with the same border treatment as the sample layout, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, bold the default payment-term text and the payee name in the cheque line, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.

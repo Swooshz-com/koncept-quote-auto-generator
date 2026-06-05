@@ -2,7 +2,7 @@
 """Generate Koncept quotation XLSX files with optional PDF export.
 
 This script intentionally uses Python standard library only. It reads the
-authoritative Markdown pricing table by default and fills a preserved quote
+authoritative Markdown pricing source by default and fills a preserved quote
 layout workbook through ZIP/XML updates so the customer-facing XLSX keeps the
 same styling, print setup, drawings, and pagination rules as the reference
 quotation.
@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output folder. Defaults to _output/<client>/<project>/<YYYYMMDD> when omitted.",
     )
-    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Pricing source path. Defaults to the authoritative Markdown pricing table.")
+    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Pricing source path. Defaults to the authoritative Markdown pricing source.")
     parser.add_argument("--layout-template", type=Path, default=DEFAULT_LAYOUT_TEMPLATE, help="Customer quotation layout XLSX path.")
     parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
     parser.add_argument("--allow-ambiguous", action="store_true", help="Use the best pricing match even when multiple rows match.")
@@ -277,6 +277,84 @@ def markdown_plain_text(value: Any) -> str:
     return clean_text(str(value or "").replace("<br>", " "))
 
 
+def markdown_field_text(value: Any) -> str:
+    text = markdown_plain_text(value)
+    return text[:-1].strip() if text.endswith(".") else text
+
+
+def markdown_number(value: Any, default: float = 0.0) -> float:
+    text = markdown_field_text(value)
+    if not text or "not applied" in text.lower():
+        return default
+    match = re.search(r"-?\d+(?:,\d{3})*(?:\.\d+)?", text)
+    if not match:
+        return default
+    return as_float(match.group(0), default)
+
+
+def markdown_heading_title(line: str) -> str:
+    heading = line.strip()[4:].strip()
+    prefix, separator, section_title = heading.partition(". ")
+    if separator and prefix.isdigit():
+        return section_title.strip()
+    return heading
+
+
+def extract_rag_price_rows_from_markdown(lines: list[str]) -> list[PriceRow]:
+    field_re = re.compile(r"^\s*-\s+\*\*(.+?):\*\*\s*(.*?)\s*$")
+    price_rows: list[PriceRow] = []
+    current_section = ""
+    current_item: dict[str, str] | None = None
+
+    def finish_current_item() -> None:
+        nonlocal current_item
+        if current_item is None:
+            return
+        description = markdown_field_text(current_item.get("item"))
+        cost = markdown_number(current_item.get("internal_cost"), 0.0)
+        gst = markdown_number(current_item.get("gst_multiplier"), 1.0)
+        markup = markdown_number(current_item.get("mark_up_multiplier"), 1.0)
+        remark = markdown_field_text(
+            current_item.get("remarks_search_terms")
+            or current_item.get("remarks")
+            or current_item.get("search_terms")
+        )
+        if description and cost > 0 and markup > 0:
+            price_rows.append(
+                PriceRow(
+                    row_number=len(price_rows) + 1,
+                    section=current_section,
+                    description=description,
+                    unit_hint=infer_unit(description),
+                    cost=cost,
+                    gst_multiplier=gst or 1.0,
+                    markup=markup or 1.0,
+                    remark=remark,
+                )
+            )
+        current_item = None
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            finish_current_item()
+            current_section = markdown_heading_title(stripped)
+            continue
+        match = field_re.match(line)
+        if not match:
+            continue
+        field_name = markdown_key(match.group(1))
+        field_value = markdown_field_text(match.group(2))
+        if field_name == "item":
+            finish_current_item()
+            current_item = {"item": field_value}
+        elif current_item is not None:
+            current_item[field_name] = field_value
+
+    finish_current_item()
+    return price_rows
+
+
 def extract_price_rows_from_markdown(template_path: Path) -> list[PriceRow]:
     lines = template_path.read_text(encoding="utf-8-sig").splitlines()
     header: list[str] | None = None
@@ -377,7 +455,9 @@ def extract_price_rows_from_markdown(template_path: Path) -> list[PriceRow]:
                 remark=remark,
             )
         )
-    return price_rows
+    if price_rows:
+        return price_rows
+    return extract_rag_price_rows_from_markdown(lines)
 
 
 def extract_price_rows_from_xlsx(template_path: Path) -> list[PriceRow]:

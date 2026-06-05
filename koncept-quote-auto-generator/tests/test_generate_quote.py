@@ -161,56 +161,36 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertEqual(args.template, ROOT / "references" / "quotation-cost-template.md")
 
-    def test_extract_price_rows_reads_authoritative_markdown_without_empty_rows(self):
+    def test_extract_price_rows_reads_authoritative_rag_markdown(self):
         markdown_path = ROOT / "references" / "quotation-cost-template.md"
         markdown_text = markdown_path.read_text(encoding="utf-8-sig")
         markdown_rows = quote.extract_price_rows(markdown_path)
-        raw_table_rows = []
-        header = None
-        for line in markdown_text.splitlines():
-            if not line.startswith("|"):
-                continue
-            cells = quote.markdown_table_cells(line)
-            if not cells:
-                continue
-            lowered_cells = [cell.lower() for cell in cells]
-            if lowered_cells[0] == "row" and "item" in lowered_cells and "cost" in lowered_cells:
-                header = [quote.markdown_key(cell) for cell in cells]
-                continue
-            if header is None or cells[0].strip("-: ") == "":
-                continue
-            if len(cells) != len(header):
-                continue
-            raw_table_rows.append(dict(zip(header, cells)))
 
-        raw_by_row = {int(quote.as_float(row["row"])): row for row in raw_table_rows}
-        self.assertIn("### 1. Floor Design", markdown_text)
+        item_lines = [line for line in markdown_text.splitlines() if line.startswith("- **Item:**")]
+        section_lines = [line for line in markdown_text.splitlines() if line.startswith("### ")]
+        self.assertIn("kind: rag_pricing_source", markdown_text)
+        self.assertIn("Clean RAG Pricing Source", markdown_text)
+        self.assertIn("Customer-facing quotation line amount", markdown_text)
+        self.assertIn("GST is shown separately in the quotation totals block", markdown_text)
+        self.assertIn("### Floor Design", markdown_text)
         self.assertNotIn("### . Unsectioned", markdown_text)
         self.assertNotIn("source_workbook", markdown_text)
         self.assertNotIn("_Quotation Cost Template", markdown_text)
+        self.assertNotIn("Anchor:", markdown_text)
+        self.assertNotIn("| Row |", markdown_text)
         self.assertNotIn("| Aux N |", markdown_text)
         self.assertNotIn("| Aux O |", markdown_text)
         self.assertNotIn("| Formulas |", markdown_text)
         self.assertNotIn("| Section No |", markdown_text)
-        self.assertIn("| Price rows | 103 |", markdown_text)
-        self.assertIn("| Priceable rows | 103 |", markdown_text)
-        self.assertIn("| Continuation rows folded | 36 |", markdown_text)
-        self.assertIn("| Section header rows represented as headings | 11 |", markdown_text)
-        self.assertEqual(len(raw_table_rows), 103)
+        self.assertIn("- **Default quantity:** 1.", markdown_text)
+        self.assertIn("- **Default quote amount:** SGD 817.5.", markdown_text)
+        self.assertEqual(len(section_lines), 11)
+        self.assertEqual(len(item_lines), 103)
         self.assertEqual(len(markdown_rows), 103)
         self.assertTrue(all(row.description and row.cost > 0 and row.markup > 0 for row in markdown_rows))
-        self.assertTrue(all(any(value for key, value in row.items() if key != "row") for row in raw_table_rows))
-        self.assertEqual(raw_by_row[4]["item"], "m2 needle punch carpet in           colour")
-        self.assertNotIn(2, raw_by_row)
-        self.assertNotIn(17, raw_by_row)
-        self.assertNotIn(20, raw_by_row)
-        self.assertNotIn(266, raw_by_row)
-        self.assertEqual(raw_by_row[19]["item"], "m length single side partition wall at height 2.4m<br>wooden construct in painted finished as per design proposal")
-        self.assertEqual(raw_by_row[19]["remarks"], "Backwall or any partition<br>PAINTED")
-        self.assertEqual(raw_by_row[62]["remarks"], "Acrylic System Partition. Extra calculations: 150+15+20<br>Octanorm")
-        self.assertEqual(raw_by_row[125]["remarks"], "PE. Extra values: 780; 68. Extra calculations: 90+690; 17*4<br>Extra values: 1000; 14.705882352941176. Extra calculations: 1000/68")
-        self.assertIn("nos. 42\u201d LED TV Monitor (With Speaker \u2013 Full HD)", markdown_text)
-        self.assertEqual(markdown_rows[0].row_number, 4)
+        self.assertEqual([row.row_number for row in markdown_rows], list(range(1, 104)))
+        self.assertIn('nos. 42" LED TV Monitor (With Speaker \u2013 Full HD).', markdown_text)
+        self.assertEqual(markdown_rows[0].row_number, 1)
         self.assertEqual(markdown_rows[0].section, "Floor Design")
         self.assertEqual(markdown_rows[0].description, "m2 needle punch carpet in colour")
         self.assertEqual(markdown_rows[0].unit_hint, "sqm")
@@ -218,9 +198,17 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(markdown_rows[0].gst_multiplier, 1.09)
         self.assertEqual(markdown_rows[0].markup, 1.5)
         self.assertEqual(markdown_rows[0].sale_unit_price, 10.5)
-        wall_row = next(row for row in markdown_rows if row.row_number == 19)
-        self.assertEqual(wall_row.description, "m length single side partition wall at height 2.4m wooden construct in painted finished as per design proposal")
-        self.assertEqual(wall_row.remark, "Backwall or any partition PAINTED")
+        wall_row = next(row for row in markdown_rows if row.description.startswith("m length single side partition wall at height 2.4m"))
+        self.assertEqual(wall_row.description, "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal")
+        self.assertEqual(wall_row.remark, "Backwall or any partition; PAINTED")
+        acrylic_row = next(row for row in markdown_rows if "Sytem Profile partition" in row.description)
+        self.assertEqual(acrylic_row.remark, "Acrylic System Partition. Extra calculations: 150+15+20; Octanorm")
+        pe_row = next(row for row in markdown_rows if row.description == "Professional Engineer Endorsement for hanging")
+        self.assertEqual(pe_row.remark, "PE. Extra values: 780; 68. Extra calculations: 90+690; 17*4; Extra values: 1000; 14.705882352941176. Extra calculations: 1000/68")
+        boom_row = next(row for row in markdown_rows if row.description.startswith("Lot. rental of Boom Lift"))
+        self.assertEqual(boom_row.cost, 500)
+        self.assertEqual(boom_row.gst_multiplier, 1.09)
+        self.assertEqual(boom_row.sale_unit_price, 750)
 
     def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
         tmp, path = generate_layout_workbook()
