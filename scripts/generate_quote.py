@@ -2,7 +2,7 @@
 """Generate Koncept quotation XLSX files with optional PDF export.
 
 This script intentionally uses Python standard library only. It reads the
-authoritative Markdown pricing source by default and fills a preserved quote
+structured pricing catalog by default and fills a preserved quote
 layout workbook through ZIP/XML updates so the customer-facing XLSX keeps the
 same styling, print setup, drawings, and pagination rules as the reference
 quotation.
@@ -11,6 +11,7 @@ quotation.
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import csv
 import datetime as dt
@@ -24,15 +25,16 @@ import shutil
 import subprocess
 import textwrap
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 from xml.etree import ElementTree as ET
 
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_TEMPLATE = SKILL_DIR / "references" / "quotation-cost-template.md"
-DEFAULT_LAYOUT_TEMPLATE = SKILL_DIR / "references" / "quotation-layout.xlsx"
+DEFAULT_PROFILE_DIR = SKILL_DIR / "profiles" / "koncept"
+DEFAULT_TEMPLATE = DEFAULT_PROFILE_DIR / "pricing-catalog.json"
+DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = SKILL_DIR / "_output"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -52,7 +54,46 @@ XMLNS_XR = "http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
 XMLNS_XR2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"
 XMLNS_XR3 = "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3"
 EXPORT_STATUS_CUSTOMER_READY = {"libreoffice_exported", "excel_exported"}
-
+DEFAULT_PAYMENT_TERMS = [
+    "70% payment upon confirmation and signing of contract.",
+    "30% balance upon handover before show starts",
+]
+DEFAULT_HEADER_LINES = [
+    "Koncept Image Pte Limited",
+    "61 Kaki Bukit Ave 1, #02-26,",
+    "Shunli Industrial Park",
+    "Singapore 417943",
+    "Telephone: +6568177477",
+    "",
+    "Bank Detail:",
+    "United Overseas Bank Limited, 80",
+    "Raffles Place",
+    "Singapore 048624",
+    "Account: 335-3020-445",
+    "Swift Code: UOVBSGSG",
+]
+DEFAULT_STANDARD_NOTES = [
+    "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
+    "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
+    "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
+    "All designs and dimensions are subject to final site verification.",
+    "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
+    "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
+    "Design and Artwork of the graphics are not included in this contract.",
+    "Cancellation of agreement is subject to 75% of the agreement amount.",
+    "All deposit are non-refundable upon of cancellation of agreement.",
+    "The client is obliged to adhere to the above payment terms & conditions of  works.",
+    "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
+    "Late payment charge of 1.5% per month will be charge after the due date.",
+]
+FIRST_PRINT_PAGE_END_ROW = 52
+CONTINUATION_PAGE_START_ROW = 53
+CONTINUATION_PAGE_HEIGHT = 43
+CONTINUATION_TITLE_OFFSET = 0
+CONTINUATION_TABLE_HEADER_OFFSET = 2
+CONTINUATION_CURRENCY_OFFSET = 3
+CONTINUATION_BODY_OFFSET = 4
+TOTAL_BLOCK_HEIGHT = 3
 ET.register_namespace("cp", XMLNS_CP)
 ET.register_namespace("dc", XMLNS_DC)
 ET.register_namespace("", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
@@ -79,7 +120,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output folder. Defaults to _output/<client>/<project>/<YYYYMMDD> when omitted.",
     )
-    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Pricing source path. Defaults to the authoritative Markdown pricing source.")
+    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Pricing catalog JSON path.")
     parser.add_argument("--layout-template", type=Path, default=DEFAULT_LAYOUT_TEMPLATE, help="Customer quotation layout XLSX path.")
     parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
     parser.add_argument("--allow-ambiguous", action="store_true", help="Use the best pricing match even when multiple rows match.")
@@ -96,6 +137,8 @@ class PriceRow:
     gst_multiplier: float
     markup: float
     remark: str
+    pricing_id: str = ""
+    aliases: list[str] = field(default_factory=list)
 
     @property
     def sale_unit_price(self) -> float:
@@ -243,258 +286,48 @@ def infer_unit(description: str) -> str:
     return ""
 
 
-def markdown_table_cells(line: str) -> list[str]:
-    text = line.strip()
-    if text.startswith("|"):
-        text = text[1:]
-    if text.endswith("|"):
-        text = text[:-1]
-    cells: list[str] = []
-    current: list[str] = []
-    escaped = False
-    for char in text:
-        if escaped:
-            current.append(char)
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-            continue
-        if char == "|":
-            cells.append("".join(current).strip())
-            current = []
-            continue
-        current.append(char)
-    cells.append("".join(current).strip())
-    return cells
+def extract_price_rows_from_catalog(template_path: Path) -> list[PriceRow]:
+    payload = json.loads(template_path.read_text(encoding="utf-8-sig"))
+    if payload.get("schema_version") != 1 or not isinstance(payload.get("items"), list):
+        raise ValueError(f"Unsupported pricing catalog schema: {template_path}")
 
-
-def markdown_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
-
-
-def markdown_plain_text(value: Any) -> str:
-    return clean_text(str(value or "").replace("<br>", " "))
-
-
-def markdown_field_text(value: Any) -> str:
-    text = markdown_plain_text(value)
-    return text[:-1].strip() if text.endswith(".") else text
-
-
-def markdown_number(value: Any, default: float = 0.0) -> float:
-    text = markdown_field_text(value)
-    if not text or "not applied" in text.lower():
-        return default
-    match = re.search(r"-?\d+(?:,\d{3})*(?:\.\d+)?", text)
-    if not match:
-        return default
-    return as_float(match.group(0), default)
-
-
-def markdown_heading_title(line: str) -> str:
-    heading = line.strip()[4:].strip()
-    prefix, separator, section_title = heading.partition(". ")
-    if separator and prefix.isdigit():
-        return section_title.strip()
-    return heading
-
-
-def extract_rag_price_rows_from_markdown(lines: list[str]) -> list[PriceRow]:
-    field_re = re.compile(r"^\s*-\s+\*\*(.+?):\*\*\s*(.*?)\s*$")
     price_rows: list[PriceRow] = []
-    current_section = ""
-    current_item: dict[str, str] | None = None
-
-    def finish_current_item() -> None:
-        nonlocal current_item
-        if current_item is None:
-            return
-        description = markdown_field_text(current_item.get("item"))
-        cost = markdown_number(current_item.get("internal_cost"), 0.0)
-        gst = markdown_number(current_item.get("gst_multiplier"), 1.0)
-        markup = markdown_number(current_item.get("mark_up_multiplier"), 1.0)
-        remark = markdown_field_text(
-            current_item.get("remarks_search_terms")
-            or current_item.get("remarks")
-            or current_item.get("search_terms")
-        )
-        if description and cost > 0 and markup > 0:
-            price_rows.append(
-                PriceRow(
-                    row_number=len(price_rows) + 1,
-                    section=current_section,
-                    description=description,
-                    unit_hint=infer_unit(description),
-                    cost=cost,
-                    gst_multiplier=gst or 1.0,
-                    markup=markup or 1.0,
-                    remark=remark,
-                )
-            )
-        current_item = None
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("### "):
-            finish_current_item()
-            current_section = markdown_heading_title(stripped)
+    for index, item in enumerate(payload["items"], start=1):
+        description = clean_text(item.get("description"))
+        cost = as_float(item.get("internal_cost"), 0.0)
+        markup = as_float(item.get("markup_multiplier"), 1.0)
+        if not description or cost <= 0 or markup <= 0:
             continue
-        match = field_re.match(line)
-        if not match:
-            continue
-        field_name = markdown_key(match.group(1))
-        field_value = markdown_field_text(match.group(2))
-        if field_name == "item":
-            finish_current_item()
-            current_item = {"item": field_value}
-        elif current_item is not None:
-            current_item[field_name] = field_value
-
-    finish_current_item()
-    return price_rows
-
-
-def extract_price_rows_from_markdown(template_path: Path) -> list[PriceRow]:
-    lines = template_path.read_text(encoding="utf-8-sig").splitlines()
-    header: list[str] | None = None
-    price_rows: list[PriceRow] = []
-    current_section = ""
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("### "):
-            heading = stripped[4:].strip()
-            _, separator, section_title = heading.partition(". ")
-            current_section = section_title.strip() if separator else heading
-            header = None
-            continue
-        if not line.startswith("|"):
-            continue
-        cells = markdown_table_cells(line)
-        if not cells:
-            continue
-        if cells[0].strip("-: ") == "":
-            continue
-        lowered_cells = [cell.lower() for cell in cells]
-        if (
-            "source row" in lowered_cells[0]
-            and "description" in lowered_cells
-        ) or (
-            lowered_cells[0] == "row"
-            and "c" in lowered_cells
-            and "h" in lowered_cells
-        ) or (
-            lowered_cells[0] == "excel row"
-            and "item text" in lowered_cells
-            and "cost" in lowered_cells
-        ) or (
-            lowered_cells[0] == "row"
-            and "item" in lowered_cells
-            and "cost" in lowered_cells
-        ):
-            header = [markdown_key(cell) for cell in cells]
-            continue
-        if header is None:
-            continue
-        if len(cells) != len(header):
-            continue
-        row = dict(zip(header, cells))
-        if "row" in row and "item" in row and "cost" in row:
-            source_row = int(as_float(row.get("row"), 0.0))
-            description = markdown_plain_text(row.get("item"))
-            cost = as_float(row.get("cost"), 0.0)
-            gst = as_float(row.get("gst_multiplier"), 1.0)
-            markup = as_float(row.get("mark_up"), 1.0)
-            remark = markdown_plain_text(row.get("remarks"))
-            if as_float(row.get("section_no"), 0.0) and description and cost == 0:
-                current_section = description
-                continue
-            unit_hint = infer_unit(description)
-        elif "excel_row" in row and "item_text" in row and "cost" in row:
-            source_row = int(as_float(row.get("excel_row"), 0.0))
-            description = markdown_plain_text(row.get("item_text"))
-            cost = as_float(row.get("cost"), 0.0)
-            gst = as_float(row.get("gst_multiplier"), 1.0)
-            markup = as_float(row.get("mark_up"), 1.0)
-            remark = markdown_plain_text(row.get("remarks"))
-            if as_float(row.get("section_no"), 0.0) and description and cost == 0:
-                current_section = description
-                continue
-            unit_hint = infer_unit(description)
-        elif "row" in row and "c" in row and "h" in row:
-            source_row = int(as_float(row.get("row"), 0.0))
-            description = markdown_plain_text(row.get("c"))
-            cost = as_float(row.get("h"), 0.0)
-            gst = as_float(row.get("i"), 1.0)
-            markup = as_float(row.get("j"), 1.0)
-            remark = markdown_plain_text(row.get("l"))
-            if as_float(row.get("a"), 0.0) and description and cost == 0:
-                current_section = description
-                continue
-            unit_hint = infer_unit(description)
+        remarks = item.get("remarks")
+        if isinstance(remarks, list):
+            remark = "; ".join(clean_text(value) for value in remarks if clean_text(value))
         else:
-            description = clean_text(row.get("description"))
-            cost = as_float(row.get("cost"), 0.0)
-            markup = as_float(row.get("mark_up"), 1.0)
-            source_row = int(as_float(row.get("source_row"), 0.0))
-            gst = as_float(row.get("gst_multiplier"), 1.0)
-            remark = clean_text(row.get("remarks"))
-            current_section = clean_text(row.get("section"))
-            unit_hint = normalize_unit(row.get("unit_hint")) or infer_unit(description)
-        if not description or cost <= 0:
-            continue
+            remark = clean_text(remarks)
+        aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
         price_rows.append(
             PriceRow(
-                row_number=source_row,
-                section=current_section,
+                row_number=index,
+                section=clean_text(item.get("section")),
                 description=description,
-                unit_hint=unit_hint,
+                unit_hint=normalize_unit(item.get("unit_hint")) or infer_unit(description),
                 cost=cost,
-                gst_multiplier=gst or 1.0,
-                markup=markup or 1.0,
+                gst_multiplier=as_float(item.get("gst_multiplier"), 1.0) or 1.0,
+                markup=markup,
                 remark=remark,
+                pricing_id=clean_text(item.get("id")),
+                aliases=[clean_text(alias) for alias in aliases if clean_text(alias)],
             )
         )
-    if price_rows:
-        return price_rows
-    return extract_rag_price_rows_from_markdown(lines)
-
-
-def extract_price_rows_from_xlsx(template_path: Path) -> list[PriceRow]:
-    rows = read_first_sheet_rows_with_numbers(template_path)
-    price_rows: list[PriceRow] = []
-    current_section = ""
-    for row_number, row in rows:
-        padded = row + [None] * 15
-        col_a = padded[0]
-        description = clean_text(padded[2])
-        cost = as_float(padded[7], 0.0)
-        gst = as_float(padded[8], 1.0)
-        markup = as_float(padded[9], 1.0)
-        remark = clean_text(padded[11])
-        if isinstance(col_a, (int, float)) and description and cost == 0:
-            current_section = description
-            continue
-        if description and cost > 0:
-            price_rows.append(
-                PriceRow(
-                    row_number=row_number,
-                    section=current_section,
-                    description=description,
-                    unit_hint=infer_unit(description),
-                    cost=cost,
-                    gst_multiplier=gst or 1.0,
-                    markup=markup or 1.0,
-                    remark=remark,
-                )
-            )
     return price_rows
 
 
 def extract_price_rows(template_path: Path) -> list[PriceRow]:
-    if template_path.suffix.lower() in {".md", ".markdown"}:
-        return extract_price_rows_from_markdown(template_path)
-    return extract_price_rows_from_xlsx(template_path)
+    if template_path.suffix.lower() == ".json":
+        return extract_price_rows_from_catalog(template_path)
+    raise ValueError(
+        f"Pricing source must be a JSON catalog: {template_path}. "
+        "Run scripts/build_pricing_catalog.py to convert the source template first."
+    )
 
 
 def tokens(text: str) -> set[str]:
@@ -513,19 +346,45 @@ def tokens(text: str) -> set[str]:
         "construct",
         "not",
         "real",
+        "sqm",
+        "m2",
+        "lm",
+        "m",
+        "nos",
+        "no",
+        "set",
+        "sets",
+        "each",
+        "length",
+        "run",
+        "lot",
         "template",
         "item",
         "items",
     }
-    return {t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 1 and t not in stop}
+    result = {t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 1 and t not in stop}
+    result.update(t[:-1] for t in list(result) if len(t) > 3 and t.endswith("s"))
+    return result
 
 
 def score_price_row(query: str, row: PriceRow) -> int:
     query_tokens = tokens(query)
-    haystack = f"{row.section} {row.description} {row.remark} {row.unit_hint}"
+    if not query_tokens:
+        return 0
+    haystack_values = [row.pricing_id, row.section, row.description, row.remark, row.unit_hint, *row.aliases]
+    haystack = " ".join(haystack_values)
     row_tokens = tokens(haystack)
     overlap = len(query_tokens & row_tokens)
-    phrase_bonus = 5 if query.lower() in haystack.lower() else 0
+    normalized_query = clean_text(query).lower()
+    phrase_bonus = 0
+    for value in haystack_values:
+        normalized_value = clean_text(value).lower()
+        if not normalized_value:
+            continue
+        if normalized_query == normalized_value:
+            phrase_bonus = max(phrase_bonus, 20)
+        elif normalized_query in normalized_value:
+            phrase_bonus = max(phrase_bonus, 10)
     return overlap + phrase_bonus
 
 
@@ -534,7 +393,7 @@ def find_price_match(query: str, price_rows: list[PriceRow]) -> tuple[str, Price
         return "manual-display", None, []
     scored = [(score_price_row(query, row), row) for row in price_rows]
     scored = [(score, row) for score, row in scored if score > 0]
-    scored.sort(key=lambda item: (-item[0], item[1].row_number))
+    scored.sort(key=lambda item: (-item[0], item[1].pricing_id, item[1].row_number))
     candidates = [row for _, row in scored[:5]]
     if not candidates:
         return "unmatched", None, []
@@ -566,8 +425,6 @@ def validate_brief(brief: dict[str, Any]) -> list[str]:
         missing.append("client.attention")
     if not project.get("title"):
         missing.append("project.title")
-    if brief.get("company_identity") not in {"Koncept Image", "Koncept World"}:
-        missing.append("company_identity must be Koncept Image or Koncept World")
     return missing
 
 
@@ -610,7 +467,7 @@ def confirmation_issues(missing: list[str], lines: list[QuoteLine]) -> list[str]
             issues.append(f"Unmatched pricing: {line.description} / keyword `{line.pricing_keyword}`")
         if line.match_status == "ambiguous":
             options = "; ".join(
-                f"row {row.row_number}: {row.section} - {row.description} ({row.sale_unit_price:.2f})"
+                f"{row.pricing_id}: {row.section} - {row.description} ({row.sale_unit_price:.2f})"
                 for row in line.match_candidates[:3]
             )
             issues.append(f"Ambiguous pricing: {line.description}. Candidate matches: {options}")
@@ -981,7 +838,21 @@ def set_ooxml_rich_text_cell(
         append_ooxml_text_run(inline, text, bold=bold)
 
 
-def set_ooxml_formula(root: ET.Element, row_number: int, col_number: int, formula: str, style: str | None = None) -> None:
+def cached_number_text(value: float | int) -> str:
+    number = float(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:.12g}"
+
+
+def set_ooxml_formula(
+    root: ET.Element,
+    row_number: int,
+    col_number: int,
+    formula: str,
+    style: str | None = None,
+    cached_value: float | int | None = None,
+) -> None:
     sheet_data = root.find(f"{NS_MAIN}sheetData")
     if sheet_data is None:
         raise ValueError("Layout workbook is missing sheetData.")
@@ -990,6 +861,9 @@ def set_ooxml_formula(root: ET.Element, row_number: int, col_number: int, formul
     clear_cell(cell)
     formula_node = ET.SubElement(cell, f"{NS_MAIN}f")
     formula_node.text = formula[1:] if formula.startswith("=") else formula
+    if cached_value is not None:
+        value_node = ET.SubElement(cell, f"{NS_MAIN}v")
+        value_node.text = cached_number_text(cached_value)
 
 
 def set_ooxml_column_width(root: ET.Element, col_number: int, width: float) -> None:
@@ -1027,10 +901,10 @@ def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int
         row_number = int(row.attrib.get("r", "0"))
         if not min_row <= row_number <= max_row:
             continue
-        for cell in row.findall(f"{NS_MAIN}c"):
+        for cell in list(row.findall(f"{NS_MAIN}c")):
             _, col_number = parse_cell_ref(cell.attrib.get("r", "A1"))
             if min_col <= col_number <= max_col:
-                clear_cell(cell)
+                row.remove(cell)
 
 
 def sanitize_core_properties(parts: dict[str, bytes]) -> None:
@@ -1165,24 +1039,47 @@ def ensure_bold_font_for_style(styles_root: ET.Element, base_style: str) -> str:
     return str(len(fonts) - 1)
 
 
+def ensure_regular_font_for_style(styles_root: ET.Element, base_style: str, *, bold: bool = False) -> str:
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    fonts = styles_root.find(f"{NS_MAIN}fonts")
+    if cell_xfs is None or fonts is None:
+        raise ValueError("Layout workbook is missing cellXfs or fonts styles.")
+
+    base_font_id = int(cell_xfs[int(base_style)].attrib.get("fontId", "0"))
+    regular_font = copy.deepcopy(fonts[base_font_id])
+    for child in list(regular_font):
+        if child.tag in {f"{NS_MAIN}i", f"{NS_MAIN}color"}:
+            regular_font.remove(child)
+    if bold and regular_font.find(f"{NS_MAIN}b") is None:
+        regular_font.insert(0, ET.Element(f"{NS_MAIN}b"))
+    fonts.append(regular_font)
+    fonts.attrib["count"] = str(len(fonts))
+    return str(len(fonts) - 1)
+
+
 def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     styles_root = ET.fromstring(parts["xl/styles.xml"])
     total_border = append_border(styles_root, top="thin")
     grand_border = append_border(styles_root, top="thin", bottom="double")
+    regular_amount_font = ensure_regular_font_for_style(styles_root, "5")
+    bold_amount_font = ensure_regular_font_for_style(styles_root, "5", bold=True)
     style_ids = {
         "header_pos": clone_cell_style(styles_root, "23", font_id=ensure_bold_font_for_style(styles_root, "23")),
         "header_quantity": clone_cell_style(styles_root, "24", font_id=ensure_bold_font_for_style(styles_root, "24"), horizontal="center", vertical="center"),
         "header_service": clone_cell_style(styles_root, "21", font_id=ensure_bold_font_for_style(styles_root, "21"), horizontal="left", vertical="center"),
-        "price_amount": clone_cell_style(styles_root, "96", num_fmt_id="4"),
-        "total_label": clone_cell_style(styles_root, "34", border_id=total_border),
-        "total_amount": clone_cell_style(styles_root, "96", border_id=total_border, num_fmt_id="4"),
-        "total_currency": clone_cell_style(styles_root, "84", border_id=total_border),
+        "header_estimate": clone_cell_style(styles_root, "87", font_id=ensure_bold_font_for_style(styles_root, "87"), horizontal="center", vertical="center"),
+        "header_currency": clone_cell_style(styles_root, "95", font_id=ensure_bold_font_for_style(styles_root, "95"), horizontal="center", vertical="center"),
+        "client_address": clone_cell_style(styles_root, "93", horizontal="left", vertical="center"),
+        "price_amount": clone_cell_style(styles_root, "5", font_id=regular_amount_font, num_fmt_id="4", horizontal="right", vertical="center"),
+        "total_label": clone_cell_style(styles_root, "34", border_id=total_border, horizontal="right", vertical="center"),
+        "total_amount": clone_cell_style(styles_root, "5", font_id=bold_amount_font, border_id=total_border, num_fmt_id="4", horizontal="right", vertical="center"),
+        "total_currency": clone_cell_style(styles_root, "84", border_id=total_border, horizontal="center", vertical="center"),
         "gst_label": clone_cell_style(styles_root, "34"),
-        "gst_amount": clone_cell_style(styles_root, "96", num_fmt_id="4"),
-        "gst_currency": clone_cell_style(styles_root, "84"),
-        "grand_label": clone_cell_style(styles_root, "34", border_id=grand_border),
-        "grand_amount": clone_cell_style(styles_root, "96", border_id=grand_border, num_fmt_id="4"),
-        "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border),
+        "gst_amount": clone_cell_style(styles_root, "5", font_id=bold_amount_font, num_fmt_id="4", horizontal="right", vertical="center"),
+        "gst_currency": clone_cell_style(styles_root, "84", horizontal="center", vertical="center"),
+        "grand_label": clone_cell_style(styles_root, "34", border_id=grand_border, horizontal="right", vertical="center"),
+        "grand_amount": clone_cell_style(styles_root, "5", font_id=bold_amount_font, border_id=grand_border, num_fmt_id="4", horizontal="right", vertical="center"),
+        "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border, horizontal="center", vertical="center"),
     }
     parts["xl/styles.xml"] = serialize_excel_styles(styles_root)
     return style_ids
@@ -1204,7 +1101,7 @@ def update_drawing_project_number(xml: bytes, project_number: str) -> bytes:
     return updated.encode("utf-8") if count else xml
 
 
-def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
+def update_repeating_header_drawing(xml: bytes, project_number: str, header_lines: list[str] | None = None) -> bytes:
     root = ET.fromstring(xml)
     anchors = root.findall(f"{NS_DRAWING}twoCellAnchor")
     text_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None), None)
@@ -1267,20 +1164,7 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
         if child.tag == f"{NS_A}p":
             tx_body.remove(child)
 
-    lines = [
-        "Koncept Image Pte Limited",
-        "61 Kaki Bukit Ave 1, #02-26,",
-        "Shunli Industrial Park",
-        "Singapore 417943",
-        "Telephone: +6568177477",
-        "",
-        "Bank Detail:",
-        "United Overseas Bank Limited, 80",
-        "Raffles Place",
-        "Singapore 048624",
-        "Account: 335-3020-445",
-        "Swift Code: UOVBSGSG",
-    ]
+    lines = [clean_text(line) if line is not None else "" for line in (header_lines or DEFAULT_HEADER_LINES)]
     if project_number:
         lines.extend(["", f"Project No: {project_number}"])
 
@@ -1311,6 +1195,52 @@ def update_repeating_header_drawing(xml: bytes, project_number: str) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def replace_header_logo(parts: dict[str, bytes], logo_data_url: str) -> None:
+    if not logo_data_url:
+        return
+    match = re.match(r"data:(image/(?:jpeg|jpg|png));base64,(.+)", logo_data_url, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return
+
+    mime_type = match.group(1).lower().replace("image/jpg", "image/jpeg")
+    try:
+        logo_bytes = base64.b64decode(match.group(2), validate=True)
+    except ValueError:
+        return
+    if not logo_bytes:
+        return
+
+    extension = "png" if mime_type == "image/png" else "jpeg"
+    media_name = f"xl/media/header_logo.{extension}"
+    parts[media_name] = logo_bytes
+
+    rels_name = "xl/drawings/_rels/drawing1.xml.rels"
+    if rels_name in parts:
+        rels_root = ET.fromstring(parts[rels_name])
+        for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
+            if rel.attrib.get("Type", "").endswith("/image"):
+                rel.attrib["Target"] = f"../media/header_logo.{extension}"
+                break
+        parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
+
+    content_types_name = "[Content_Types].xml"
+    if content_types_name not in parts:
+        return
+    content_type = "image/png" if extension == "png" else "image/jpeg"
+    content_root = ET.fromstring(parts[content_types_name])
+    has_default = any(
+        child.tag == f"{NS_CONTENT_TYPES}Default" and child.attrib.get("Extension") == extension
+        for child in content_root
+    )
+    if not has_default:
+        ET.SubElement(
+            content_root,
+            f"{NS_CONTENT_TYPES}Default",
+            {"Extension": extension, "ContentType": content_type},
+        )
+        parts[content_types_name] = ET.tostring(content_root, encoding="utf-8", xml_declaration=True)
+
+
 def update_print_titles(xml: bytes) -> bytes:
     text = xml.decode("utf-8")
     updated = re.sub(
@@ -1320,6 +1250,44 @@ def update_print_titles(xml: bytes) -> bytes:
         count=1,
     )
     return updated.encode("utf-8")
+
+
+def update_print_area(xml: bytes, last_row: int, last_col: int = 9) -> bytes:
+    text = xml.decode("utf-8")
+    print_area = f"Quotation!$A$1:${excel_col(last_col - 1)}${last_row}"
+    updated, count = re.subn(
+        r"(<definedName[^>]*name=\"_xlnm\.Print_Area\"[^>]*>)[^<]*(</definedName>)",
+        rf"\g<1>{print_area}\2",
+        text,
+        count=1,
+    )
+    if count:
+        return updated.encode("utf-8")
+
+    insert = (
+        f'<definedName name="_xlnm.Print_Area" localSheetId="0">'
+        f"{print_area}</definedName>"
+    )
+    if "</definedNames>" in text:
+        return text.replace("</definedNames>", f"{insert}</definedNames>", 1).encode("utf-8")
+    return text.replace("</workbook>", f"<definedNames>{insert}</definedNames></workbook>", 1).encode("utf-8")
+
+
+def enable_workbook_recalculation(xml: bytes) -> bytes:
+    original_xml = xml.decode("utf-8")
+    original_declarations = {
+        f"xmlns:{prefix}": uri
+        for prefix, uri in re.findall(r"\sxmlns:([A-Za-z0-9_]+)=\"([^\"]+)\"", original_xml)
+    }
+    root = ET.fromstring(xml)
+    calc_pr = root.find(f"{NS_MAIN}calcPr")
+    if calc_pr is None:
+        calc_pr = ET.SubElement(root, f"{NS_MAIN}calcPr")
+    calc_pr.attrib["calcMode"] = "auto"
+    calc_pr.attrib["fullCalcOnLoad"] = "1"
+    calc_pr.attrib["forceFullCalc"] = "1"
+    updated = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
+    return ensure_root_namespace_declarations(updated, "workbook", original_declarations).encode("utf-8")
 
 
 def excel_date_serial(value: str) -> float | str:
@@ -1350,9 +1318,149 @@ def line_amount_value(line: QuoteLine) -> float | None:
     return None
 
 
+def formula_cache_amount(value: Any) -> float:
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return as_float(value, 0.0)
+
+
+def continuation_page_start_for_row(row_number: int) -> int | None:
+    if row_number <= FIRST_PRINT_PAGE_END_ROW:
+        return None
+    return CONTINUATION_PAGE_START_ROW + (
+        (row_number - CONTINUATION_PAGE_START_ROW) // CONTINUATION_PAGE_HEIGHT
+    ) * CONTINUATION_PAGE_HEIGHT
+
+
+def manual_page_end_for_row(row_number: int) -> int:
+    page_start = continuation_page_start_for_row(row_number)
+    if page_start is None:
+        return FIRST_PRINT_PAGE_END_ROW
+    return page_start + CONTINUATION_PAGE_HEIGHT - 1
+
+
+def next_continuation_page_start(row_number: int) -> int:
+    page_start = continuation_page_start_for_row(row_number)
+    if page_start is None:
+        return CONTINUATION_PAGE_START_ROW
+    return page_start + CONTINUATION_PAGE_HEIGHT
+
+
+def write_continuation_quote_header(
+    root: ET.Element,
+    page_start: int,
+    project_title: str,
+    currency: str,
+    styles: dict[str, str],
+    written_pages: set[int] | None = None,
+) -> int:
+    if written_pages is not None:
+        if page_start in written_pages:
+            return page_start + CONTINUATION_BODY_OFFSET
+        written_pages.add(page_start)
+    set_ooxml_cell(root, page_start + CONTINUATION_TITLE_OFFSET, 1, f"RE: {project_title}", "26")
+    write_table_header(root, page_start + CONTINUATION_TABLE_HEADER_OFFSET, page_start + CONTINUATION_CURRENCY_OFFSET, styles)
+    set_ooxml_cell(root, page_start + CONTINUATION_CURRENCY_OFFSET, 5, currency, styles.get("header_currency", "95"))
+    return page_start + CONTINUATION_BODY_OFFSET
+
+
+def quote_entry_height(entry: dict[str, Any]) -> int:
+    if entry["kind"] == "section":
+        return 2
+    return max(2, len(entry["description_lines"]) + 1)
+
+
+def ensure_quote_entry_page(
+    root: ET.Element,
+    row_number: int,
+    entry_height: int,
+    project_title: str,
+    currency: str,
+    styles: dict[str, str],
+    continuation_pages: set[int],
+) -> int:
+    page_start = continuation_page_start_for_row(row_number)
+    if page_start is not None and row_number < page_start + CONTINUATION_BODY_OFFSET:
+        row_number = write_continuation_quote_header(
+            root,
+            page_start,
+            project_title,
+            currency,
+            styles,
+            continuation_pages,
+        )
+    if row_number + entry_height - 1 <= manual_page_end_for_row(row_number):
+        return row_number
+    return write_continuation_quote_header(
+        root,
+        next_continuation_page_start(row_number),
+        project_title,
+        currency,
+        styles,
+        continuation_pages,
+    )
+
+
+def summary_block_start_row(row_number: int, block_height: int) -> int:
+    if row_number + block_height - 1 <= manual_page_end_for_row(row_number):
+        return row_number
+    page_start = next_continuation_page_start(row_number)
+    return page_start + CONTINUATION_BODY_OFFSET
+
+
+def manual_page_break_ids(last_row: int) -> list[int]:
+    if last_row <= FIRST_PRINT_PAGE_END_ROW:
+        return []
+    break_ids = [FIRST_PRINT_PAGE_END_ROW]
+    next_break = CONTINUATION_PAGE_START_ROW + CONTINUATION_PAGE_HEIGHT - 1
+    while next_break < last_row:
+        break_ids.append(next_break)
+        next_break += CONTINUATION_PAGE_HEIGHT
+    return break_ids
+
+
+def set_manual_page_breaks(root: ET.Element, last_row: int, enabled: bool) -> None:
+    row_breaks = root.find(f"{NS_MAIN}rowBreaks")
+    if row_breaks is not None:
+        root.remove(row_breaks)
+    if not enabled:
+        return
+
+    break_ids = manual_page_break_ids(last_row)
+    if not break_ids:
+        return
+    row_breaks = ET.Element(
+        f"{NS_MAIN}rowBreaks",
+        {"count": str(len(break_ids)), "manualBreakCount": str(len(break_ids))},
+    )
+    for break_id in break_ids:
+        ET.SubElement(
+            row_breaks,
+            f"{NS_MAIN}brk",
+            {"id": str(break_id), "max": "16383", "man": "1"},
+        )
+
+    insert_at = len(root)
+    for index, child in enumerate(list(root)):
+        if child.tag in {
+            f"{NS_MAIN}drawing",
+            f"{NS_MAIN}legacyDrawing",
+            f"{NS_MAIN}legacyDrawingHF",
+            f"{NS_MAIN}picture",
+            f"{NS_MAIN}oleObjects",
+            f"{NS_MAIN}controls",
+            f"{NS_MAIN}webPublishItems",
+            f"{NS_MAIN}tableParts",
+            f"{NS_MAIN}extLst",
+        }:
+            insert_at = index
+            break
+    root.insert(insert_at, row_breaks)
+
+
 def next_quote_row(row_number: int) -> int:
-    if row_number == 53:
-        return 55
     return row_number
 
 
@@ -1431,9 +1539,9 @@ def write_table_header(root: ET.Element, row_number: int, currency_row: int | No
     set_ooxml_cell(root, row_number, 1, "Pos.", styles.get("header_pos", "23"))
     set_ooxml_cell(root, row_number, 2, "Quantity", styles.get("header_quantity", "24"))
     set_ooxml_cell(root, row_number, 3, "Service", styles.get("header_service", "21"))
-    set_ooxml_cell(root, row_number, 5, "Estimate", "87")
+    set_ooxml_cell(root, row_number, 5, "Estimate", styles.get("header_estimate", "87"))
     if currency_row is not None:
-        set_ooxml_cell(root, currency_row, 5, "SGD", "95")
+        set_ooxml_cell(root, currency_row, 5, "SGD", styles.get("header_currency", "95"))
 
 
 def ensure_root_namespace_declarations(xml: str, root_name: str, required_declarations: dict[str, str]) -> str:
@@ -1475,6 +1583,38 @@ def serialize_excel_worksheet(root: ET.Element) -> bytes:
     return ensure_root_namespace_declarations(xml, "worksheet", required_declarations).encode("utf-8")
 
 
+def trim_layout_worksheet(root: ET.Element, last_row: int, last_col: int = 9) -> None:
+    dimension = root.find(f"{NS_MAIN}dimension")
+    if dimension is not None:
+        dimension.attrib["ref"] = f"A1:{excel_col(last_col - 1)}{last_row}"
+
+    row_breaks = root.find(f"{NS_MAIN}rowBreaks")
+    if row_breaks is not None:
+        root.remove(row_breaks)
+
+    sheet_view = root.find(f"{NS_MAIN}sheetViews/{NS_MAIN}sheetView")
+    if sheet_view is not None:
+        sheet_view.attrib.pop("view", None)
+        sheet_view.attrib.pop("topLeftCell", None)
+        selection = sheet_view.find(f"{NS_MAIN}selection")
+        if selection is not None:
+            selection.attrib["activeCell"] = "A1"
+            selection.attrib["sqref"] = "A1"
+
+    sheet_data = root.find(f"{NS_MAIN}sheetData")
+    if sheet_data is None:
+        return
+    for row in list(sheet_data.findall(f"{NS_MAIN}row")):
+        row_number = int(row.attrib.get("r", "0"))
+        if row_number > last_row:
+            sheet_data.remove(row)
+            continue
+        for cell in list(row.findall(f"{NS_MAIN}c")):
+            _, col_number = parse_cell_ref(cell.attrib.get("r", "A1"))
+            if col_number > last_col:
+                row.remove(cell)
+
+
 def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, Any], lines: list[QuoteLine]) -> None:
     if not layout_template.exists():
         raise FileNotFoundError(f"Quotation layout template not found: {layout_template}")
@@ -1484,45 +1624,56 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
 
     layout_styles = add_quote_layout_styles(parts)
     root = ET.fromstring(parts["xl/worksheets/sheet1.xml"])
-    clear_ooxml_range(root, 1, 300, 1, 100)
+    clear_ooxml_range(root, 1, 1000, 1, 100)
     set_ooxml_column_width(root, 2, 14.25)
     set_ooxml_column_width(root, 3, 45.5)
+    set_ooxml_column_width(root, 4, 22.0)
     price_style = layout_styles["price_amount"]
 
     client = brief["client"]
     project = brief["project"]
     currency = brief.get("currency", "SGD")
+    company = brief.get("company") if isinstance(brief.get("company"), dict) else {}
+    company_name = clean_text(company.get("name")) or f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd"
 
     set_ooxml_cell(root, 6, 1, client.get("name", ""), "12")
     for offset, line in enumerate((client.get("address") or [])[:4], start=7):
-        set_ooxml_cell(root, offset, 1, line, "93")
+        set_ooxml_cell(root, offset, 1, line, layout_styles["client_address"])
     set_ooxml_cell(root, 12, 1, f"Attention: {client.get('attention', '')}".strip(), "26")
     set_ooxml_cell(root, 13, 2, client.get("title", ""), "24")
     set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), "101")
     set_ooxml_cell(root, 18, 1, f"RE: {project.get('title', '')}", "26")
 
     write_table_header(root, 20, 21, layout_styles)
-    set_ooxml_cell(root, 21, 5, currency, "95")
+    set_ooxml_cell(root, 21, 5, currency, layout_styles["header_currency"])
 
     entries = render_quote_entries(lines, brief)
+    continuation_pages: set[int] = set()
     row_number = 22
     for entry in entries:
-        row_number = next_quote_row(row_number)
-        if row_number >= 53 and row_number < 55:
-            row_number = 55
-        if row_number > 91:
-            raise ValueError("Quote has too many rows for the preserved layout. Split or shorten line item descriptions.")
+        row_number = ensure_quote_entry_page(
+            root,
+            next_quote_row(row_number),
+            quote_entry_height(entry),
+            clean_text(project.get("title")),
+            currency,
+            layout_styles,
+            continuation_pages,
+        )
 
         if entry["kind"] == "section":
             set_ooxml_cell(root, row_number, 1, entry["number"], "28")
             set_ooxml_cell(root, row_number, 3, entry["section"], "18")
+            next_row_number = row_number + 2
             if entry.get("amount") is not None:
                 set_ooxml_cell(root, row_number, 5, entry["amount"], price_style)
             if entry.get("coverage"):
-                set_ooxml_cell(root, row_number + 1, 5, entry["coverage"], "5")
+                coverage_row = next_quote_row(row_number + 1)
+                set_ooxml_cell(root, coverage_row, 5, entry["coverage"], "5")
+                next_row_number = max(next_row_number, coverage_row + 1)
             if entry.get("remark"):
                 set_ooxml_cell(root, row_number, 6, entry["remark"], "94")
-            row_number += 2
+            row_number = next_row_number
             continue
 
         description_lines = entry["description_lines"]
@@ -1532,83 +1683,103 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         set_ooxml_cell(root, row_number, 5, entry["amount"], price_style)
         for extra in description_lines[1:]:
             row_number += 1
-            if row_number == 53:
-                row_number = 55
-            if row_number > 91:
-                raise ValueError("Quote has too many rows for the preserved layout. Split or shorten line item descriptions.")
             set_ooxml_cell(root, row_number, 3, extra, "5")
         row_number += 2
 
-    write_table_header(root, 53, styles=layout_styles)
+    total_candidate_row = row_number + 1
+    total_row = summary_block_start_row(total_candidate_row, TOTAL_BLOCK_HEIGHT)
+    manual_pagination_enabled = bool(continuation_pages) or total_row != total_candidate_row
+    gst_row = total_row + 1
+    grand_row = total_row + 2
     gst_rate = quote_gst_rate(lines)
-    set_ooxml_cell(root, 92, 4, "Total", layout_styles["total_label"])
-    set_ooxml_formula(root, 92, 5, "SUM(E22:E91)", layout_styles["total_amount"])
-    set_ooxml_cell(root, 92, 6, currency, layout_styles["total_currency"])
+    cached_total = sum(formula_cache_amount(entry.get("amount")) for entry in entries)
+    cached_gst = round(cached_total * gst_rate, 0) if gst_rate else 0.0
+    cached_grand = cached_total + cached_gst
+    set_ooxml_cell(root, total_row, 4, "Total", layout_styles["total_label"])
+    set_ooxml_formula(
+        root,
+        total_row,
+        5,
+        f"SUM(E22:E{max(22, total_row - 1)})",
+        layout_styles["total_amount"],
+        cached_total,
+    )
+    set_ooxml_cell(root, total_row, 6, currency, layout_styles["total_currency"])
     if gst_rate:
-        set_ooxml_cell(root, 93, 4, gst_label(lines), layout_styles["gst_label"])
-        set_ooxml_formula(root, 93, 5, f"ROUND(E92*{gst_rate:.6f},0)", layout_styles["gst_amount"])
-        set_ooxml_cell(root, 93, 6, currency, layout_styles["gst_currency"])
-    set_ooxml_cell(root, 94, 4, "Total including GST", layout_styles["grand_label"])
-    set_ooxml_formula(root, 94, 5, "SUM(E92:E93)", layout_styles["grand_amount"])
-    set_ooxml_cell(root, 94, 6, currency, layout_styles["grand_currency"])
+        set_ooxml_cell(root, gst_row, 4, gst_label(lines), layout_styles["gst_label"])
+        set_ooxml_formula(
+            root,
+            gst_row,
+            5,
+            f"ROUND(E{total_row}*{gst_rate:.6f},0)",
+            layout_styles["gst_amount"],
+            cached_gst,
+        )
+        set_ooxml_cell(root, gst_row, 6, currency, layout_styles["gst_currency"])
+    set_ooxml_cell(root, grand_row, 4, "Total including GST", layout_styles["grand_label"])
+    set_ooxml_formula(
+        root,
+        grand_row,
+        5,
+        f"SUM(E{total_row}:E{gst_row})",
+        layout_styles["grand_amount"],
+        cached_grand,
+    )
+    set_ooxml_cell(root, grand_row, 6, currency, layout_styles["grand_currency"])
 
-    payment_terms = brief.get("payment_terms") or [
-        "70% payment upon confirmation and signing of contract.",
-        "30% balance upon handover before show starts",
-    ]
-    set_ooxml_cell(root, 99, 1, "Terms & Conditions :", "37")
-    for index, term in enumerate(payment_terms[:2], start=1):
-        set_ooxml_cell(root, 99 + index, 1, f"{index:.2f}", "40")
-        set_ooxml_rich_text_cell(root, 99 + index, 2, [(term, True)], "41")
+    payment_terms = brief.get("payment_terms") or DEFAULT_PAYMENT_TERMS
+    terms_row = grand_row + 3
+    set_ooxml_cell(root, terms_row, 1, clean_text(brief.get("terms_heading")) or "Terms & Conditions :", "37")
+    for index, term in enumerate(payment_terms, start=1):
+        set_ooxml_cell(root, terms_row + index, 1, f"{index:.2f}", "40")
+        set_ooxml_rich_text_cell(root, terms_row + index, 2, [(term, True)], "41")
+    cheque_row = terms_row + len(payment_terms) + 1
     set_ooxml_rich_text_cell(
         root,
-        102,
+        cheque_row,
         2,
         [
             ("All cheques should be crossed and made payable to ", False),
-            ("Koncept Image Pte Ltd", True),
+            (clean_text(brief.get("cheque_payee")) or company_name, True),
         ],
         "41",
     )
 
-    standard_notes = [
-        "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
-        "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
-        "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
-        "All designs and dimensions are subject to final site verification.",
-        "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
-        "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
-        "Design and Artwork of the graphics are not included in this contract.",
-        "Cancellation of agreement is subject to 75% of the agreement amount.",
-        "All deposit are non-refundable upon of cancellation of agreement.",
-        "The client is obliged to adhere to the above payment terms & conditions of  works.",
-        "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
-        "Late payment charge of 1.5% per month will be charge after the due date.",
-    ]
-    set_ooxml_cell(root, 103, 1, "Note : ", "37")
+    standard_notes = brief.get("standard_notes") or DEFAULT_STANDARD_NOTES
+    notes_row = cheque_row + 2
+    set_ooxml_cell(root, notes_row, 1, clean_text(brief.get("notes_heading")) or "Note : ", "37")
     for index, note in enumerate(standard_notes, start=1):
-        target_row = 103 + index
+        target_row = notes_row + index
         set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
         set_ooxml_cell(root, target_row, 2, note, "41")
 
-    company_name = f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd"
-    set_ooxml_cell(root, 117, 2, company_name, "2")
-    set_ooxml_cell(root, 117, 5, "We accept the quotation amount and the terms", "2")
-    set_ooxml_cell(root, 121, 2, "_____________________________", "33")
-    set_ooxml_cell(root, 121, 5, "_____________________________________", "33")
-    set_ooxml_cell(root, 122, 2, brief.get("signature", {}).get("koncept_signatory", "Francies Cheng"), "33")
-    set_ooxml_cell(root, 122, 5, "Person in charge", "33")
-    set_ooxml_cell(root, 123, 2, brief.get("signature", {}).get("koncept_title", ""), "33")
-    set_ooxml_cell(root, 123, 5, "Company name & stamp", "33")
-    set_ooxml_cell(root, 124, 5, "Date:", "33")
+    acceptance = brief.get("acceptance") if isinstance(brief.get("acceptance"), dict) else {}
+    signature = brief.get("signature") if isinstance(brief.get("signature"), dict) else {}
+    acceptance_row = notes_row + len(standard_notes) + 3
+    set_ooxml_cell(root, acceptance_row, 2, clean_text(acceptance.get("company_name")) or company_name, "2")
+    set_ooxml_cell(root, acceptance_row, 5, clean_text(acceptance.get("text")) or "We accept the quotation amount and the terms", "2")
+    set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", "33")
+    set_ooxml_cell(root, acceptance_row + 4, 5, "_____________________________________", "33")
+    set_ooxml_cell(root, acceptance_row + 5, 2, signature.get("koncept_signatory", "Francies Cheng"), "33")
+    set_ooxml_cell(root, acceptance_row + 5, 5, clean_text(acceptance.get("person_label")) or "Person in charge", "33")
+    set_ooxml_cell(root, acceptance_row + 6, 2, signature.get("koncept_title", ""), "33")
+    set_ooxml_cell(root, acceptance_row + 6, 5, clean_text(acceptance.get("stamp_label")) or "Company name & stamp", "33")
+    set_ooxml_cell(root, acceptance_row + 7, 5, clean_text(acceptance.get("date_label")) or "Date:", "33")
 
+    last_print_row = acceptance_row + 8
+    trim_layout_worksheet(root, last_print_row)
+    set_manual_page_breaks(root, last_print_row, manual_pagination_enabled)
     parts["xl/worksheets/sheet1.xml"] = serialize_excel_worksheet(root)
     if "xl/drawings/drawing1.xml" in parts:
         project_number = clean_text(brief.get("project_number") or project.get("number") or "")
         drawing_xml = update_drawing_project_number(parts["xl/drawings/drawing1.xml"], project_number)
-        parts["xl/drawings/drawing1.xml"] = update_repeating_header_drawing(drawing_xml, project_number)
+        header_lines = company.get("header_lines") if isinstance(company.get("header_lines"), list) else None
+        parts["xl/drawings/drawing1.xml"] = update_repeating_header_drawing(drawing_xml, project_number, header_lines)
+    replace_header_logo(parts, clean_text(company.get("logo_data_url")))
     if "xl/workbook.xml" in parts:
-        parts["xl/workbook.xml"] = update_print_titles(parts["xl/workbook.xml"])
+        workbook_xml = update_print_titles(parts["xl/workbook.xml"])
+        workbook_xml = update_print_area(workbook_xml, last_print_row)
+        parts["xl/workbook.xml"] = enable_workbook_recalculation(workbook_xml)
     strip_stale_workbook_parts(parts)
 
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -1952,7 +2123,7 @@ def write_styled_pdf_fallback(path: Path, brief: dict[str, Any], lines: list[Quo
 def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["status", "section", "description", "keyword", "template_row", "template_description", "unit_price", "amount"])
+        writer.writerow(["status", "section", "description", "keyword", "pricing_id", "catalog_description", "quantity", "unit_price", "amount"])
         for line in lines:
             match = line.matched_price
             writer.writerow([spreadsheet_safe_text(value) for value in [
@@ -1960,8 +2131,9 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
                 line.section,
                 line.description,
                 line.pricing_keyword,
-                match.row_number if match else "",
+                match.pricing_id if match else "",
                 match.description if match else "",
+                quantity_text(line),
                 f"{match.sale_unit_price:.2f}" if match else "",
                 money(line.amount),
             ]])

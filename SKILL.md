@@ -1,6 +1,6 @@
 ---
 name: koncept-quote-auto-generator
-description: Generate company quotation documents for Koncept Image or Koncept World using the bundled `references/quotation-cost-template.md` as the authoritative pricing source. Use when an AI agent or local automation needs to create, revise, price-check, or export a Koncept-style booth quotation from uploaded booth render images plus a plain-English user request. Image attachments are mandatory; if no booth images are shared, ask the user to upload them before preparing the quote.
+description: Generate company quotation documents for Koncept Image or Koncept World using the bundled `profiles/koncept/pricing-catalog.json` as the authoritative pricing source. Use when an AI agent or local automation needs to create, revise, price-check, or export a Koncept-style booth quotation from uploaded booth render images plus a plain-English user request. Image attachments are mandatory; if no booth images are shared, ask the user to upload them before preparing the quote.
 ---
 
 # Koncept Quote Auto-Generator
@@ -16,10 +16,12 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Do not silently assume materials, finishes, dimensions, or inclusions. Suggest a quote basis from images and user notes, then ask the user to confirm it before generating.
 - Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
 - Use sample-style section totals for structure sections such as booth structure, wall structure, or stand structure: put the subtotal on the section row and leave child-row estimates blank.
-- Use `references/quotation-cost-template.md` as the only authoritative pricing source.
-- Keep `references/quotation-cost-template.md` as a clean sectioned RAG pricing source that preserves all pricing items, notes, default quantities/amounts, extra values, and search terms.
-- Use `references/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the customer-facing XLSX layout rules in `references/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, the bottom totals block must show `Total`, `GST 9%` when GST applies, and `Total including GST` with the same border treatment as the sample layout, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
+- Use `profiles/koncept/pricing-catalog.json` as the only authoritative pricing source for quote generation.
+- To update pricing from a future cost workbook, run `python scripts/build_pricing_catalog.py --source path/to/source.xlsx --out profiles/koncept/pricing-catalog.json --rag-md-out profiles/koncept/pricing-catalog.rag.md`.
+- Keep `profiles/koncept/pricing-catalog.json` as a structured pricing catalog that preserves stable catalog IDs, joined continuation descriptions, multiple remarks, default quantities/amounts, extra values, aliases, and search terms.
+- Use `profiles/koncept/pricing-catalog.rag.md` only as the generated AI/RAG reading view. Do not use Markdown as the source for pricing calculations.
+- Use `profiles/koncept/quotation-layout.xlsx` as the customer-facing quote layout source.
+- Preserve the customer-facing XLSX layout rules in `profiles/koncept/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, the bottom totals block must show `Total`, `GST 9%` when GST applies, and `Total including GST` with the same border treatment as the sample layout, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, bold the default payment-term text and the payee name in the cheque line, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
 - Do not hardcode absolute user machine paths.
 - Do not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other installed dependencies for XLSX generation.
@@ -31,7 +33,7 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 ## Image-Drop Quote Workflow
 
 1. Check for attached booth/render images. Stop and ask for images if none are available.
-2. Read `references/quotation-format.md`.
+2. Read `profiles/koncept/quotation-format.md`.
 3. Inspect all images and create an internal visual takeoff from visible booth components:
    - raised platform and floor finish;
    - painted walls, arches, fascia, beams, columns, and other surfaces;
