@@ -86,13 +86,12 @@ DEFAULT_STANDARD_NOTES = [
     "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
     "Late payment charge of 1.5% per month will be charge after the due date.",
 ]
-FIRST_PRINT_PAGE_END_ROW = 52
-CONTINUATION_PAGE_START_ROW = 53
-CONTINUATION_PAGE_HEIGHT = 43
-CONTINUATION_TITLE_OFFSET = 0
+FIRST_PRINT_PAGE_END_ROW = 61
+CONTINUATION_PAGE_START_ROW = 62
+CONTINUATION_PAGE_HEIGHT = 61
 CONTINUATION_TABLE_HEADER_OFFSET = 2
 CONTINUATION_CURRENCY_OFFSET = 3
-CONTINUATION_BODY_OFFSET = 4
+CONTINUATION_BODY_OFFSET = 5
 TOTAL_BLOCK_HEIGHT = 3
 ET.register_namespace("cp", XMLNS_CP)
 ET.register_namespace("dc", XMLNS_DC)
@@ -1067,8 +1066,8 @@ def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
         "header_pos": clone_cell_style(styles_root, "23", font_id=ensure_bold_font_for_style(styles_root, "23")),
         "header_quantity": clone_cell_style(styles_root, "24", font_id=ensure_bold_font_for_style(styles_root, "24"), horizontal="center", vertical="center"),
         "header_service": clone_cell_style(styles_root, "21", font_id=ensure_bold_font_for_style(styles_root, "21"), horizontal="left", vertical="center"),
-        "header_estimate": clone_cell_style(styles_root, "87", font_id=ensure_bold_font_for_style(styles_root, "87"), horizontal="center", vertical="center"),
-        "header_currency": clone_cell_style(styles_root, "95", font_id=ensure_bold_font_for_style(styles_root, "95"), horizontal="center", vertical="center"),
+        "header_estimate": clone_cell_style(styles_root, "87", font_id=ensure_bold_font_for_style(styles_root, "87"), horizontal="right", vertical="center"),
+        "header_currency": clone_cell_style(styles_root, "95", font_id=ensure_bold_font_for_style(styles_root, "95"), horizontal="right", vertical="center"),
         "client_address": clone_cell_style(styles_root, "93", horizontal="left", vertical="center"),
         "price_amount": clone_cell_style(styles_root, "5", font_id=regular_amount_font, num_fmt_id="4", horizontal="right", vertical="center"),
         "total_label": clone_cell_style(styles_root, "34", border_id=total_border, horizontal="right", vertical="center"),
@@ -1360,7 +1359,6 @@ def write_continuation_quote_header(
         if page_start in written_pages:
             return page_start + CONTINUATION_BODY_OFFSET
         written_pages.add(page_start)
-    set_ooxml_cell(root, page_start + CONTINUATION_TITLE_OFFSET, 1, f"RE: {project_title}", "26")
     write_table_header(root, page_start + CONTINUATION_TABLE_HEADER_OFFSET, page_start + CONTINUATION_CURRENCY_OFFSET, styles)
     set_ooxml_cell(root, page_start + CONTINUATION_CURRENCY_OFFSET, 5, currency, styles.get("header_currency", "95"))
     return page_start + CONTINUATION_BODY_OFFSET
@@ -1466,24 +1464,11 @@ def next_quote_row(row_number: int) -> int:
 
 def grouped_section_names(brief: dict[str, Any], lines: list[QuoteLine]) -> set[str]:
     configured = brief.get("section_pricing") or {}
-    grouped = {
+    return {
         clean_text(section)
         for section, mode in configured.items()
         if clean_text(mode).lower() in {"section_total", "section-total", "lump_sum", "lump-sum"}
     }
-    itemized = {
-        clean_text(section)
-        for section, mode in configured.items()
-        if clean_text(mode).lower() in {"itemized", "line_items", "line-items"}
-    }
-    for line in lines:
-        section = clean_text(line.section)
-        section_lower = section.lower()
-        if section in itemized:
-            continue
-        if any(keyword in section_lower for keyword in ("booth structure", "wall structure", "stand structure")):
-            grouped.add(section)
-    return grouped
 
 
 def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = None) -> list[dict[str, Any]]:

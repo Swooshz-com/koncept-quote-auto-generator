@@ -131,9 +131,9 @@ def row_break_ids(sheet):
 
 
 def manual_print_page_for_row(row_number):
-    if row_number <= 52:
+    if row_number <= quote.FIRST_PRINT_PAGE_END_ROW:
         return 1
-    return 2 + ((row_number - 53) // 43)
+    return 2 + ((row_number - quote.CONTINUATION_PAGE_START_ROW) // quote.CONTINUATION_PAGE_HEIGHT)
 
 
 def declared_xml_prefixes(xml_text, root_name):
@@ -375,6 +375,77 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertTrue(any(row and row[-1] == "Included" for row in rows))
 
+    def test_structure_sections_are_itemized_by_default(self):
+        lines = [
+            quote.QuoteLine(
+                section="Booth Structure",
+                quantity=2,
+                unit="m length",
+                description="Painted partition wall",
+                pricing_keyword="booth-structure.partition-wall",
+                display_price="",
+                matched_price=None,
+                amount=300,
+                match_status="matched",
+                match_candidates=[],
+            ),
+            quote.QuoteLine(
+                section="Booth Structure",
+                quantity=1,
+                unit="each",
+                description="Painted support column",
+                pricing_keyword="booth-structure.support-column",
+                display_price="",
+                matched_price=None,
+                amount=120,
+                match_status="matched",
+                match_candidates=[],
+            ),
+        ]
+
+        entries = quote.render_quote_entries(lines, {})
+
+        self.assertEqual(entries[0]["kind"], "section")
+        self.assertIsNone(entries[0].get("amount"))
+        self.assertNotIn("coverage", entries[0])
+        self.assertEqual(entries[1]["amount"], 300)
+        self.assertEqual(entries[2]["amount"], 120)
+
+    def test_explicit_section_total_mode_still_groups_when_requested(self):
+        lines = [
+            quote.QuoteLine(
+                section="Booth Structure",
+                quantity=2,
+                unit="m length",
+                description="Painted partition wall",
+                pricing_keyword="booth-structure.partition-wall",
+                display_price="",
+                matched_price=None,
+                amount=300,
+                match_status="matched",
+                match_candidates=[],
+            ),
+            quote.QuoteLine(
+                section="Booth Structure",
+                quantity=1,
+                unit="each",
+                description="Painted support column",
+                pricing_keyword="booth-structure.support-column",
+                display_price="",
+                matched_price=None,
+                amount=120,
+                match_status="matched",
+                match_candidates=[],
+            ),
+        ]
+
+        entries = quote.render_quote_entries(lines, {"section_pricing": {"Booth Structure": "section_total"}})
+
+        self.assertEqual(entries[0]["amount"], 420)
+        self.assertEqual(entries[1]["amount"], None)
+        self.assertEqual(entries[2]["amount"], None)
+        self.assertEqual(entries[0]["coverage"], "Covers line items 1.1 to 1.2")
+
     def test_layout_keeps_quantity_column_readable_and_signatory_title_visible(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
@@ -511,9 +582,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreater(total_row, last_item_row)
         self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
         self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 33}")
-        self.assertEqual(row_break_ids(sheet)[:3], [52, 95, 138])
+        self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
 
-    def test_layout_uses_manual_continuation_pages_with_title_and_table_headers(self):
+    def test_layout_uses_manual_continuation_pages_with_table_headers_only(self):
         brief = {
             "company_identity": "Koncept Image",
             "quote_date": "2026-06-04",
@@ -553,15 +624,16 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                styles = ET.fromstring(zf.read("xl/styles.xml"))
 
         header_refs = find_cell_refs(sheet, "Pos.")
         title_refs = find_cell_refs(sheet, "RE: Large Generated Booth")
 
-        self.assertEqual(header_refs[:3], ["A20", "A55", "A98"])
-        self.assertNotIn("A53", header_refs)
-        self.assertNotIn("A96", header_refs)
-        self.assertEqual(title_refs[:3], ["A18", "A53", "A96"])
-        self.assertEqual(row_break_ids(sheet)[:3], [52, 95, 138])
+        self.assertEqual(header_refs[:3], ["A20", "A64", "A125"])
+        self.assertEqual(title_refs, ["A18"])
+        self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        for ref in ("E20", "E21", "E64", "E65"):
+            self.assertEqual(alignment_for_style(styles, cell_style(sheet, ref)).attrib.get("horizontal"), "right")
 
     def test_layout_keeps_totals_together_on_one_manual_page(self):
         brief = {
@@ -768,7 +840,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         for ref in ("A20", "B20", "C20", "E20"):
             self.assertIsNotNone(font_for_style(styles, cell_style(sheet, ref)).find(f"{NS_MAIN}b"))
         self.assertEqual(alignment_for_style(styles, cell_style(sheet, "B20")).attrib.get("horizontal"), "center")
-        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "E20")).attrib.get("horizontal"), "center")
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "E20")).attrib.get("horizontal"), "right")
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "E21")).attrib.get("horizontal"), "right")
         self.assertEqual(alignment_for_style(styles, cell_style(sheet, "B24")).attrib.get("horizontal"), "center")
 
     def test_client_address_rows_are_left_aligned(self):
