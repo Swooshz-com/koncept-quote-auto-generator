@@ -1,0 +1,45 @@
+{
+  "id": "koncept",
+  "label": "Koncept Exhibition Quotations",
+  "description": "Koncept pricing catalog, RAG view, and customer quotation layout.",
+  "pricing_catalog": "pricing-catalog.json",
+  "pricing_rag": "pricing-catalog.rag.md",
+  "quotation_layout": "quotation-layout.xlsx",
+  "quotation_format": "quotation-format.md",
+  "default_generator_type": "booth",
+  "default_signature": {
+    "koncept_signatory": "Francies Cheng",
+    "koncept_title": "Director"
+  },
+  "default_quote_basis": {
+    "surfaces": "Confirm: Please confirm visible walls, fascia, arches, beams, columns, and painted finishes.",
+    "counters": "Confirm: Please confirm counter, cabinet, and countertop material/finish.",
+    "platform": "Confirm: Please confirm platform height, platform coverage, and flooring finish.",
+    "graphics": "Confirm: Please confirm graphic panels, logo signage, lightboxes, and printed features.",
+    "furniture": "Confirm: Please confirm furniture, plants, green walls, AV, and rental items.",
+    "electrical": "Confirm: Please confirm lights, 13A sockets, special power, and organiser connection fees."
+  },
+  "fallback_line_items": [
+    {
+      "section": "Floor Design",
+      "quantity_formula": "area",
+      "unit": "sqm",
+      "description": "Needle punch carpet in colour",
+      "pricing_keyword": "floor-design.needle-punch-carpet-in-colour"
+    },
+    {
+      "section": "Floor Design",
+      "quantity_formula": "area",
+      "unit": "sqm",
+      "description": "100mm raised platform with aluminium edging",
+      "pricing_keyword": "floor-design.100mm-raised-platfrom-with-aluminum-edging"
+    },
+    {
+      "section": "Graphics",
+      "quantity_formula": "half_area_min_1",
+      "unit": "sqm",
+      "description": "Vinyl graphics for fascia, panels and backdrops",
+      "pricing_keyword": "graphics.vinyl-printed-graphics"
+    }
+  ]
+}

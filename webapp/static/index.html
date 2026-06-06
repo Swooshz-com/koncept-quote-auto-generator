@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Swooshz Quote Generator</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Swooshz Quote Generator</h1>
+        </div>
+        <div class="topbar-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="healthText">Checking local server</span>
+        </div>
+      </header>
+
+      <div class="workspace single-workspace">
+        <main class="panels">
+          <section class="panel is-active" id="panel-analysis" data-panel-id="analysis">
+            <div class="panel-heading assistant-heading">
+              <div>
+                <h2>Quote assistant</h2>
+                <p id="assistantSubtitle">Drop reference images, confirm the AI takeoff, then generate Excel.</p>
+              </div>
+              <div class="button-row">
+                <label class="generator-select">
+                  Generator type
+                  <select id="generatorType">
+                    <option value="booth">Exhibition Booth</option>
+                    <option value="event_setup">Event Setup</option>
+                    <option value="renovation">Renovation</option>
+                    <option value="custom">Custom Quote</option>
+                  </select>
+                </label>
+                <button class="secondary-button" type="button" id="quoteDetailsButton">Quote Details</button>
+              </div>
+            </div>
+
+            <section class="image-intake" id="imageIntake" aria-label="Reference images">
+              <div class="image-intake-heading">
+                <div>
+                  <h3 id="intakeTitle">Reference images</h3>
+                  <p id="intakeSubtitle">Images are the starting point for this quote workflow.</p>
+                </div>
+                <span class="image-count" id="imageCount">0 loaded</span>
+              </div>
+
+              <label class="dropzone" for="imageInput">
+                <input id="imageInput" type="file" accept="image/*" multiple>
+                <span class="drop-title" id="dropTitle">Drop reference images to start</span>
+                <span class="drop-meta" id="dropMeta">JPG, PNG, or WebP. Add more images anytime; files stay local to this runner.</span>
+              </label>
+              <div class="file-list" id="fileList" aria-live="polite"></div>
+            </section>
+
+            <div class="workflow-bar">
+              <div class="assistant-status-row">
+                <span class="workflow-stage" id="workflowStage">Needs images</span>
+                <span id="busyText" class="busy-text" aria-live="polite"></span>
+              </div>
+              <div class="chat-actions" id="chatActions"></div>
+            </div>
+
+            <div class="chat-transcript" id="chatTranscript" aria-live="polite"></div>
+
+            <form class="chat-form" id="chatForm">
+              <textarea id="chatPrompt" rows="2" placeholder="Reply with confirm, regenerate, sample details, or generate."></textarea>
+              <button class="primary-button" type="submit" id="sendChatButton">Send</button>
+            </form>
+
+            <div class="action-row assistant-generate-row">
+              <button class="primary-button" type="button" id="generateButton">Generate Quotation</button>
+            </div>
+
+            <div class="assistant-output" id="assistantOutput">
+              <div class="panel-heading compact-heading">
+                <div>
+                  <h3>Generated quotation</h3>
+                  <p>Excel download and pricing review appear here after generation.</p>
+                </div>
+                <span class="result-pill" id="resultStatus">No job yet</span>
+              </div>
+              <div class="message-list" id="messageList"></div>
+              <div class="downloads" id="downloads"></div>
+              <div class="excel-preview" id="excelPreview"></div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Section</th>
+                      <th>Description</th>
+                      <th>Catalog ID</th>
+                      <th>Quantity</th>
+                      <th>Unit price</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pricingMatchesBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <div class="details-backdrop" id="detailsBackdrop" hidden></div>
+      <aside class="details-drawer" id="detailsDrawer" aria-hidden="true" aria-labelledby="detailsDrawerTitle">
+        <div class="details-drawer-header">
+          <div>
+            <p class="drawer-eyebrow">Editable quote configuration</p>
+            <h2 id="detailsDrawerTitle">Quote Details</h2>
+          </div>
+          <div class="drawer-header-actions">
+            <button class="secondary-button" type="button" id="sampleDetailsButton">Load Sample</button>
+            <button class="icon-close-button" type="button" id="closeDetailsDrawerButton" aria-label="Close quote details">x</button>
+          </div>
+        </div>
+
+        <div class="drawer-scroll">
+          <div class="section-band first-band">
+            <h3>Customer and Project</h3>
+            <div class="form-grid">
+              <label>
+                Client name
+                <input id="clientName" type="text" autocomplete="organization">
+              </label>
+              <label>
+                Attention person
+                <input id="clientAttention" type="text" autocomplete="name">
+              </label>
+              <label>
+                Attention title
+                <input id="clientTitle" type="text">
+              </label>
+              <label>
+                Project / event
+                <input id="projectTitle" type="text">
+              </label>
+              <label>
+                <span id="widthLabel">Width (m)</span>
+                <input id="boothWidth" type="number" min="0" step="0.1" inputmode="decimal">
+              </label>
+              <label>
+                <span id="depthLabel">Depth (m)</span>
+                <input id="boothDepth" type="number" min="0" step="0.1" inputmode="decimal">
+              </label>
+              <label>
+                Quote date
+                <input id="quoteDate" type="date">
+              </label>
+              <label>
+                Project number
+                <input id="projectNumber" type="text">
+              </label>
+              <label class="wide">
+                Client address
+                <textarea id="clientAddress" rows="3"></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="section-band">
+            <h3>Quote Header</h3>
+            <div class="form-grid">
+              <label>
+                Quotation company name
+                <input id="quoteCompanyName" type="text">
+              </label>
+              <label>
+                Header logo
+                <input id="headerLogoInput" type="file" accept="image/png,image/jpeg">
+              </label>
+              <label class="wide">
+                Header details
+                <textarea id="headerDetails" rows="8"></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="section-band">
+            <h3>Terms and Notes</h3>
+            <div class="form-grid compact">
+              <label>
+                Terms heading
+                <input id="termsHeading" type="text">
+              </label>
+              <label>
+                Cheque payee
+                <input id="chequePayee" type="text">
+              </label>
+              <label class="wide">
+                Payment terms
+                <textarea id="paymentTerms" rows="3"></textarea>
+              </label>
+              <label>
+                Notes heading
+                <input id="notesHeading" type="text">
+              </label>
+              <label>
+                Acceptance text
+                <input id="acceptanceText" type="text">
+              </label>
+              <label class="wide">
+                Standard notes
+                <textarea id="standardNotes" rows="10"></textarea>
+              </label>
+              <label>
+                Company signatory
+                <input id="konceptSignatory" type="text">
+              </label>
+              <label>
+                Signatory title
+                <input id="konceptTitle" type="text">
+              </label>
+              <label>
+                Person label
+                <input id="personLabel" type="text">
+              </label>
+              <label>
+                Stamp label
+                <input id="stampLabel" type="text">
+              </label>
+              <label>
+                Date label
+                <input id="dateLabel" type="text">
+              </label>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
