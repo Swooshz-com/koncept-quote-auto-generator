@@ -1,4 +1,0 @@
-interface:
-  display_name: "Koncept Quote Auto-Generator"
-  short_description: "Generate Koncept quotation XLSX and PDF files"
-  default_prompt: "Use $koncept-quote-auto-generator to create a booth quotation from uploaded render images and a plain-English request. Ask for images if missing, present a point-form Quote Basis To Confirm with bold section labels before generating, ask simple questions for missing details, do not ask the user to edit the generator brief, and treat quotation.xlsx as the formatted master while checking whether Excel/LibreOffice PDF export succeeded."
