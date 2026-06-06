@@ -26,7 +26,7 @@ const STAGE_LABELS = {
   ready_to_analyze: "Ready to analyze",
   analyzing: "Analyzing",
   basis_review: "Confirm basis",
-  details_review: "Confirm details",
+  details_review: "Needs details",
   generating: "Generating",
   pricing_review: "Pricing review",
   completed: "Completed",
@@ -165,7 +165,7 @@ const elements = {
   resultStatus: qs("#resultStatus"),
   messageList: qs("#messageList"),
   downloads: qs("#downloads"),
-  excelPreview: qs("#excelPreview"),
+  matchSummary: qs("#matchSummary"),
   pricingMatchesBody: qs("#pricingMatchesBody"),
 };
 
@@ -236,7 +236,7 @@ async function addImagesFromFiles(files) {
     "assistant",
     `${state.images.length} ${generator.imageNoun}${state.images.length === 1 ? "" : "s"} loaded. Click ${generator.analyzeLabel} when you want me to draft the quote basis.`
   );
-  renderCurrentActions();
+  syncControlStates();
 }
 
 function removeImageAt(index) {
@@ -246,7 +246,7 @@ function removeImageAt(index) {
     setWorkflowStage("needs_images");
     appendChatMessage("assistant", `No ${currentGenerator().imageNoun}s are loaded now. Drop references to start the quote analysis.`);
   }
-  renderCurrentActions();
+  syncControlStates();
 }
 
 function escapeHtml(value) {
@@ -363,13 +363,10 @@ async function setSampleDetails() {
     renderFiles();
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
     appendChatMessage("assistant", `${data.label || "Sample"} loaded with ${state.images.length} reference image${state.images.length === 1 ? "" : "s"}.`);
-    if (state.workflowStage === "details_review") {
-      showDetailReview();
-    } else {
-      renderCurrentActions();
-    }
+    syncControlStates();
   } finally {
     elements.sampleDetailsButton.disabled = false;
+    syncControlStates();
   }
 }
 
@@ -445,43 +442,19 @@ function renderDownloads(files = []) {
     .join("");
 }
 
-function renderExcelPreview(result = {}) {
+function renderMatchSummary(result = {}) {
   const rows = result.pricing_matches || [];
   if (!rows.length) {
-    elements.excelPreview.innerHTML = "";
+    elements.matchSummary.innerHTML = "";
     return;
   }
   const total = rows.reduce((sum, row) => {
     const amount = Number(String(row.amount || "").replaceAll(",", ""));
     return Number.isFinite(amount) ? sum + amount : sum;
   }, 0);
-  elements.excelPreview.innerHTML = `
-    <div class="preview-heading">
-      <strong>Excel preview</strong>
-      <span>${rows.length} priced line${rows.length === 1 ? "" : "s"} - SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-    </div>
-    <div class="table-wrap preview-table-wrap">
-      <table class="preview-table">
-        <thead>
-          <tr>
-            <th>Section</th>
-            <th>Quantity</th>
-            <th>Description</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((row) => `
-            <tr>
-              <td>${escapeHtml(row.section)}</td>
-              <td>${escapeHtml(row.quantity)}</td>
-              <td>${escapeHtml(row.description)}</td>
-              <td>${escapeHtml(row.amount)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
+  elements.matchSummary.innerHTML = `
+    <strong>${rows.length} priced line${rows.length === 1 ? "" : "s"}</strong>
+    <span>SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
   `;
 }
 
@@ -646,36 +619,34 @@ function renderChatActions(actions = []) {
 
 function renderCurrentActions() {
   const busy = state.isAnalysisRunning || state.isGenerating;
+  const readyForAnalysis = canStartAnalysis();
   if (state.workflowStage === "basis_review") {
     renderChatActions([
       { label: "Confirm Basis", action: "confirm_basis", primary: true, disabled: busy },
-      { label: "Regenerate Analysis", action: "regenerate", disabled: busy },
+      { label: "Regenerate Analysis", action: "regenerate", disabled: busy || !readyForAnalysis },
     ]);
     return;
   }
   if (state.workflowStage === "details_review") {
     renderChatActions([
-      { label: "Confirm Details", action: "confirm_details", primary: true, disabled: busy },
-      { label: "Regenerate Analysis", action: "regenerate", disabled: busy },
+      { label: "Regenerate Analysis", action: "regenerate", disabled: busy || !readyForAnalysis },
     ]);
     return;
   }
   if (state.workflowStage === "pricing_review") {
     renderChatActions([
-      { label: "Regenerate Analysis", action: "regenerate", primary: true, disabled: busy },
-      { label: "Generate Again", action: "generate", disabled: busy || !state.lineItems.length },
+      { label: "Regenerate Analysis", action: "regenerate", primary: true, disabled: busy || !readyForAnalysis },
     ]);
     return;
   }
   if (state.workflowStage === "completed") {
     renderChatActions([
-      { label: "Regenerate Analysis", action: "regenerate", disabled: busy },
-      { label: "Generate Again", action: "generate", disabled: busy || !state.lineItems.length },
+      { label: "Regenerate Analysis", action: "regenerate", disabled: busy || !readyForAnalysis },
     ]);
     return;
   }
   renderChatActions([
-    { label: currentGenerator().analyzeLabel, action: "analyze", primary: true, disabled: busy || !state.images.length },
+    { label: currentGenerator().analyzeLabel, action: "analyze", primary: true, disabled: busy || !readyForAnalysis },
   ]);
 }
 
@@ -704,49 +675,44 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           </div>
         `).join("")}
       </div>
+      <div class="assistant-card-actions">
+        <button class="primary-button" type="button" data-chat-action="confirm_basis">Confirm Basis</button>
+        <button class="secondary-button" type="button" data-chat-action="regenerate">Regenerate Analysis</button>
+      </div>
     </div>
   `;
-}
-
-function detailValue(value, fallback = "Not filled") {
-  const clean = String(value || "").trim();
-  return clean || fallback;
-}
-
-function renderDetailSummary() {
-  return `
-    <div class="assistant-card">
-      <h3>Confirm quote details</h3>
-      <p>Edit exact wording in Quote Details, then confirm here and I will generate the Excel quotation.</p>
-      <dl class="detail-summary">
-        <div><dt>Client</dt><dd>${escapeHtml(detailValue(elements.clientName.value))}</dd></div>
-        <div><dt>Attention</dt><dd>${escapeHtml(detailValue(elements.clientAttention.value))}</dd></div>
-        <div><dt>Project</dt><dd>${escapeHtml(detailValue(elements.projectTitle.value))}</dd></div>
-        <div><dt>${escapeHtml(currentGenerator().sizeLabel)}</dt><dd>${escapeHtml(detailValue(elements.boothWidth.value))}m x ${escapeHtml(detailValue(elements.boothDepth.value))}m</dd></div>
-        <div><dt>Quote date</dt><dd>${escapeHtml(detailValue(elements.quoteDate.value))}</dd></div>
-        <div><dt>Company</dt><dd>${escapeHtml(detailValue(elements.quoteCompanyName.value))}</dd></div>
-      </dl>
-    </div>
-  `;
-}
-
-function showDetailReview() {
-  setWorkflowStage("details_review");
-  appendChatMessage("assistant", renderDetailSummary(), { html: true });
-  renderCurrentActions();
-  syncControlStates();
 }
 
 function missingDetailFields() {
   const missing = [];
+  const hasLines = (value) => splitLines(value).length > 0;
   if (!elements.clientName.value.trim()) missing.push("Client name");
   if (!elements.clientAttention.value.trim()) missing.push("Attention person");
+  if (!elements.clientTitle.value.trim()) missing.push("Attention title");
+  if (!hasLines(elements.clientAddress.value)) missing.push("Client address");
   if (!elements.projectTitle.value.trim()) missing.push("Project / event");
   if (!elements.boothWidth.value.trim()) missing.push(currentGenerator().widthLabel);
   if (!elements.boothDepth.value.trim()) missing.push(currentGenerator().depthLabel);
   if (!elements.quoteDate.value.trim()) missing.push("Quote date");
+  if (!elements.projectNumber.value.trim()) missing.push("Project number");
   if (!elements.quoteCompanyName.value.trim()) missing.push("Quotation company name");
+  if (!hasLines(elements.headerDetails.value)) missing.push("Header details");
+  if (!elements.termsHeading.value.trim()) missing.push("Terms heading");
+  if (!hasLines(elements.paymentTerms.value)) missing.push("Payment terms");
+  if (!elements.chequePayee.value.trim()) missing.push("Cheque payee");
+  if (!elements.notesHeading.value.trim()) missing.push("Notes heading");
+  if (!hasLines(elements.standardNotes.value)) missing.push("Standard notes");
+  if (!elements.acceptanceText.value.trim()) missing.push("Acceptance text");
+  if (!elements.konceptSignatory.value.trim()) missing.push("Company signatory");
+  if (!elements.konceptTitle.value.trim()) missing.push("Signatory title");
+  if (!elements.personLabel.value.trim()) missing.push("Person label");
+  if (!elements.stampLabel.value.trim()) missing.push("Stamp label");
+  if (!elements.dateLabel.value.trim()) missing.push("Date label");
   return missing;
+}
+
+function canStartAnalysis() {
+  return Boolean(state.images.length) && missingDetailFields().length === 0;
 }
 
 function applyDraftBasis(basis = {}) {
@@ -857,14 +823,23 @@ function logClientEvent(event, details = {}) {
   }).catch(() => {});
 }
 
-function setAnalysisButtons(disabled) {
-  elements.sendChatButton.disabled = disabled;
+function setAnalysisButtons(disabled = false) {
+  const readyForAnalysis = canStartAnalysis();
+  const busy = state.isAnalysisRunning || state.isGenerating || disabled;
+  const inputDisabled = busy || !readyForAnalysis;
+  elements.chatPrompt.disabled = inputDisabled;
+  elements.sendChatButton.disabled = inputDisabled;
+  elements.chatPrompt.placeholder = readyForAnalysis
+    ? "Reply with confirm, regenerate, sample details, or generate."
+    : state.images.length
+      ? "Fill all Quote Details to enable assistant replies."
+      : "Drop reference images and fill Quote Details to enable assistant replies.";
 }
 
 function syncControlStates() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   setAnalysisButtons(busy);
-  elements.generateButton.disabled = busy || !state.lineItems.length;
+  elements.generateButton.disabled = busy || !canStartAnalysis() || !state.lineItems.length;
   renderCurrentActions();
 }
 
@@ -875,6 +850,14 @@ async function handleDraftBasis() {
     setWorkflowStage("needs_images");
     appendChatMessage("assistant", `Please drop at least one ${currentGenerator().imageNoun} before analysis.`, { tone: "warn" });
     renderCurrentActions();
+    syncControlStates();
+    return;
+  }
+  const missing = missingDetailFields();
+  if (missing.length) {
+    setWorkflowStage("details_review");
+    appendChatMessage("assistant", `Fill Quote Details before AI analysis: ${missing.join(", ")}.`, { tone: "warn" });
+    setDetailsDrawer(true);
     syncControlStates();
     return;
   }
@@ -925,7 +908,7 @@ async function handleDraftBasis() {
   syncControlStates();
 }
 
-function confirmBasis() {
+async function confirmBasis() {
   if (state.isAnalysisRunning || state.isGenerating) return;
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
@@ -933,25 +916,28 @@ function confirmBasis() {
     renderCurrentActions();
     return;
   }
-  appendChatMessage("assistant", "Basis confirmed. Next I need the customer, project, company, and fixed quote text checked.");
-  showDetailReview();
-}
-
-async function confirmDetails() {
-  if (state.isAnalysisRunning || state.isGenerating) return;
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
     appendChatMessage("assistant", `Please fill these details before I generate Excel: ${missing.join(", ")}.`, { tone: "warn" });
-    renderCurrentActions();
+    setDetailsDrawer(true);
+    syncControlStates();
     return;
   }
-  appendChatMessage("assistant", "Details confirmed. Generating the Excel quotation now.");
+  appendChatMessage("assistant", "Basis confirmed. Generating the Excel quotation now.");
   await handleGenerate();
 }
 
 async function handleGenerate() {
   if (state.isGenerating) return;
+  const missing = missingDetailFields();
+  if (missing.length) {
+    setWorkflowStage("details_review");
+    appendChatMessage("assistant", `Please fill these details before I generate Excel: ${missing.join(", ")}.`, { tone: "warn" });
+    setDetailsDrawer(true);
+    syncControlStates();
+    return;
+  }
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
     appendChatMessage("assistant", "There are no generated line items yet. Run analysis first so Excel has quotation rows.", { tone: "warn" });
@@ -963,9 +949,10 @@ async function handleGenerate() {
   setWorkflowStage("generating");
   elements.busyText.textContent = "Generating quotation...";
   setResultStatus("Running", "is-warn");
+  elements.chatPrompt.value = "";
   renderMessages([]);
   renderDownloads([]);
-  renderExcelPreview({});
+  renderMatchSummary({});
   renderPricingMatches([]);
   syncControlStates();
   const started = await startJob("generate", buildPayload());
@@ -992,7 +979,7 @@ async function handleGenerate() {
     setResultStatus(data.status || "Failed", "is-bad");
     renderMessages(data.errors || ["Generation failed."], "error");
     renderPricingMatches(data.pricing_matches || []);
-    renderExcelPreview(data);
+    renderMatchSummary(data);
     appendChatMessage("assistant", (data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
@@ -1011,7 +998,7 @@ async function handleGenerate() {
   }
   renderDownloads(data.files || []);
   renderPricingMatches(data.pricing_matches || []);
-  renderExcelPreview(data);
+  renderMatchSummary(data);
   syncControlStates();
 }
 
@@ -1033,10 +1020,6 @@ function handleChatAction(action) {
   }
   if (action === "confirm_basis") {
     confirmBasis();
-    return;
-  }
-  if (action === "confirm_details") {
-    confirmDetails();
     return;
   }
   if (action === "sample_details") {
@@ -1100,14 +1083,14 @@ function handleChatSubmit(event) {
       return;
     }
     if (state.workflowStage === "details_review") {
-      confirmDetails();
+      handleGenerate();
       return;
     }
   }
 
   appendChatMessage(
     "assistant",
-    `I am keeping this guarded for now: I can ${currentGenerator().fallbackAction}, regenerate the basis, load sample details, confirm basis, confirm details, or generate Excel. Edit exact customer and company text in Quote Details.`
+    `I am keeping this guarded for now: I can ${currentGenerator().fallbackAction}, regenerate the basis, load sample details, confirm basis, or generate Excel. Edit exact customer and company text in Quote Details.`
   );
   renderCurrentActions();
 }
@@ -1169,11 +1152,43 @@ function wireEvents() {
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.generatorType.addEventListener("change", () => {
     updateGeneratorCopy();
-    renderCurrentActions();
+    syncControlStates();
+  });
+  [
+    elements.quoteCompanyName,
+    elements.headerDetails,
+    elements.clientName,
+    elements.clientAttention,
+    elements.clientTitle,
+    elements.clientAddress,
+    elements.projectTitle,
+    elements.boothWidth,
+    elements.boothDepth,
+    elements.quoteDate,
+    elements.projectNumber,
+    elements.termsHeading,
+    elements.paymentTerms,
+    elements.chequePayee,
+    elements.notesHeading,
+    elements.standardNotes,
+    elements.acceptanceText,
+    elements.konceptSignatory,
+    elements.konceptTitle,
+    elements.personLabel,
+    elements.stampLabel,
+    elements.dateLabel,
+  ].forEach((input) => {
+    input.addEventListener("input", syncControlStates);
+    input.addEventListener("change", syncControlStates);
   });
   elements.generateButton.addEventListener("click", handleGenerate);
   elements.chatForm.addEventListener("submit", handleChatSubmit);
   elements.chatActions.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-chat-action]");
+    if (!button || button.disabled) return;
+    handleChatAction(button.dataset.chatAction);
+  });
+  elements.chatTranscript.addEventListener("click", (event) => {
     const button = event.target.closest("[data-chat-action]");
     if (!button || button.disabled) return;
     handleChatAction(button.dataset.chatAction);
@@ -1189,7 +1204,7 @@ function setInitialValues() {
   updateGeneratorCopy();
   renderFiles();
   renderPricingMatches([]);
-  renderExcelPreview({});
+  renderMatchSummary({});
   setWorkflowStage("needs_images");
   appendChatMessage("assistant", "Drop booth render images to start. Use Quote Details for customer, company, header, and terms text, or Load Sample for a quick test.");
   renderCurrentActions();
