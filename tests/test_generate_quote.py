@@ -11,9 +11,13 @@ from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
+KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
+KONCEPT_CATALOG = KONCEPT_PROFILE / "pricing-catalog.json"
+KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import generate_quote as quote
+import build_pricing_catalog as pricing_catalog
 
 
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -34,6 +38,21 @@ def cell_value(root, ref):
         value = cell.find(f"{NS_MAIN}v")
         return value.text if value is not None else ""
     return ""
+
+
+def find_cell_ref(root, expected):
+    for cell in root.iter(f"{NS_MAIN}c"):
+        if cell_value(root, cell.attrib.get("r", "")) == expected:
+            return cell.attrib.get("r", "")
+    return ""
+
+
+def find_cell_refs(root, expected):
+    return [
+        cell.attrib.get("r", "")
+        for cell in root.iter(f"{NS_MAIN}c")
+        if cell_value(root, cell.attrib.get("r", "")) == expected
+    ]
 
 
 def cell(root, ref):
@@ -90,8 +109,31 @@ def num_fmt_for_style(styles_root, style_id):
     return cell_xfs[style_id].attrib.get("numFmtId")
 
 
+def font_color(font):
+    color = font.find(f"{NS_MAIN}color")
+    return color.attrib if color is not None else {}
+
+
 def worksheet_formulas(root):
     return [formula.text or "" for formula in root.iter(f"{NS_MAIN}f")]
+
+
+def defined_name_text(workbook, name):
+    defined_name = workbook.find(f"{NS_MAIN}definedNames/{NS_MAIN}definedName[@name='{name}']")
+    return defined_name.text if defined_name is not None else ""
+
+
+def row_break_ids(sheet):
+    row_breaks = sheet.find(f"{NS_MAIN}rowBreaks")
+    if row_breaks is None:
+        return []
+    return [int(brk.attrib["id"]) for brk in row_breaks.findall(f"{NS_MAIN}brk")]
+
+
+def manual_print_page_for_row(row_number):
+    if row_number <= 52:
+        return 1
+    return 2 + ((row_number - 53) // 43)
 
 
 def declared_xml_prefixes(xml_text, root_name):
@@ -109,6 +151,7 @@ def generate_layout_workbook():
         "client": {
             "name": "Sample Client",
             "attention": "Alex Tan",
+            "address": ["10 Sample Street", "#02-03 Sample Building"],
         },
         "project": {
             "title": "Sample Project",
@@ -144,7 +187,7 @@ def generate_layout_workbook():
     )
     tmp = tempfile.TemporaryDirectory()
     path = Path(tmp.name) / "quotation.xlsx"
-    quote.write_quote_layout_xlsx(ROOT / "references" / "quotation-layout.xlsx", path, brief, [line])
+    quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
     return tmp, path
 
 
@@ -155,60 +198,78 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertEqual(args.pdf_mode, "none")
 
-    def test_markdown_pricing_source_is_default_template(self):
+    def test_json_pricing_catalog_is_default_template(self):
         with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", "brief.json"]):
             args = quote.parse_args()
 
-        self.assertEqual(args.template, ROOT / "references" / "quotation-cost-template.md")
+        self.assertEqual(args.template, KONCEPT_CATALOG)
 
-    def test_extract_price_rows_reads_authoritative_rag_markdown(self):
-        markdown_path = ROOT / "references" / "quotation-cost-template.md"
-        markdown_text = markdown_path.read_text(encoding="utf-8-sig")
-        markdown_rows = quote.extract_price_rows(markdown_path)
+    def test_xlsx_catalog_builder_collapses_continuation_rows(self):
+        rows = [
+            [1, None, "Booth Structure"],
+            [None, None, "m length single side partition wall at height 2.4m", None, None, 0, None, 180, None, 1.5, None, "Backwall or any partition"],
+            [None, None, "wooden construct in painted finished as per design proposal", None, None, None, None, None, None, None, None, "PAINTED"],
+            [None, None, "sets of 3D backlit lettering", None, None, 0, None, 400, 1.09, 1.5, None, "Backlit Lettering"],
+            [None, None, None, None, None, None, None, None, None, None, None, "NOTE: Per set max 2m long"],
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.xlsx"
+            quote.write_minimal_xlsx(source, rows)
 
-        item_lines = [line for line in markdown_text.splitlines() if line.startswith("- **Item:**")]
-        section_lines = [line for line in markdown_text.splitlines() if line.startswith("### ")]
-        self.assertIn("kind: rag_pricing_source", markdown_text)
-        self.assertIn("Clean RAG Pricing Source", markdown_text)
-        self.assertIn("Customer-facing quotation line amount", markdown_text)
-        self.assertIn("GST is shown separately in the quotation totals block", markdown_text)
-        self.assertIn("### Floor Design", markdown_text)
-        self.assertNotIn("### . Unsectioned", markdown_text)
-        self.assertNotIn("source_workbook", markdown_text)
-        self.assertNotIn("_Quotation Cost Template", markdown_text)
-        self.assertNotIn("Anchor:", markdown_text)
-        self.assertNotIn("| Row |", markdown_text)
-        self.assertNotIn("| Aux N |", markdown_text)
-        self.assertNotIn("| Aux O |", markdown_text)
-        self.assertNotIn("| Formulas |", markdown_text)
-        self.assertNotIn("| Section No |", markdown_text)
-        self.assertIn("- **Default quantity:** 1.", markdown_text)
-        self.assertIn("- **Default quote amount:** SGD 817.5.", markdown_text)
-        self.assertEqual(len(section_lines), 11)
-        self.assertEqual(len(item_lines), 103)
-        self.assertEqual(len(markdown_rows), 103)
-        self.assertTrue(all(row.description and row.cost > 0 and row.markup > 0 for row in markdown_rows))
-        self.assertEqual([row.row_number for row in markdown_rows], list(range(1, 104)))
-        self.assertIn('nos. 42" LED TV Monitor (With Speaker \u2013 Full HD).', markdown_text)
-        self.assertEqual(markdown_rows[0].row_number, 1)
-        self.assertEqual(markdown_rows[0].section, "Floor Design")
-        self.assertEqual(markdown_rows[0].description, "m2 needle punch carpet in colour")
-        self.assertEqual(markdown_rows[0].unit_hint, "sqm")
-        self.assertEqual(markdown_rows[0].cost, 7)
-        self.assertEqual(markdown_rows[0].gst_multiplier, 1.09)
-        self.assertEqual(markdown_rows[0].markup, 1.5)
-        self.assertEqual(markdown_rows[0].sale_unit_price, 10.5)
-        wall_row = next(row for row in markdown_rows if row.description.startswith("m length single side partition wall at height 2.4m"))
+            catalog = pricing_catalog.build_catalog(source, source_label="source.xlsx")
+
+        self.assertEqual(catalog["schema_version"], 1)
+        self.assertNotIn("source", catalog)
+        self.assertEqual(len(catalog["items"]), 2)
+
+        wall = catalog["items"][0]
+        self.assertEqual(wall["id"], "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
+        self.assertNotIn("source_row", wall)
+        self.assertEqual(wall["section"], "Booth Structure")
+        self.assertEqual(wall["description"], "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal")
+        self.assertEqual(wall["remarks"], ["Backwall or any partition", "PAINTED"])
+        self.assertEqual(wall["unit_hint"], "m length")
+        self.assertIn("single side partition wall at height 2.4m", wall["aliases"])
+
+        lettering = catalog["items"][1]
+        self.assertEqual(lettering["id"], "booth-structure.3d-backlit-lettering")
+        self.assertEqual(lettering["remarks"], ["Backlit Lettering", "NOTE: Per set max 2m long"])
+
+        rag_markdown = pricing_catalog.catalog_to_rag_markdown(catalog)
+        self.assertNotIn("source row", rag_markdown)
+        self.assertIn("m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal", rag_markdown)
+        self.assertIn("Backwall or any partition; PAINTED", rag_markdown)
+
+    def test_extract_price_rows_reads_json_catalog(self):
+        catalog_path = KONCEPT_CATALOG
+        rows = quote.extract_price_rows(catalog_path)
+
+        self.assertGreaterEqual(len(rows), 100)
+        self.assertEqual(rows[0].pricing_id, "floor-design.needle-punch-carpet-in-colour")
+        self.assertEqual(rows[0].section, "Floor Design")
+        self.assertEqual(rows[0].description, "m2 needle punch carpet in colour")
+        self.assertEqual(rows[0].unit_hint, "sqm")
+        self.assertEqual(rows[0].cost, 7)
+        self.assertEqual(rows[0].gst_multiplier, 1.09)
+        self.assertEqual(rows[0].markup, 1.5)
+        self.assertIn("needle punch", rows[0].aliases)
+
+        wall_row = next(row for row in rows if row.pricing_id == "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
         self.assertEqual(wall_row.description, "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal")
         self.assertEqual(wall_row.remark, "Backwall or any partition; PAINTED")
-        acrylic_row = next(row for row in markdown_rows if "Sytem Profile partition" in row.description)
-        self.assertEqual(acrylic_row.remark, "Acrylic System Partition. Extra calculations: 150+15+20; Octanorm")
-        pe_row = next(row for row in markdown_rows if row.description == "Professional Engineer Endorsement for hanging")
-        self.assertEqual(pe_row.remark, "PE. Extra values: 780; 68. Extra calculations: 90+690; 17*4; Extra values: 1000; 14.705882352941176. Extra calculations: 1000/68")
-        boom_row = next(row for row in markdown_rows if row.description.startswith("Lot. rental of Boom Lift"))
-        self.assertEqual(boom_row.cost, 500)
-        self.assertEqual(boom_row.gst_multiplier, 1.09)
-        self.assertEqual(boom_row.sale_unit_price, 750)
+
+        graphics_row = next(row for row in rows if row.pricing_id == "graphics.vinyl-printed-graphics")
+        self.assertEqual(graphics_row.description, "m2 of vinyl printed graphics")
+        self.assertIn("printed graphics on wall", graphics_row.remark.lower())
+
+    def test_catalog_id_pricing_keyword_matches_exact_catalog_item(self):
+        rows = quote.extract_price_rows(KONCEPT_CATALOG)
+
+        status, match, _ = quote.find_price_match("graphics.vinyl-printed-graphics", rows)
+
+        self.assertEqual(status, "matched")
+        self.assertIsNotNone(match)
+        self.assertEqual(match.pricing_id, "graphics.vinyl-printed-graphics")
 
     def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
         tmp, path = generate_layout_workbook()
@@ -327,7 +388,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             if col.attrib.get("min") == "2" and col.attrib.get("max") == "2"
         )
         self.assertGreaterEqual(float(quantity_col.attrib["width"]), 14.0)
-        self.assertEqual(cell_value(sheet, "B123"), "Director")
+        self.assertTrue(find_cell_ref(sheet, "Director").startswith("B"))
 
     def test_layout_totals_use_bordered_styles(self):
         tmp, path = generate_layout_workbook()
@@ -335,29 +396,222 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         with zipfile.ZipFile(path) as zf:
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            workbook = ET.fromstring(zf.read("xl/workbook.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
-        self.assertEqual(cell_value(sheet, "D92"), "Total")
-        self.assertEqual(cell_value(sheet, "D93"), "GST 9%")
-        self.assertEqual(cell_value(sheet, "D94"), "Total including GST")
-        self.assertEqual(cell_value(sheet, "F92"), "SGD")
-        self.assertEqual(cell_value(sheet, "F93"), "SGD")
-        self.assertEqual(cell_value(sheet, "F94"), "SGD")
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E91)", "ROUND(E92*0.090000,0)", "SUM(E92:E93)"])
+        total_ref = find_cell_ref(sheet, "Total")
+        gst_ref = find_cell_ref(sheet, "GST 9%")
+        grand_ref = find_cell_ref(sheet, "Total including GST")
+        self.assertEqual(total_ref, "D27")
+        self.assertEqual(gst_ref, "D28")
+        self.assertEqual(grand_ref, "D29")
+        self.assertEqual(cell_value(sheet, "F27"), "SGD")
+        self.assertEqual(cell_value(sheet, "F28"), "SGD")
+        self.assertEqual(cell_value(sheet, "F29"), "SGD")
+        self.assertEqual(cell_value(sheet, "D92"), "")
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.090000,0)", "SUM(E27:E28)"])
+        self.assertAlmostEqual(float(cell_value(sheet, "E27")), 2400.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E28")), 216.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E29")), 2616.0)
 
-        for ref in ("D92", "E92", "F92"):
+        for ref in ("D27", "E27", "F27"):
             border = border_for_style(styles, cell_style(sheet, ref))
             self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
 
-        for ref in ("D93", "E93", "F93"):
+        for ref in ("D28", "E28", "F28"):
             border = border_for_style(styles, cell_style(sheet, ref))
             self.assertIsNone(border.find(f"{NS_MAIN}top").attrib.get("style"))
             self.assertIsNone(border.find(f"{NS_MAIN}bottom").attrib.get("style"))
 
-        for ref in ("D94", "E94", "F94"):
+        for ref in ("D29", "E29", "F29"):
             border = border_for_style(styles, cell_style(sheet, ref))
             self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
             self.assertEqual(border.find(f"{NS_MAIN}bottom").attrib.get("style"), "double")
+
+        cols = sheet.find(f"{NS_MAIN}cols")
+        d_col = next(col for col in cols if col.attrib.get("min") == "4" and col.attrib.get("max") == "4")
+        self.assertGreaterEqual(float(d_col.attrib["width"]), 20.0)
+        calc_pr = workbook.find(f"{NS_MAIN}calcPr")
+        self.assertIsNotNone(calc_pr)
+        self.assertEqual(calc_pr.attrib.get("fullCalcOnLoad"), "1")
+        self.assertEqual(calc_pr.attrib.get("forceFullCalc"), "1")
+
+    def test_layout_uses_dynamic_print_area_without_forced_extra_pages(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        dimension = sheet.find(f"{NS_MAIN}dimension")
+        row_breaks = sheet.find(f"{NS_MAIN}rowBreaks")
+        sheet_view = sheet.find(f"{NS_MAIN}sheetViews/{NS_MAIN}sheetView")
+
+        self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), "Quotation!$A$1:$I$60")
+        self.assertEqual(dimension.attrib.get("ref"), "A1:I60")
+        self.assertIsNone(row_breaks)
+        self.assertNotEqual(sheet_view.attrib.get("view"), "pageBreakPreview")
+        self.assertEqual(cell_value(sheet, "B58"), "Director")
+        self.assertEqual(cell_value(sheet, "B60"), "")
+        self.assertFalse([
+            item.attrib.get("r")
+            for item in sheet.iter(f"{NS_MAIN}c")
+            if quote.parse_cell_ref(item.attrib.get("r", "A1"))[0] > 60 and quote.parse_cell_ref(item.attrib.get("r", "A1"))[1] <= 9
+        ])
+
+    def test_layout_extends_quote_table_past_preserved_second_page(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Large Generated Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "signature": {
+                "koncept_signatory": "Francies Cheng",
+                "koncept_title": "Director",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 41)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        last_item_ref = find_cell_ref(sheet, "Generated booth component 40")
+        total_ref = find_cell_ref(sheet, "Total")
+        last_item_row = quote.parse_cell_ref(last_item_ref)[0]
+        total_row = quote.parse_cell_ref(total_ref)[0]
+
+        self.assertGreater(last_item_row, 91)
+        self.assertGreater(total_row, last_item_row)
+        self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
+        self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 33}")
+        self.assertEqual(row_break_ids(sheet)[:3], [52, 95, 138])
+
+    def test_layout_uses_manual_continuation_pages_with_title_and_table_headers(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Large Generated Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "signature": {
+                "koncept_signatory": "Francies Cheng",
+                "koncept_title": "Director",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 41)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        header_refs = find_cell_refs(sheet, "Pos.")
+        title_refs = find_cell_refs(sheet, "RE: Large Generated Booth")
+
+        self.assertEqual(header_refs[:3], ["A20", "A55", "A98"])
+        self.assertNotIn("A53", header_refs)
+        self.assertNotIn("A96", header_refs)
+        self.assertEqual(title_refs[:3], ["A18", "A53", "A96"])
+        self.assertEqual(row_break_ids(sheet)[:3], [52, 95, 138])
+
+    def test_layout_keeps_totals_together_on_one_manual_page(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Totals Boundary Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "signature": {
+                "koncept_signatory": "Francies Cheng",
+                "koncept_title": "Director",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 41)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        total_row = quote.parse_cell_ref(find_cell_ref(sheet, "Total"))[0]
+        gst_row = quote.parse_cell_ref(find_cell_ref(sheet, "GST 9%"))[0]
+        grand_row = quote.parse_cell_ref(find_cell_ref(sheet, "Total including GST"))[0]
+
+        self.assertEqual(
+            {manual_print_page_for_row(total_row), manual_print_page_for_row(gst_row), manual_print_page_for_row(grand_row)},
+            {manual_print_page_for_row(total_row)},
+        )
 
     def test_default_terms_match_sample_text_and_bold_emphasis(self):
         tmp, path = generate_layout_workbook()
@@ -367,17 +621,18 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
-        self.assertEqual(cell_value(sheet, "A99"), "Terms & Conditions :")
-        self.assertIsNotNone(font_for_style(styles, cell_style(sheet, "A99")).find(f"{NS_MAIN}b"))
-        self.assertEqual(cell_value(sheet, "A100"), "1.00")
-        self.assertEqual(cell_value(sheet, "B100"), "70% payment upon confirmation and signing of contract.")
-        self.assertEqual(cell_inline_runs(sheet, "B100"), [("70% payment upon confirmation and signing of contract.", True)])
-        self.assertEqual(cell_value(sheet, "A101"), "2.00")
-        self.assertEqual(cell_value(sheet, "B101"), "30% balance upon handover before show starts")
-        self.assertEqual(cell_inline_runs(sheet, "B101"), [("30% balance upon handover before show starts", True)])
-        self.assertEqual(cell_value(sheet, "B102"), "All cheques should be crossed and made payable to Koncept Image Pte Ltd")
+        terms_ref = find_cell_ref(sheet, "Terms & Conditions :")
+        self.assertEqual(terms_ref, "A32")
+        self.assertIsNotNone(font_for_style(styles, cell_style(sheet, terms_ref)).find(f"{NS_MAIN}b"))
+        self.assertEqual(cell_value(sheet, "A33"), "1.00")
+        self.assertEqual(cell_value(sheet, "B33"), "70% payment upon confirmation and signing of contract.")
+        self.assertEqual(cell_inline_runs(sheet, "B33"), [("70% payment upon confirmation and signing of contract.", True)])
+        self.assertEqual(cell_value(sheet, "A34"), "2.00")
+        self.assertEqual(cell_value(sheet, "B34"), "30% balance upon handover before show starts")
+        self.assertEqual(cell_inline_runs(sheet, "B34"), [("30% balance upon handover before show starts", True)])
+        self.assertEqual(cell_value(sheet, "B35"), "All cheques should be crossed and made payable to Koncept Image Pte Ltd")
         self.assertEqual(
-            cell_inline_runs(sheet, "B102"),
+            cell_inline_runs(sheet, "B35"),
             [
                 ("All cheques should be crossed and made payable to ", False),
                 ("Koncept Image Pte Ltd", True),
@@ -510,10 +765,24 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
-        for ref in ("A20", "B20", "C20"):
+        for ref in ("A20", "B20", "C20", "E20"):
             self.assertIsNotNone(font_for_style(styles, cell_style(sheet, ref)).find(f"{NS_MAIN}b"))
         self.assertEqual(alignment_for_style(styles, cell_style(sheet, "B20")).attrib.get("horizontal"), "center")
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "E20")).attrib.get("horizontal"), "center")
         self.assertEqual(alignment_for_style(styles, cell_style(sheet, "B24")).attrib.get("horizontal"), "center")
+
+    def test_client_address_rows_are_left_aligned(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        self.assertEqual(cell_value(sheet, "A7"), "10 Sample Street")
+        self.assertEqual(cell_value(sheet, "A8"), "#02-03 Sample Building")
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "A7")).attrib.get("horizontal"), "left")
+        self.assertEqual(alignment_for_style(styles, cell_style(sheet, "A8")).attrib.get("horizontal"), "left")
 
     def test_price_cells_use_thousands_separator_number_format(self):
         tmp, path = generate_layout_workbook()
@@ -523,9 +792,18 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
+        line_font = font_for_style(styles, cell_style(sheet, "E24"))
         self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E24")), "4")
-        self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E93")), "4")
-        self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E94")), "4")
+        self.assertIsNone(line_font.find(f"{NS_MAIN}b"))
+        self.assertIsNone(line_font.find(f"{NS_MAIN}i"))
+        self.assertNotEqual(font_color(line_font).get("rgb"), "FFFF0000")
+
+        for ref in ("E27", "E28", "E29"):
+            font = font_for_style(styles, cell_style(sheet, ref))
+            self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, ref)), "4")
+            self.assertIsNotNone(font.find(f"{NS_MAIN}b"))
+            self.assertIsNone(font.find(f"{NS_MAIN}i"))
+            self.assertNotEqual(font_color(font).get("rgb"), "FFFF0000")
 
     def test_notes_are_plain_numbered_and_acceptance_text_stays_out_of_notes(self):
         tmp, path = generate_layout_workbook()
@@ -535,12 +813,77 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
-        self.assertEqual(cell_value(sheet, "A114"), "11.00")
-        self.assertEqual(cell_value(sheet, "A115"), "12.00")
-        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A103")).find(f"{NS_MAIN}i"))
-        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A114")).find(f"{NS_MAIN}i"))
-        self.assertEqual(cell_value(sheet, "E106"), "")
-        self.assertEqual(cell_value(sheet, "E117"), "We accept the quotation amount and the terms")
+        self.assertEqual(cell_value(sheet, "A48"), "11.00")
+        self.assertEqual(cell_value(sheet, "A49"), "12.00")
+        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A37")).find(f"{NS_MAIN}i"))
+        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A48")).find(f"{NS_MAIN}i"))
+        self.assertEqual(cell_value(sheet, "E40"), "")
+        self.assertEqual(cell_value(sheet, "E52"), "We accept the quotation amount and the terms")
+
+    def test_brief_can_override_terms_notes_and_company_text(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "quotation.xlsx"
+        brief = {
+            "company_identity": "Other Company",
+            "quote_date": "2026-06-04",
+            "project_number": "OC-001",
+            "client": {"name": "Sample Client", "attention": "Alex Tan"},
+            "project": {"title": "Sample Project"},
+            "line_items": [],
+            "payment_terms": ["50% deposit", "50% before handover", "Warranty excluded"],
+            "terms_heading": "Commercial Terms",
+            "cheque_payee": "Other Company Pte Ltd",
+            "notes_heading": "Editable Notes",
+            "standard_notes": ["First editable note", "Second editable note"],
+            "company": {
+                "name": "Other Company Pte Ltd",
+                "header_lines": ["Other Company Pte Ltd", "Dynamic address line", "", "Dynamic bank line"],
+                "logo_data_url": "data:image/png;base64,iVBORw0KGgo=",
+            },
+            "acceptance": {
+                "company_name": "Other Company Pte Ltd",
+                "text": "Accepted by customer",
+                "person_label": "Authorised signer",
+                "stamp_label": "Customer stamp",
+                "date_label": "Signed date:",
+            },
+            "signature": {"koncept_signatory": "Morgan Lee", "koncept_title": "Sales Lead"},
+        }
+        price = quote.PriceRow(1, "Floor", "m2 needle punch carpet in colour", "sqm", 7, 1.09, 1.5, "")
+        line = quote.QuoteLine("Floor", 1, "sqm", "Needle punch carpet", "needle punch carpet in colour", "", price, 10.5, "matched", [])
+
+        quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            drawing = ET.fromstring(zf.read("xl/drawings/drawing1.xml"))
+            drawing_rels = zf.read("xl/drawings/_rels/drawing1.xml.rels").decode("utf-8")
+            media_names = set(zf.namelist())
+
+        self.assertEqual(find_cell_ref(sheet, "Commercial Terms"), "A32")
+        self.assertEqual(find_cell_ref(sheet, "50% deposit"), "B33")
+        self.assertEqual(find_cell_ref(sheet, "Warranty excluded"), "B35")
+        self.assertEqual(find_cell_ref(sheet, "All cheques should be crossed and made payable to Other Company Pte Ltd"), "B36")
+        self.assertTrue(find_cell_ref(sheet, "Editable Notes").startswith("A"))
+        self.assertTrue(find_cell_ref(sheet, "First editable note").startswith("B"))
+        self.assertTrue(find_cell_ref(sheet, "Second editable note").startswith("B"))
+        self.assertTrue(find_cell_ref(sheet, "Other Company Pte Ltd").startswith("B"))
+        self.assertTrue(find_cell_ref(sheet, "Accepted by customer").startswith("E"))
+        self.assertTrue(find_cell_ref(sheet, "Authorised signer").startswith("E"))
+        self.assertTrue(find_cell_ref(sheet, "Customer stamp").startswith("E"))
+        self.assertTrue(find_cell_ref(sheet, "Signed date:").startswith("E"))
+
+        paragraphs = [
+            "".join(text_node.text or "" for text_node in paragraph.findall(f".//{NS_A}t"))
+            for paragraph in drawing.findall(f".//{NS_A}p")
+        ]
+        self.assertIn("Other Company Pte Ltd", paragraphs)
+        self.assertIn("Dynamic address line", paragraphs)
+        self.assertEqual(paragraphs[2], "")
+        self.assertIn("Dynamic bank line", paragraphs)
+        self.assertIn("Target=\"../media/header_logo.png\"", drawing_rels)
+        self.assertIn("xl/media/header_logo.png", media_names)
 
     def test_excel_pdf_export_script_repairs_and_saves_workbook_before_export(self):
         script = quote.powershell_export_script(Path("quotation.xlsx"), Path("quotation.pdf"))
@@ -579,16 +922,16 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "quotation.xlsx"
-            quote.write_quote_layout_xlsx(ROOT / "references" / "quotation-layout.xlsx", path, brief, [line])
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
 
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
 
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E91)", "SUM(E92:E93)"])
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "SUM(E27:E28)"])
         self.assertEqual(cell_value(sheet, "A6"), brief["client"]["name"])
         self.assertEqual(cell_value(sheet, "C22"), line.section)
         self.assertEqual(cell_value(sheet, "E24"), line.display_price)
-        self.assertEqual(cell_value(sheet, "B100"), brief["payment_terms"][0])
+        self.assertTrue(find_cell_ref(sheet, brief["payment_terms"][0]).startswith("B"))
 
     def test_csv_match_report_neutralizes_formula_leading_text(self):
         line = quote.QuoteLine(
@@ -610,6 +953,10 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 rows = list(csv.reader(f))
 
         data = rows[1]
+        self.assertIn("pricing_id", rows[0])
+        self.assertIn("catalog_description", rows[0])
+        self.assertNotIn("template_row", rows[0])
+        self.assertNotIn("template_description", rows[0])
         self.assertEqual(data[0], "'@manual")
         self.assertEqual(data[1], "'=WEBSERVICE(\"https://example.test/section\")")
         self.assertEqual(data[2], "'+HYPERLINK(\"https://example.test/line\",\"line\")")
