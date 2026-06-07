@@ -83,7 +83,8 @@ const qs = (selector) => document.querySelector(selector);
 
 const elements = {
   healthText: qs("#healthText"),
-  statusDot: qs(".status-dot"),
+  statusDot: qs("#statusDot"),
+  topbarStatus: qs("#topbarStatus"),
   assistantSubtitle: qs("#assistantSubtitle"),
   imageIntake: qs("#imageIntake"),
   intakeTitle: qs("#intakeTitle"),
@@ -779,8 +780,18 @@ function renderDownloads(files = []) {
   }
   elements.downloads.innerHTML = `
     <div class="download-ready-note">
-      <strong>${escapeHtml(excelFile.name || "quotation.xlsx")}</strong>
-      <span>${formatBytes(Number(excelFile.bytes))} ready. Use Download Quotation in the Output footer.</span>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink: 0;">
+          <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 15L15 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <strong>${escapeHtml(excelFile.name || "quotation.xlsx")}</strong>
+          <span style="display: block; margin-top: 2px;">${formatBytes(Number(excelFile.bytes))} ready. Use Download Quotation in the Output footer.</span>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -806,9 +817,26 @@ function renderMatchSummary(result = {}) {
     const amount = Number(String(row.amount || "").replaceAll(",", ""));
     return Number.isFinite(amount) ? sum + amount : sum;
   }, 0);
+  const matched = rows.filter((row) => String(row.status || "").toLowerCase() !== "unmatched").length;
+  const confidence = rows.length > 0 ? Math.round((matched / rows.length) * 100) : 0;
   elements.matchSummary.innerHTML = `
-    <strong>${rows.length} priced line${rows.length === 1 ? "" : "s"}</strong>
-    <span>SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    <div class="stat-card-row">
+      <div class="stat-card">
+        <span class="stat-card-icon green" aria-hidden="true">&#x1F4CB;</span>
+        <span class="stat-card-value">${rows.length}</span>
+        <span class="stat-card-label">Priced lines</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card-icon amber" aria-hidden="true">&#x1F3AF;</span>
+        <span class="stat-card-value">${confidence}%</span>
+        <span class="stat-card-label">Match confidence</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card-icon blue" aria-hidden="true">&#x1F4B0;</span>
+        <span class="stat-card-value">SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <span class="stat-card-label">Total (excl. GST)</span>
+      </div>
+    </div>
   `;
 }
 
@@ -1486,14 +1514,17 @@ async function checkHealth() {
     const response = await fetch("/api/health");
     const data = await response.json();
     elements.statusDot.classList.toggle("is-ok", response.ok);
-    elements.healthText.textContent = response.ok ? "Local server ready" : data.error || "Server unavailable";
+    if (elements.topbarStatus) elements.topbarStatus.classList.toggle("is-ok", response.ok);
+    elements.healthText.textContent = response.ok ? "Ready" : data.error || "Unavailable";
   } catch {
-    elements.healthText.textContent = "Server unavailable";
+    elements.healthText.textContent = "Unavailable";
+    if (elements.topbarStatus) elements.topbarStatus.classList.remove("is-ok");
   }
 }
 
 function handleChatAction(action) {
   if (action === "analyze" || action === "regenerate") {
+    setSideDrawer(false);
     handleDraftBasis();
     return;
   }
