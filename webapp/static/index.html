@@ -9,105 +9,176 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <h1>Swooshz Quote Generator</h1>
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span>S</span></div>
+          <div>
+            <h1>Swooshz Quote Generator</h1>
+          </div>
         </div>
-        <div class="topbar-status">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span id="healthText">Checking local server</span>
+        <div class="topbar-controls">
+          <span class="status-dot sr-only" aria-hidden="true"></span>
+          <span id="healthText" class="sr-only">Checking local server</span>
+          <label class="generator-select">
+            Generator type
+            <select id="generatorType">
+              <option value="booth">Exhibition Booth</option>
+              <option value="event_setup">Event Setup</option>
+              <option value="renovation">Renovation</option>
+              <option value="custom">Custom Quote</option>
+            </select>
+          </label>
         </div>
       </header>
 
-      <div class="workspace single-workspace">
+      <div class="workspace chat-workspace">
         <main class="panels">
-          <section class="panel is-active" id="panel-analysis" data-panel-id="analysis">
-            <div class="panel-heading assistant-heading">
-              <div>
-                <h2>Quote assistant</h2>
-                <p id="assistantSubtitle">Drop reference images, confirm the AI takeoff, then generate Excel.</p>
-              </div>
-              <div class="button-row">
-                <label class="generator-select">
-                  Generator type
-                  <select id="generatorType">
-                    <option value="booth">Exhibition Booth</option>
-                    <option value="event_setup">Event Setup</option>
-                    <option value="renovation">Renovation</option>
-                    <option value="custom">Custom Quote</option>
-                  </select>
-                </label>
-                <button class="secondary-button" type="button" id="quoteDetailsButton">Quote Details</button>
-              </div>
-            </div>
-
-            <section class="image-intake" id="imageIntake" aria-label="Reference images">
-              <div class="image-intake-heading">
+          <section class="panel is-active chat-shell" id="panel-analysis" data-panel-id="analysis">
+            <main class="chat-main" aria-label="Quote assistant conversation">
+              <div class="panel-heading assistant-heading">
                 <div>
-                  <h3 id="intakeTitle">Reference images</h3>
-                  <p id="intakeSubtitle">Images are the starting point for this quote workflow.</p>
+                  <h2>Swooshz Assistant</h2>
+                  <p id="assistantSubtitle">Start with booth images or the sample fixture, confirm the AI takeoff, then generate Excel. After generation, type a change and I will revise the quotation draft where it is safe to do so.</p>
                 </div>
-                <span class="image-count" id="imageCount">0 loaded</span>
               </div>
 
-              <label class="dropzone" for="imageInput">
-                <input id="imageInput" type="file" accept="image/*" multiple>
-                <span class="drop-title" id="dropTitle">Drop reference images to start</span>
-                <span class="drop-meta" id="dropMeta">JPG, PNG, or WebP. Add more images anytime; files stay local to this runner.</span>
-              </label>
-              <div class="file-list" id="fileList" aria-live="polite"></div>
-            </section>
-
-            <div class="workflow-bar">
-              <div class="assistant-status-row">
-                <span class="workflow-stage" id="workflowStage">Needs images</span>
-                <span id="busyText" class="busy-text" aria-live="polite"></span>
+              <div class="workflow-bar">
+                <div class="assistant-status-row">
+                  <span class="workflow-stage" id="workflowStage">Needs images</span>
+                  <span id="busyText" class="busy-text" aria-live="polite"></span>
+                </div>
+                <div class="chat-actions" id="chatActions"></div>
               </div>
-              <div class="chat-actions" id="chatActions"></div>
-            </div>
 
-            <div class="chat-transcript" id="chatTranscript" aria-live="polite"></div>
+              <div class="chat-transcript" id="chatTranscript" aria-live="polite"></div>
 
-            <form class="chat-form" id="chatForm">
-              <textarea id="chatPrompt" rows="2" placeholder="Reply with confirm, regenerate, sample details, or generate."></textarea>
-              <button class="primary-button" type="submit" id="sendChatButton">Send</button>
-            </form>
+              <form class="chat-form" id="chatForm">
+                <div class="composer-tools" aria-hidden="true">
+                  <span>Attach</span>
+                  <span>Quote</span>
+                </div>
+                <textarea id="chatPrompt" rows="2" placeholder="Ask anything, request changes, or confirm..."></textarea>
+                <button class="primary-button send-button" type="submit" id="sendChatButton">Send</button>
+              </form>
+            </main>
+
+            <nav class="command-rail" aria-label="Quote workspace panels">
+              <button class="rail-button is-active" type="button" data-side-panel="images">
+                <span class="rail-icon" aria-hidden="true">IMG</span>
+                <span>Images</span>
+              </button>
+              <button class="rail-button" type="button" id="quoteDetailsButton">
+                <span class="rail-icon" aria-hidden="true">TXT</span>
+                <span>Quote Details</span>
+              </button>
+              <button class="rail-button" type="button" data-side-panel="pricing">
+                <span class="rail-icon" aria-hidden="true">SGD</span>
+                <span>Pricing</span>
+              </button>
+              <button class="rail-button" type="button" data-side-panel="output">
+                <span class="rail-icon" aria-hidden="true">XLS</span>
+                <span>Output</span>
+              </button>
+              <button class="rail-button" type="button" data-side-panel="settings">
+                <span class="rail-icon" aria-hidden="true">SET</span>
+                <span>Settings</span>
+              </button>
+            </nav>
 
             <div class="action-row assistant-generate-row">
               <button class="primary-button" type="button" id="generateButton">Generate Quotation</button>
             </div>
 
-            <div class="assistant-output" id="assistantOutput">
-              <div class="panel-heading compact-heading">
+            <aside class="side-workspace" id="sideWorkspace" aria-hidden="true" aria-labelledby="sideDrawerTitle">
+              <div class="side-drawer-header">
                 <div>
-                  <h3>Generated quotation</h3>
-                  <p>Excel download and pricing review appear here after generation.</p>
+                  <p class="drawer-eyebrow" id="sideDrawerEyebrow">Workspace</p>
+                  <h2 id="sideDrawerTitle">Images</h2>
                 </div>
-                <span class="result-pill" id="resultStatus">No job yet</span>
+                <button class="icon-close-button" type="button" id="closeSideDrawerButton" aria-label="Close workspace panel">x</button>
               </div>
-              <div class="message-list" id="messageList"></div>
-              <div class="downloads" id="downloads"></div>
-              <div class="match-summary" id="matchSummary"></div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead>
-                    <tr>
-                      <th>Status</th>
-                      <th>Section</th>
-                      <th>Description</th>
-                      <th>Catalog ID</th>
-                      <th>Quantity</th>
-                      <th>Unit price</th>
-                      <th>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody id="pricingMatchesBody"></tbody>
-                </table>
+
+              <div class="side-drawer-scroll">
+              <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference images">
+                <div class="side-panel-heading">
+                  <div>
+                    <h3 id="intakeTitle">Images</h3>
+                    <p id="intakeSubtitle">Upload booth renders or load the sample fixture.</p>
+                  </div>
+                  <span class="image-count" id="imageCount">0 loaded</span>
+                </div>
+
+                <div class="side-tabs" aria-hidden="true">
+                  <span class="is-active">Upload</span>
+                  <span>Gallery</span>
+                  <span>Samples</span>
+                </div>
+
+                <label class="dropzone" for="imageInput">
+                  <input id="imageInput" type="file" accept="image/*" multiple>
+                  <span class="drop-title" id="dropTitle">Drag and drop render images here</span>
+                  <span class="drop-meta" id="dropMeta">PNG, JPG, or WebP. Up to 12 MB each.</span>
+                  <span class="drop-action">Choose Files</span>
+                </label>
+                <div class="file-list" id="fileList" aria-live="polite"></div>
+                <div class="sample-start-card">
+                  <div>
+                    <span class="sample-kicker">Need example data?</span>
+                    <strong>Brazil pavilion demo</strong>
+                    <p>Loads sample quote details and 3 booth renders so you can test the workflow.</p>
+                  </div>
+                  <button class="secondary-button sample-button" type="button" id="sampleDetailsButton">Load Sample</button>
+                </div>
+              </section>
+
+              <section class="side-panel-card side-panel-section" id="pricingSidePanel" data-side-panel-content="pricing">
+                <div class="side-panel-heading">
+                  <div>
+                    <h3>Pricing</h3>
+                    <p>Pricing match review appears after generation.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="side-panel-card side-panel-section" id="settingsSidePanel" data-side-panel-content="settings">
+              </section>
+
+              <section class="side-panel-card side-panel-section" id="outputSidePanel" data-side-panel-content="output">
+                <div class="assistant-output" id="assistantOutput">
+                  <div class="panel-heading compact-heading">
+                    <div>
+                      <h3>Latest Output</h3>
+                      <p>Excel download and pricing review appear here after generation.</p>
+                    </div>
+                    <span class="result-pill" id="resultStatus">No job yet</span>
+                  </div>
+                  <div class="message-list" id="messageList"></div>
+                  <div class="downloads" id="downloads"></div>
+                  <div class="match-summary" id="matchSummary"></div>
+                  <div class="table-wrap">
+                    <table class="match-table">
+                      <thead>
+                        <tr>
+                          <th>Status</th>
+                          <th>Section</th>
+                          <th>Description</th>
+                          <th>Catalog ID</th>
+                          <th>Quantity</th>
+                          <th>Unit price</th>
+                          <th>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody id="pricingMatchesBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
               </div>
-            </div>
+            </aside>
           </section>
         </main>
       </div>
 
+      <div class="side-backdrop" id="sideBackdrop" hidden></div>
       <div class="details-backdrop" id="detailsBackdrop" hidden></div>
       <aside class="details-drawer" id="detailsDrawer" aria-hidden="true" aria-labelledby="detailsDrawerTitle">
         <div class="details-drawer-header">
@@ -116,7 +187,6 @@
             <h2 id="detailsDrawerTitle">Quote Details</h2>
           </div>
           <div class="drawer-header-actions">
-            <button class="secondary-button" type="button" id="sampleDetailsButton">Load Sample</button>
             <button class="icon-close-button" type="button" id="closeDetailsDrawerButton" aria-label="Close quote details">x</button>
           </div>
         </div>

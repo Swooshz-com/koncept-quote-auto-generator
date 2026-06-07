@@ -1,6 +1,7 @@
 const EMPTY_LINE_ITEMS_MESSAGE = "AI analysis will populate line items here.";
 const DEFAULT_PROFILE_ID = "koncept";
 const DEFAULT_SAMPLE_ID = "brazil-pavilion";
+const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 
 const EMPTY_BASIS = {
@@ -35,9 +36,9 @@ const STAGE_LABELS = {
 const GENERATOR_TYPES = {
   booth: {
     label: "Exhibition Booth",
-    assistantSubtitle: "Drop booth images, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Booth render images",
-    intakeSubtitle: "Images are the starting point for this booth quote workflow.",
+    assistantSubtitle: "Start with booth renders or the sample fixture, confirm the AI takeoff, then generate Excel.",
+    intakeTitle: "Start a booth quote",
+    intakeSubtitle: "Drop booth renders for a real quote, or load the Brazil demo fixture for a quick test run.",
     dropTitle: "Drop booth render images to start",
     dropMeta: "JPG, PNG, or WebP. Add more booth renders anytime; files stay local to this runner.",
     imageNoun: "booth image",
@@ -50,9 +51,9 @@ const GENERATOR_TYPES = {
   },
   event_setup: {
     label: "Event Setup",
-    assistantSubtitle: "Drop event references, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Event reference images",
-    intakeSubtitle: "Photos, layouts, and visual references are the starting point for this quote workflow.",
+    assistantSubtitle: "Start with event references, confirm the AI takeoff, then generate Excel.",
+    intakeTitle: "Start an event quote",
+    intakeSubtitle: "Drop event photos or layout references, or load the sample fixture for a quick test run.",
     dropTitle: "Drop event reference images to start",
     dropMeta: "JPG, PNG, or WebP. Add more event references anytime; files stay local to this runner.",
     imageNoun: "event reference",
@@ -65,9 +66,9 @@ const GENERATOR_TYPES = {
   },
   renovation: {
     label: "Renovation",
-    assistantSubtitle: "Drop site photos or layout references, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Site reference images",
-    intakeSubtitle: "Site photos, layout references, and visible measurements start this quote workflow.",
+    assistantSubtitle: "Start with site references, confirm the AI takeoff, then generate Excel.",
+    intakeTitle: "Start a renovation quote",
+    intakeSubtitle: "Drop site photos or layout references, or load the sample fixture for a quick test run.",
     dropTitle: "Drop site reference images to start",
     dropMeta: "JPG, PNG, or WebP. Add more site references anytime; files stay local to this runner.",
     imageNoun: "site reference",
@@ -80,9 +81,9 @@ const GENERATOR_TYPES = {
   },
   custom: {
     label: "Custom Quote",
-    assistantSubtitle: "Drop reference images, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Reference images",
-    intakeSubtitle: "Images and visual references are the starting point for this quote workflow.",
+    assistantSubtitle: "Start with reference images, confirm the AI takeoff, then generate Excel.",
+    intakeTitle: "Start a custom quote",
+    intakeSubtitle: "Drop visual references, or load the sample fixture for a quick test run.",
     dropTitle: "Drop reference images to start",
     dropMeta: "JPG, PNG, or WebP. Add more references anytime; files stay local to this runner.",
     imageNoun: "reference image",
@@ -105,6 +106,9 @@ const state = {
   chatMessages: [],
   isAnalysisRunning: false,
   isGenerating: false,
+  csrfHeaderName: CSRF_HEADER_NAME,
+  csrfToken: "",
+  pendingFeedback: "",
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -127,6 +131,11 @@ const elements = {
   closeDetailsDrawerButton: qs("#closeDetailsDrawerButton"),
   detailsDrawer: qs("#detailsDrawer"),
   detailsBackdrop: qs("#detailsBackdrop"),
+  sideWorkspace: qs("#sideWorkspace"),
+  sideBackdrop: qs("#sideBackdrop"),
+  closeSideDrawerButton: qs("#closeSideDrawerButton"),
+  sideDrawerTitle: qs("#sideDrawerTitle"),
+  sideDrawerEyebrow: qs("#sideDrawerEyebrow"),
   sampleDetailsButton: qs("#sampleDetailsButton"),
   quoteCompanyName: qs("#quoteCompanyName"),
   headerDetails: qs("#headerDetails"),
@@ -197,6 +206,13 @@ function setDetailsDrawer(open) {
   document.body.classList.toggle("drawer-open", open);
 }
 
+function setSideDrawer(open) {
+  elements.sideWorkspace.classList.toggle("is-open", open);
+  elements.sideWorkspace.setAttribute("aria-hidden", open ? "false" : "true");
+  elements.sideBackdrop.hidden = !open;
+  document.body.classList.toggle("side-drawer-open", open);
+}
+
 function formatBytes(bytes) {
   if (!bytes) return "0 KB";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -258,8 +274,24 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function splitLines(value) {
+function normalizeTextNewlines(value) {
   return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\\n/g, "\n");
+}
+
+function renderPlainText(value) {
+  const lines = normalizeTextNewlines(value)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return "<p></p>";
+  return lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+function splitLines(value) {
+  return normalizeTextNewlines(value)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -396,6 +428,7 @@ function buildPayload() {
       header_details: elements.headerDetails.value,
       logo_data_url: state.headerLogo ? state.headerLogo.data_url : "",
     },
+    user_feedback: state.pendingFeedback,
     quote_basis: { ...state.quoteBasis },
     line_items: state.lineItems,
     quote_text: {
@@ -592,7 +625,7 @@ function renderChat() {
   elements.chatTranscript.innerHTML = state.chatMessages
     .map((message) => {
       const label = message.role === "user" ? "You" : "Assistant";
-      const body = message.html ? message.content : `<p>${escapeHtml(message.content)}</p>`;
+      const body = message.html ? message.content : renderPlainText(message.content);
       return `
         <div class="chat-message ${escapeHtml(message.role)} ${escapeHtml(message.tone)}">
           <div class="chat-meta">${label}</div>
@@ -641,6 +674,7 @@ function renderCurrentActions() {
   }
   if (state.workflowStage === "completed") {
     renderChatActions([
+      { label: "Revise by Chat", action: "focus_chat", primary: true, disabled: busy || !readyForAnalysis },
       { label: "Regenerate Analysis", action: "regenerate", disabled: busy || !readyForAnalysis },
     ]);
     return;
@@ -655,28 +689,60 @@ function basisLines(value) {
   return lines.length ? lines : ["Confirm: No detail generated yet."];
 }
 
+function basisLineMeta(line) {
+  const match = String(line || "").match(/^(Include|Confirm|Exclude|Note):\s*(.*)$/i);
+  if (!match) {
+    return { tag: "Detail", text: String(line || "") };
+  }
+  const tag = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  return { tag, text: match[2] || "" };
+}
+
+function renderBasisLine(key, line) {
+  const meta = basisLineMeta(line);
+  return `
+    <li class="basis-line-row basis-line-${escapeHtml(meta.tag.toLowerCase())}">
+      <span class="basis-line-pill">${escapeHtml(meta.tag)}</span>
+      <span class="basis-line-text">${escapeHtml(meta.text)}</span>
+      <button class="basis-line-tool" type="button" data-quote-line="${escapeHtml(line)}">Quote</button>
+      <button class="basis-line-tool" type="button" data-revise-line="${escapeHtml(line)}">Revise</button>
+    </li>
+  `;
+}
+
 function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
   const sourceText = source === "openai"
     ? `${currentGenerator().basisSource} with OpenAI and drafted the quotation basis below.`
     : source === "gemini"
       ? `OpenAI was unavailable, so I used Gemini fallback to draft the quotation basis below from the ${currentGenerator().label.toLowerCase()} references.`
-      : "I used a local starter draft for now. Review it carefully, or regenerate analysis later when a remote AI provider is available.";
+      : source === "edited"
+        ? "I applied your chat edit to the draft basis below."
+        : "I used a local starter draft for now. Review it carefully, or regenerate analysis later when a remote AI provider is available.";
   return `
-    <div class="assistant-card">
-      <h3>Quote basis to confirm</h3>
-      <p>${escapeHtml(sourceText)} I also prepared ${state.lineItems.length} internal quotation line${state.lineItems.length === 1 ? "" : "s"} for Excel generation.</p>
+    <div class="assistant-card quote-basis-card">
+      <div class="quote-basis-header">
+        <div>
+          <h3>Quote basis to confirm</h3>
+          <p>${escapeHtml(sourceText)}</p>
+        </div>
+        <div class="quote-basis-source">
+          <span>Source: Concept Pricing Catalog</span>
+          <strong>${state.lineItems.length} priced line${state.lineItems.length === 1 ? "" : "s"}</strong>
+        </div>
+      </div>
       <div class="basis-review-grid">
         ${BASIS_FIELDS.map(([key, label]) => `
           <div class="basis-review-item">
-            <strong>${escapeHtml(label)}</strong>
-            <ul>
-              ${basisLines(basis[key]).map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+            <h4>${escapeHtml(label)}</h4>
+            <ul class="basis-line-list">
+              ${basisLines(basis[key]).map((line) => renderBasisLine(key, line)).join("")}
             </ul>
           </div>
         `).join("")}
       </div>
       <div class="assistant-card-actions">
         <button class="primary-button" type="button" data-chat-action="confirm_basis">Confirm Basis</button>
+        <button class="secondary-button" type="button" data-chat-action="focus_chat">Ask for Changes</button>
         <button class="secondary-button" type="button" data-chat-action="regenerate">Regenerate Analysis</button>
       </div>
     </div>
@@ -725,10 +791,12 @@ function applyDraftLineItems(lineItems = []) {
 
 async function postJson(url, payload) {
   let response;
+  const headers = { "Content-Type": "application/json" };
+  if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
   } catch (error) {
@@ -816,11 +884,23 @@ function loggableContent(content, html = false) {
 }
 
 function logClientEvent(event, details = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
   fetch("/api/log", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ event, details }),
   }).catch(() => {});
+}
+
+async function initializeSession() {
+  const { ok, data } = await getJson("/api/session");
+  if (ok && data.csrf_token) {
+    state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
+    state.csrfToken = data.csrf_token;
+    return;
+  }
+  elements.healthText.textContent = "Local session unavailable";
 }
 
 function setAnalysisButtons(disabled = false) {
@@ -829,11 +909,21 @@ function setAnalysisButtons(disabled = false) {
   const inputDisabled = busy || !readyForAnalysis;
   elements.chatPrompt.disabled = inputDisabled;
   elements.sendChatButton.disabled = inputDisabled;
-  elements.chatPrompt.placeholder = readyForAnalysis
-    ? "Reply with confirm, regenerate, sample details, or generate."
-    : state.images.length
+  if (!readyForAnalysis) {
+    elements.chatPrompt.placeholder = state.images.length
       ? "Fill all Quote Details to enable assistant replies."
       : "Drop reference images and fill Quote Details to enable assistant replies.";
+    return;
+  }
+  if (state.workflowStage === "completed" || state.workflowStage === "pricing_review") {
+    elements.chatPrompt.placeholder = "Type a revision, e.g. change carpet to laminate, or ask me to regenerate analysis.";
+    return;
+  }
+  if (state.workflowStage === "basis_review") {
+    elements.chatPrompt.placeholder = "Reply confirm, regenerate, or describe a change to the draft basis.";
+    return;
+  }
+  elements.chatPrompt.placeholder = "Reply with confirm, regenerate, sample details, or generate.";
 }
 
 function syncControlStates() {
@@ -845,6 +935,7 @@ function syncControlStates() {
 
 async function handleDraftBasis() {
   if (state.isAnalysisRunning) return;
+  const hasFeedback = Boolean(state.pendingFeedback.trim());
 
   if (!state.images.length) {
     setWorkflowStage("needs_images");
@@ -867,7 +958,12 @@ async function handleDraftBasis() {
   elements.busyText.textContent = "Running analysis...";
   setAnalysisButtons(true);
   renderChatActions([{ label: "Analyzing...", action: "noop", disabled: true }]);
-  appendChatMessage("assistant", `Analyzing the ${currentGenerator().label.toLowerCase()} references now. I will list the basis for confirmation before generating anything.`);
+  appendChatMessage(
+    "assistant",
+    hasFeedback
+      ? "Using your feedback to revise the AI takeoff now. I will return an updated basis for confirmation."
+      : `Analyzing the ${currentGenerator().label.toLowerCase()} references now. I will list the basis for confirmation before generating anything.`
+  );
 
   const started = await startJob("draft", buildPayload());
   if (!started.ok) {
@@ -1028,6 +1124,10 @@ function handleChatAction(action) {
   }
   if (action === "generate") {
     handleGenerate();
+    return;
+  }
+  if (action === "focus_chat") {
+    elements.chatPrompt.focus();
   }
 }
 
@@ -1046,7 +1146,236 @@ function isSensitiveChatRequest(normalizedText) {
   ].some((term) => normalizedText.includes(term));
 }
 
-function handleChatSubmit(event) {
+function estimatedAreaQuantity() {
+  const width = Number(elements.boothWidth.value);
+  const depth = Number(elements.boothDepth.value);
+  if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) return "";
+  return Math.round(width * depth * 100) / 100;
+}
+
+function findFloorFinishLineIndex() {
+  const finishPattern = /(carpet|flooring|laminate|pvc)/i;
+  const floorPattern = /(floor|platform)/i;
+  const finishIndex = state.lineItems.findIndex((item) => finishPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
+  if (finishIndex >= 0) return finishIndex;
+  return state.lineItems.findIndex((item) => floorPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
+}
+
+function revisedBasisText(value, line) {
+  const lines = splitLines(value);
+  const targetIndex = lines.findIndex((item) => /(floor|platform|carpet|laminate|pvc)/i.test(item));
+  if (targetIndex >= 0) {
+    lines[targetIndex] = line;
+  } else {
+    lines.unshift(line);
+  }
+  return lines.join("\n");
+}
+
+const COLOR_WORDS = [
+  "black",
+  "blue",
+  "brown",
+  "cream",
+  "gold",
+  "gray",
+  "green",
+  "grey",
+  "orange",
+  "pink",
+  "purple",
+  "red",
+  "silver",
+  "white",
+  "yellow",
+];
+const COLOR_WORD_PATTERN = "(black|blue|brown|cream|gold|gr[ae]y|green|orange|pink|purple|red|silver|white|yellow)";
+
+function colorRegex(color) {
+  return new RegExp(`\\b${color}\\b`, "gi");
+}
+
+function replaceColorWord(value, fromColor, toColor) {
+  return String(value || "").replace(colorRegex(fromColor), (match) => {
+    if (match === match.toUpperCase()) return toColor.toUpperCase();
+    if (match[0] === match[0].toUpperCase()) return `${toColor[0].toUpperCase()}${toColor.slice(1)}`;
+    return toColor;
+  });
+}
+
+function normalizeColorWord(color) {
+  return color === "grey" ? "gray" : color;
+}
+
+function quotedRevisionLines(text) {
+  return normalizeTextNewlines(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(">"))
+    .map((line) => line.replace(/^>\s?/, "").trim())
+    .filter(Boolean);
+}
+
+function colorWordsInText(text) {
+  return Array.from(String(text || "").toLowerCase().matchAll(new RegExp(`\\b${COLOR_WORD_PATTERN}\\b`, "g")))
+    .map((match) => normalizeColorWord(match[1]));
+}
+
+function findColorRevision(text, normalizedText) {
+  const explicitMatch = normalizedText.match(new RegExp(`\\b(?:change|replace|switch|revise|update|make|turn)\\s+(?:the\\s+)?${COLOR_WORD_PATTERN}\\b[\\s\\S]{0,80}?\\b(?:to|into)\\s+${COLOR_WORD_PATTERN}\\b`));
+  if (explicitMatch) {
+    return {
+      sourceColor: normalizeColorWord(explicitMatch[1]),
+      targetColor: normalizeColorWord(explicitMatch[2]),
+      quotedLines: quotedRevisionLines(text),
+    };
+  }
+
+  const targetMatch = normalizedText.match(new RegExp(`\\b(?:change|replace|switch|revise|update|make|turn)\\b[\\s\\S]{0,80}?\\b(?:to|into)\\s+${COLOR_WORD_PATTERN}\\b`));
+  if (!targetMatch) return null;
+
+  const targetColor = normalizeColorWord(targetMatch[1]);
+  const quotedLines = quotedRevisionLines(text);
+  const quotedColors = colorWordsInText(quotedLines.join("\n")).filter((color) => color !== targetColor);
+  if (/\bthis\b/.test(normalizedText) && quotedColors.length) {
+    return { sourceColor: quotedColors[0], targetColor, quotedLines };
+  }
+
+  const beforeTarget = normalizedText.slice(0, targetMatch.index);
+  const previousColors = colorWordsInText(beforeTarget)
+    .filter((color) => color !== targetColor);
+  const sourceColor = previousColors.at(-1);
+  if (!sourceColor) return null;
+  return { sourceColor, targetColor, quotedLines };
+}
+
+function applyColorRevision(text, normalizedText) {
+  const revision = findColorRevision(text, normalizedText);
+  if (!revision) return null;
+
+  let changedCount = 0;
+  const nextBasis = { ...state.quoteBasis };
+  const quotedLines = revision.quotedLines || [];
+  const quoteMatched = quotedLines.length
+    ? Object.keys(nextBasis).some((key) => {
+        let changedField = false;
+        const nextLines = normalizeTextNewlines(nextBasis[key]).split("\n").map((line) => {
+          const shouldEdit = quotedLines.some((quotedLine) => line.trim() === quotedLine || line.includes(quotedLine) || quotedLine.includes(line.trim()));
+          if (!shouldEdit) return line;
+          const nextLine = replaceColorWord(line, revision.sourceColor, revision.targetColor);
+          if (nextLine !== line) {
+            changedCount += 1;
+            changedField = true;
+          }
+          return nextLine;
+        });
+        if (changedField) nextBasis[key] = nextLines.join("\n");
+        return changedField;
+      })
+    : false;
+
+  if (!quoteMatched) {
+    Object.keys(nextBasis).forEach((key) => {
+      const nextValue = replaceColorWord(nextBasis[key], revision.sourceColor, revision.targetColor);
+      if (nextValue !== nextBasis[key]) changedCount += 1;
+      nextBasis[key] = nextValue;
+    });
+  }
+
+  const nextLineItems = state.lineItems.map((item) => {
+    const nextDescription = replaceColorWord(item.description, revision.sourceColor, revision.targetColor);
+    if (nextDescription !== item.description) changedCount += 1;
+    return { ...item, description: nextDescription };
+  });
+
+  if (!changedCount) return null;
+  state.quoteBasis = nextBasis;
+  state.lineItems = nextLineItems;
+  return `Updated ${changedCount} draft field${changedCount === 1 ? "" : "s"} from ${revision.sourceColor} to ${revision.targetColor}.`;
+}
+
+function applyFlooringRevision(normalizedText) {
+  if (!/laminat|carpet|floor|flooring|platform/.test(normalizedText)) return null;
+  if (!/(change|replace|switch|revise|update|make|use|laminat)/.test(normalizedText)) return null;
+
+  const woodGrain = /wood|timber|grain/.test(normalizedText);
+  const description = woodGrain
+    ? "Wood grain laminated flooring on raised platform"
+    : "White laminated flooring on raised platform";
+  const pricingKeyword = woodGrain
+    ? "floor-design.wood-grain-laminated-flooring-on-raised-platform"
+    : "floor-design.white-laminated-flooring-on-raised-platform";
+  const index = findFloorFinishLineIndex();
+  const nextItem = {
+    section: "Floor Design",
+    quantity: estimatedAreaQuantity(),
+    unit: "sqm",
+    description,
+    pricing_keyword: pricingKeyword,
+    display_price: "",
+  };
+
+  if (index >= 0) {
+    state.lineItems[index] = { ...state.lineItems[index], ...nextItem };
+  } else {
+    state.lineItems.unshift(nextItem);
+  }
+  state.quoteBasis.platform = revisedBasisText(
+    state.quoteBasis.platform,
+    `Confirm: Platform flooring revised to ${description.toLowerCase()}.`
+  );
+  return `Updated the floor finish to ${description.toLowerCase()} using catalog item ${pricingKeyword}.`;
+}
+
+async function applyRevisionRequest(text, normalizedText) {
+  const applied = applyColorRevision(text, normalizedText) || applyFlooringRevision(normalizedText);
+  if (!applied) return false;
+
+  if (state.workflowStage === "basis_review") {
+    appendChatMessage("assistant", `${applied} Review the updated basis below, then confirm when it looks right.`);
+    appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, "edited"), { html: true });
+    syncControlStates();
+    return true;
+  }
+
+  appendChatMessage("assistant", `${applied} I am regenerating the Excel quotation now.`);
+  setResultStatus("Revision running", "is-warn");
+  renderMessages(["Revision applied. Regenerating quotation."]);
+  renderDownloads([]);
+  renderMatchSummary({});
+  renderPricingMatches([]);
+  await handleGenerate();
+  return true;
+}
+
+function insertQuotedLine(line, revise = false) {
+  const prefix = `> ${line}\n\n`;
+  elements.chatPrompt.value = revise ? `${prefix}change this to ` : prefix;
+  elements.chatPrompt.disabled = false;
+  elements.chatPrompt.focus();
+  elements.chatPrompt.setSelectionRange(elements.chatPrompt.value.length, elements.chatPrompt.value.length);
+}
+
+function setSidePanel(panelName) {
+  const panelTitles = {
+    images: ["Images", "Reference Inputs"],
+    pricing: ["Pricing", "Match Review"],
+    output: ["Latest Output", "Generated Quotation"],
+    settings: ["Settings", "Workspace"],
+  };
+  const [title, eyebrow] = panelTitles[panelName] || panelTitles.images;
+  elements.sideDrawerTitle.textContent = title;
+  elements.sideDrawerEyebrow.textContent = eyebrow;
+  document.querySelectorAll("[data-side-panel]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.sidePanel === panelName);
+  });
+  document.querySelectorAll(".side-panel-section[data-side-panel-content]").forEach((section) => {
+    section.classList.toggle("is-active", section.dataset.sidePanelContent === panelName);
+  });
+  setSideDrawer(true);
+}
+
+async function handleChatSubmit(event) {
   event.preventDefault();
   const text = elements.chatPrompt.value.trim();
   if (!text) return;
@@ -1088,9 +1417,20 @@ function handleChatSubmit(event) {
     }
   }
 
+  if (await applyRevisionRequest(text, normalized)) {
+    return;
+  }
+
+  if (canStartAnalysis() && ["basis_review", "completed", "pricing_review"].includes(state.workflowStage)) {
+    state.pendingFeedback = text;
+    await handleDraftBasis();
+    state.pendingFeedback = "";
+    return;
+  }
+
   appendChatMessage(
     "assistant",
-    `I am keeping this guarded for now: I can ${currentGenerator().fallbackAction}, regenerate the basis, load sample details, confirm basis, or generate Excel. Edit exact customer and company text in Quote Details.`
+    `I could not apply that safely as a direct edit yet. Try a specific revision like "change floor finish to laminate", or regenerate analysis for a fresh AI takeoff. Quote Details still controls customer, company, header, and terms text.`
   );
   renderCurrentActions();
 }
@@ -1143,10 +1483,18 @@ function wireEvents() {
   });
 
   elements.quoteDetailsButton.addEventListener("click", () => setDetailsDrawer(true));
+  document.querySelectorAll("[data-side-panel]").forEach((button) => {
+    button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images"));
+  });
   elements.closeDetailsDrawerButton.addEventListener("click", () => setDetailsDrawer(false));
+  elements.closeSideDrawerButton.addEventListener("click", () => setSideDrawer(false));
+  elements.sideBackdrop.addEventListener("click", () => setSideDrawer(false));
   elements.detailsBackdrop.addEventListener("click", () => setDetailsDrawer(false));
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") setDetailsDrawer(false);
+    if (event.key === "Escape") {
+      setDetailsDrawer(false);
+      setSideDrawer(false);
+    }
   });
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
@@ -1183,12 +1531,29 @@ function wireEvents() {
   });
   elements.generateButton.addEventListener("click", handleGenerate);
   elements.chatForm.addEventListener("submit", handleChatSubmit);
+  elements.chatPrompt.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    if (!elements.sendChatButton.disabled) {
+      elements.chatForm.requestSubmit();
+    }
+  });
   elements.chatActions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-chat-action]");
     if (!button || button.disabled) return;
     handleChatAction(button.dataset.chatAction);
   });
   elements.chatTranscript.addEventListener("click", (event) => {
+    const reviseButton = event.target.closest("[data-revise-line]");
+    if (reviseButton) {
+      insertQuotedLine(reviseButton.dataset.reviseLine || "", true);
+      return;
+    }
+    const quoteButton = event.target.closest("[data-quote-line]");
+    if (quoteButton) {
+      insertQuotedLine(quoteButton.dataset.quoteLine || "", false);
+      return;
+    }
     const button = event.target.closest("[data-chat-action]");
     if (!button || button.disabled) return;
     handleChatAction(button.dataset.chatAction);
@@ -1206,11 +1571,20 @@ function setInitialValues() {
   renderPricingMatches([]);
   renderMatchSummary({});
   setWorkflowStage("needs_images");
-  appendChatMessage("assistant", "Drop booth render images to start. Use Quote Details for customer, company, header, and terms text, or Load Sample for a quick test.");
+  appendChatMessage(
+    "assistant",
+    "Start by dropping booth render images, or click Load Sample in Images for a quick test. Edit Quote Details holds the customer, company, header, and terms text.",
+    { tone: "instruction" }
+  );
   renderCurrentActions();
   syncControlStates();
 }
 
-wireEvents();
-setInitialValues();
-checkHealth();
+async function boot() {
+  wireEvents();
+  await initializeSession();
+  setInitialValues();
+  checkHealth();
+}
+
+boot();

@@ -5,7 +5,7 @@
   "pricing_catalog": "pricing-catalog.json",
   "pricing_rag": "pricing-catalog.rag.md",
   "quotation_layout": "quotation-layout.xlsx",
-  "quotation_format": "quotation-format.md",
+  "layout_rules": "layout-rules.json",
   "default_generator_type": "booth",
   "default_signature": {
     "koncept_signatory": "Francies Cheng",

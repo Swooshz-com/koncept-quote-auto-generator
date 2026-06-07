@@ -1,8 +1,11 @@
 import tempfile
+import threading
 import unittest
 import io
 import json
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 import sys
 from unittest import mock
@@ -12,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
 KONCEPT_CATALOG = KONCEPT_PROFILE / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
+KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
 sys.path.insert(0, str(ROOT))
 
 from webapp import server as webapp
@@ -94,6 +98,21 @@ def wait_for_job(job_id: str, timeout: float = 2.0) -> dict:
     raise AssertionError(f"Timed out waiting for job {job_id}")
 
 
+class LocalRunnerServer:
+    def __enter__(self):
+        self.server = webapp.ThreadingHTTPServer(("127.0.0.1", 0), webapp.QuoteRunnerHandler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        host, port = self.server.server_address
+        self.base_url = f"http://{host}:{port}"
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+
+
 class WebappServerTest(unittest.TestCase):
     def test_validate_generation_payload_requires_images_before_generation(self):
         payload = valid_payload()
@@ -148,12 +167,21 @@ class WebappServerTest(unittest.TestCase):
 
     def test_default_profile_resolves_koncept_assets(self):
         profile = webapp.load_profile()
+        profile_pack = webapp.load_profile_pack()
 
         self.assertEqual(profile["id"], "koncept")
+        self.assertEqual(profile_pack.id, "koncept")
         self.assertIn("koncept", [item["id"] for item in webapp.list_profiles()])
         self.assertEqual(webapp.profile_pricing_catalog_path(), KONCEPT_CATALOG)
         self.assertEqual(webapp.profile_quotation_layout_path(), KONCEPT_LAYOUT)
+        self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_LAYOUT_RULES)
+        self.assertEqual(profile_pack.pricing_catalog_path, KONCEPT_CATALOG)
+        self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
+        self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
         self.assertTrue((KONCEPT_PROFILE / "pricing-catalog.rag.md").exists())
+        self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
+        self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
+        self.assertNotIn("quotation_format", profile)
         self.assertNotIn("pricing_catalog", webapp.profile_public_summary(profile))
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
@@ -378,9 +406,11 @@ class WebappServerTest(unittest.TestCase):
         response.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({"quote_basis": {}, "line_items": []})
         }).encode("utf-8")
+        payload = valid_payload()
+        payload["user_feedback"] = "change the quoted green carpet line to red"
 
         with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
-            webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
+            webapp.request_openai_quote_basis(payload, "sk-test-redacted")
 
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
@@ -391,6 +421,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("10 to 24 itemized line_items", prompt)
         self.assertIn("individual customer-facing rows", prompt)
         self.assertIn("flooring, structures, counters, graphics, furniture, electrical", prompt)
+        self.assertIn("user_feedback", prompt)
+        self.assertIn("change the quoted green carpet line to red", prompt)
+        self.assertIn("Apply the revision directly", prompt)
 
     def test_openai_prompt_treats_uploads_as_untrusted_and_protects_secrets(self):
         response = mock.MagicMock()
@@ -611,6 +644,22 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("AIzaSecretValue1234567890", joined)
         self.assertNotIn("sk-test-secret456", joined)
 
+    def test_local_runner_csrf_config_uses_env_with_safe_fallbacks(self):
+        def dotenv(name):
+            values = {
+                webapp.CSRF_HEADER_NAME_ENV_NAME: "X-Test-Local-Key",
+                webapp.CSRF_TOKEN_ENV_NAME: "test-local-runner-token-1234567890",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            self.assertEqual(webapp.configured_csrf_header_name(), "X-Test-Local-Key")
+            self.assertEqual(webapp.configured_csrf_token(), "test-local-runner-token-1234567890")
+
+        with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
+            self.assertEqual(webapp.configured_csrf_header_name(), webapp.DEFAULT_CSRF_HEADER_NAME)
+            self.assertEqual(webapp.configured_csrf_token(), webapp.PROCESS_CSRF_TOKEN)
+
     def test_local_logs_redact_secrets_and_omit_image_data_urls(self):
         with tempfile.TemporaryDirectory() as tmp:
             webapp.write_local_log(
@@ -629,6 +678,96 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("[omitted]", log_text)
         self.assertNotIn("sk-test-secret456", log_text)
         self.assertNotIn("secret-image", log_text)
+
+    def test_local_api_security_helpers_restrict_hosts_origins_and_content_type(self):
+        self.assertTrue(webapp.is_allowed_host_header("127.0.0.1:8765"))
+        self.assertTrue(webapp.is_allowed_host_header("localhost:8765"))
+        self.assertTrue(webapp.is_allowed_host_header("[::1]:8765"))
+        self.assertFalse(webapp.is_allowed_host_header("evil.example:8765"))
+        self.assertFalse(webapp.is_allowed_host_header("192.168.1.20:8765"))
+        self.assertTrue(webapp.is_same_origin_request("http://127.0.0.1:8765", "127.0.0.1:8765"))
+        self.assertFalse(webapp.is_same_origin_request("https://127.0.0.1:8765", "127.0.0.1:8765"))
+        self.assertFalse(webapp.is_same_origin_request("http://evil.example", "127.0.0.1:8765"))
+        self.assertTrue(webapp.is_json_content_type("application/json; charset=utf-8"))
+        self.assertFalse(webapp.is_json_content_type("text/plain"))
+        self.assertFalse(webapp.is_safe_bind_host("0.0.0.0"))
+
+    def test_local_api_rate_limits_state_changing_paths(self):
+        webapp.RATE_LIMIT_BUCKETS.clear()
+        for _ in range(webapp.POST_RATE_LIMITS["/api/jobs"]):
+            self.assertFalse(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1000))
+
+        self.assertTrue(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1001))
+        self.assertFalse(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1000 + webapp.RATE_LIMIT_WINDOW_SECONDS + 1))
+
+    def test_http_post_requires_allowed_host_csrf_and_json_content_type(self):
+        with LocalRunnerServer() as runner:
+            session_response = urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3)
+            self.assertEqual(session_response.headers["Cache-Control"], "no-store")
+            self.assertEqual(session_response.headers["X-Content-Type-Options"], "nosniff")
+            self.assertEqual(session_response.headers["X-Frame-Options"], "DENY")
+            self.assertEqual(session_response.headers["Cross-Origin-Opener-Policy"], "same-origin")
+            self.assertIn("camera=()", session_response.headers["Permissions-Policy"])
+            self.assertIn("frame-ancestors 'none'", session_response.headers["Content-Security-Policy"])
+            self.assertIsNone(session_response.headers.get("Access-Control-Allow-Origin"))
+            session = json.loads(session_response.read().decode("utf-8"))
+            csrf_header = session["csrf_header"]
+            csrf_token = session["csrf_token"]
+
+            preflight = urllib.request.Request(
+                f"{runner.base_url}/api/jobs",
+                method="OPTIONS",
+                headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as preflight_error:
+                urllib.request.urlopen(preflight, timeout=3)
+            self.assertEqual(preflight_error.exception.code, 403)
+            self.assertIsNone(preflight_error.exception.headers.get("Access-Control-Allow-Origin"))
+
+            missing_csrf = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=b"{}",
+                method="POST",
+                headers={"Content-Type": "application/json", "Origin": runner.base_url},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as missing_error:
+                urllib.request.urlopen(missing_csrf, timeout=3)
+            self.assertEqual(missing_error.exception.code, 403)
+
+            bad_type = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=b"{}",
+                method="POST",
+                headers={
+                    "Content-Type": "text/plain",
+                    "Origin": runner.base_url,
+                    csrf_header: csrf_token,
+                },
+            )
+            with self.assertRaises(urllib.error.HTTPError) as type_error:
+                urllib.request.urlopen(bad_type, timeout=3)
+            self.assertEqual(type_error.exception.code, 415)
+
+            bad_host = urllib.request.Request(
+                f"{runner.base_url}/api/session",
+                headers={"Host": "evil.example"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as host_error:
+                urllib.request.urlopen(bad_host, timeout=3)
+            self.assertEqual(host_error.exception.code, 403)
+
+            valid = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=json.dumps({"event": "test", "details": {}}).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": runner.base_url,
+                    csrf_header: csrf_token,
+                },
+            )
+            response = json.loads(urllib.request.urlopen(valid, timeout=3).read().decode("utf-8"))
+            self.assertEqual(response["status"], "logged")
 
     def test_run_quote_job_uses_stderr_when_generator_stdout_has_no_errors(self):
         completed = mock.Mock(
@@ -722,6 +861,10 @@ class WebappServerTest(unittest.TestCase):
             "closeDetailsDrawerButton",
             "detailsDrawer",
             "detailsBackdrop",
+            "sideWorkspace",
+            "sideBackdrop",
+            "closeSideDrawerButton",
+            "sideDrawerTitle",
             "imageIntake",
             "sampleDetailsButton",
             "matchSummary",
@@ -742,15 +885,27 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Fill Quote Details before AI analysis", js)
         self.assertIn("Fill all Quote Details to enable assistant replies.", js)
         self.assertIn("elements.chatPrompt.disabled", js)
+        self.assertIn('elements.chatPrompt.addEventListener("keydown"', js)
+        self.assertIn('event.key !== "Enter"', js)
+        self.assertIn("event.shiftKey", js)
+        self.assertIn("elements.chatForm.requestSubmit()", js)
         self.assertIn("elements.chatTranscript.addEventListener(\"click\"", js)
         self.assertNotIn("Run AI Analysis", html)
         self.assertIn("Load Sample", html)
+        self.assertIn("sample-start-card", html)
         self.assertIn("renderMatchSummary", js)
         self.assertIn(".secondary-button:disabled", css)
+        self.assertIn("normalizeTextNewlines", js)
+        self.assertIn("applyColorRevision", js)
+        self.assertIn("CSRF_HEADER_NAME", js)
+        self.assertIn("/api/session", js)
+        self.assertIn("initializeSession", js)
+        self.assertIn("overflow-wrap: anywhere", css)
 
     def test_static_webapp_uses_simplified_setup_assistant_flow(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('id="panel-analysis"', html)
@@ -759,14 +914,32 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('id="quoteDetailsButton"', html)
         self.assertIn("Swooshz Quote Generator", html)
         self.assertIn("Generator type", html)
-        self.assertIn("Drop reference images to start", html)
-        self.assertIn("Drop booth render images to start", js)
+        self.assertIn('class="command-rail"', html)
+        self.assertIn('class="side-workspace"', html)
+        self.assertIn('class="chat-main"', html)
+        self.assertIn('data-side-panel="images"', html)
+        self.assertIn('data-side-panel-content="images"', html)
+        self.assertIn("Latest Output", html)
+        self.assertIn("Brazil pavilion demo", html)
+        self.assertIn("Drag and drop render images here", html)
+        self.assertIn("Start by dropping booth render images", js)
+        self.assertIn("grid-template-areas", css)
+        self.assertIn("chat rail", css)
+        self.assertIn(".side-workspace.is-open", css)
+        self.assertIn(".chat-message.instruction", css)
+        self.assertIn("min-height: 640px", css)
+        self.assertIn("--accent: #f5c84c", css)
+        self.assertIn(".sample-start-card", css)
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="detailsDrawer"'))
         self.assertIn("setDetailsDrawer", js)
+        self.assertIn("setSideDrawer", js)
+        self.assertIn("setSidePanel", js)
         self.assertIn("addImagesFromFiles", js)
         self.assertIn("currentGenerator", js)
         self.assertIn("generator_type", js)
         self.assertNotIn("Koncept Quote Runner", html)
         self.assertNotIn("Local quotation workspace", html)
+        self.assertNotIn("Quote automation workspace", html)
         self.assertNotIn('class="brand"', html)
         self.assertNotIn('data-panel="setup"', html)
         self.assertNotIn('data-panel="analysis"', html)
@@ -859,6 +1032,32 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("starterRowsButton", html)
         self.assertNotIn("addLineButton", html)
         self.assertNotIn("setStarterRows", js)
+
+    def test_static_chat_supports_post_generation_revisions(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        for expected in (
+            "Revise by Chat",
+            "focus_chat",
+            "applyRevisionRequest",
+            "applyFlooringRevision",
+            "insertQuotedLine",
+            "data-revise-line",
+            "data-quote-line",
+            "quotedRevisionLines",
+            "pendingFeedback",
+            "Using your feedback to revise the AI takeoff now.",
+            "change this to",
+            "change carpet to laminate",
+            "floor-design.white-laminated-flooring-on-raised-platform",
+            "floor-design.wood-grain-laminated-flooring-on-raised-platform",
+            "Revision applied. Regenerating quotation.",
+            "I could not apply that safely as a direct edit yet.",
+        ):
+            self.assertIn(expected, js)
+
+        self.assertNotIn("I am keeping this guarded for now", js)
 
     def test_static_chat_blocks_secret_and_internal_prompt_requests(self):
         static_dir = ROOT / "webapp" / "static"
