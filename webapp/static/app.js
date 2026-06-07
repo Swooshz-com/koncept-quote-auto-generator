@@ -128,9 +128,7 @@ const elements = {
   imageInput: qs("#imageInput"),
   fileList: qs("#fileList"),
   quoteDetailsButton: qs("#quoteDetailsButton"),
-  closeDetailsDrawerButton: qs("#closeDetailsDrawerButton"),
-  detailsDrawer: qs("#detailsDrawer"),
-  detailsBackdrop: qs("#detailsBackdrop"),
+  quoteDetailsPanel: qs("#quoteDetailsPanel"),
   sideWorkspace: qs("#sideWorkspace"),
   sideBackdrop: qs("#sideBackdrop"),
   closeSideDrawerButton: qs("#closeSideDrawerButton"),
@@ -197,13 +195,15 @@ function setWorkflowStage(stage) {
   state.workflowStage = stage;
   elements.workflowStage.textContent = STAGE_LABELS[stage] || stage;
   elements.workflowStage.dataset.stage = stage;
+  document.body.dataset.workflowStage = stage;
 }
 
 function setDetailsDrawer(open) {
-  elements.detailsDrawer.classList.toggle("is-open", open);
-  elements.detailsDrawer.setAttribute("aria-hidden", open ? "false" : "true");
-  elements.detailsBackdrop.hidden = !open;
-  document.body.classList.toggle("drawer-open", open);
+  if (open) {
+    setSidePanel("details");
+  } else {
+    setSideDrawer(false);
+  }
 }
 
 function setSideDrawer(open) {
@@ -634,6 +634,12 @@ function renderChat() {
       `;
     })
     .join("");
+  const lastMessage = state.chatMessages.at(-1);
+  if (lastMessage?.html && String(lastMessage.content || "").includes("quote-basis-card")) {
+    const latestBasis = elements.chatTranscript.querySelector(".chat-message:last-child");
+    elements.chatTranscript.scrollTop = Math.max(0, (latestBasis?.offsetTop || 0) - 118);
+    return;
+  }
   elements.chatTranscript.scrollTop = elements.chatTranscript.scrollHeight;
 }
 
@@ -654,10 +660,7 @@ function renderCurrentActions() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   const readyForAnalysis = canStartAnalysis();
   if (state.workflowStage === "basis_review") {
-    renderChatActions([
-      { label: "Confirm Basis", action: "confirm_basis", primary: true, disabled: busy },
-      { label: "Regenerate Analysis", action: "regenerate", disabled: busy || !readyForAnalysis },
-    ]);
+    renderChatActions([]);
     return;
   }
   if (state.workflowStage === "details_review") {
@@ -703,31 +706,31 @@ function renderBasisLine(key, line) {
   return `
     <li class="basis-line-row basis-line-${escapeHtml(meta.tag.toLowerCase())}">
       <span class="basis-line-pill">${escapeHtml(meta.tag)}</span>
-      <span class="basis-line-text">${escapeHtml(meta.text)}</span>
-      <button class="basis-line-tool" type="button" data-quote-line="${escapeHtml(line)}">Quote</button>
+      <span class="basis-line-text" title="${escapeHtml(meta.text)}">${escapeHtml(meta.text)}</span>
+      <button class="basis-line-tool basis-line-quote" type="button" data-quote-line="${escapeHtml(line)}" aria-label="Quote this line">Q</button>
       <button class="basis-line-tool" type="button" data-revise-line="${escapeHtml(line)}">Revise</button>
     </li>
   `;
 }
 
 function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
-  const sourceText = source === "openai"
-    ? `${currentGenerator().basisSource} with OpenAI and drafted the quotation basis below.`
-    : source === "gemini"
-      ? `OpenAI was unavailable, so I used Gemini fallback to draft the quotation basis below from the ${currentGenerator().label.toLowerCase()} references.`
-      : source === "edited"
-        ? "I applied your chat edit to the draft basis below."
-        : "I used a local starter draft for now. Review it carefully, or regenerate analysis later when a remote AI provider is available.";
+  const statusText = source === "edited" ? "Edited draft" : "Needs your confirmation";
+  const summaryText = state.lineItems.length
+    ? `${state.lineItems.length} priced line${state.lineItems.length === 1 ? "" : "s"}`
+    : "Pricing draft pending";
   return `
     <div class="assistant-card quote-basis-card">
       <div class="quote-basis-header">
         <div>
-          <h3>Quote basis to confirm</h3>
-          <p>${escapeHtml(sourceText)}</p>
+          <div class="quote-basis-title-row">
+            <h3>Quote basis to confirm</h3>
+            <span>${escapeHtml(statusText)}</span>
+          </div>
+          <p>Please review the AI takeoff and confirm, quote a line, or request changes.</p>
         </div>
         <div class="quote-basis-source">
-          <span>Source: Concept Pricing Catalog</span>
-          <strong>${state.lineItems.length} priced line${state.lineItems.length === 1 ? "" : "s"}</strong>
+          <span>Source: Koncept Pricing Catalog (RAG)</span>
+          <strong>${escapeHtml(summaryText)}</strong>
         </div>
       </div>
       <div class="basis-review-grid">
@@ -1359,6 +1362,7 @@ function insertQuotedLine(line, revise = false) {
 function setSidePanel(panelName) {
   const panelTitles = {
     images: ["Images", "Reference Inputs"],
+    details: ["Quote Details", "Editable Quote Configuration"],
     pricing: ["Pricing", "Match Review"],
     output: ["Latest Output", "Generated Quotation"],
     settings: ["Settings", "Workspace"],
@@ -1482,17 +1486,13 @@ function wireEvents() {
     removeImageAt(Number(button.dataset.removeImage));
   });
 
-  elements.quoteDetailsButton.addEventListener("click", () => setDetailsDrawer(true));
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
     button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images"));
   });
-  elements.closeDetailsDrawerButton.addEventListener("click", () => setDetailsDrawer(false));
   elements.closeSideDrawerButton.addEventListener("click", () => setSideDrawer(false));
   elements.sideBackdrop.addEventListener("click", () => setSideDrawer(false));
-  elements.detailsBackdrop.addEventListener("click", () => setDetailsDrawer(false));
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      setDetailsDrawer(false);
       setSideDrawer(false);
     }
   });

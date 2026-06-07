@@ -59,29 +59,75 @@
                   <span>Quote</span>
                 </div>
                 <textarea id="chatPrompt" rows="2" placeholder="Ask anything, request changes, or confirm..."></textarea>
-                <button class="primary-button send-button" type="submit" id="sendChatButton">Send</button>
+                <button class="primary-button send-button" type="submit" id="sendChatButton" aria-label="Send message">
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path d="M5 12 20 5l-7 15-2-7-6-1Z"></path>
+                    <path d="m11 13 4-4"></path>
+                  </svg>
+                  <span class="sr-only">Send</span>
+                </button>
               </form>
             </main>
 
             <nav class="command-rail" aria-label="Quote workspace panels">
               <button class="rail-button is-active" type="button" data-side-panel="images">
-                <span class="rail-icon" aria-hidden="true">IMG</span>
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M5 19h14V5H5v14Z"></path>
+                    <path d="m7.8 16 3.2-3.3 2.5 2.5 1.8-1.8 3 3.6"></path>
+                    <path d="M8.5 8.5h.01"></path>
+                  </svg>
+                </span>
                 <span>Images</span>
               </button>
-              <button class="rail-button" type="button" id="quoteDetailsButton">
-                <span class="rail-icon" aria-hidden="true">TXT</span>
+              <button class="rail-button" type="button" id="quoteDetailsButton" data-side-panel="details">
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M7 4h10l2 2v16H7V4Z"></path>
+                    <path d="M17 4v4h4"></path>
+                    <path d="M10 11h7"></path>
+                    <path d="M10 15h7"></path>
+                    <path d="M10 19h4"></path>
+                  </svg>
+                </span>
                 <span>Quote Details</span>
               </button>
               <button class="rail-button" type="button" data-side-panel="pricing">
-                <span class="rail-icon" aria-hidden="true">SGD</span>
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"></path>
+                    <path d="M8 10h8"></path>
+                    <path d="M8 14h5"></path>
+                    <path d="M16 14h.01"></path>
+                  </svg>
+                </span>
                 <span>Pricing</span>
               </button>
               <button class="rail-button" type="button" data-side-panel="output">
-                <span class="rail-icon" aria-hidden="true">XLS</span>
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M7 3h7l5 5v13H7V3Z"></path>
+                    <path d="M14 3v5h5"></path>
+                    <path d="M10 13h6"></path>
+                    <path d="M10 17h6"></path>
+                  </svg>
+                </span>
                 <span>Output</span>
               </button>
               <button class="rail-button" type="button" data-side-panel="settings">
-                <span class="rail-icon" aria-hidden="true">SET</span>
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"></path>
+                    <path d="M12 2v3"></path>
+                    <path d="M12 19v3"></path>
+                    <path d="m4.9 4.9 2.1 2.1"></path>
+                    <path d="m17 17 2.1 2.1"></path>
+                    <path d="M2 12h3"></path>
+                    <path d="M19 12h3"></path>
+                    <path d="m4.9 19.1 2.1-2.1"></path>
+                    <path d="m17 7 2.1-2.1"></path>
+                  </svg>
+                </span>
                 <span>Settings</span>
               </button>
             </nav>
@@ -132,6 +178,125 @@
                 </div>
               </section>
 
+              <section class="side-panel-card side-panel-section quote-details-panel" id="quoteDetailsPanel" data-side-panel-content="details">
+                <div class="side-panel-heading">
+                  <div>
+                    <h3>Quote Details</h3>
+                    <p>Customer, project, header, terms, and signature text.</p>
+                  </div>
+                </div>
+
+                <div class="section-band first-band">
+                  <h3>Customer and Project</h3>
+                  <div class="form-grid">
+                    <label>
+                      Client name
+                      <input id="clientName" type="text" autocomplete="organization">
+                    </label>
+                    <label>
+                      Attention person
+                      <input id="clientAttention" type="text" autocomplete="name">
+                    </label>
+                    <label>
+                      Attention title
+                      <input id="clientTitle" type="text">
+                    </label>
+                    <label>
+                      Project / event
+                      <input id="projectTitle" type="text">
+                    </label>
+                    <label>
+                      <span id="widthLabel">Width (m)</span>
+                      <input id="boothWidth" type="number" min="0" step="0.1" inputmode="decimal">
+                    </label>
+                    <label>
+                      <span id="depthLabel">Depth (m)</span>
+                      <input id="boothDepth" type="number" min="0" step="0.1" inputmode="decimal">
+                    </label>
+                    <label>
+                      Quote date
+                      <input id="quoteDate" type="date">
+                    </label>
+                    <label>
+                      Project number
+                      <input id="projectNumber" type="text">
+                    </label>
+                    <label class="wide">
+                      Client address
+                      <textarea id="clientAddress" rows="3"></textarea>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="section-band">
+                  <h3>Quote Header</h3>
+                  <div class="form-grid">
+                    <label>
+                      Quotation company name
+                      <input id="quoteCompanyName" type="text">
+                    </label>
+                    <label>
+                      Header logo
+                      <input id="headerLogoInput" type="file" accept="image/png,image/jpeg">
+                    </label>
+                    <label class="wide">
+                      Header details
+                      <textarea id="headerDetails" rows="8"></textarea>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="section-band">
+                  <h3>Terms and Notes</h3>
+                  <div class="form-grid compact">
+                    <label>
+                      Terms heading
+                      <input id="termsHeading" type="text">
+                    </label>
+                    <label>
+                      Cheque payee
+                      <input id="chequePayee" type="text">
+                    </label>
+                    <label class="wide">
+                      Payment terms
+                      <textarea id="paymentTerms" rows="3"></textarea>
+                    </label>
+                    <label>
+                      Notes heading
+                      <input id="notesHeading" type="text">
+                    </label>
+                    <label>
+                      Acceptance text
+                      <input id="acceptanceText" type="text">
+                    </label>
+                    <label class="wide">
+                      Standard notes
+                      <textarea id="standardNotes" rows="10"></textarea>
+                    </label>
+                    <label>
+                      Company signatory
+                      <input id="konceptSignatory" type="text">
+                    </label>
+                    <label>
+                      Signatory title
+                      <input id="konceptTitle" type="text">
+                    </label>
+                    <label>
+                      Person label
+                      <input id="personLabel" type="text">
+                    </label>
+                    <label>
+                      Stamp label
+                      <input id="stampLabel" type="text">
+                    </label>
+                    <label>
+                      Date label
+                      <input id="dateLabel" type="text">
+                    </label>
+                  </div>
+                </div>
+              </section>
+
               <section class="side-panel-card side-panel-section" id="pricingSidePanel" data-side-panel-content="pricing">
                 <div class="side-panel-heading">
                   <div>
@@ -139,14 +304,28 @@
                     <p>Pricing match review appears after generation.</p>
                   </div>
                 </div>
+                <div class="side-empty-state">
+                  <strong>No pricing review yet</strong>
+                  <p>Generate a quotation to see matched rows, unmatched items, and manual pricing actions.</p>
+                </div>
               </section>
 
               <section class="side-panel-card side-panel-section" id="settingsSidePanel" data-side-panel-content="settings">
+                <div class="side-panel-heading">
+                  <div>
+                    <h3>Settings</h3>
+                    <p>Profile and generator controls will live here.</p>
+                  </div>
+                </div>
+                <div class="side-empty-state">
+                  <strong>No settings yet</strong>
+                  <p>This is intentionally empty while the short-term runner stays local and profile-driven.</p>
+                </div>
               </section>
 
               <section class="side-panel-card side-panel-section" id="outputSidePanel" data-side-panel-content="output">
                 <div class="assistant-output" id="assistantOutput">
-                  <div class="panel-heading compact-heading">
+                  <div class="side-panel-heading compact-heading">
                     <div>
                       <h3>Latest Output</h3>
                       <p>Excel download and pricing review appear here after generation.</p>
@@ -181,130 +360,6 @@
       </div>
 
       <div class="side-backdrop" id="sideBackdrop" hidden></div>
-      <div class="details-backdrop" id="detailsBackdrop" hidden></div>
-      <aside class="details-drawer" id="detailsDrawer" aria-hidden="true" aria-labelledby="detailsDrawerTitle">
-        <div class="details-drawer-header">
-          <div>
-            <p class="drawer-eyebrow">Editable quote configuration</p>
-            <h2 id="detailsDrawerTitle">Quote Details</h2>
-          </div>
-          <div class="drawer-header-actions">
-            <button class="icon-close-button" type="button" id="closeDetailsDrawerButton" aria-label="Close quote details">x</button>
-          </div>
-        </div>
-
-        <div class="drawer-scroll">
-          <div class="section-band first-band">
-            <h3>Customer and Project</h3>
-            <div class="form-grid">
-              <label>
-                Client name
-                <input id="clientName" type="text" autocomplete="organization">
-              </label>
-              <label>
-                Attention person
-                <input id="clientAttention" type="text" autocomplete="name">
-              </label>
-              <label>
-                Attention title
-                <input id="clientTitle" type="text">
-              </label>
-              <label>
-                Project / event
-                <input id="projectTitle" type="text">
-              </label>
-              <label>
-                <span id="widthLabel">Width (m)</span>
-                <input id="boothWidth" type="number" min="0" step="0.1" inputmode="decimal">
-              </label>
-              <label>
-                <span id="depthLabel">Depth (m)</span>
-                <input id="boothDepth" type="number" min="0" step="0.1" inputmode="decimal">
-              </label>
-              <label>
-                Quote date
-                <input id="quoteDate" type="date">
-              </label>
-              <label>
-                Project number
-                <input id="projectNumber" type="text">
-              </label>
-              <label class="wide">
-                Client address
-                <textarea id="clientAddress" rows="3"></textarea>
-              </label>
-            </div>
-          </div>
-
-          <div class="section-band">
-            <h3>Quote Header</h3>
-            <div class="form-grid">
-              <label>
-                Quotation company name
-                <input id="quoteCompanyName" type="text">
-              </label>
-              <label>
-                Header logo
-                <input id="headerLogoInput" type="file" accept="image/png,image/jpeg">
-              </label>
-              <label class="wide">
-                Header details
-                <textarea id="headerDetails" rows="8"></textarea>
-              </label>
-            </div>
-          </div>
-
-          <div class="section-band">
-            <h3>Terms and Notes</h3>
-            <div class="form-grid compact">
-              <label>
-                Terms heading
-                <input id="termsHeading" type="text">
-              </label>
-              <label>
-                Cheque payee
-                <input id="chequePayee" type="text">
-              </label>
-              <label class="wide">
-                Payment terms
-                <textarea id="paymentTerms" rows="3"></textarea>
-              </label>
-              <label>
-                Notes heading
-                <input id="notesHeading" type="text">
-              </label>
-              <label>
-                Acceptance text
-                <input id="acceptanceText" type="text">
-              </label>
-              <label class="wide">
-                Standard notes
-                <textarea id="standardNotes" rows="10"></textarea>
-              </label>
-              <label>
-                Company signatory
-                <input id="konceptSignatory" type="text">
-              </label>
-              <label>
-                Signatory title
-                <input id="konceptTitle" type="text">
-              </label>
-              <label>
-                Person label
-                <input id="personLabel" type="text">
-              </label>
-              <label>
-                Stamp label
-                <input id="stampLabel" type="text">
-              </label>
-              <label>
-                Date label
-                <input id="dateLabel" type="text">
-              </label>
-            </div>
-          </div>
-        </div>
-      </aside>
     </div>
     <script src="/static/app.js"></script>
   </body>

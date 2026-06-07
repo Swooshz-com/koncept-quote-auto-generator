@@ -858,9 +858,7 @@ class WebappServerTest(unittest.TestCase):
             "widthLabel",
             "depthLabel",
             "quoteDetailsButton",
-            "closeDetailsDrawerButton",
-            "detailsDrawer",
-            "detailsBackdrop",
+            "quoteDetailsPanel",
             "sideWorkspace",
             "sideBackdrop",
             "closeSideDrawerButton",
@@ -910,8 +908,10 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn('id="panel-analysis"', html)
         self.assertIn('id="imageIntake"', html)
-        self.assertIn('id="detailsDrawer"', html)
         self.assertIn('id="quoteDetailsButton"', html)
+        self.assertIn('data-side-panel="details"', html)
+        self.assertIn('data-side-panel-content="details"', html)
+        self.assertIn('id="quoteDetailsPanel"', html)
         self.assertIn("Swooshz Quote Generator", html)
         self.assertIn("Generator type", html)
         self.assertIn('class="command-rail"', html)
@@ -930,7 +930,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("min-height: 640px", css)
         self.assertIn("--accent: #f5c84c", css)
         self.assertIn(".sample-start-card", css)
-        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="detailsDrawer"'))
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="quoteDetailsPanel"'))
         self.assertIn("setDetailsDrawer", js)
         self.assertIn("setSideDrawer", js)
         self.assertIn("setSidePanel", js)
@@ -949,6 +949,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('activatePanel("output")', js)
         self.assertNotIn("activatePanel", js)
         self.assertNotIn('data-panel="details"', html)
+        self.assertNotIn('id="detailsDrawer"', html)
+        self.assertNotIn('id="detailsBackdrop"', html)
+        self.assertNotIn('id="closeDetailsDrawerButton"', html)
         self.assertNotIn('data-panel="basis"', html)
         self.assertNotIn('data-panel="items"', html)
         self.assertNotIn('value="6"', html)
