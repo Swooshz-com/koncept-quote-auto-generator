@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import csv
 import datetime as dt
 import json
@@ -76,6 +77,10 @@ OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 GEMINI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 TRANSIENT_GEMINI_HTTP_CODES = {408, 500, 502, 503, 504}
+MAX_PROMPT_CATALOG_ROWS = 180
+MAX_PROMPT_CATALOG_CHARS = 22000
+MAX_PROMPT_CATALOG_DESCRIPTION_CHARS = 180
+MAX_PROMPT_CATALOG_ALIASES = 2
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -384,6 +389,25 @@ class ProfilePack:
             return (self.directory / fallback_filename).resolve()
         return resolved
 
+    def relative_file_path(self, value: str) -> Path | None:
+        relative = clean_text(value)
+        if not relative:
+            return None
+        path = self.directory / relative
+        try:
+            resolved = path.resolve()
+            resolved.relative_to(self.directory.resolve())
+        except ValueError:
+            return None
+        return resolved if resolved.exists() and resolved.is_file() else None
+
+    def relative_file_data_url(self, value: str) -> str:
+        path = self.relative_file_path(value)
+        if path is None:
+            return ""
+        content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+        return f"data:{content_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+
     @property
     def pricing_catalog_path(self) -> Path:
         return self.asset_path("pricing_catalog", "pricing-catalog.json")
@@ -415,11 +439,74 @@ class ProfilePack:
         value = self.config.get("fallback_line_items")
         return value if isinstance(value, list) else []
 
-    def public_summary(self) -> dict[str, str]:
+    @property
+    def quote_detail_presets(self) -> list[Any]:
+        value = self.config.get("quote_detail_presets")
+        return value if isinstance(value, list) else []
+
+    def default_quote_detail_preset_id(self) -> str:
+        return safe_resource_id(self.config.get("default_quote_detail_preset"), "")
+
+    def resolve_profile_logo(self, details: dict[str, Any]) -> None:
+        company = details.get("company") if isinstance(details.get("company"), dict) else None
+        if company is None:
+            return
+        logo_path = clean_text(company.get("logo_path"))
+        if logo_path and not clean_text(company.get("logo_data_url")):
+            data_url = self.relative_file_data_url(logo_path)
+            if data_url:
+                company["logo_data_url"] = data_url
+        company.pop("logo_path", None)
+
+    def default_logo_data_url(self) -> str:
+        default_id = self.default_quote_detail_preset_id()
+        candidates = self.quote_detail_presets
+        if default_id:
+            candidates = sorted(
+                self.quote_detail_presets,
+                key=lambda item: 0 if isinstance(item, dict) and safe_resource_id(item.get("id"), "") == default_id else 1,
+            )
+        for raw in candidates:
+            if not isinstance(raw, dict):
+                continue
+            details = raw.get("details") if isinstance(raw.get("details"), dict) else {}
+            company = details.get("company") if isinstance(details.get("company"), dict) else {}
+            logo_data_url = clean_text(company.get("logo_data_url"))
+            if logo_data_url:
+                return logo_data_url
+            logo_path = clean_text(company.get("logo_path"))
+            if logo_path:
+                resolved = self.relative_file_data_url(logo_path)
+                if resolved:
+                    return resolved
+        return ""
+
+    def public_quote_detail_presets(self) -> list[dict[str, Any]]:
+        presets: list[dict[str, Any]] = []
+        for raw in self.quote_detail_presets:
+            if not isinstance(raw, dict):
+                continue
+            preset_id = safe_resource_id(raw.get("id"), "")
+            details = copy.deepcopy(raw.get("details")) if isinstance(raw.get("details"), dict) else {}
+            if not preset_id or not details:
+                continue
+            self.resolve_profile_logo(details)
+            presets.append(
+                {
+                    "id": preset_id,
+                    "name": clean_text(raw.get("name")) or preset_id,
+                    "details": details,
+                }
+            )
+        return presets
+
+    def public_summary(self) -> dict[str, Any]:
         return {
             "id": self.id or DEFAULT_PROFILE_ID,
             "label": clean_text(self.config.get("label")) or "Quotation Profile",
             "description": clean_text(self.config.get("description")),
+            "default_quote_detail_preset": self.default_quote_detail_preset_id(),
+            "quote_detail_presets": self.public_quote_detail_presets(),
         }
 
     def legacy_config(self) -> dict[str, Any]:
@@ -463,7 +550,7 @@ def profile_layout_rules_path(profile_id: str | None = None) -> Path:
     return load_profile_pack(profile_id).layout_rules_path
 
 
-def profile_public_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, str]:
+def profile_public_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, Any]:
     if isinstance(profile, ProfilePack):
         return profile.public_summary()
     return {
@@ -473,7 +560,21 @@ def profile_public_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, s
     }
 
 
-def list_profiles() -> list[dict[str, str]]:
+def profile_prompt_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, str]:
+    if isinstance(profile, ProfilePack):
+        return {
+            "id": profile.id or DEFAULT_PROFILE_ID,
+            "label": clean_text(profile.config.get("label")) or "Quotation Profile",
+            "description": clean_text(profile.config.get("description")),
+        }
+    return {
+        "id": clean_text(profile.get("id")) or DEFAULT_PROFILE_ID,
+        "label": clean_text(profile.get("label")) or "Quotation Profile",
+        "description": clean_text(profile.get("description")),
+    }
+
+
+def list_profiles() -> list[dict[str, Any]]:
     root = profiles_root()
     if not root.exists():
         return [profile_public_summary(load_profile_pack(DEFAULT_PROFILE_ID))]
@@ -555,7 +656,6 @@ def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
     project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
 
     acceptance = quote_text.get("acceptance") if isinstance(quote_text.get("acceptance"), dict) else {}
-    payment_terms = quote_text.get("payment_terms") or payload.get("payment_terms")
     standard_notes = quote_text.get("standard_notes")
     booth_width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
     booth_depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
@@ -571,7 +671,6 @@ def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
         ("Quotation company name", bool(clean_text(company.get("name") or payload.get("quote_company_name")))),
         ("Header details", bool(multiline_list(company.get("header_lines") or company.get("header_details")))),
         ("Terms heading", bool(clean_text(quote_text.get("terms_heading")))),
-        ("Payment terms", bool(multiline_list(payment_terms))),
         ("Cheque payee", bool(clean_text(quote_text.get("cheque_payee")))),
         ("Notes heading", bool(clean_text(quote_text.get("notes_heading")))),
         ("Standard notes", bool(multiline_list(standard_notes))),
@@ -616,11 +715,11 @@ def validate_generation_payload(payload: dict[str, Any]) -> list[str]:
     width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
     depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
     if (width is None) != (depth is None):
-        errors.append("Booth width and booth depth must both be filled in.")
+        errors.append("Width and depth must both be filled in.")
     if width is not None and width <= 0:
-        errors.append("Booth width must be a positive number.")
+        errors.append("Width must be a positive number.")
     if depth is not None and depth <= 0:
-        errors.append("Booth depth must be a positive number.")
+        errors.append("Depth must be a positive number.")
 
     line_items = normalize_line_items(payload)
     if not line_items:
@@ -672,6 +771,9 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
     header_source = company.get("header_lines") if isinstance(company.get("header_lines"), list) else company.get("header_details")
     quote_company_name = clean_text(company.get("name")) or clean_text(payload.get("quote_company_name"))
     acceptance = quote_text.get("acceptance") if isinstance(quote_text.get("acceptance"), dict) else {}
+    header_logo = clean_text(company.get("logo_data_url") or company.get("logo") or payload.get("header_logo"))
+    if not header_logo:
+        header_logo = profile.default_logo_data_url()
 
     return {
         "company_identity": clean_text(payload.get("company_identity")) or quote_company_name,
@@ -692,7 +794,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
         "company": {
             "name": quote_company_name,
             "header_lines": multiline_list(header_source, preserve_blank=True, html_breaks=True),
-            "logo_data_url": clean_text(company.get("logo_data_url") or company.get("logo") or payload.get("header_logo")),
+            "logo_data_url": header_logo,
         },
         "line_items": normalize_line_items(payload),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
@@ -841,19 +943,27 @@ def pricing_catalog_prompt_rows(profile_id: str | None = None) -> list[dict[str,
     except (OSError, json.JSONDecodeError):
         return []
     rows = []
+    total_chars = 0
     for item in payload.get("items") or []:
         if not isinstance(item, dict):
             continue
         aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
-        rows.append(
-            {
-                "id": clean_text(item.get("id")),
-                "section": clean_text(item.get("section")),
-                "unit_hint": clean_text(item.get("unit_hint")),
-                "description": clean_text(item.get("description")),
-                "aliases": [clean_text(alias) for alias in aliases[:6] if clean_text(alias)],
-            }
-        )
+        row = {
+            "id": clean_text(item.get("id")),
+            "section": clean_text(item.get("section")),
+            "unit_hint": clean_text(item.get("unit_hint")),
+            "description": clean_text(item.get("description"))[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS],
+            "aliases": [
+                clean_text(alias)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for alias in aliases[:MAX_PROMPT_CATALOG_ALIASES]
+                if clean_text(alias)
+            ],
+        }
+        row_chars = len(json.dumps(row, ensure_ascii=True))
+        if rows and (len(rows) >= MAX_PROMPT_CATALOG_ROWS or total_chars + row_chars > MAX_PROMPT_CATALOG_CHARS):
+            break
+        rows.append(row)
+        total_chars += row_chars
     return rows
 
 
@@ -863,15 +973,11 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
     line_items = payload.get("line_items") if isinstance(payload.get("line_items"), list) else []
     basis = payload.get("quote_basis") if isinstance(payload.get("quote_basis"), dict) else {}
     profile = load_profile_pack(profile_id_from_payload(payload))
-    generator_type = clean_text(payload.get("generator_type")) or "booth"
-    generator_label = clean_text(payload.get("generator_label")) or "Exhibition Booth"
+    generator_label = clean_text(payload.get("generator_label")) or clean_text(profile.config.get("label")) or "Quotation"
     user_feedback = clean_multiline(payload.get("user_feedback"))
     brief_context = {
-        "profile": profile_public_summary(profile),
-        "generator": {
-            "type": generator_type,
-            "label": generator_label,
-        },
+        "profile": profile_prompt_summary(profile),
+        "quote_profile_label": generator_label,
         "user_feedback": user_feedback,
         "client": {
             "name": clean_text(client.get("name")),
@@ -1163,6 +1269,8 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "drafted",
             "source": "local",
+            "ai_failed": True,
+            "provider_errors": safe_error_messages(remote_errors),
             "quote_basis": fallback,
             "line_items": fallback_line_items,
             "warnings": warnings,
@@ -1298,7 +1406,6 @@ def load_sample(sample_id: str) -> dict[str, Any] | None:
         "label": clean_text(data.get("label")) or path.name,
         "description": clean_text(data.get("description")),
         "profile_id": safe_resource_id(data.get("profile_id"), DEFAULT_PROFILE_ID),
-        "generator_type": clean_text(data.get("generator_type")) or "booth",
         "details": data.get("details") if isinstance(data.get("details"), dict) else {},
         "images": image_entries_for_sample,
     }
@@ -1435,7 +1542,7 @@ def run_quote_job(
     brief = payload_to_brief(payload)
     brief["_webapp"] = {
         "job_id": job_id,
-        "profile": profile_public_summary(profile),
+        "profile": profile_prompt_summary(profile),
         "uploaded_images": uploaded_images,
     }
     brief_path = job_tmp / "brief.json"

@@ -77,10 +77,6 @@ def valid_payload():
                 "display_price": "",
             }
         ],
-        "payment_terms": [
-            "70% payment upon confirmation and signing of contract.",
-            "30% balance upon handover before show starts",
-        ],
         "signature": {
             "koncept_signatory": "Francies Cheng",
             "koncept_title": "Director",
@@ -178,24 +174,42 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(profile_pack.pricing_catalog_path, KONCEPT_CATALOG)
         self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
         self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
+        self.assertTrue((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue((KONCEPT_PROFILE / "pricing-catalog.rag.md").exists())
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertNotIn("quotation_format", profile)
         self.assertNotIn("pricing_catalog", webapp.profile_public_summary(profile))
+        public_profile = webapp.profile_public_summary(profile_pack)
+        self.assertEqual(public_profile["default_quote_detail_preset"], "koncept-image-default")
+        self.assertEqual(public_profile["quote_detail_presets"][0]["name"], "Koncept Images Pte. Ltd.")
+        preset_company = public_profile["quote_detail_presets"][0]["details"]["company"]
+        self.assertTrue(preset_company["logo_data_url"].startswith("data:image/jpeg;base64,"))
+        self.assertEqual(preset_company["logo_name"], "koncept-header-logo.jpeg")
+        self.assertNotIn("logo_path", preset_company)
+        self.assertNotIn("pricing-catalog", json.dumps(public_profile))
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
         sample = webapp.load_sample("brazil-pavilion")
 
         self.assertIsNotNone(sample)
         self.assertEqual(sample["profile_id"], "koncept")
-        self.assertEqual(sample["generator_type"], "booth")
         self.assertEqual(sample["details"]["project"]["booth_width"], "6")
         self.assertEqual(sample["details"]["project_number"], "KI-SAMPLE-001")
+        self.assertNotIn("company", sample["details"])
+        self.assertNotIn("quote_text", sample["details"])
         self.assertEqual(len(sample["images"]), 3)
         self.assertTrue(sample["images"][0]["data_url"].startswith("data:image/"))
         self.assertNotIn("internal_cost", json.dumps(sample))
         self.assertNotIn("pricing-catalog", json.dumps(sample))
+
+    def test_payload_to_brief_uses_profile_logo_when_payload_has_no_logo(self):
+        payload = valid_payload()
+        payload["company"].pop("logo_data_url", None)
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertTrue(brief["company"]["logo_data_url"].startswith("data:image/jpeg;base64,"))
 
     def test_create_draft_job_requires_complete_quote_details_before_ai(self):
         payload = valid_payload()
@@ -230,6 +244,7 @@ class WebappServerTest(unittest.TestCase):
         local_draft = {
             "status": "drafted",
             "source": "local",
+            "ai_failed": True,
             "quote_basis": {},
             "line_items": [{"section": "Floor Design", "quantity": 36, "unit": "sqm", "description": "Fallback item", "pricing_keyword": "floor-design.needle-punch-carpet-in-colour"}],
             "warnings": ["Remote AI analysis was unavailable."],
@@ -241,6 +256,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(job["status"], "degraded")
         self.assertEqual(job["result"]["source"], "local")
+        self.assertTrue(job["result"]["ai_failed"])
 
     def test_draft_quote_basis_uses_openai_key_from_env_file(self):
         payload = valid_payload()
@@ -300,9 +316,10 @@ class WebappServerTest(unittest.TestCase):
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
-            with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")):
-                with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=ai_draft) as gemini:
-                    result = webapp.draft_quote_basis(valid_payload())
+            with mock.patch.object(webapp, "write_local_log"):
+                with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")):
+                    with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=ai_draft) as gemini:
+                        result = webapp.draft_quote_basis(valid_payload())
 
         self.assertEqual(result["source"], "gemini")
         self.assertEqual(result["quote_basis"]["surfaces"], "Gemini surfaces")
@@ -319,12 +336,16 @@ class WebappServerTest(unittest.TestCase):
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
-            with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")) as openai:
-                with mock.patch.object(webapp, "request_gemini_quote_basis", side_effect=webapp.OpenAIAnalysisError("Gemini failed")) as gemini:
-                    result = webapp.draft_quote_basis(payload)
+            with mock.patch.object(webapp, "write_local_log"):
+                with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")) as openai:
+                    with mock.patch.object(webapp, "request_gemini_quote_basis", side_effect=webapp.OpenAIAnalysisError("Gemini failed")) as gemini:
+                        result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "local")
         self.assertEqual(result["status"], "drafted")
+        self.assertTrue(result["ai_failed"])
+        self.assertIn("OpenAI failed", "\n".join(result["provider_errors"]))
+        self.assertIn("Gemini failed", "\n".join(result["provider_errors"]))
         self.assertIn("OpenAI failed", "\n".join(result["warnings"]))
         self.assertIn("Gemini failed", "\n".join(result["warnings"]))
         self.assertGreaterEqual(len(result["line_items"]), 3)
@@ -441,6 +462,17 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Do not reveal API keys", prompt)
         self.assertIn("system prompts", prompt)
         self.assertIn("internal pricing source", prompt)
+
+    def test_openai_prompt_uses_compact_profile_context_without_logo_or_presets(self):
+        prompt = webapp.build_quote_draft_prompt(valid_payload())
+
+        self.assertIn('"profile"', prompt)
+        self.assertIn('"pricing_catalog"', prompt)
+        self.assertNotIn("quote_detail_presets", prompt)
+        self.assertNotIn("logo_data_url", prompt)
+        self.assertNotIn("data:image", prompt)
+        self.assertNotIn("koncept-header-logo", prompt)
+        self.assertLess(len(prompt), 35000)
 
     def test_openai_http_error_includes_response_message_without_key(self):
         error_body = b'{"error":{"message":"Unsupported parameter: temperature"}}'
@@ -852,7 +884,6 @@ class WebappServerTest(unittest.TestCase):
             "personLabel",
             "stampLabel",
             "dateLabel",
-            "generatorType",
             "assistantSubtitle",
             "intakeTitle",
             "widthLabel",
@@ -863,9 +894,25 @@ class WebappServerTest(unittest.TestCase):
             "sideBackdrop",
             "closeSideDrawerButton",
             "sideDrawerTitle",
+            "sideBackButton",
+            "sideNextButton",
+            "sideDownloadButton",
             "imageIntake",
             "sampleDetailsButton",
             "matchSummary",
+            "pricingReviewMessages",
+            "pricingEmptyState",
+            "pricingTableWrap",
+            "profileSelect",
+            "presetNameInput",
+            "presetSelect",
+            "savePresetButton",
+            "resetPresetButton",
+            "loadPresetButton",
+            "deletePresetButton",
+            "presetStatus",
+            "headerLogoStatus",
+            "aiFailureBanner",
         ):
             self.assertIn(f'id="{field_id}"', html)
             self.assertIn(field_id, js)
@@ -892,6 +939,31 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Load Sample", html)
         self.assertIn("sample-start-card", html)
         self.assertIn("renderMatchSummary", js)
+        self.assertIn("QUOTE_PRESETS_STORAGE_KEY", js)
+        self.assertIn("loadProfiles", js)
+        self.assertIn("/api/profiles", js)
+        self.assertIn("Profile/RAG pack changed", js)
+        self.assertIn("Profile presets are loaded from the active pack", html)
+        self.assertNotIn("Default preset already applied.", html)
+        self.assertNotIn("preset-skip-note", html)
+        self.assertNotIn("preset-skip-note", css)
+        self.assertIn("No preset selected", js)
+        self.assertIn("Clear Quote Details", html)
+        self.assertIn("clearQuoteDetails", js)
+        self.assertIn("Quote Details cleared.", js)
+        self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
+        self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
+        self.assertLess(html.index("Active Profile Pack"), html.index('id="imageInput"'))
+        self.assertLess(html.index("Quote Detail Presets"), html.index("Customer and Project"))
+        self.assertLess(html.index('id="savePresetButton"'), html.index('id="resetPresetButton"'))
+        self.assertIn("loadDefaultProfilePreset", js)
+        self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
+        self.assertIn("Quote Details were left unchanged", js)
+        self.assertIn("Save Current", html)
+        self.assertIn("Download Quotation", html)
+        self.assertNotIn("Download Excel", html)
+        self.assertIn("Use Download Quotation in the Output footer.", js)
+        self.assertIn('setSidePanel("images")', js)
         self.assertIn(".secondary-button:disabled", css)
         self.assertIn("normalizeTextNewlines", js)
         self.assertIn("applyColorRevision", js)
@@ -899,6 +971,23 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("/api/session", js)
         self.assertIn("initializeSession", js)
         self.assertIn("overflow-wrap: anywhere", css)
+        self.assertIn("AI analysis failed.", html)
+        self.assertIn("showAiFailureBanner", js)
+        self.assertIn("state.aiFailed", js)
+        self.assertIn("quote-basis-card-failed", css)
+        self.assertIn("z-index: 12", css)
+        self.assertIn("[hidden]", css)
+        self.assertIn("sidePanelBlockReason", js)
+        self.assertIn("Add reference images before opening this step.", js)
+        self.assertIn("Complete Quote Details before opening Output & Pricing", js)
+        self.assertIn(".rail-button.is-locked", css)
+
+        initial_values_body = js.split("function setInitialValues()", 1)[1].split("async function boot()", 1)[0]
+        profile_change_body = js.split("function handleProfileSelectionChange()", 1)[1].split("async function setSampleDetails()", 1)[0]
+        sample_loader_body = js.split("async function setSampleDetails()", 1)[1].split("function buildPayload()", 1)[0]
+        self.assertNotIn("loadDefaultProfilePreset", initial_values_body)
+        self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
+        self.assertIn("loadDefaultProfilePreset({ silent: true })", sample_loader_body)
 
     def test_static_webapp_uses_simplified_setup_assistant_flow(self):
         static_dir = ROOT / "webapp" / "static"
@@ -913,16 +1002,18 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('data-side-panel-content="details"', html)
         self.assertIn('id="quoteDetailsPanel"', html)
         self.assertIn("Swooshz Quote Generator", html)
-        self.assertIn("Generator type", html)
+        self.assertNotIn("Generator type", html)
         self.assertIn('class="command-rail"', html)
         self.assertIn('class="side-workspace"', html)
         self.assertIn('class="chat-main"', html)
         self.assertIn('data-side-panel="images"', html)
+        self.assertNotIn('data-side-panel="presets"', html)
+        self.assertNotIn('data-side-panel-content="presets"', html)
         self.assertIn('data-side-panel-content="images"', html)
-        self.assertIn("Latest Output", html)
+        self.assertIn("Output & Pricing", html)
         self.assertIn("Brazil pavilion demo", html)
-        self.assertIn("Drag and drop render images here", html)
-        self.assertIn("Start by dropping booth render images", js)
+        self.assertIn("Drag and drop reference images here", html)
+        self.assertIn("Start by dropping reference images", js)
         self.assertIn("grid-template-areas", css)
         self.assertIn("chat rail", css)
         self.assertIn(".side-workspace.is-open", css)
@@ -934,9 +1025,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("setDetailsDrawer", js)
         self.assertIn("setSideDrawer", js)
         self.assertIn("setSidePanel", js)
+        self.assertIn("SIDE_PANEL_SEQUENCE", js)
+        self.assertIn('SIDE_PANEL_SEQUENCE = ["images", "details", "pricing"]', js)
+        self.assertIn("goToNextSidePanel", js)
         self.assertIn("addImagesFromFiles", js)
         self.assertIn("currentGenerator", js)
-        self.assertIn("generator_type", js)
+        self.assertNotIn("generatorType", js)
+        self.assertNotIn("generator_type", js)
         self.assertNotIn("Koncept Quote Runner", html)
         self.assertNotIn("Local quotation workspace", html)
         self.assertNotIn("Quote automation workspace", html)
@@ -966,7 +1061,6 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Nova Latitude Events Pte Ltd", js)
         self.assertNotIn("Koncept Image Pte Limited", js)
         self.assertNotIn("70% payment upon confirmation", js)
-        self.assertNotIn("Francies Cheng", js)
         self.assertNotIn("setBrazilSampleRows", js)
         self.assertNotIn("Painted overhead fascia and canopy", js)
         self.assertNotIn("Sample customer, project, and line items loaded.", js)
@@ -982,8 +1076,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('id="downloads"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
+        self.assertIn('id="pricingReviewMessages"', html)
         self.assertIn("Quotation package generated. The Excel download is ready below.", js)
-        self.assertIn("shown the pricing review below", js)
+        self.assertIn('Quotation package generated. The Excel download is ready below.", { tone: "instruction" }', js)
+        self.assertIn("match review in Output & Pricing", js)
         self.assertIn("/api/jobs", js)
         self.assertIn("pollJob", js)
         self.assertNotIn('postJson("/api/draft"', js)
@@ -1005,6 +1101,7 @@ class WebappServerTest(unittest.TestCase):
 
         for field_id in (
             "workflowStage",
+            "aiFailureBanner",
             "chatTranscript",
             "chatActions",
             "chatPrompt",
@@ -1047,7 +1144,6 @@ class WebappServerTest(unittest.TestCase):
             "applyFlooringRevision",
             "insertQuotedLine",
             "data-revise-line",
-            "data-quote-line",
             "quotedRevisionLines",
             "pendingFeedback",
             "Using your feedback to revise the AI takeoff now.",
@@ -1059,6 +1155,9 @@ class WebappServerTest(unittest.TestCase):
             "I could not apply that safely as a direct edit yet.",
         ):
             self.assertIn(expected, js)
+
+        self.assertNotIn("data-quote-line", js)
+        self.assertNotIn("basis-line-quote", js)
 
         self.assertNotIn("I am keeping this guarded for now", js)
 

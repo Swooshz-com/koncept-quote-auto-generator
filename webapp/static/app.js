@@ -2,7 +2,26 @@ const EMPTY_LINE_ITEMS_MESSAGE = "AI analysis will populate line items here.";
 const DEFAULT_PROFILE_ID = "koncept";
 const DEFAULT_SAMPLE_ID = "brazil-pavilion";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
+const QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
+const PROFILE_PRESET_PREFIX = "profile:";
+const LOCAL_PRESET_PREFIX = "local:";
+
+const QUOTE_COPY = {
+  label: "Quotation",
+  assistantSubtitle: "Start with reference images or a sample fixture, confirm the AI takeoff, then generate Excel.",
+  intakeTitle: "Start a quotation",
+  intakeSubtitle: "Drop reference images for a real quote, or load the demo fixture for a quick test run.",
+  dropTitle: "Drop reference images to start",
+  dropMeta: "JPG, PNG, or WebP. Add more references anytime; files stay local to this runner.",
+  imageNoun: "reference image",
+  analyzeLabel: "Start Analysis",
+  fallbackAction: "review the reference images",
+  widthLabel: "Width (m)",
+  depthLabel: "Depth (m)",
+};
+
+const SIDE_PANEL_SEQUENCE = ["images", "details", "pricing"];
 
 const EMPTY_BASIS = {
   surfaces: "",
@@ -22,6 +41,13 @@ const BASIS_FIELDS = [
   ["electrical", "Electrical"],
 ];
 
+const BASIS_TAGS = [
+  ["Include", "Quoted in the draft"],
+  ["Confirm", "Needs your confirmation"],
+  ["Exclude", "Not included unless requested"],
+  ["Note", "Assumption or caveat"],
+];
+
 const STAGE_LABELS = {
   needs_images: "Needs images",
   ready_to_analyze: "Ready to analyze",
@@ -33,71 +59,9 @@ const STAGE_LABELS = {
   completed: "Completed",
 };
 
-const GENERATOR_TYPES = {
-  booth: {
-    label: "Exhibition Booth",
-    assistantSubtitle: "Start with booth renders or the sample fixture, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Start a booth quote",
-    intakeSubtitle: "Drop booth renders for a real quote, or load the Brazil demo fixture for a quick test run.",
-    dropTitle: "Drop booth render images to start",
-    dropMeta: "JPG, PNG, or WebP. Add more booth renders anytime; files stay local to this runner.",
-    imageNoun: "booth image",
-    analyzeLabel: "Analyze Booth",
-    basisSource: "I analysed the booth images",
-    fallbackAction: "analyze booth images",
-    widthLabel: "Booth width (m)",
-    depthLabel: "Booth depth (m)",
-    sizeLabel: "Booth",
-  },
-  event_setup: {
-    label: "Event Setup",
-    assistantSubtitle: "Start with event references, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Start an event quote",
-    intakeSubtitle: "Drop event photos or layout references, or load the sample fixture for a quick test run.",
-    dropTitle: "Drop event reference images to start",
-    dropMeta: "JPG, PNG, or WebP. Add more event references anytime; files stay local to this runner.",
-    imageNoun: "event reference",
-    analyzeLabel: "Analyze Event",
-    basisSource: "I analysed the event references",
-    fallbackAction: "analyze event references",
-    widthLabel: "Area width (m)",
-    depthLabel: "Area depth (m)",
-    sizeLabel: "Area",
-  },
-  renovation: {
-    label: "Renovation",
-    assistantSubtitle: "Start with site references, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Start a renovation quote",
-    intakeSubtitle: "Drop site photos or layout references, or load the sample fixture for a quick test run.",
-    dropTitle: "Drop site reference images to start",
-    dropMeta: "JPG, PNG, or WebP. Add more site references anytime; files stay local to this runner.",
-    imageNoun: "site reference",
-    analyzeLabel: "Analyze Site",
-    basisSource: "I analysed the site references",
-    fallbackAction: "analyze site references",
-    widthLabel: "Area width (m)",
-    depthLabel: "Area depth (m)",
-    sizeLabel: "Area",
-  },
-  custom: {
-    label: "Custom Quote",
-    assistantSubtitle: "Start with reference images, confirm the AI takeoff, then generate Excel.",
-    intakeTitle: "Start a custom quote",
-    intakeSubtitle: "Drop visual references, or load the sample fixture for a quick test run.",
-    dropTitle: "Drop reference images to start",
-    dropMeta: "JPG, PNG, or WebP. Add more references anytime; files stay local to this runner.",
-    imageNoun: "reference image",
-    analyzeLabel: "Analyze References",
-    basisSource: "I analysed the reference images",
-    fallbackAction: "analyze reference images",
-    widthLabel: "Width (m)",
-    depthLabel: "Depth (m)",
-    sizeLabel: "Size",
-  },
-};
-
 const state = {
   profileId: DEFAULT_PROFILE_ID,
+  profiles: [],
   images: [],
   headerLogo: null,
   workflowStage: "needs_images",
@@ -106,9 +70,13 @@ const state = {
   chatMessages: [],
   isAnalysisRunning: false,
   isGenerating: false,
+  aiFailed: false,
+  draftSource: "",
   csrfHeaderName: CSRF_HEADER_NAME,
   csrfToken: "",
   pendingFeedback: "",
+  activeSidePanel: "images",
+  downloadFile: null,
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -117,7 +85,6 @@ const elements = {
   healthText: qs("#healthText"),
   statusDot: qs(".status-dot"),
   assistantSubtitle: qs("#assistantSubtitle"),
-  generatorType: qs("#generatorType"),
   imageIntake: qs("#imageIntake"),
   intakeTitle: qs("#intakeTitle"),
   intakeSubtitle: qs("#intakeSubtitle"),
@@ -138,6 +105,7 @@ const elements = {
   quoteCompanyName: qs("#quoteCompanyName"),
   headerDetails: qs("#headerDetails"),
   headerLogoInput: qs("#headerLogoInput"),
+  headerLogoStatus: qs("#headerLogoStatus"),
   clientName: qs("#clientName"),
   clientAttention: qs("#clientAttention"),
   clientTitle: qs("#clientTitle"),
@@ -161,6 +129,7 @@ const elements = {
   stampLabel: qs("#stampLabel"),
   dateLabel: qs("#dateLabel"),
   workflowStage: qs("#workflowStage"),
+  aiFailureBanner: qs("#aiFailureBanner"),
   chatTranscript: qs("#chatTranscript"),
   chatActions: qs("#chatActions"),
   chatForm: qs("#chatForm"),
@@ -174,10 +143,37 @@ const elements = {
   downloads: qs("#downloads"),
   matchSummary: qs("#matchSummary"),
   pricingMatchesBody: qs("#pricingMatchesBody"),
+  pricingTableWrap: qs("#pricingTableWrap"),
+  pricingEmptyState: qs("#pricingEmptyState"),
+  pricingReviewMessages: qs("#pricingReviewMessages"),
+  profileSelect: qs("#profileSelect"),
+  profileDescription: qs("#profileDescription"),
+  presetNameInput: qs("#presetNameInput"),
+  presetSelect: qs("#presetSelect"),
+  savePresetButton: qs("#savePresetButton"),
+  loadPresetButton: qs("#loadPresetButton"),
+  deletePresetButton: qs("#deletePresetButton"),
+  resetPresetButton: qs("#resetPresetButton"),
+  presetStatus: qs("#presetStatus"),
+  sideBackButton: qs("#sideBackButton"),
+  sideNextButton: qs("#sideNextButton"),
+  sideDownloadButton: qs("#sideDownloadButton"),
 };
 
+function currentProfile() {
+  return state.profiles.find((profile) => profile.id === state.profileId) || {
+    id: DEFAULT_PROFILE_ID,
+    label: "Quotation Profile",
+    description: "",
+    quote_detail_presets: [],
+  };
+}
+
 function currentGenerator() {
-  return GENERATOR_TYPES[elements.generatorType.value] || GENERATOR_TYPES.booth;
+  return {
+    ...QUOTE_COPY,
+    label: currentProfile().label || QUOTE_COPY.label,
+  };
 }
 
 function updateGeneratorCopy() {
@@ -196,6 +192,34 @@ function setWorkflowStage(stage) {
   elements.workflowStage.textContent = STAGE_LABELS[stage] || stage;
   elements.workflowStage.dataset.stage = stage;
   document.body.dataset.workflowStage = stage;
+}
+
+function setAiStatusBanner(tone, title, message) {
+  elements.aiFailureBanner.hidden = false;
+  elements.aiFailureBanner.classList.toggle("is-running", tone === "running");
+  elements.aiFailureBanner.classList.toggle("is-failure", tone !== "running");
+  elements.aiFailureBanner.innerHTML = `
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(message)}</span>
+  `;
+}
+
+function showAiRunningBanner(message = "Reading the reference images and preparing the quote basis. Please wait.") {
+  setAiStatusBanner("running", "AI analysis running.", message);
+}
+
+function showAiFailureBanner(message = "AI analysis failed. Try again later.") {
+  const detail = message.replace(/^AI analysis failed\.?\s*/i, "").trim() || "Try again later.";
+  setAiStatusBanner("failure", "AI analysis failed.", detail);
+}
+
+function clearAiFailureBanner() {
+  elements.aiFailureBanner.hidden = true;
+  elements.aiFailureBanner.classList.remove("is-running", "is-failure");
+  elements.aiFailureBanner.innerHTML = `
+    <strong>AI analysis failed.</strong>
+    <span>Try again later.</span>
+  `;
 }
 
 function setDetailsDrawer(open) {
@@ -346,35 +370,319 @@ function linesValue(value) {
   return Array.isArray(value) ? value.join("\n") : String(value || "");
 }
 
-function applyQuoteDetails(details = {}) {
+function hasOwnValue(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function shouldApply(object, key, partial) {
+  return !partial || hasOwnValue(object, key);
+}
+
+function setInputValue(input, value) {
+  input.value = value ?? "";
+}
+
+function collectQuoteDetails() {
+  return {
+    quote_date: elements.quoteDate.value,
+    project_number: elements.projectNumber.value.trim(),
+    client: {
+      name: elements.clientName.value.trim(),
+      attention: elements.clientAttention.value.trim(),
+      title: elements.clientTitle.value.trim(),
+      address: elements.clientAddress.value,
+    },
+    project: {
+      title: elements.projectTitle.value.trim(),
+      booth_width: elements.boothWidth.value,
+      booth_depth: elements.boothDepth.value,
+    },
+    company: {
+      name: elements.quoteCompanyName.value.trim(),
+      header_details: elements.headerDetails.value,
+      logo_data_url: state.headerLogo ? state.headerLogo.data_url : "",
+      logo_name: state.headerLogo ? state.headerLogo.name : "",
+      logo_type: state.headerLogo ? state.headerLogo.type : "",
+    },
+    quote_text: {
+      terms_heading: elements.termsHeading.value.trim(),
+      payment_terms: splitLines(elements.paymentTerms.value),
+      cheque_payee: elements.chequePayee.value.trim(),
+      notes_heading: elements.notesHeading.value.trim(),
+      standard_notes: splitLines(elements.standardNotes.value),
+      acceptance_text: elements.acceptanceText.value.trim(),
+      person_label: elements.personLabel.value.trim(),
+      stamp_label: elements.stampLabel.value.trim(),
+      date_label: elements.dateLabel.value.trim(),
+    },
+    signature: {
+      koncept_signatory: elements.konceptSignatory.value.trim(),
+      koncept_title: elements.konceptTitle.value.trim(),
+    },
+  };
+}
+
+function applyQuoteDetails(details = {}, options = {}) {
   const client = details.client || {};
   const project = details.project || {};
   const company = details.company || {};
   const quoteText = details.quote_text || {};
   const signature = details.signature || {};
+  const partial = Boolean(options.partial);
 
-  elements.clientName.value = client.name || "";
-  elements.clientAttention.value = client.attention || "";
-  elements.clientTitle.value = client.title || "";
-  elements.clientAddress.value = client.address || "";
-  elements.projectTitle.value = project.title || "";
-  elements.boothWidth.value = project.booth_width || "";
-  elements.boothDepth.value = project.booth_depth || "";
-  elements.quoteDate.value = details.quote_date || "";
-  elements.projectNumber.value = details.project_number || "";
-  elements.quoteCompanyName.value = company.name || "";
-  elements.headerDetails.value = company.header_details || "";
-  elements.termsHeading.value = quoteText.terms_heading || "";
-  elements.paymentTerms.value = linesValue(quoteText.payment_terms);
-  elements.chequePayee.value = quoteText.cheque_payee || "";
-  elements.notesHeading.value = quoteText.notes_heading || "";
-  elements.standardNotes.value = linesValue(quoteText.standard_notes);
-  elements.acceptanceText.value = quoteText.acceptance_text || "";
-  elements.konceptSignatory.value = signature.koncept_signatory || "";
-  elements.konceptTitle.value = signature.koncept_title || "";
-  elements.personLabel.value = quoteText.person_label || "";
-  elements.stampLabel.value = quoteText.stamp_label || "";
-  elements.dateLabel.value = quoteText.date_label || "";
+  if (shouldApply(client, "name", partial)) setInputValue(elements.clientName, client.name);
+  if (shouldApply(client, "attention", partial)) setInputValue(elements.clientAttention, client.attention);
+  if (shouldApply(client, "title", partial)) setInputValue(elements.clientTitle, client.title);
+  if (shouldApply(client, "address", partial)) setInputValue(elements.clientAddress, client.address);
+  if (shouldApply(project, "title", partial)) setInputValue(elements.projectTitle, project.title);
+  if (shouldApply(project, "booth_width", partial)) setInputValue(elements.boothWidth, project.booth_width);
+  if (shouldApply(project, "booth_depth", partial)) setInputValue(elements.boothDepth, project.booth_depth);
+  if (shouldApply(details, "quote_date", partial)) setInputValue(elements.quoteDate, details.quote_date);
+  if (shouldApply(details, "project_number", partial)) setInputValue(elements.projectNumber, details.project_number);
+  if (shouldApply(company, "name", partial)) setInputValue(elements.quoteCompanyName, company.name);
+  if (shouldApply(company, "header_details", partial)) setInputValue(elements.headerDetails, company.header_details);
+  if (shouldApply(quoteText, "terms_heading", partial)) setInputValue(elements.termsHeading, quoteText.terms_heading);
+  if (shouldApply(quoteText, "payment_terms", partial)) setInputValue(elements.paymentTerms, linesValue(quoteText.payment_terms));
+  if (shouldApply(quoteText, "cheque_payee", partial)) setInputValue(elements.chequePayee, quoteText.cheque_payee);
+  if (shouldApply(quoteText, "notes_heading", partial)) setInputValue(elements.notesHeading, quoteText.notes_heading);
+  if (shouldApply(quoteText, "standard_notes", partial)) setInputValue(elements.standardNotes, linesValue(quoteText.standard_notes));
+  if (shouldApply(quoteText, "acceptance_text", partial)) setInputValue(elements.acceptanceText, quoteText.acceptance_text);
+  if (shouldApply(signature, "koncept_signatory", partial)) setInputValue(elements.konceptSignatory, signature.koncept_signatory);
+  if (shouldApply(signature, "koncept_title", partial)) setInputValue(elements.konceptTitle, signature.koncept_title);
+  if (shouldApply(quoteText, "person_label", partial)) setInputValue(elements.personLabel, quoteText.person_label);
+  if (shouldApply(quoteText, "stamp_label", partial)) setInputValue(elements.stampLabel, quoteText.stamp_label);
+  if (shouldApply(quoteText, "date_label", partial)) setInputValue(elements.dateLabel, quoteText.date_label);
+  if (options.includeLogo && company.logo_data_url) {
+    state.headerLogo = {
+      name: company.logo_name || "preset-logo",
+      type: company.logo_type || "image/png",
+      size: 0,
+      data_url: company.logo_data_url,
+    };
+  } else if (options.clearLogo) {
+    state.headerLogo = null;
+  }
+  renderHeaderLogoStatus();
+  renderPresetStatus();
+}
+
+function safeStorageJson() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(QUOTE_PRESETS_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets) {
+  window.localStorage.setItem(QUOTE_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+}
+
+function selectedPresetId() {
+  return elements.presetSelect.value || "";
+}
+
+function profilePresets() {
+  const profile = currentProfile();
+  return Array.isArray(profile.quote_detail_presets) ? profile.quote_detail_presets : [];
+}
+
+function defaultProfilePresetId() {
+  const profile = currentProfile();
+  const configured = profile.default_quote_detail_preset || "";
+  const presets = profilePresets();
+  if (configured && presets.some((preset) => preset.id === configured)) return configured;
+  return presets[0]?.id || "";
+}
+
+function profilePresetOptionValue(presetId) {
+  return `${PROFILE_PRESET_PREFIX}${presetId}`;
+}
+
+function localPresetOptionValue(presetId) {
+  return `${LOCAL_PRESET_PREFIX}${presetId}`;
+}
+
+function selectedPreset() {
+  const value = selectedPresetId();
+  if (value.startsWith(PROFILE_PRESET_PREFIX)) {
+    const presetId = value.slice(PROFILE_PRESET_PREFIX.length);
+    const preset = profilePresets().find((item) => item.id === presetId);
+    return preset ? { ...preset, source: "profile" } : null;
+  }
+  const localId = value.startsWith(LOCAL_PRESET_PREFIX) ? value.slice(LOCAL_PRESET_PREFIX.length) : value;
+  const preset = safeStorageJson().find((item) => item.id === localId);
+  return preset ? { ...preset, source: "local" } : null;
+}
+
+function renderPresetStatus(message = "") {
+  if (!elements.presetStatus) return;
+  const logoText = state.headerLogo ? ` Header logo loaded: ${state.headerLogo.name || "preset logo"}.` : "";
+  elements.presetStatus.textContent = message || `Presets are stored locally in this browser and can include the uploaded header logo.${logoText}`;
+}
+
+function renderHeaderLogoStatus() {
+  if (!elements.headerLogoStatus) return;
+  if (state.headerLogo) {
+    elements.headerLogoStatus.textContent = `Loaded logo: ${state.headerLogo.name || "preset logo"}`;
+    elements.headerLogoStatus.classList.add("is-loaded");
+    return;
+  }
+  elements.headerLogoStatus.textContent = "No preset logo loaded.";
+  elements.headerLogoStatus.classList.remove("is-loaded");
+}
+
+function renderPresetOptions() {
+  const builtInPresets = profilePresets();
+  const presets = safeStorageJson();
+  const builtInOptions = builtInPresets
+    .map((preset) => `<option value="${escapeHtml(profilePresetOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
+    .join("");
+  const localOptions = presets
+    .map((preset) => `<option value="${escapeHtml(localPresetOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
+    .join("");
+  elements.presetSelect.innerHTML = [
+    `<option value="">No preset selected</option>`,
+    builtInOptions ? `<optgroup label="Profile presets">${builtInOptions}</optgroup>` : "",
+    localOptions ? `<optgroup label="Saved locally">${localOptions}</optgroup>` : "",
+    !builtInOptions && !localOptions ? `<option value="">No presets available</option>` : "",
+  ].join("");
+  updatePresetButtons();
+}
+
+function updatePresetButtons() {
+  const preset = selectedPreset();
+  elements.loadPresetButton.disabled = !preset;
+  elements.deletePresetButton.disabled = !preset || preset.source !== "local";
+}
+
+function saveCurrentPreset() {
+  const name = elements.presetNameInput.value.trim();
+  if (!name) {
+    renderPresetStatus("Name the preset first, then save it.");
+    elements.presetNameInput.focus();
+    return;
+  }
+  const presets = safeStorageJson();
+  const existingIndex = presets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
+  const preset = {
+    id: existingIndex >= 0 ? presets[existingIndex].id : `preset-${Date.now().toString(36)}`,
+    name,
+    profile_id: state.profileId || DEFAULT_PROFILE_ID,
+    details: collectQuoteDetails(),
+    saved_at: new Date().toISOString(),
+  };
+  if (existingIndex >= 0) {
+    presets[existingIndex] = preset;
+  } else {
+    presets.push(preset);
+  }
+  savePresets(presets);
+  renderPresetOptions();
+  elements.presetSelect.value = localPresetOptionValue(preset.id);
+  updatePresetButtons();
+  renderPresetStatus(`Saved "${name}" as a local quote detail preset.`);
+}
+
+function loadSelectedPreset(options = {}) {
+  const preset = selectedPreset();
+  if (!preset) {
+    renderPresetStatus("Choose a preset to load.");
+    return;
+  }
+  state.profileId = preset.profile_id || state.profileId || DEFAULT_PROFILE_ID;
+  updateGeneratorCopy();
+  applyQuoteDetails(preset.details || {}, { includeLogo: true, clearLogo: true, partial: true });
+  renderProfileOptions();
+  clearGeneratedQuoteState();
+  setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
+  syncControlStates();
+  if (!options.silent) {
+    appendChatMessage("assistant", `Loaded quote detail preset "${preset.name}". Reference images still need to be uploaded or loaded separately.`);
+  }
+  renderPresetStatus(`Loaded "${preset.name}".`);
+}
+
+function loadDefaultProfilePreset(options = {}) {
+  const defaultPreset = defaultProfilePresetId();
+  if (!defaultPreset) return;
+  elements.presetSelect.value = profilePresetOptionValue(defaultPreset);
+  loadSelectedPreset(options);
+}
+
+function clearQuoteDetails() {
+  elements.presetSelect.value = "";
+  elements.presetNameInput.value = "";
+  elements.headerLogoInput.value = "";
+  applyQuoteDetails({}, { clearLogo: true });
+  clearGeneratedQuoteState();
+  setWorkflowStage(state.images.length ? "details_review" : "needs_images");
+  updatePresetButtons();
+  syncControlStates();
+  renderPresetStatus("Quote Details cleared. Load a preset or fill the fields before starting analysis.");
+  appendChatMessage("assistant", "Quote Details cleared. Images and the active profile pack were left unchanged.");
+}
+
+function deleteSelectedPreset() {
+  const value = selectedPresetId();
+  const presetId = value.startsWith(LOCAL_PRESET_PREFIX) ? value.slice(LOCAL_PRESET_PREFIX.length) : value;
+  const presets = safeStorageJson();
+  const preset = presets.find((item) => item.id === presetId);
+  if (!preset) {
+    renderPresetStatus("Choose a saved preset to delete.");
+    return;
+  }
+  savePresets(presets.filter((item) => item.id !== presetId));
+  renderPresetOptions();
+  updatePresetButtons();
+  renderPresetStatus(`Deleted "${preset.name}".`);
+}
+
+function renderProfileOptions() {
+  if (!elements.profileSelect) return;
+  const profiles = state.profiles.length ? state.profiles : [{ id: DEFAULT_PROFILE_ID, label: "Koncept Exhibition Quotations", description: "" }];
+  elements.profileSelect.innerHTML = profiles
+    .map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.label || profile.id)}</option>`)
+    .join("");
+  elements.profileSelect.value = state.profileId || DEFAULT_PROFILE_ID;
+  const selected = profiles.find((profile) => profile.id === elements.profileSelect.value) || profiles[0];
+  elements.profileDescription.textContent = selected.description || `${selected.label || selected.id} is selected.`;
+}
+
+async function loadProfiles() {
+  const { ok, data } = await getJson("/api/profiles");
+  if (ok && Array.isArray(data.profiles)) {
+    state.profiles = data.profiles;
+    state.profileId = data.default_profile_id || state.profileId || DEFAULT_PROFILE_ID;
+  }
+  renderProfileOptions();
+}
+
+function clearGeneratedQuoteState() {
+  state.quoteBasis = { ...EMPTY_BASIS };
+  state.lineItems = [];
+  state.aiFailed = false;
+  state.draftSource = "";
+  clearAiFailureBanner();
+  renderMessages([]);
+  renderDownloads([]);
+  renderMatchSummary({});
+  renderPricingMatches([]);
+  clearPricingReviewMessages();
+  setResultStatus("No job yet");
+}
+
+function handleProfileSelectionChange() {
+  const nextProfileId = elements.profileSelect.value || DEFAULT_PROFILE_ID;
+  if (nextProfileId === state.profileId) return;
+  state.profileId = nextProfileId;
+  renderProfileOptions();
+  renderPresetOptions();
+  clearGeneratedQuoteState();
+  setWorkflowStage(state.images.length ? (canStartAnalysis() ? "ready_to_analyze" : "details_review") : "needs_images");
+  appendChatMessage("assistant", "Profile/RAG pack changed. I cleared the previous draft so the next analysis uses the selected pricing context. Quote Details were left unchanged.");
+  syncControlStates();
 }
 
 async function setSampleDetails() {
@@ -387,11 +695,12 @@ async function setSampleDetails() {
       return;
     }
     state.profileId = data.profile_id || DEFAULT_PROFILE_ID;
-    elements.generatorType.value = data.generator_type || "booth";
+    renderProfileOptions();
+    renderPresetOptions();
+    loadDefaultProfilePreset({ silent: true });
     updateGeneratorCopy();
-    applyQuoteDetails(data.details || {});
+    applyQuoteDetails(data.details || {}, { partial: true });
     state.images = Array.isArray(data.images) ? data.images : [];
-    state.headerLogo = null;
     renderFiles();
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
     appendChatMessage("assistant", `${data.label || "Sample"} loaded with ${state.images.length} reference image${state.images.length === 1 ? "" : "s"}.`);
@@ -406,7 +715,6 @@ function buildPayload() {
   const generator = currentGenerator();
   return {
     profile_id: state.profileId || DEFAULT_PROFILE_ID,
-    generator_type: elements.generatorType.value,
     generator_label: generator.label,
     images: state.images,
     confirmed: true,
@@ -462,17 +770,30 @@ function renderMessages(messages = [], tone = "") {
 }
 
 function renderDownloads(files = []) {
-  if (!files.length) {
+  const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || files[0] || null;
+  state.downloadFile = excelFile;
+  updateDownloadButton();
+  if (!excelFile) {
     elements.downloads.innerHTML = "";
     return;
   }
-  elements.downloads.innerHTML = files
-    .map((file) => `
-      <a class="download-link" href="${escapeHtml(file.url)}" download>
-        ${escapeHtml(file.name)} - ${formatBytes(Number(file.bytes))}
-      </a>
-    `)
-    .join("");
+  elements.downloads.innerHTML = `
+    <div class="download-ready-note">
+      <strong>${escapeHtml(excelFile.name || "quotation.xlsx")}</strong>
+      <span>${formatBytes(Number(excelFile.bytes))} ready. Use Download Quotation in the Output footer.</span>
+    </div>
+  `;
+}
+
+function updateDownloadButton() {
+  if (!elements.sideDownloadButton) return;
+  const file = state.downloadFile;
+  const enabled = Boolean(file && file.url);
+  elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
+  elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
+  elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
+  elements.sideDownloadButton.href = enabled ? file.url : "#";
+  elements.sideDownloadButton.download = enabled ? file.name || "quotation.xlsx" : "";
 }
 
 function renderMatchSummary(result = {}) {
@@ -492,6 +813,8 @@ function renderMatchSummary(result = {}) {
 }
 
 function renderPricingMatches(rows = []) {
+  elements.pricingTableWrap.hidden = !rows.length;
+  elements.pricingEmptyState.hidden = Boolean(rows.length) || Boolean(elements.pricingReviewMessages.innerHTML.trim());
   if (!rows.length) {
     elements.pricingMatchesBody.innerHTML = `<tr><td colspan="7">No pricing matches yet.</td></tr>`;
     return;
@@ -509,6 +832,13 @@ function renderPricingMatches(rows = []) {
       </tr>
     `)
     .join("");
+}
+
+function clearPricingReviewMessages() {
+  elements.pricingReviewMessages.innerHTML = "";
+  const pricingText = (elements.pricingMatchesBody.textContent || "").trim();
+  const hasRows = Boolean(pricingText) && !/No pricing matches yet/i.test(pricingText);
+  elements.pricingEmptyState.hidden = hasRows;
 }
 
 function extractPricingIssues(errors = []) {
@@ -580,11 +910,14 @@ async function handlePricingChoice(action, issue) {
 function renderPricingReviewMessages(result = {}) {
   const issues = extractPricingIssues(result.errors || []);
   if (!issues.length) {
-    renderMessages(result.errors || ["Pricing needs review."], "warn");
+    elements.pricingReviewMessages.innerHTML = (result.errors || ["Pricing needs review."])
+      .map((message) => `<div class="message warn">${escapeHtml(message)}</div>`)
+      .join("");
+    elements.pricingEmptyState.hidden = true;
     return;
   }
 
-  elements.messageList.innerHTML = `
+  elements.pricingReviewMessages.innerHTML = `
     <div class="message warn">
       <strong>I could not confidently price ${issues.length} item${issues.length === 1 ? "" : "s"}.</strong>
       Review these choices before treating the quotation as final.
@@ -603,6 +936,7 @@ function renderPricingReviewMessages(result = {}) {
       `).join("")}
     </div>
   `;
+  elements.pricingEmptyState.hidden = true;
 }
 
 function appendChatMessage(role, content, options = {}) {
@@ -707,32 +1041,46 @@ function renderBasisLine(key, line) {
     <li class="basis-line-row basis-line-${escapeHtml(meta.tag.toLowerCase())}">
       <span class="basis-line-pill">${escapeHtml(meta.tag)}</span>
       <span class="basis-line-text" title="${escapeHtml(meta.text)}">${escapeHtml(meta.text)}</span>
-      <button class="basis-line-tool basis-line-quote" type="button" data-quote-line="${escapeHtml(line)}" aria-label="Quote this line">Q</button>
       <button class="basis-line-tool" type="button" data-revise-line="${escapeHtml(line)}">Revise</button>
     </li>
   `;
 }
 
+function renderBasisTagLegend() {
+  return `
+    <div class="basis-tag-legend" aria-label="Quote basis tag meanings">
+      ${BASIS_TAGS.map(([tag, description]) => `
+        <span class="basis-tag-legend-item basis-line-${escapeHtml(tag.toLowerCase())}">
+          <strong class="basis-line-pill">${escapeHtml(tag)}</strong>
+          <span>${escapeHtml(description)}</span>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
-  const statusText = source === "edited" ? "Edited draft" : "Needs your confirmation";
+  const aiFailed = source === "local" && state.aiFailed;
+  const statusText = aiFailed ? "AI failed" : source === "edited" ? "Edited draft" : "Needs your confirmation";
   const summaryText = state.lineItems.length
     ? `${state.lineItems.length} priced line${state.lineItems.length === 1 ? "" : "s"}`
     : "Pricing draft pending";
   return `
-    <div class="assistant-card quote-basis-card">
+    <div class="assistant-card quote-basis-card ${aiFailed ? "quote-basis-card-failed" : ""}">
       <div class="quote-basis-header">
         <div>
           <div class="quote-basis-title-row">
             <h3>Quote basis to confirm</h3>
             <span>${escapeHtml(statusText)}</span>
           </div>
-          <p>Please review the AI takeoff and confirm, quote a line, or request changes.</p>
+          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and confirm, quote a line, or request changes."}</p>
         </div>
         <div class="quote-basis-source">
-          <span>Source: Koncept Pricing Catalog (RAG)</span>
+          <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog (RAG)"}</span>
           <strong>${escapeHtml(summaryText)}</strong>
         </div>
       </div>
+      ${renderBasisTagLegend()}
       <div class="basis-review-grid">
         ${BASIS_FIELDS.map(([key, label]) => `
           <div class="basis-review-item">
@@ -744,7 +1092,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         `).join("")}
       </div>
       <div class="assistant-card-actions">
-        <button class="primary-button" type="button" data-chat-action="confirm_basis">Confirm Basis</button>
+        <button class="primary-button" type="button" data-chat-action="confirm_basis" ${aiFailed ? "disabled" : ""}>Confirm Basis</button>
         <button class="secondary-button" type="button" data-chat-action="focus_chat">Ask for Changes</button>
         <button class="secondary-button" type="button" data-chat-action="regenerate">Regenerate Analysis</button>
       </div>
@@ -767,7 +1115,6 @@ function missingDetailFields() {
   if (!elements.quoteCompanyName.value.trim()) missing.push("Quotation company name");
   if (!hasLines(elements.headerDetails.value)) missing.push("Header details");
   if (!elements.termsHeading.value.trim()) missing.push("Terms heading");
-  if (!hasLines(elements.paymentTerms.value)) missing.push("Payment terms");
   if (!elements.chequePayee.value.trim()) missing.push("Cheque payee");
   if (!elements.notesHeading.value.trim()) missing.push("Notes heading");
   if (!hasLines(elements.standardNotes.value)) missing.push("Standard notes");
@@ -932,7 +1279,8 @@ function setAnalysisButtons(disabled = false) {
 function syncControlStates() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   setAnalysisButtons(busy);
-  elements.generateButton.disabled = busy || !canStartAnalysis() || !state.lineItems.length;
+  elements.generateButton.disabled = busy || state.aiFailed || !canStartAnalysis() || !state.lineItems.length;
+  updateSidePanelNav();
   renderCurrentActions();
 }
 
@@ -957,7 +1305,11 @@ async function handleDraftBasis() {
   }
 
   state.isAnalysisRunning = true;
+  state.aiFailed = false;
+  state.draftSource = "";
+  clearAiFailureBanner();
   setWorkflowStage("analyzing");
+  showAiRunningBanner();
   elements.busyText.textContent = "Running analysis...";
   setAnalysisButtons(true);
   renderChatActions([{ label: "Analyzing...", action: "noop", disabled: true }]);
@@ -965,7 +1317,8 @@ async function handleDraftBasis() {
     "assistant",
     hasFeedback
       ? "Using your feedback to revise the AI takeoff now. I will return an updated basis for confirmation."
-      : `Analyzing the ${currentGenerator().label.toLowerCase()} references now. I will list the basis for confirmation before generating anything.`
+      : "Analyzing the reference images now. I will list the basis for confirmation before generating anything.",
+    { tone: "warn" }
   );
 
   const started = await startJob("draft", buildPayload());
@@ -974,6 +1327,7 @@ async function handleDraftBasis() {
     elements.busyText.textContent = "";
     setAnalysisButtons(false);
     setWorkflowStage("ready_to_analyze");
+    showAiFailureBanner("Try again later.");
     appendChatMessage("assistant", (started.data.errors || ["Draft failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
@@ -988,6 +1342,7 @@ async function handleDraftBasis() {
 
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
     setWorkflowStage("ready_to_analyze");
+    showAiFailureBanner("Try again later.");
     appendChatMessage("assistant", (polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
@@ -996,11 +1351,19 @@ async function handleDraftBasis() {
   const data = polled.data.result || {};
   applyDraftBasis(data.quote_basis || {});
   applyDraftLineItems(data.line_items || []);
+  state.draftSource = data.source || "";
+  state.aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
   setWorkflowStage("basis_review");
-  appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, data.source), { html: true, tone: data.source === "openai" ? "" : "warn" });
+  if (state.aiFailed) {
+    showAiFailureBanner("Try again later. A local fallback draft is shown for reference only.");
+    appendChatMessage("assistant", "AI analysis failed. Try again later. I showed a local fallback draft, but it is blocked from quotation generation until remote AI analysis succeeds.", { tone: "error" });
+  } else {
+    clearAiFailureBanner();
+  }
   if (Array.isArray(data.warnings) && data.warnings.length) {
     appendChatMessage("assistant", data.warnings.join("\n"), { tone: "warn" });
   }
+  appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, data.source), { html: true, tone: data.source === "openai" ? "" : "warn" });
   if (!state.lineItems.length) {
     appendChatMessage("assistant", EMPTY_LINE_ITEMS_MESSAGE, { tone: "warn" });
   }
@@ -1009,6 +1372,12 @@ async function handleDraftBasis() {
 
 async function confirmBasis() {
   if (state.isAnalysisRunning || state.isGenerating) return;
+  if (state.aiFailed) {
+    showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
+    appendChatMessage("assistant", "AI analysis failed. Try again later before confirming or generating the quotation.", { tone: "error" });
+    renderCurrentActions();
+    return;
+  }
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
     appendChatMessage("assistant", "I do not have any generated quotation line items yet. Regenerate analysis before confirming the basis.", { tone: "warn" });
@@ -1029,6 +1398,13 @@ async function confirmBasis() {
 
 async function handleGenerate() {
   if (state.isGenerating) return;
+  if (state.aiFailed) {
+    setWorkflowStage("basis_review");
+    showAiFailureBanner("Try again later. Regenerate analysis before generating Excel.");
+    appendChatMessage("assistant", "Cannot generate because AI analysis failed. Try again later or regenerate analysis first.", { tone: "error" });
+    syncControlStates();
+    return;
+  }
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
@@ -1053,6 +1429,7 @@ async function handleGenerate() {
   renderDownloads([]);
   renderMatchSummary({});
   renderPricingMatches([]);
+  clearPricingReviewMessages();
   syncControlStates();
   const started = await startJob("generate", buildPayload());
   if (!started.ok) {
@@ -1088,12 +1465,15 @@ async function handleGenerate() {
     setWorkflowStage("pricing_review");
     setResultStatus("Needs review", "is-warn");
     renderPricingReviewMessages(data);
-    appendChatMessage("assistant", "I found pricing items that need review. I have shown the pricing review below instead of dumping the raw generator log.", { tone: "warn" });
+    setSidePanel("pricing");
+    appendChatMessage("assistant", "I found pricing items that need review. I have shown the match review in Output & Pricing instead of dumping the raw generator log.", { tone: "warn" });
   } else {
     setWorkflowStage("completed");
     setResultStatus("Completed", "is-ok");
-    renderMessages(["Quotation package generated."]);
-    appendChatMessage("assistant", "Quotation package generated. The Excel download is ready below.");
+    renderMessages([]);
+    clearPricingReviewMessages();
+    setSidePanel("pricing");
+    appendChatMessage("assistant", "Quotation package generated. The Excel download is ready below.", { tone: "instruction" });
   }
   renderDownloads(data.files || []);
   renderPricingMatches(data.pricing_matches || []);
@@ -1359,24 +1739,100 @@ function insertQuotedLine(line, revise = false) {
   elements.chatPrompt.setSelectionRange(elements.chatPrompt.value.length, elements.chatPrompt.value.length);
 }
 
-function setSidePanel(panelName) {
+function sidePanelBlockReason(panelName) {
+  if (panelName === "images") return "";
+  if (!state.images.length) return "Add reference images before opening this step.";
+  if (panelName === "pricing") {
+    const missing = missingDetailFields();
+    if (missing.length) return `Complete Quote Details before opening Output & Pricing: ${missing.join(", ")}.`;
+  }
+  return "";
+}
+
+function canOpenSidePanel(panelName) {
+  return !sidePanelBlockReason(panelName);
+}
+
+function setSidePanel(panelName, options = {}) {
   const panelTitles = {
     images: ["Images", "Reference Inputs"],
     details: ["Quote Details", "Editable Quote Configuration"],
-    pricing: ["Pricing", "Match Review"],
-    output: ["Latest Output", "Generated Quotation"],
-    settings: ["Settings", "Workspace"],
+    pricing: ["Output & Pricing", "Generated Quotation"],
   };
-  const [title, eyebrow] = panelTitles[panelName] || panelTitles.images;
+  const nextPanel = panelTitles[panelName] ? panelName : "images";
+  const blockReason = sidePanelBlockReason(nextPanel);
+  if (blockReason && !options.force) {
+    if (options.notify) appendChatMessage("assistant", blockReason, { tone: "warn" });
+    updateSidePanelNav();
+    return false;
+  }
+  const [title, eyebrow] = panelTitles[nextPanel] || panelTitles.images;
+  state.activeSidePanel = nextPanel;
   elements.sideDrawerTitle.textContent = title;
   elements.sideDrawerEyebrow.textContent = eyebrow;
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.sidePanel === panelName);
+    button.classList.toggle("is-active", button.dataset.sidePanel === state.activeSidePanel);
   });
   document.querySelectorAll(".side-panel-section[data-side-panel-content]").forEach((section) => {
-    section.classList.toggle("is-active", section.dataset.sidePanelContent === panelName);
+    section.classList.toggle("is-active", section.dataset.sidePanelContent === state.activeSidePanel);
   });
+  updateSidePanelNav();
   setSideDrawer(true);
+  return true;
+}
+
+function activeSidePanelIndex() {
+  return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel));
+}
+
+function updateSidePanelNav() {
+  if (!elements.sideBackButton || !elements.sideNextButton) return;
+  const index = activeSidePanelIndex();
+  const lastIndex = SIDE_PANEL_SEQUENCE.length - 1;
+  const isAnalysisStep = state.activeSidePanel === "details";
+  const isOutputStep = state.activeSidePanel === "pricing";
+  const busy = state.isAnalysisRunning || state.isGenerating;
+  document.querySelectorAll("[data-side-panel]").forEach((button) => {
+    const panelName = button.dataset.sidePanel || "images";
+    const blockReason = sidePanelBlockReason(panelName);
+    const locked = Boolean(blockReason);
+    button.disabled = busy || locked;
+    button.classList.toggle("is-locked", locked);
+    button.setAttribute("aria-disabled", String(button.disabled));
+    button.title = locked ? blockReason : "";
+  });
+  elements.sideBackButton.disabled = index === 0 || busy;
+  elements.sideNextButton.hidden = isOutputStep;
+  elements.sideDownloadButton.hidden = !isOutputStep;
+  const nextLabels = {
+    images: "Next: Quote Details",
+    details: currentGenerator().analyzeLabel,
+  };
+  elements.sideNextButton.textContent = nextLabels[state.activeSidePanel] || "Next";
+  elements.sideNextButton.classList.toggle("primary-button", isAnalysisStep);
+  elements.sideNextButton.classList.toggle("secondary-button", !isAnalysisStep);
+  const nextPanel = SIDE_PANEL_SEQUENCE[Math.min(index + 1, lastIndex)];
+  elements.sideNextButton.disabled = busy || (isAnalysisStep ? !canStartAnalysis() : !canOpenSidePanel(nextPanel));
+  elements.sideNextButton.title = isAnalysisStep
+    ? sidePanelBlockReason("pricing") || (canStartAnalysis() ? "" : "Add images and complete Quote Details before starting analysis.")
+    : sidePanelBlockReason(nextPanel) || "";
+  updateDownloadButton();
+}
+
+function goToPreviousSidePanel() {
+  const index = activeSidePanelIndex();
+  if (index <= 0) return;
+  setSidePanel(SIDE_PANEL_SEQUENCE[index - 1]);
+}
+
+function goToNextSidePanel() {
+  const index = activeSidePanelIndex();
+  if (state.activeSidePanel === "details") {
+    handleDraftBasis();
+    return;
+  }
+  if (state.activeSidePanel === "pricing") return;
+  setSidePanel(SIDE_PANEL_SEQUENCE[index + 1], { notify: true });
 }
 
 async function handleChatSubmit(event) {
@@ -1455,6 +1911,8 @@ function wireEvents() {
           data_url: await fileToDataUrl(file),
         }
       : null;
+    renderHeaderLogoStatus();
+    renderPresetStatus();
   });
 
   elements.dropzone.addEventListener("dragenter", (event) => {
@@ -1487,9 +1945,16 @@ function wireEvents() {
   });
 
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
-    button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images"));
+    button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images", { notify: true }));
   });
   elements.closeSideDrawerButton.addEventListener("click", () => setSideDrawer(false));
+  elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);
+  elements.sideNextButton.addEventListener("click", goToNextSidePanel);
+  elements.sideDownloadButton.addEventListener("click", (event) => {
+    if (elements.sideDownloadButton.getAttribute("aria-disabled") === "true") {
+      event.preventDefault();
+    }
+  });
   elements.sideBackdrop.addEventListener("click", () => setSideDrawer(false));
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -1498,10 +1963,15 @@ function wireEvents() {
   });
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
-  elements.generatorType.addEventListener("change", () => {
-    updateGeneratorCopy();
-    syncControlStates();
+  elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
+  elements.presetSelect.addEventListener("change", () => {
+    updatePresetButtons();
+    renderPresetStatus();
   });
+  elements.savePresetButton.addEventListener("click", saveCurrentPreset);
+  elements.loadPresetButton.addEventListener("click", loadSelectedPreset);
+  elements.deletePresetButton.addEventListener("click", deleteSelectedPreset);
+  elements.resetPresetButton.addEventListener("click", clearQuoteDetails);
   [
     elements.quoteCompanyName,
     elements.headerDetails,
@@ -1549,16 +2019,11 @@ function wireEvents() {
       insertQuotedLine(reviseButton.dataset.reviseLine || "", true);
       return;
     }
-    const quoteButton = event.target.closest("[data-quote-line]");
-    if (quoteButton) {
-      insertQuotedLine(quoteButton.dataset.quoteLine || "", false);
-      return;
-    }
     const button = event.target.closest("[data-chat-action]");
     if (!button || button.disabled) return;
     handleChatAction(button.dataset.chatAction);
   });
-  elements.messageList.addEventListener("click", (event) => {
+  elements.pricingReviewMessages.addEventListener("click", (event) => {
     const button = event.target.closest("[data-pricing-action]");
     if (!button || button.disabled) return;
     handlePricingChoice(button.dataset.pricingAction, button.dataset.pricingIssue);
@@ -1567,22 +2032,28 @@ function wireEvents() {
 
 function setInitialValues() {
   updateGeneratorCopy();
+  renderProfileOptions();
+  renderPresetOptions();
+  renderHeaderLogoStatus();
+  renderPresetStatus();
   renderFiles();
   renderPricingMatches([]);
   renderMatchSummary({});
   setWorkflowStage("needs_images");
   appendChatMessage(
     "assistant",
-    "Start by dropping booth render images, or click Load Sample in Images for a quick test. Edit Quote Details holds the customer, company, header, and terms text.",
+    "Start by dropping reference images, or click Load Sample in Images for a quick test. Presets hold reusable company, header, and terms text; Quote Details holds customer and project text.",
     { tone: "instruction" }
   );
   renderCurrentActions();
   syncControlStates();
+  setSidePanel("images");
 }
 
 async function boot() {
   wireEvents();
   await initializeSession();
+  await loadProfiles();
   setInitialValues();
   checkHealth();
 }
