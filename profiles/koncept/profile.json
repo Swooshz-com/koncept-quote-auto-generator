@@ -6,11 +6,54 @@
   "pricing_rag": "pricing-catalog.rag.md",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json",
-  "default_generator_type": "booth",
   "default_signature": {
     "koncept_signatory": "Francies Cheng",
     "koncept_title": "Director"
   },
+  "default_quote_detail_preset": "koncept-image-default",
+  "quote_detail_presets": [
+    {
+      "id": "koncept-image-default",
+      "name": "Koncept Images Pte. Ltd.",
+      "details": {
+        "company": {
+          "name": "Koncept Image Pte Ltd",
+          "header_details": "Koncept Image Pte Limited\n61 Kaki Bukit Ave 1, #02-26,\nShunli Industrial Park\nSingapore 417943\nTelephone: +6568177477\n\nBank Detail:\nUnited Overseas Bank Limited, 80\nRaffles Place\nSingapore 048624\nAccount: 335-3020-445\nSwift Code: UOVBSGSG",
+          "logo_path": "assets/koncept-header-logo.jpeg",
+          "logo_name": "koncept-header-logo.jpeg",
+          "logo_type": "image/jpeg"
+        },
+        "quote_text": {
+          "terms_heading": "Terms & Conditions :",
+          "payment_terms": [
+            "70% payment upon confirmation and signing of contract.",
+            "30% balance upon handover before show starts"
+          ],
+          "cheque_payee": "Koncept Image Pte Ltd",
+          "notes_heading": "Note : ",
+          "standard_notes": [
+            "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
+            "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
+            "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
+            "All designs and dimensions are subject to final site verification.",
+            "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
+            "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
+            "Design and Artwork of the graphics are not included in this contract.",
+            "Cancellation of agreement is subject to 75% of the agreement amount.",
+            "All deposit are non-refundable upon of cancellation of agreement."
+          ],
+          "acceptance_text": "We accept the quotation amount and the terms",
+          "person_label": "Person in charge",
+          "stamp_label": "Company name & stamp",
+          "date_label": "Date:"
+        },
+        "signature": {
+          "koncept_signatory": "Francies Cheng",
+          "koncept_title": "Director"
+        }
+      }
+    }
+  ],
   "default_quote_basis": {
     "surfaces": "Confirm: Please confirm visible walls, fascia, arches, beams, columns, and painted finishes.",
     "counters": "Confirm: Please confirm counter, cabinet, and countertop material/finish.",

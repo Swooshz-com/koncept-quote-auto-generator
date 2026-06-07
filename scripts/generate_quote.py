@@ -54,10 +54,6 @@ XMLNS_XR = "http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
 XMLNS_XR2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"
 XMLNS_XR3 = "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3"
 EXPORT_STATUS_CUSTOMER_READY = {"libreoffice_exported", "excel_exported"}
-DEFAULT_PAYMENT_TERMS = [
-    "70% payment upon confirmation and signing of contract.",
-    "30% balance upon handover before show starts",
-]
 DEFAULT_HEADER_LINES = [
     "Koncept Image Pte Limited",
     "61 Kaki Bukit Ave 1, #02-26,",
@@ -82,9 +78,6 @@ DEFAULT_STANDARD_NOTES = [
     "Design and Artwork of the graphics are not included in this contract.",
     "Cancellation of agreement is subject to 75% of the agreement amount.",
     "All deposit are non-refundable upon of cancellation of agreement.",
-    "The client is obliged to adhere to the above payment terms & conditions of  works.",
-    "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
-    "Late payment charge of 1.5% per month will be charge after the due date.",
 ]
 FIRST_PRINT_PAGE_END_ROW = 61
 CONTINUATION_PAGE_START_ROW = 62
@@ -685,10 +678,7 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
         rows.append(["", "", gst_label(lines), money(gst_amount), currency])
     rows.append(["", "", "Total including GST", money(final_total), currency])
     rows.extend([[], ["Terms & Conditions :"]])
-    payment_terms = brief.get("payment_terms") or [
-        "70% payment upon confirmation and signing of contract.",
-        "30% balance upon handover before show starts",
-    ]
+    payment_terms = brief.get("payment_terms") or []
     for idx, term in enumerate(payment_terms, start=1):
         rows.append([idx, term])
     rows.extend([
@@ -1194,19 +1184,73 @@ def update_repeating_header_drawing(xml: bytes, project_number: str, header_line
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def drawing_target_part(target: str) -> str:
+    if target.startswith("/"):
+        return target.lstrip("/")
+    normalized = Path("xl/drawings") / target
+    parts: list[str] = []
+    for item in normalized.as_posix().split("/"):
+        if item == "..":
+            if parts:
+                parts.pop()
+            continue
+        if item and item != ".":
+            parts.append(item)
+    return "/".join(parts)
+
+
+def remove_header_logo(parts: dict[str, bytes]) -> None:
+    drawing_name = "xl/drawings/drawing1.xml"
+    rels_name = "xl/drawings/_rels/drawing1.xml.rels"
+    removed_rel_ids: set[str] = set()
+    if drawing_name in parts:
+        drawing_root = ET.fromstring(parts[drawing_name])
+        for anchor in list(drawing_root.findall(f"{NS_DRAWING}twoCellAnchor")):
+            pic = anchor.find(f"{NS_DRAWING}pic")
+            if pic is None:
+                continue
+            blip = pic.find(f".//{NS_A}blip")
+            rel_id = blip.attrib.get(f"{NS_REL}embed") if blip is not None else ""
+            if rel_id:
+                removed_rel_ids.add(rel_id)
+            drawing_root.remove(anchor)
+        parts[drawing_name] = ET.tostring(drawing_root, encoding="utf-8", xml_declaration=True)
+
+    if rels_name not in parts:
+        return
+    rels_root = ET.fromstring(parts[rels_name])
+    removed_targets: list[str] = []
+    for rel in list(rels_root.findall(f"{NS_PACKAGE_REL}Relationship")):
+        is_removed_rel = bool(removed_rel_ids and rel.attrib.get("Id") in removed_rel_ids)
+        is_lonely_image = not removed_rel_ids and rel.attrib.get("Type", "").endswith("/image")
+        if not (is_removed_rel or is_lonely_image):
+            continue
+        target = rel.attrib.get("Target", "")
+        if target:
+            removed_targets.append(drawing_target_part(target))
+        rels_root.remove(rel)
+    parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
+    for target in removed_targets:
+        parts.pop(target, None)
+
+
 def replace_header_logo(parts: dict[str, bytes], logo_data_url: str) -> None:
     if not logo_data_url:
+        remove_header_logo(parts)
         return
     match = re.match(r"data:(image/(?:jpeg|jpg|png));base64,(.+)", logo_data_url, flags=re.IGNORECASE | re.DOTALL)
     if not match:
+        remove_header_logo(parts)
         return
 
     mime_type = match.group(1).lower().replace("image/jpg", "image/jpeg")
     try:
         logo_bytes = base64.b64decode(match.group(2), validate=True)
     except ValueError:
+        remove_header_logo(parts)
         return
     if not logo_bytes:
+        remove_header_logo(parts)
         return
 
     extension = "png" if mime_type == "image/png" else "jpeg"
@@ -1218,7 +1262,10 @@ def replace_header_logo(parts: dict[str, bytes], logo_data_url: str) -> None:
         rels_root = ET.fromstring(parts[rels_name])
         for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
             if rel.attrib.get("Type", "").endswith("/image"):
+                old_target = drawing_target_part(rel.attrib.get("Target", ""))
                 rel.attrib["Target"] = f"../media/header_logo.{extension}"
+                if old_target != media_name:
+                    parts.pop(old_target, None)
                 break
         parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
 
@@ -1712,7 +1759,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     )
     set_ooxml_cell(root, grand_row, 6, currency, layout_styles["grand_currency"])
 
-    payment_terms = brief.get("payment_terms") or DEFAULT_PAYMENT_TERMS
+    payment_terms = brief.get("payment_terms") or []
     terms_row = grand_row + 3
     set_ooxml_cell(root, terms_row, 1, clean_text(brief.get("terms_heading")) or "Terms & Conditions :", "37")
     for index, term in enumerate(payment_terms, start=1):
@@ -1973,28 +2020,12 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         cells[(93, 5)] = gst_amount
         cells[(93, 6)] = currency
     cells[(94, 5)] = subtotal + gst_amount
-    payment_terms = brief.get("payment_terms") or [
-        "70% payment upon confirmation and signing of contract.",
-        "30% balance upon handover before show starts",
-    ]
+    payment_terms = brief.get("payment_terms") or []
     for index, term in enumerate(payment_terms[:2], start=1):
         cells[(99 + index, 1)] = f"{index:.2f}"
         cells[(99 + index, 2)] = term
 
-    standard_notes = [
-        "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
-        "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
-        "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
-        "All designs and dimensions are subject to final site verification.",
-        "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
-        "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
-        "Design and Artwork of the graphics are not included in this contract.",
-        "Cancellation of agreement is subject to 75% of the agreement amount.",
-        "All deposit are non-refundable upon of cancellation of agreement.",
-        "The client is obliged to adhere to the above payment terms & conditions of  works.",
-        "All payment and/or additional charges shall be settled upon the agreed term of payment schedules.",
-        "Late payment charge of 1.5% per month will be charge after the due date.",
-    ]
+    standard_notes = DEFAULT_STANDARD_NOTES
     for index, note in enumerate(standard_notes, start=1):
         target_row = 103 + index
         if target_row == 114:
