@@ -103,6 +103,16 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn(webapp.MISSING_IMAGES_MESSAGE, errors)
 
+    def test_validate_generation_payload_requires_complete_quote_details(self):
+        payload = valid_payload()
+        payload["project_number"] = ""
+        payload["company"]["header_details"] = ""
+
+        errors = webapp.validate_generation_payload(payload)
+
+        self.assertTrue(any("Project number" in error for error in errors))
+        self.assertTrue(any("Header details" in error for error in errors))
+
     def test_payload_to_brief_maps_confirmed_form_fields(self):
         brief = webapp.payload_to_brief(valid_payload())
 
@@ -153,10 +163,24 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(sample["profile_id"], "koncept")
         self.assertEqual(sample["generator_type"], "booth")
         self.assertEqual(sample["details"]["project"]["booth_width"], "6")
+        self.assertEqual(sample["details"]["project_number"], "KI-SAMPLE-001")
         self.assertEqual(len(sample["images"]), 3)
         self.assertTrue(sample["images"][0]["data_url"].startswith("data:image/"))
         self.assertNotIn("internal_cost", json.dumps(sample))
         self.assertNotIn("pricing-catalog", json.dumps(sample))
+
+    def test_create_draft_job_requires_complete_quote_details_before_ai(self):
+        payload = valid_payload()
+        payload["client"]["address"] = ""
+        payload["project_number"] = ""
+
+        with mock.patch.object(webapp, "draft_quote_basis") as draft:
+            result = webapp.create_job("draft", payload)
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("Client address", result["errors"][0])
+        self.assertIn("Project number", result["errors"][0])
+        draft.assert_not_called()
 
     def test_create_draft_job_publishes_completed_result(self):
         ai_draft = {
@@ -331,6 +355,24 @@ class WebappServerTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], "gpt-custom-model")
 
+    def test_openai_request_timeout_uses_env_with_longer_default(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+
+        def dotenv(name):
+            if name == webapp.OPENAI_REQUEST_TIMEOUT_ENV_NAME:
+                return "123"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
+
+        self.assertEqual(webapp.OPENAI_REQUEST_TIMEOUT_SECONDS, 90)
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 123)
+
     def test_openai_prompt_requests_skill_style_takeoff_depth(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
@@ -346,7 +388,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Include:", prompt)
         self.assertIn("Confirm:", prompt)
         self.assertIn("2 to 4", prompt)
-        self.assertIn("8 to 18 line_items", prompt)
+        self.assertIn("10 to 24 itemized line_items", prompt)
+        self.assertIn("individual customer-facing rows", prompt)
         self.assertIn("flooring, structures, counters, graphics, furniture, electrical", prompt)
 
     def test_openai_prompt_treats_uploads_as_untrusted_and_protects_secrets(self):
@@ -681,7 +724,7 @@ class WebappServerTest(unittest.TestCase):
             "detailsBackdrop",
             "imageIntake",
             "sampleDetailsButton",
-            "excelPreview",
+            "matchSummary",
         ):
             self.assertIn(f'id="{field_id}"', html)
             self.assertIn(field_id, js)
@@ -696,9 +739,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Koncept World", html)
         self.assertNotIn('id="regenerateAnalysisButton"', html)
         self.assertIn("Regenerate Analysis", js)
+        self.assertIn("Fill Quote Details before AI analysis", js)
+        self.assertIn("Fill all Quote Details to enable assistant replies.", js)
+        self.assertIn("elements.chatPrompt.disabled", js)
+        self.assertIn("elements.chatTranscript.addEventListener(\"click\"", js)
         self.assertNotIn("Run AI Analysis", html)
         self.assertIn("Load Sample", html)
-        self.assertIn("renderExcelPreview", js)
+        self.assertIn("renderMatchSummary", js)
         self.assertIn(".secondary-button:disabled", css)
 
     def test_static_webapp_uses_simplified_setup_assistant_flow(self):
@@ -757,7 +804,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn('id="assistantOutput"', html)
         self.assertIn('id="downloads"', html)
-        self.assertIn('id="excelPreview"', html)
+        self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn("Quotation package generated. The Excel download is ready below.", js)
         self.assertIn("shown the pricing review below", js)
@@ -798,11 +845,11 @@ class WebappServerTest(unittest.TestCase):
             "handleChatSubmit",
             "renderQuoteBasisMessage",
             "confirmBasis",
-            "confirmDetails",
-            "showDetailReview",
         ):
             self.assertIn(expected, js)
 
+        self.assertNotIn("Confirm quote details", js)
+        self.assertNotIn("Edit exact wording in Quote Details", js)
         self.assertNotIn("Rows passed to the existing generator.", html)
         self.assertNotIn('class="line-table"', html)
         self.assertNotIn('id="lineItemsBody"', html)
