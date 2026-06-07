@@ -638,31 +638,11 @@ select:focus {
   line-height: 1.42;
 }
 
-.detail-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.assistant-card-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  margin: 12px 0 0;
-}
-
-.detail-summary div {
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-soft);
-}
-
-.detail-summary dt {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 820;
-  text-transform: uppercase;
-}
-
-.detail-summary dd {
-  margin: 3px 0 0;
-  font-size: 14px;
-  font-weight: 720;
+  margin-top: 14px;
 }
 
 .chat-actions {
@@ -889,35 +869,21 @@ td input {
   text-decoration: none;
 }
 
-.excel-preview {
-  margin-bottom: 14px;
-}
-
-.preview-heading {
+.match-summary {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 8px 8px 0 0;
-  background: #f8faf7;
-}
-
-.preview-heading span {
+  justify-content: flex-end;
+  gap: 8px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 720;
 }
 
-.preview-table-wrap {
-  border-radius: 0 0 8px 8px;
+.match-summary:empty {
+  display: none;
 }
 
-.preview-table {
-  min-width: 680px;
+.match-summary strong {
+  color: var(--ink);
 }
 
 @media (max-width: 880px) {
@@ -962,7 +928,6 @@ td input {
 
   .form-grid,
   .basis-review-grid,
-  .detail-summary,
   .chat-form {
     grid-template-columns: 1fr;
   }

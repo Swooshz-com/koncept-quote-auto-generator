@@ -46,16 +46,18 @@ OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_DRAFT_MODEL = "gpt-5-mini"
 OPENAI_API_KEY_ENV_NAME = "OPENAI_API_KEY"
 OPENAI_DRAFT_MODEL_ENV_NAME = "OPENAI_DRAFT_MODEL"
+OPENAI_REQUEST_TIMEOUT_ENV_NAME = "OPENAI_REQUEST_TIMEOUT_SECONDS"
 GEMINI_GENERATE_CONTENT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 GEMINI_DRAFT_MODEL = "gemini-2.5-flash"
 GEMINI_API_KEY_ENV_NAME = "GEMINI_API_KEY"
 GEMINI_DRAFT_MODEL_ENV_NAME = "GEMINI_DRAFT_MODEL"
+GEMINI_REQUEST_TIMEOUT_ENV_NAME = "GEMINI_REQUEST_TIMEOUT_SECONDS"
 SECRET_REDACTION = "sk-..."
 GEMINI_SECRET_REDACTION = "AIza..."
-OPENAI_REQUEST_TIMEOUT_SECONDS = 30
-GEMINI_REQUEST_TIMEOUT_SECONDS = 30
-OPENAI_RETRY_DELAYS_SECONDS = (1.5,)
-GEMINI_RETRY_DELAYS_SECONDS = (1.5,)
+OPENAI_REQUEST_TIMEOUT_SECONDS = 90
+GEMINI_REQUEST_TIMEOUT_SECONDS = 90
+OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
+GEMINI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 TRANSIENT_GEMINI_HTTP_CODES = {408, 500, 502, 503, 504}
 JOBS: dict[str, dict[str, Any]] = {}
@@ -320,6 +322,25 @@ def configured_gemini_draft_model() -> str:
     return safe_segment(read_dotenv_value(GEMINI_DRAFT_MODEL_ENV_NAME), GEMINI_DRAFT_MODEL)
 
 
+def configured_timeout_seconds(env_name: str, fallback: int) -> int:
+    raw = read_dotenv_value(env_name)
+    if not raw:
+        return fallback
+    try:
+        value = int(float(raw))
+    except ValueError:
+        return fallback
+    return min(max(value, 10), 300)
+
+
+def configured_openai_timeout_seconds() -> int:
+    return configured_timeout_seconds(OPENAI_REQUEST_TIMEOUT_ENV_NAME, OPENAI_REQUEST_TIMEOUT_SECONDS)
+
+
+def configured_gemini_timeout_seconds() -> int:
+    return configured_timeout_seconds(GEMINI_REQUEST_TIMEOUT_ENV_NAME, GEMINI_REQUEST_TIMEOUT_SECONDS)
+
+
 def image_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
     images = payload.get("images")
     if not isinstance(images, list):
@@ -354,12 +375,57 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
+def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
+    company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
+    quote_text = payload.get("quote_text") if isinstance(payload.get("quote_text"), dict) else {}
+    signature = payload.get("signature") if isinstance(payload.get("signature"), dict) else {}
+    project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
+
+    acceptance = quote_text.get("acceptance") if isinstance(quote_text.get("acceptance"), dict) else {}
+    payment_terms = quote_text.get("payment_terms") or payload.get("payment_terms")
+    standard_notes = quote_text.get("standard_notes")
+    booth_width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
+    booth_depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
+
+    checks: list[tuple[str, bool]] = [
+        ("Client name", bool(clean_text(nested_value(payload, "client", "name", "client_name")))),
+        ("Attention person", bool(clean_text(nested_value(payload, "client", "attention", "client_attention")))),
+        ("Attention title", bool(clean_text(nested_value(payload, "client", "title", "client_title")))),
+        ("Client address", bool(multiline_list(nested_value(payload, "client", "address", "client_address")))),
+        ("Project / event", bool(clean_text(project.get("title") or payload.get("project_title")))),
+        ("Quote date", bool(clean_text(payload.get("quote_date")))),
+        ("Project number", bool(clean_text(payload.get("project_number")))),
+        ("Quotation company name", bool(clean_text(company.get("name") or payload.get("quote_company_name")))),
+        ("Header details", bool(multiline_list(company.get("header_lines") or company.get("header_details")))),
+        ("Terms heading", bool(clean_text(quote_text.get("terms_heading")))),
+        ("Payment terms", bool(multiline_list(payment_terms))),
+        ("Cheque payee", bool(clean_text(quote_text.get("cheque_payee")))),
+        ("Notes heading", bool(clean_text(quote_text.get("notes_heading")))),
+        ("Standard notes", bool(multiline_list(standard_notes))),
+        ("Acceptance text", bool(clean_text(acceptance.get("text") or quote_text.get("acceptance_text")))),
+        ("Company signatory", bool(clean_text(signature.get("koncept_signatory")))),
+        ("Signatory title", bool(clean_text(signature.get("koncept_title")))),
+        ("Person label", bool(clean_text(acceptance.get("person_label") or quote_text.get("person_label")))),
+        ("Stamp label", bool(clean_text(acceptance.get("stamp_label") or quote_text.get("stamp_label")))),
+        ("Date label", bool(clean_text(acceptance.get("date_label") or quote_text.get("date_label")))),
+    ]
+    missing = [label for label, present in checks if not present]
+    if booth_width is None or booth_width <= 0:
+        missing.append("Width")
+    if booth_depth is None or booth_depth <= 0:
+        missing.append("Depth")
+    return missing
+
+
 def validate_generation_payload(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if not image_entries(payload):
         errors.append(MISSING_IMAGES_MESSAGE)
     if payload.get("confirmed") is not True:
         errors.append("Please confirm the quote basis before generating the quotation.")
+    missing_details = quote_detail_missing_fields(payload)
+    if missing_details:
+        errors.append(f"Fill quote details before generating: {', '.join(missing_details)}.")
 
     company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
     project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
@@ -671,9 +737,12 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Use the same depth as a Quote Basis To Confirm takeoff: describe visible materials, "
         "finishes, structures, platform/flooring, graphics/signage, furniture/plants/AV, "
         "lighting, sockets, and unclear assumptions. "
-        "Also include 8 to 18 line_items for the quotation table covering visible/recommended "
+        "Also include 10 to 24 itemized line_items for the quotation table covering visible/recommended "
         "flooring, structures, counters, graphics, furniture, electrical, assembly, and transportation "
-        "where relevant. Each line item must include "
+        "where relevant. Follow the quotation template naturally: use section headings conceptually, "
+        "but make line_items individual customer-facing rows rather than broad category subtotal rows. "
+        "Do not collapse a full section into a single subtotal unless that item is genuinely sold as one lump-sum service. "
+        "Each line item must include "
         "section, quantity, unit, description, and pricing_keyword. Use sqm for square-metre quantities. "
         "Use the pricing_catalog choices in Quote context JSON. When a catalog item applies, set "
         "pricing_keyword exactly to that catalog id, such as graphics.vinyl-printed-graphics, not an invented keyword. "
@@ -721,7 +790,7 @@ def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
     retry_delays = list(OPENAI_RETRY_DELAYS_SECONDS)
     for attempt in range(len(retry_delays) + 1):
         try:
-            with urllib.request.urlopen(request, timeout=OPENAI_REQUEST_TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=configured_openai_timeout_seconds()) as response:
                 data = json.loads(response.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as exc:
@@ -816,7 +885,7 @@ def request_gemini_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
     retry_delays = list(GEMINI_RETRY_DELAYS_SECONDS)
     for attempt in range(len(retry_delays) + 1):
         try:
-            with urllib.request.urlopen(request, timeout=GEMINI_REQUEST_TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=configured_gemini_timeout_seconds()) as response:
                 data = json.loads(response.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as exc:
@@ -1115,8 +1184,15 @@ def create_job(job_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     normalized_type = clean_text(job_type).lower()
     if normalized_type not in {"draft", "generate"}:
         return {"status": "blocked", "errors": ["Job type must be draft or generate."]}
-    if normalized_type == "draft" and not image_entries(payload):
+    if not image_entries(payload):
         return {"status": "blocked", "errors": [MISSING_IMAGES_MESSAGE]}
+    missing_details = quote_detail_missing_fields(payload)
+    if missing_details:
+        action_label = "AI analysis" if normalized_type == "draft" else "continuing"
+        return {
+            "status": "blocked",
+            "errors": [f"Fill quote details before {action_label}: {', '.join(missing_details)}."],
+        }
 
     job_id = f"job-{secrets.token_hex(6)}"
     now = utc_timestamp()
@@ -1306,6 +1382,12 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/draft":
             if not image_entries(payload):
                 errors = safe_error_messages([MISSING_IMAGES_MESSAGE])
+                write_local_log("draft_blocked", {"errors": errors})
+                self.send_json({"status": "blocked", "errors": errors}, status=400)
+                return
+            missing_details = quote_detail_missing_fields(payload)
+            if missing_details:
+                errors = safe_error_messages([f"Fill quote details before AI analysis: {', '.join(missing_details)}."])
                 write_local_log("draft_blocked", {"errors": errors})
                 self.send_json({"status": "blocked", "errors": errors}, status=400)
                 return

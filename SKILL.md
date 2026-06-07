@@ -15,7 +15,6 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Do not ask the user to create, edit, inspect, or approve the generator brief file.
 - Do not silently assume materials, finishes, dimensions, or inclusions. Suggest a quote basis from images and user notes, then ask the user to confirm it before generating.
 - Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
-- Use sample-style section totals for structure sections such as booth structure, wall structure, or stand structure: put the subtotal on the section row and leave child-row estimates blank.
 - Use `profiles/koncept/pricing-catalog.json` as the only authoritative pricing source for quote generation.
 - To update pricing from a future cost workbook, run `python scripts/build_pricing_catalog.py --source path/to/source.xlsx --out profiles/koncept/pricing-catalog.json --rag-md-out profiles/koncept/pricing-catalog.rag.md`.
 - Keep `profiles/koncept/pricing-catalog.json` as a structured pricing catalog that preserves stable catalog IDs, joined continuation descriptions, multiple remarks, default quantities/amounts, extra values, aliases, and search terms.
