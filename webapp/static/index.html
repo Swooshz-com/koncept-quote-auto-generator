@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=8">
   </head>
   <body>
     <div class="app-shell">
@@ -18,8 +18,10 @@
           </div>
         </div>
         <div class="topbar-controls">
-          <span class="status-dot sr-only" aria-hidden="true"></span>
-          <span id="healthText" class="sr-only">Checking local server</span>
+          <div class="topbar-status" id="topbarStatus">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="healthText" class="health-text">Checking local server</span>
+          </div>
         </div>
       </header>
 
@@ -130,14 +132,12 @@
                   <p class="settings-note">The selected profile controls pricing, RAG context, quote layout, and built-in quote detail presets.</p>
                 </div>
 
-                <div class="side-tabs" aria-hidden="true">
-                  <span class="is-active">Upload</span>
-                  <span>Gallery</span>
-                  <span>Samples</span>
-                </div>
-
                 <label class="dropzone" for="imageInput">
                   <input id="imageInput" type="file" accept="image/*" multiple>
+                  <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                    <path d="M14 34h20v-8h4a8 8 0 0 0 .5-16A10 10 0 0 0 24 6a10 10 0 0 0-9.5 7A8 8 0 0 0 6 21a8 8 0 0 0 8 5h0" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M24 22v16M18 28l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
                   <span class="drop-title" id="dropTitle">Drag and drop reference images here</span>
                   <span class="drop-meta" id="dropMeta">PNG, JPG, or WebP. Up to 12 MB each.</span>
                   <span class="drop-action">Choose Files</span>
@@ -304,11 +304,7 @@
                   </div>
                 </div>
                 <div class="assistant-output" id="assistantOutput">
-                  <div class="output-download-heading">
-                    <div>
-                      <h4>Quotation</h4>
-                      <p>Download the generated customer-ready Excel workbook.</p>
-                    </div>
+                  <div class="output-download-heading" style="justify-content: flex-end; padding-bottom: 0;">
                     <span class="result-pill" id="resultStatus">No job yet</span>
                   </div>
                   <div class="downloads" id="downloads"></div>
@@ -351,6 +347,6 @@
 
       <div class="side-backdrop" id="sideBackdrop" hidden></div>
     </div>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=6"></script>
   </body>
 </html>
