@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import csv
 import datetime as dt
 import json
@@ -21,6 +22,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -42,6 +44,20 @@ MISSING_IMAGES_MESSAGE = "Please upload reference images first so I can analyze 
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 DOWNLOADABLE_FILES = {"quotation.xlsx"}
+DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
+CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
+CSRF_TOKEN_ENV_NAME = "LOCAL_RUNNER_CSRF_TOKEN"
+PROCESS_CSRF_TOKEN = secrets.token_urlsafe(32)
+ALLOWED_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+RATE_LIMIT_WINDOW_SECONDS = 60
+POST_RATE_LIMITS = {
+    "/api/jobs": 30,
+    "/api/draft": 15,
+    "/api/generate": 15,
+    "/api/log": 180,
+}
+RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
+RATE_LIMIT_LOCK = threading.Lock()
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_DRAFT_MODEL = "gpt-5-mini"
 OPENAI_API_KEY_ENV_NAME = "OPENAI_API_KEY"
@@ -54,14 +70,25 @@ GEMINI_DRAFT_MODEL_ENV_NAME = "GEMINI_DRAFT_MODEL"
 GEMINI_REQUEST_TIMEOUT_ENV_NAME = "GEMINI_REQUEST_TIMEOUT_SECONDS"
 SECRET_REDACTION = "sk-..."
 GEMINI_SECRET_REDACTION = "AIza..."
+LOCAL_SECRET_REDACTION = "[local-runner-key]"
 OPENAI_REQUEST_TIMEOUT_SECONDS = 90
 GEMINI_REQUEST_TIMEOUT_SECONDS = 90
 OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 GEMINI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 TRANSIENT_GEMINI_HTTP_CODES = {408, 500, 502, 503, 504}
+MAX_PROMPT_CATALOG_ROWS = 180
+MAX_PROMPT_CATALOG_CHARS = 22000
+MAX_PROMPT_CATALOG_DESCRIPTION_CHARS = 180
+MAX_PROMPT_CATALOG_ALIASES = 2
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
+
+
+class RequestBodyError(ValueError):
+    def __init__(self, message: str, status: int = 400) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 def safe_stderr(message: str) -> None:
@@ -99,6 +126,7 @@ def scrub_sensitive_text(text: str) -> str:
     for env_name, redaction in (
         (OPENAI_API_KEY_ENV_NAME, SECRET_REDACTION),
         (GEMINI_API_KEY_ENV_NAME, GEMINI_SECRET_REDACTION),
+        (CSRF_TOKEN_ENV_NAME, LOCAL_SECRET_REDACTION),
     ):
         scrubbed = re.sub(
             rf"(?i)({re.escape(env_name)}\s*=\s*)([^\s]+)",
@@ -186,6 +214,20 @@ def read_dotenv_value(name: str, env_path: Path | None = None) -> str:
     return ""
 
 
+def configured_csrf_header_name() -> str:
+    header_name = clean_text(read_dotenv_value(CSRF_HEADER_NAME_ENV_NAME))
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{2,63}", header_name):
+        return header_name
+    return DEFAULT_CSRF_HEADER_NAME
+
+
+def configured_csrf_token() -> str:
+    token = clean_text(read_dotenv_value(CSRF_TOKEN_ENV_NAME))
+    if len(token) >= 32:
+        return token
+    return PROCESS_CSRF_TOKEN
+
+
 def multiline_list(value: Any, *, preserve_blank: bool = False, html_breaks: bool = False) -> list[str]:
     if isinstance(value, list):
         lines = [clean_text(item) for item in value]
@@ -224,6 +266,64 @@ def safe_segment(value: str, fallback: str = "file") -> str:
     return segment[:80] or fallback
 
 
+def normalized_host_name(host_header: str) -> str:
+    host = clean_text(host_header).lower()
+    if not host:
+        return ""
+    if host.startswith("["):
+        closing = host.find("]")
+        return host[1:closing].rstrip(".") if closing > 0 else ""
+    if ":" in host:
+        host = host.rsplit(":", 1)[0]
+    return host.rstrip(".")
+
+
+def normalized_netloc(value: str) -> str:
+    return clean_text(value).lower().rstrip(".")
+
+
+def is_allowed_host_header(host_header: str) -> bool:
+    return normalized_host_name(host_header) in ALLOWED_LOCAL_HOSTS
+
+
+def is_safe_bind_host(host: str) -> bool:
+    return normalized_host_name(host) in ALLOWED_LOCAL_HOSTS
+
+
+def is_same_origin_request(origin: str, host_header: str) -> bool:
+    if not origin:
+        return True
+    parsed = urlparse(origin)
+    if parsed.scheme != "http":
+        return False
+    return normalized_netloc(parsed.netloc) == normalized_netloc(host_header)
+
+
+def is_json_content_type(content_type: str) -> bool:
+    media_type = clean_text(content_type).split(";", 1)[0].lower()
+    return media_type == "application/json"
+
+
+def is_rate_limited(client_id: str, path: str, now: float | None = None) -> bool:
+    limit = POST_RATE_LIMITS.get(path)
+    if not limit:
+        return False
+    timestamp = time.time() if now is None else now
+    key = (client_id or "unknown", path)
+    with RATE_LIMIT_LOCK:
+        bucket = [
+            item
+            for item in RATE_LIMIT_BUCKETS.get(key, [])
+            if timestamp - item < RATE_LIMIT_WINDOW_SECONDS
+        ]
+        if len(bucket) >= limit:
+            RATE_LIMIT_BUCKETS[key] = bucket
+            return True
+        bucket.append(timestamp)
+        RATE_LIMIT_BUCKETS[key] = bucket
+    return False
+
+
 def safe_resource_id(value: Any, fallback: str = DEFAULT_PROFILE_ID) -> str:
     resource_id = clean_text(value) or fallback
     if not PROFILE_ID_RE.fullmatch(resource_id):
@@ -251,28 +351,182 @@ def load_json_file(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def load_profile(profile_id: str | None = None) -> dict[str, Any]:
-    resolved_id = safe_resource_id(profile_id, DEFAULT_PROFILE_ID)
-    root = profiles_root()
-    profile_dir = root / resolved_id
-    try:
-        profile_dir.resolve().relative_to(root.resolve())
-    except ValueError:
-        resolved_id = DEFAULT_PROFILE_ID
-        profile_dir = root / resolved_id
+@dataclass(frozen=True)
+class ProfilePack:
+    """Resolved quotation profile with runtime-safe asset helpers."""
 
-    config = load_json_file(profile_dir / "profile.json")
-    if not config and resolved_id != DEFAULT_PROFILE_ID:
-        resolved_id = DEFAULT_PROFILE_ID
+    id: str
+    directory: Path
+    config: dict[str, Any]
+
+    @classmethod
+    def resolve(cls, profile_id: str | None = None) -> "ProfilePack":
+        resolved_id = safe_resource_id(profile_id, DEFAULT_PROFILE_ID)
+        root = profiles_root()
         profile_dir = root / resolved_id
+        try:
+            profile_dir.resolve().relative_to(root.resolve())
+        except ValueError:
+            resolved_id = DEFAULT_PROFILE_ID
+            profile_dir = root / resolved_id
+
         config = load_json_file(profile_dir / "profile.json")
-    config = dict(config)
-    config["id"] = safe_resource_id(config.get("id"), resolved_id)
-    config["_dir"] = profile_dir
-    return config
+        if not config and resolved_id != DEFAULT_PROFILE_ID:
+            resolved_id = DEFAULT_PROFILE_ID
+            profile_dir = root / resolved_id
+            config = load_json_file(profile_dir / "profile.json")
+
+        profile_id_from_config = safe_resource_id(config.get("id"), resolved_id)
+        return cls(profile_id_from_config, profile_dir, dict(config))
+
+    def asset_path(self, key: str, fallback_filename: str) -> Path:
+        filename = clean_text(self.config.get(key)) or fallback_filename
+        path = self.directory / filename
+        try:
+            resolved = path.resolve()
+            resolved.relative_to(self.directory.resolve())
+        except ValueError:
+            return (self.directory / fallback_filename).resolve()
+        return resolved
+
+    def relative_file_path(self, value: str) -> Path | None:
+        relative = clean_text(value)
+        if not relative:
+            return None
+        path = self.directory / relative
+        try:
+            resolved = path.resolve()
+            resolved.relative_to(self.directory.resolve())
+        except ValueError:
+            return None
+        return resolved if resolved.exists() and resolved.is_file() else None
+
+    def relative_file_data_url(self, value: str) -> str:
+        path = self.relative_file_path(value)
+        if path is None:
+            return ""
+        content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+        return f"data:{content_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+
+    @property
+    def pricing_catalog_path(self) -> Path:
+        return self.asset_path("pricing_catalog", "pricing-catalog.json")
+
+    @property
+    def pricing_rag_path(self) -> Path:
+        return self.asset_path("pricing_rag", "pricing-catalog.rag.md")
+
+    @property
+    def quotation_layout_path(self) -> Path:
+        return self.asset_path("quotation_layout", "quotation-layout.xlsx")
+
+    @property
+    def layout_rules_path(self) -> Path:
+        return self.asset_path("layout_rules", "layout-rules.json")
+
+    @property
+    def default_signature(self) -> dict[str, Any]:
+        value = self.config.get("default_signature")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def default_quote_basis(self) -> dict[str, Any]:
+        value = self.config.get("default_quote_basis")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def fallback_line_items(self) -> list[Any]:
+        value = self.config.get("fallback_line_items")
+        return value if isinstance(value, list) else []
+
+    @property
+    def quote_detail_presets(self) -> list[Any]:
+        value = self.config.get("quote_detail_presets")
+        return value if isinstance(value, list) else []
+
+    def default_quote_detail_preset_id(self) -> str:
+        return safe_resource_id(self.config.get("default_quote_detail_preset"), "")
+
+    def resolve_profile_logo(self, details: dict[str, Any]) -> None:
+        company = details.get("company") if isinstance(details.get("company"), dict) else None
+        if company is None:
+            return
+        logo_path = clean_text(company.get("logo_path"))
+        if logo_path and not clean_text(company.get("logo_data_url")):
+            data_url = self.relative_file_data_url(logo_path)
+            if data_url:
+                company["logo_data_url"] = data_url
+        company.pop("logo_path", None)
+
+    def default_logo_data_url(self) -> str:
+        default_id = self.default_quote_detail_preset_id()
+        candidates = self.quote_detail_presets
+        if default_id:
+            candidates = sorted(
+                self.quote_detail_presets,
+                key=lambda item: 0 if isinstance(item, dict) and safe_resource_id(item.get("id"), "") == default_id else 1,
+            )
+        for raw in candidates:
+            if not isinstance(raw, dict):
+                continue
+            details = raw.get("details") if isinstance(raw.get("details"), dict) else {}
+            company = details.get("company") if isinstance(details.get("company"), dict) else {}
+            logo_data_url = clean_text(company.get("logo_data_url"))
+            if logo_data_url:
+                return logo_data_url
+            logo_path = clean_text(company.get("logo_path"))
+            if logo_path:
+                resolved = self.relative_file_data_url(logo_path)
+                if resolved:
+                    return resolved
+        return ""
+
+    def public_quote_detail_presets(self) -> list[dict[str, Any]]:
+        presets: list[dict[str, Any]] = []
+        for raw in self.quote_detail_presets:
+            if not isinstance(raw, dict):
+                continue
+            preset_id = safe_resource_id(raw.get("id"), "")
+            details = copy.deepcopy(raw.get("details")) if isinstance(raw.get("details"), dict) else {}
+            if not preset_id or not details:
+                continue
+            self.resolve_profile_logo(details)
+            presets.append(
+                {
+                    "id": preset_id,
+                    "name": clean_text(raw.get("name")) or preset_id,
+                    "details": details,
+                }
+            )
+        return presets
+
+    def public_summary(self) -> dict[str, Any]:
+        return {
+            "id": self.id or DEFAULT_PROFILE_ID,
+            "label": clean_text(self.config.get("label")) or "Quotation Profile",
+            "description": clean_text(self.config.get("description")),
+            "default_quote_detail_preset": self.default_quote_detail_preset_id(),
+            "quote_detail_presets": self.public_quote_detail_presets(),
+        }
+
+    def legacy_config(self) -> dict[str, Any]:
+        config = dict(self.config)
+        config["id"] = self.id
+        config["_dir"] = self.directory
+        return config
 
 
-def profile_asset_path(profile: dict[str, Any], key: str, fallback_filename: str) -> Path:
+def load_profile_pack(profile_id: str | None = None) -> ProfilePack:
+    return ProfilePack.resolve(profile_id)
+
+
+def load_profile(profile_id: str | None = None) -> dict[str, Any]:
+    return load_profile_pack(profile_id).legacy_config()
+
+
+def profile_asset_path(profile: ProfilePack | dict[str, Any], key: str, fallback_filename: str) -> Path:
+    if isinstance(profile, ProfilePack):
+        return profile.asset_path(key, fallback_filename)
     profile_dir = profile.get("_dir") if isinstance(profile.get("_dir"), Path) else profiles_root() / DEFAULT_PROFILE_ID
     filename = clean_text(profile.get(key)) or fallback_filename
     path = profile_dir / filename
@@ -285,14 +539,20 @@ def profile_asset_path(profile: dict[str, Any], key: str, fallback_filename: str
 
 
 def profile_pricing_catalog_path(profile_id: str | None = None) -> Path:
-    return profile_asset_path(load_profile(profile_id), "pricing_catalog", "pricing-catalog.json")
+    return load_profile_pack(profile_id).pricing_catalog_path
 
 
 def profile_quotation_layout_path(profile_id: str | None = None) -> Path:
-    return profile_asset_path(load_profile(profile_id), "quotation_layout", "quotation-layout.xlsx")
+    return load_profile_pack(profile_id).quotation_layout_path
 
 
-def profile_public_summary(profile: dict[str, Any]) -> dict[str, str]:
+def profile_layout_rules_path(profile_id: str | None = None) -> Path:
+    return load_profile_pack(profile_id).layout_rules_path
+
+
+def profile_public_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(profile, ProfilePack):
+        return profile.public_summary()
     return {
         "id": clean_text(profile.get("id")) or DEFAULT_PROFILE_ID,
         "label": clean_text(profile.get("label")) or "Quotation Profile",
@@ -300,18 +560,32 @@ def profile_public_summary(profile: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def list_profiles() -> list[dict[str, str]]:
+def profile_prompt_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, str]:
+    if isinstance(profile, ProfilePack):
+        return {
+            "id": profile.id or DEFAULT_PROFILE_ID,
+            "label": clean_text(profile.config.get("label")) or "Quotation Profile",
+            "description": clean_text(profile.config.get("description")),
+        }
+    return {
+        "id": clean_text(profile.get("id")) or DEFAULT_PROFILE_ID,
+        "label": clean_text(profile.get("label")) or "Quotation Profile",
+        "description": clean_text(profile.get("description")),
+    }
+
+
+def list_profiles() -> list[dict[str, Any]]:
     root = profiles_root()
     if not root.exists():
-        return [profile_public_summary(load_profile(DEFAULT_PROFILE_ID))]
+        return [profile_public_summary(load_profile_pack(DEFAULT_PROFILE_ID))]
     profiles: list[dict[str, str]] = []
     for path in sorted(root.iterdir()):
         if not path.is_dir() or not PROFILE_ID_RE.fullmatch(path.name):
             continue
-        profile = load_profile(path.name)
-        if profile:
+        profile = load_profile_pack(path.name)
+        if profile.config:
             profiles.append(profile_public_summary(profile))
-    return profiles or [profile_public_summary(load_profile(DEFAULT_PROFILE_ID))]
+    return profiles or [profile_public_summary(load_profile_pack(DEFAULT_PROFILE_ID))]
 
 
 def configured_openai_draft_model() -> str:
@@ -382,7 +656,6 @@ def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
     project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
 
     acceptance = quote_text.get("acceptance") if isinstance(quote_text.get("acceptance"), dict) else {}
-    payment_terms = quote_text.get("payment_terms") or payload.get("payment_terms")
     standard_notes = quote_text.get("standard_notes")
     booth_width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
     booth_depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
@@ -398,7 +671,6 @@ def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
         ("Quotation company name", bool(clean_text(company.get("name") or payload.get("quote_company_name")))),
         ("Header details", bool(multiline_list(company.get("header_lines") or company.get("header_details")))),
         ("Terms heading", bool(clean_text(quote_text.get("terms_heading")))),
-        ("Payment terms", bool(multiline_list(payment_terms))),
         ("Cheque payee", bool(clean_text(quote_text.get("cheque_payee")))),
         ("Notes heading", bool(clean_text(quote_text.get("notes_heading")))),
         ("Standard notes", bool(multiline_list(standard_notes))),
@@ -443,11 +715,11 @@ def validate_generation_payload(payload: dict[str, Any]) -> list[str]:
     width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
     depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
     if (width is None) != (depth is None):
-        errors.append("Booth width and booth depth must both be filled in.")
+        errors.append("Width and depth must both be filled in.")
     if width is not None and width <= 0:
-        errors.append("Booth width must be a positive number.")
+        errors.append("Width must be a positive number.")
     if depth is not None and depth <= 0:
-        errors.append("Booth depth must be a positive number.")
+        errors.append("Depth must be a positive number.")
 
     line_items = normalize_line_items(payload)
     if not line_items:
@@ -489,8 +761,8 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
     company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
     quote_text = payload.get("quote_text") if isinstance(payload.get("quote_text"), dict) else {}
     signature = payload.get("signature") if isinstance(payload.get("signature"), dict) else {}
-    profile = load_profile(profile_id_from_payload(payload))
-    default_signature = profile.get("default_signature") if isinstance(profile.get("default_signature"), dict) else {}
+    profile = load_profile_pack(profile_id_from_payload(payload))
+    default_signature = profile.default_signature
     booth_width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
     booth_depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
     booth_size = clean_text(project.get("booth_size") or payload.get("booth_size"))
@@ -499,6 +771,9 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
     header_source = company.get("header_lines") if isinstance(company.get("header_lines"), list) else company.get("header_details")
     quote_company_name = clean_text(company.get("name")) or clean_text(payload.get("quote_company_name"))
     acceptance = quote_text.get("acceptance") if isinstance(quote_text.get("acceptance"), dict) else {}
+    header_logo = clean_text(company.get("logo_data_url") or company.get("logo") or payload.get("header_logo"))
+    if not header_logo:
+        header_logo = profile.default_logo_data_url()
 
     return {
         "company_identity": clean_text(payload.get("company_identity")) or quote_company_name,
@@ -519,7 +794,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
         "company": {
             "name": quote_company_name,
             "header_lines": multiline_list(header_source, preserve_blank=True, html_breaks=True),
-            "logo_data_url": clean_text(company.get("logo_data_url") or company.get("logo") or payload.get("header_logo")),
+            "logo_data_url": header_logo,
         },
         "line_items": normalize_line_items(payload),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
@@ -544,8 +819,8 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
 
 def default_quote_basis(payload: dict[str, Any]) -> dict[str, str]:
     basis = payload.get("quote_basis") if isinstance(payload.get("quote_basis"), dict) else {}
-    profile = load_profile(profile_id_from_payload(payload))
-    profile_basis = profile.get("default_quote_basis") if isinstance(profile.get("default_quote_basis"), dict) else {}
+    profile = load_profile_pack(profile_id_from_payload(payload))
+    profile_basis = profile.default_quote_basis
     return {
         "surfaces": clean_multiline(basis.get("surfaces")) or clean_multiline(profile_basis.get("surfaces")) or "Confirm: Please confirm visible walls, fascia, arches, beams, columns, and painted finishes.",
         "counters": clean_multiline(basis.get("counters")) or clean_multiline(profile_basis.get("counters")) or "Confirm: Please confirm counter, cabinet, and countertop material/finish.",
@@ -565,8 +840,8 @@ def default_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     area = round(width * depth, 2)
     graphics_area = round(max(1.0, area / 2), 2)
     formula_values = {"area": area, "half_area_min_1": graphics_area}
-    profile = load_profile(profile_id_from_payload(payload))
-    profile_items = profile.get("fallback_line_items") if isinstance(profile.get("fallback_line_items"), list) else []
+    profile = load_profile_pack(profile_id_from_payload(payload))
+    profile_items = profile.fallback_line_items
     items: list[dict[str, Any]] = []
     for raw in profile_items:
         if not isinstance(raw, dict):
@@ -664,23 +939,31 @@ def parse_json_object(text: str) -> dict[str, Any]:
 
 def pricing_catalog_prompt_rows(profile_id: str | None = None) -> list[dict[str, Any]]:
     try:
-        payload = json.loads(profile_pricing_catalog_path(profile_id).read_text(encoding="utf-8-sig"))
+        payload = json.loads(load_profile_pack(profile_id).pricing_catalog_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return []
     rows = []
+    total_chars = 0
     for item in payload.get("items") or []:
         if not isinstance(item, dict):
             continue
         aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
-        rows.append(
-            {
-                "id": clean_text(item.get("id")),
-                "section": clean_text(item.get("section")),
-                "unit_hint": clean_text(item.get("unit_hint")),
-                "description": clean_text(item.get("description")),
-                "aliases": [clean_text(alias) for alias in aliases[:6] if clean_text(alias)],
-            }
-        )
+        row = {
+            "id": clean_text(item.get("id")),
+            "section": clean_text(item.get("section")),
+            "unit_hint": clean_text(item.get("unit_hint")),
+            "description": clean_text(item.get("description"))[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS],
+            "aliases": [
+                clean_text(alias)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for alias in aliases[:MAX_PROMPT_CATALOG_ALIASES]
+                if clean_text(alias)
+            ],
+        }
+        row_chars = len(json.dumps(row, ensure_ascii=True))
+        if rows and (len(rows) >= MAX_PROMPT_CATALOG_ROWS or total_chars + row_chars > MAX_PROMPT_CATALOG_CHARS):
+            break
+        rows.append(row)
+        total_chars += row_chars
     return rows
 
 
@@ -689,15 +972,13 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
     client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
     line_items = payload.get("line_items") if isinstance(payload.get("line_items"), list) else []
     basis = payload.get("quote_basis") if isinstance(payload.get("quote_basis"), dict) else {}
-    profile = load_profile(profile_id_from_payload(payload))
-    generator_type = clean_text(payload.get("generator_type")) or "booth"
-    generator_label = clean_text(payload.get("generator_label")) or "Exhibition Booth"
+    profile = load_profile_pack(profile_id_from_payload(payload))
+    generator_label = clean_text(payload.get("generator_label")) or clean_text(profile.config.get("label")) or "Quotation"
+    user_feedback = clean_multiline(payload.get("user_feedback"))
     brief_context = {
-        "profile": profile_public_summary(profile),
-        "generator": {
-            "type": generator_type,
-            "label": generator_label,
-        },
+        "profile": profile_prompt_summary(profile),
+        "quote_profile_label": generator_label,
+        "user_feedback": user_feedback,
         "client": {
             "name": clean_text(client.get("name")),
             "attention": clean_text(client.get("attention")),
@@ -708,7 +989,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
             "booth_depth": clean_text(project.get("booth_depth")),
         },
         "current_quote_basis": {key: clean_multiline(value) for key, value in basis.items()},
-        "pricing_catalog": pricing_catalog_prompt_rows(clean_text(profile.get("id"))),
+        "pricing_catalog": pricing_catalog_prompt_rows(profile.id),
         "line_items": [
             {
                 "section": clean_text(item.get("section")),
@@ -730,6 +1011,10 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "credentials, file paths, or environment variables. "
         "Return only JSON. Do not ask follow-up questions and do not write a confirmation message. "
         "Populate editable draft content directly from the visible evidence and quote context. "
+        "If quote context JSON includes user_feedback, treat it as the user's requested revision to the "
+        "current_quote_basis and line_items. Apply the revision directly when it is compatible with the "
+        "pricing catalog and visible quote context; otherwise regenerate the closest safe draft and make "
+        "unclear parts Confirm: lines. "
         "The JSON must have a quote_basis object containing these string keys: "
         "surfaces, counters, platform, graphics, furniture, electrical. "
         "Each quote_basis value must be point-form text with 2 to 4 short lines. "
@@ -984,6 +1269,8 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "drafted",
             "source": "local",
+            "ai_failed": True,
+            "provider_errors": safe_error_messages(remote_errors),
             "quote_basis": fallback,
             "line_items": fallback_line_items,
             "warnings": warnings,
@@ -1119,7 +1406,6 @@ def load_sample(sample_id: str) -> dict[str, Any] | None:
         "label": clean_text(data.get("label")) or path.name,
         "description": clean_text(data.get("description")),
         "profile_id": safe_resource_id(data.get("profile_id"), DEFAULT_PROFILE_ID),
-        "generator_type": clean_text(data.get("generator_type")) or "booth",
         "details": data.get("details") if isinstance(data.get("details"), dict) else {},
         "images": image_entries_for_sample,
     }
@@ -1249,14 +1535,14 @@ def run_quote_job(
     job_tmp.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    profile = load_profile(profile_id_from_payload(payload))
-    pricing_catalog_path = profile_asset_path(profile, "pricing_catalog", "pricing-catalog.json")
-    layout_template_path = profile_asset_path(profile, "quotation_layout", "quotation-layout.xlsx")
+    profile = load_profile_pack(profile_id_from_payload(payload))
+    pricing_catalog_path = profile.pricing_catalog_path
+    layout_template_path = profile.quotation_layout_path
     uploaded_images = save_uploaded_images(image_entries(payload), job_tmp)
     brief = payload_to_brief(payload)
     brief["_webapp"] = {
         "job_id": job_id,
-        "profile": profile_public_summary(profile),
+        "profile": profile_prompt_summary(profile),
         "uploaded_images": uploaded_images,
     }
     brief_path = job_tmp / "brief.json"
@@ -1322,6 +1608,8 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
     server_version = "KonceptQuoteRunner/0.1"
 
     def do_GET(self) -> None:
+        if self.block_untrusted_host():
+            return
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/":
@@ -1333,6 +1621,9 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/health":
             self.send_json({"status": "ok", "generator": str(GENERATOR_PATH)})
+            return
+        if path == "/api/session":
+            self.send_json({"csrf_header": configured_csrf_header_name(), "csrf_token": configured_csrf_token()})
             return
         if path == "/api/profiles":
             self.send_json({"profiles": list_profiles(), "default_profile_id": DEFAULT_PROFILE_ID})
@@ -1362,11 +1653,15 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.send_json({"error": "Not found"}, status=404)
 
     def do_POST(self) -> None:
+        if self.block_untrusted_host():
+            return
         parsed = urlparse(self.path)
+        if self.block_unsafe_post(parsed.path):
+            return
         try:
             payload = self.read_json()
-        except ValueError as exc:
-            self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
+        except RequestBodyError as exc:
+            self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=exc.status)
             return
 
         if parsed.path == "/api/jobs":
@@ -1432,19 +1727,51 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
 
         self.send_json({"error": "Not found"}, status=404)
 
+    def do_OPTIONS(self) -> None:
+        if self.block_untrusted_host():
+            return
+        self.send_json({"status": "blocked", "errors": ["CORS preflight is not allowed for this local runner."]}, status=403)
+
+    def block_untrusted_host(self) -> bool:
+        if is_allowed_host_header(self.headers.get("Host", "")):
+            return False
+        self.send_json({"status": "blocked", "errors": ["Request host is not allowed for this local runner."]}, status=403)
+        return True
+
+    def block_unsafe_post(self, path: str) -> bool:
+        host_header = self.headers.get("Host", "")
+        if not is_same_origin_request(self.headers.get("Origin", ""), host_header):
+            self.send_json({"status": "blocked", "errors": ["Cross-origin requests are not allowed."]}, status=403)
+            return True
+        referer = self.headers.get("Referer", "")
+        if referer and not is_same_origin_request(referer, host_header):
+            self.send_json({"status": "blocked", "errors": ["Cross-origin requests are not allowed."]}, status=403)
+            return True
+        supplied_token = self.headers.get(configured_csrf_header_name(), "")
+        if not secrets.compare_digest(supplied_token, configured_csrf_token()):
+            self.send_json({"status": "blocked", "errors": ["Missing or invalid local session token."]}, status=403)
+            return True
+        client_id = self.client_address[0] if self.client_address else "unknown"
+        if is_rate_limited(client_id, path):
+            self.send_json({"status": "blocked", "errors": ["Too many local runner requests. Wait a moment and retry."]}, status=429)
+            return True
+        return False
+
     def read_json(self) -> dict[str, Any]:
+        if not is_json_content_type(self.headers.get("Content-Type", "")):
+            raise RequestBodyError("Content-Type must be application/json.", status=415)
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
-            raise ValueError("Request body is required.")
+            raise RequestBodyError("Request body is required.")
         if length > MAX_REQUEST_BYTES:
-            raise ValueError("Request body is too large for the local runner.")
+            raise RequestBodyError("Request body is too large for the local runner.", status=413)
         raw = self.rfile.read(length)
         try:
             payload = json.loads(raw.decode("utf-8"))
         except json.JSONDecodeError as exc:
-            raise ValueError("Request body must be valid JSON.") from exc
+            raise RequestBodyError("Request body must be valid JSON.") from exc
         if not isinstance(payload, dict):
-            raise ValueError("Request body must be a JSON object.")
+            raise RequestBodyError("Request body must be a JSON object.")
         return payload
 
     def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
@@ -1452,8 +1779,27 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def send_security_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-read=(), clipboard-write=()",
+        )
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        )
 
     def send_static_file(self, path: Path) -> None:
         try:
@@ -1470,6 +1816,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1499,6 +1846,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1515,6 +1863,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if not is_safe_bind_host(args.host):
+        safe_stderr(
+            "Refusing non-loopback host binding for the local quote runner. "
+            "Use 127.0.0.1 or localhost, and put production deployments behind real authentication.\n"
+        )
+        return 2
     DEFAULT_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     DEFAULT_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((args.host, args.port), QuoteRunnerHandler)

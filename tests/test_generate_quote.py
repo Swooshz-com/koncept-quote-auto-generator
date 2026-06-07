@@ -1,3 +1,4 @@
+import base64
 import csv
 import json
 import re
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
 KONCEPT_CATALOG = KONCEPT_PROFILE / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
+KONCEPT_LOGO = KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import generate_quote as quote
@@ -143,6 +145,10 @@ def declared_xml_prefixes(xml_text, root_name):
     return set(re.findall(r"\sxmlns:([A-Za-z0-9_]+)=", match.group(0)))
 
 
+def logo_data_url():
+    return f"data:image/jpeg;base64,{base64.b64encode(KONCEPT_LOGO.read_bytes()).decode('ascii')}"
+
+
 def generate_layout_workbook():
     brief = {
         "company_identity": "Koncept Image",
@@ -158,6 +164,9 @@ def generate_layout_workbook():
         },
         "line_items": [],
         "payment_terms": [],
+        "company": {
+            "logo_data_url": logo_data_url(),
+        },
         "signature": {
             "koncept_signatory": "Francies Cheng",
             "koncept_title": "Director",
@@ -519,16 +528,16 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         row_breaks = sheet.find(f"{NS_MAIN}rowBreaks")
         sheet_view = sheet.find(f"{NS_MAIN}sheetViews/{NS_MAIN}sheetView")
 
-        self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), "Quotation!$A$1:$I$60")
-        self.assertEqual(dimension.attrib.get("ref"), "A1:I60")
+        self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), "Quotation!$A$1:$I$55")
+        self.assertEqual(dimension.attrib.get("ref"), "A1:I55")
         self.assertIsNone(row_breaks)
         self.assertNotEqual(sheet_view.attrib.get("view"), "pageBreakPreview")
-        self.assertEqual(cell_value(sheet, "B58"), "Director")
-        self.assertEqual(cell_value(sheet, "B60"), "")
+        self.assertEqual(cell_value(sheet, "B53"), "Director")
+        self.assertEqual(cell_value(sheet, "B55"), "")
         self.assertFalse([
             item.attrib.get("r")
             for item in sheet.iter(f"{NS_MAIN}c")
-            if quote.parse_cell_ref(item.attrib.get("r", "A1"))[0] > 60 and quote.parse_cell_ref(item.attrib.get("r", "A1"))[1] <= 9
+            if quote.parse_cell_ref(item.attrib.get("r", "A1"))[0] > 55 and quote.parse_cell_ref(item.attrib.get("r", "A1"))[1] <= 9
         ])
 
     def test_layout_extends_quote_table_past_preserved_second_page(self):
@@ -581,7 +590,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreater(last_item_row, 91)
         self.assertGreater(total_row, last_item_row)
         self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
-        self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 33}")
+        self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 28}")
         self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
 
     def test_layout_uses_manual_continuation_pages_with_table_headers_only(self):
@@ -685,7 +694,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             {manual_print_page_for_row(total_row)},
         )
 
-    def test_default_terms_match_sample_text_and_bold_emphasis(self):
+    def test_empty_payment_terms_do_not_insert_default_payment_rows(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
 
@@ -696,15 +705,11 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         terms_ref = find_cell_ref(sheet, "Terms & Conditions :")
         self.assertEqual(terms_ref, "A32")
         self.assertIsNotNone(font_for_style(styles, cell_style(sheet, terms_ref)).find(f"{NS_MAIN}b"))
-        self.assertEqual(cell_value(sheet, "A33"), "1.00")
-        self.assertEqual(cell_value(sheet, "B33"), "70% payment upon confirmation and signing of contract.")
-        self.assertEqual(cell_inline_runs(sheet, "B33"), [("70% payment upon confirmation and signing of contract.", True)])
-        self.assertEqual(cell_value(sheet, "A34"), "2.00")
-        self.assertEqual(cell_value(sheet, "B34"), "30% balance upon handover before show starts")
-        self.assertEqual(cell_inline_runs(sheet, "B34"), [("30% balance upon handover before show starts", True)])
-        self.assertEqual(cell_value(sheet, "B35"), "All cheques should be crossed and made payable to Koncept Image Pte Ltd")
+        self.assertNotEqual(cell_value(sheet, "A33"), "1.00")
+        self.assertNotEqual(cell_value(sheet, "B33"), "70% payment upon confirmation and signing of contract.")
+        self.assertEqual(cell_value(sheet, "B33"), "All cheques should be crossed and made payable to Koncept Image Pte Ltd")
         self.assertEqual(
-            cell_inline_runs(sheet, "B35"),
+            cell_inline_runs(sheet, "B33"),
             [
                 ("All cheques should be crossed and made payable to ", False),
                 ("Koncept Image Pte Ltd", True),
@@ -886,12 +891,12 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
 
-        self.assertEqual(cell_value(sheet, "A48"), "11.00")
-        self.assertEqual(cell_value(sheet, "A49"), "12.00")
+        self.assertEqual(cell_value(sheet, "A43"), "8.00")
+        self.assertEqual(cell_value(sheet, "A44"), "9.00")
         self.assertIsNone(font_for_style(styles, cell_style(sheet, "A37")).find(f"{NS_MAIN}i"))
-        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A48")).find(f"{NS_MAIN}i"))
+        self.assertIsNone(font_for_style(styles, cell_style(sheet, "A44")).find(f"{NS_MAIN}i"))
         self.assertEqual(cell_value(sheet, "E40"), "")
-        self.assertEqual(cell_value(sheet, "E52"), "We accept the quotation amount and the terms")
+        self.assertEqual(cell_value(sheet, "E47"), "We accept the quotation amount and the terms")
 
     def test_brief_can_override_terms_notes_and_company_text(self):
         tmp = tempfile.TemporaryDirectory()
@@ -957,6 +962,34 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIn("Dynamic bank line", paragraphs)
         self.assertIn("Target=\"../media/header_logo.png\"", drawing_rels)
         self.assertIn("xl/media/header_logo.png", media_names)
+
+    def test_missing_logo_removes_template_logo_from_output(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "quotation.xlsx"
+        brief = {
+            "company_identity": "No Logo Company",
+            "quote_date": "2026-06-04",
+            "project_number": "NO-LOGO-001",
+            "client": {"name": "Sample Client", "attention": "Alex Tan"},
+            "project": {"title": "No Logo Project"},
+            "line_items": [],
+            "payment_terms": [],
+            "company": {"name": "No Logo Company", "header_lines": ["No Logo Company"]},
+        }
+        price = quote.PriceRow(1, "Floor", "m2 needle punch carpet in colour", "sqm", 7, 1.09, 1.5, "")
+        line = quote.QuoteLine("Floor", 1, "sqm", "Needle punch carpet", "needle punch carpet in colour", "", price, 10.5, "matched", [])
+
+        quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
+
+        with zipfile.ZipFile(path) as zf:
+            drawing = ET.fromstring(zf.read("xl/drawings/drawing1.xml"))
+            drawing_rels = zf.read("xl/drawings/_rels/drawing1.xml.rels").decode("utf-8")
+            media_names = set(zf.namelist())
+
+        self.assertFalse(any(anchor.find(f"{NS_DRAWING}pic") is not None for anchor in drawing.findall(f"{NS_DRAWING}twoCellAnchor")))
+        self.assertNotIn("/image", drawing_rels)
+        self.assertNotIn("xl/media/image1.jpeg", media_names)
 
     def test_excel_pdf_export_script_repairs_and_saves_workbook_before_export(self):
         script = quote.powershell_export_script(Path("quotation.xlsx"), Path("quotation.pdf"))
