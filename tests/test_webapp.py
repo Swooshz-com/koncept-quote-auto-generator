@@ -1,8 +1,11 @@
 import tempfile
+import threading
 import unittest
 import io
 import json
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 import sys
 from unittest import mock
@@ -12,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
 KONCEPT_CATALOG = KONCEPT_PROFILE / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
+KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
 sys.path.insert(0, str(ROOT))
 
 from webapp import server as webapp
@@ -73,10 +77,6 @@ def valid_payload():
                 "display_price": "",
             }
         ],
-        "payment_terms": [
-            "70% payment upon confirmation and signing of contract.",
-            "30% balance upon handover before show starts",
-        ],
         "signature": {
             "koncept_signatory": "Francies Cheng",
             "koncept_title": "Director",
@@ -92,6 +92,21 @@ def wait_for_job(job_id: str, timeout: float = 2.0) -> dict:
             return job
         time.sleep(0.02)
     raise AssertionError(f"Timed out waiting for job {job_id}")
+
+
+class LocalRunnerServer:
+    def __enter__(self):
+        self.server = webapp.ThreadingHTTPServer(("127.0.0.1", 0), webapp.QuoteRunnerHandler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        host, port = self.server.server_address
+        self.base_url = f"http://{host}:{port}"
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
 
 
 class WebappServerTest(unittest.TestCase):
@@ -148,26 +163,53 @@ class WebappServerTest(unittest.TestCase):
 
     def test_default_profile_resolves_koncept_assets(self):
         profile = webapp.load_profile()
+        profile_pack = webapp.load_profile_pack()
 
         self.assertEqual(profile["id"], "koncept")
+        self.assertEqual(profile_pack.id, "koncept")
         self.assertIn("koncept", [item["id"] for item in webapp.list_profiles()])
         self.assertEqual(webapp.profile_pricing_catalog_path(), KONCEPT_CATALOG)
         self.assertEqual(webapp.profile_quotation_layout_path(), KONCEPT_LAYOUT)
+        self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_LAYOUT_RULES)
+        self.assertEqual(profile_pack.pricing_catalog_path, KONCEPT_CATALOG)
+        self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
+        self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
+        self.assertTrue((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue((KONCEPT_PROFILE / "pricing-catalog.rag.md").exists())
+        self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
+        self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
+        self.assertNotIn("quotation_format", profile)
         self.assertNotIn("pricing_catalog", webapp.profile_public_summary(profile))
+        public_profile = webapp.profile_public_summary(profile_pack)
+        self.assertEqual(public_profile["default_quote_detail_preset"], "koncept-image-default")
+        self.assertEqual(public_profile["quote_detail_presets"][0]["name"], "Koncept Images Pte. Ltd.")
+        preset_company = public_profile["quote_detail_presets"][0]["details"]["company"]
+        self.assertTrue(preset_company["logo_data_url"].startswith("data:image/jpeg;base64,"))
+        self.assertEqual(preset_company["logo_name"], "koncept-header-logo.jpeg")
+        self.assertNotIn("logo_path", preset_company)
+        self.assertNotIn("pricing-catalog", json.dumps(public_profile))
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
         sample = webapp.load_sample("brazil-pavilion")
 
         self.assertIsNotNone(sample)
         self.assertEqual(sample["profile_id"], "koncept")
-        self.assertEqual(sample["generator_type"], "booth")
         self.assertEqual(sample["details"]["project"]["booth_width"], "6")
         self.assertEqual(sample["details"]["project_number"], "KI-SAMPLE-001")
+        self.assertNotIn("company", sample["details"])
+        self.assertNotIn("quote_text", sample["details"])
         self.assertEqual(len(sample["images"]), 3)
         self.assertTrue(sample["images"][0]["data_url"].startswith("data:image/"))
         self.assertNotIn("internal_cost", json.dumps(sample))
         self.assertNotIn("pricing-catalog", json.dumps(sample))
+
+    def test_payload_to_brief_uses_profile_logo_when_payload_has_no_logo(self):
+        payload = valid_payload()
+        payload["company"].pop("logo_data_url", None)
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertTrue(brief["company"]["logo_data_url"].startswith("data:image/jpeg;base64,"))
 
     def test_create_draft_job_requires_complete_quote_details_before_ai(self):
         payload = valid_payload()
@@ -202,6 +244,7 @@ class WebappServerTest(unittest.TestCase):
         local_draft = {
             "status": "drafted",
             "source": "local",
+            "ai_failed": True,
             "quote_basis": {},
             "line_items": [{"section": "Floor Design", "quantity": 36, "unit": "sqm", "description": "Fallback item", "pricing_keyword": "floor-design.needle-punch-carpet-in-colour"}],
             "warnings": ["Remote AI analysis was unavailable."],
@@ -213,6 +256,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(job["status"], "degraded")
         self.assertEqual(job["result"]["source"], "local")
+        self.assertTrue(job["result"]["ai_failed"])
 
     def test_draft_quote_basis_uses_openai_key_from_env_file(self):
         payload = valid_payload()
@@ -272,9 +316,10 @@ class WebappServerTest(unittest.TestCase):
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
-            with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")):
-                with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=ai_draft) as gemini:
-                    result = webapp.draft_quote_basis(valid_payload())
+            with mock.patch.object(webapp, "write_local_log"):
+                with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")):
+                    with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=ai_draft) as gemini:
+                        result = webapp.draft_quote_basis(valid_payload())
 
         self.assertEqual(result["source"], "gemini")
         self.assertEqual(result["quote_basis"]["surfaces"], "Gemini surfaces")
@@ -291,12 +336,16 @@ class WebappServerTest(unittest.TestCase):
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
-            with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")) as openai:
-                with mock.patch.object(webapp, "request_gemini_quote_basis", side_effect=webapp.OpenAIAnalysisError("Gemini failed")) as gemini:
-                    result = webapp.draft_quote_basis(payload)
+            with mock.patch.object(webapp, "write_local_log"):
+                with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")) as openai:
+                    with mock.patch.object(webapp, "request_gemini_quote_basis", side_effect=webapp.OpenAIAnalysisError("Gemini failed")) as gemini:
+                        result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "local")
         self.assertEqual(result["status"], "drafted")
+        self.assertTrue(result["ai_failed"])
+        self.assertIn("OpenAI failed", "\n".join(result["provider_errors"]))
+        self.assertIn("Gemini failed", "\n".join(result["provider_errors"]))
         self.assertIn("OpenAI failed", "\n".join(result["warnings"]))
         self.assertIn("Gemini failed", "\n".join(result["warnings"]))
         self.assertGreaterEqual(len(result["line_items"]), 3)
@@ -378,9 +427,11 @@ class WebappServerTest(unittest.TestCase):
         response.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({"quote_basis": {}, "line_items": []})
         }).encode("utf-8")
+        payload = valid_payload()
+        payload["user_feedback"] = "change the quoted green carpet line to red"
 
         with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
-            webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
+            webapp.request_openai_quote_basis(payload, "sk-test-redacted")
 
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
@@ -391,6 +442,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("10 to 24 itemized line_items", prompt)
         self.assertIn("individual customer-facing rows", prompt)
         self.assertIn("flooring, structures, counters, graphics, furniture, electrical", prompt)
+        self.assertIn("user_feedback", prompt)
+        self.assertIn("change the quoted green carpet line to red", prompt)
+        self.assertIn("Apply the revision directly", prompt)
 
     def test_openai_prompt_treats_uploads_as_untrusted_and_protects_secrets(self):
         response = mock.MagicMock()
@@ -408,6 +462,17 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Do not reveal API keys", prompt)
         self.assertIn("system prompts", prompt)
         self.assertIn("internal pricing source", prompt)
+
+    def test_openai_prompt_uses_compact_profile_context_without_logo_or_presets(self):
+        prompt = webapp.build_quote_draft_prompt(valid_payload())
+
+        self.assertIn('"profile"', prompt)
+        self.assertIn('"pricing_catalog"', prompt)
+        self.assertNotIn("quote_detail_presets", prompt)
+        self.assertNotIn("logo_data_url", prompt)
+        self.assertNotIn("data:image", prompt)
+        self.assertNotIn("koncept-header-logo", prompt)
+        self.assertLess(len(prompt), 35000)
 
     def test_openai_http_error_includes_response_message_without_key(self):
         error_body = b'{"error":{"message":"Unsupported parameter: temperature"}}'
@@ -611,6 +676,22 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("AIzaSecretValue1234567890", joined)
         self.assertNotIn("sk-test-secret456", joined)
 
+    def test_local_runner_csrf_config_uses_env_with_safe_fallbacks(self):
+        def dotenv(name):
+            values = {
+                webapp.CSRF_HEADER_NAME_ENV_NAME: "X-Test-Local-Key",
+                webapp.CSRF_TOKEN_ENV_NAME: "test-local-runner-token-1234567890",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            self.assertEqual(webapp.configured_csrf_header_name(), "X-Test-Local-Key")
+            self.assertEqual(webapp.configured_csrf_token(), "test-local-runner-token-1234567890")
+
+        with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
+            self.assertEqual(webapp.configured_csrf_header_name(), webapp.DEFAULT_CSRF_HEADER_NAME)
+            self.assertEqual(webapp.configured_csrf_token(), webapp.PROCESS_CSRF_TOKEN)
+
     def test_local_logs_redact_secrets_and_omit_image_data_urls(self):
         with tempfile.TemporaryDirectory() as tmp:
             webapp.write_local_log(
@@ -629,6 +710,96 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("[omitted]", log_text)
         self.assertNotIn("sk-test-secret456", log_text)
         self.assertNotIn("secret-image", log_text)
+
+    def test_local_api_security_helpers_restrict_hosts_origins_and_content_type(self):
+        self.assertTrue(webapp.is_allowed_host_header("127.0.0.1:8765"))
+        self.assertTrue(webapp.is_allowed_host_header("localhost:8765"))
+        self.assertTrue(webapp.is_allowed_host_header("[::1]:8765"))
+        self.assertFalse(webapp.is_allowed_host_header("evil.example:8765"))
+        self.assertFalse(webapp.is_allowed_host_header("192.168.1.20:8765"))
+        self.assertTrue(webapp.is_same_origin_request("http://127.0.0.1:8765", "127.0.0.1:8765"))
+        self.assertFalse(webapp.is_same_origin_request("https://127.0.0.1:8765", "127.0.0.1:8765"))
+        self.assertFalse(webapp.is_same_origin_request("http://evil.example", "127.0.0.1:8765"))
+        self.assertTrue(webapp.is_json_content_type("application/json; charset=utf-8"))
+        self.assertFalse(webapp.is_json_content_type("text/plain"))
+        self.assertFalse(webapp.is_safe_bind_host("0.0.0.0"))
+
+    def test_local_api_rate_limits_state_changing_paths(self):
+        webapp.RATE_LIMIT_BUCKETS.clear()
+        for _ in range(webapp.POST_RATE_LIMITS["/api/jobs"]):
+            self.assertFalse(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1000))
+
+        self.assertTrue(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1001))
+        self.assertFalse(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1000 + webapp.RATE_LIMIT_WINDOW_SECONDS + 1))
+
+    def test_http_post_requires_allowed_host_csrf_and_json_content_type(self):
+        with LocalRunnerServer() as runner:
+            session_response = urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3)
+            self.assertEqual(session_response.headers["Cache-Control"], "no-store")
+            self.assertEqual(session_response.headers["X-Content-Type-Options"], "nosniff")
+            self.assertEqual(session_response.headers["X-Frame-Options"], "DENY")
+            self.assertEqual(session_response.headers["Cross-Origin-Opener-Policy"], "same-origin")
+            self.assertIn("camera=()", session_response.headers["Permissions-Policy"])
+            self.assertIn("frame-ancestors 'none'", session_response.headers["Content-Security-Policy"])
+            self.assertIsNone(session_response.headers.get("Access-Control-Allow-Origin"))
+            session = json.loads(session_response.read().decode("utf-8"))
+            csrf_header = session["csrf_header"]
+            csrf_token = session["csrf_token"]
+
+            preflight = urllib.request.Request(
+                f"{runner.base_url}/api/jobs",
+                method="OPTIONS",
+                headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as preflight_error:
+                urllib.request.urlopen(preflight, timeout=3)
+            self.assertEqual(preflight_error.exception.code, 403)
+            self.assertIsNone(preflight_error.exception.headers.get("Access-Control-Allow-Origin"))
+
+            missing_csrf = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=b"{}",
+                method="POST",
+                headers={"Content-Type": "application/json", "Origin": runner.base_url},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as missing_error:
+                urllib.request.urlopen(missing_csrf, timeout=3)
+            self.assertEqual(missing_error.exception.code, 403)
+
+            bad_type = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=b"{}",
+                method="POST",
+                headers={
+                    "Content-Type": "text/plain",
+                    "Origin": runner.base_url,
+                    csrf_header: csrf_token,
+                },
+            )
+            with self.assertRaises(urllib.error.HTTPError) as type_error:
+                urllib.request.urlopen(bad_type, timeout=3)
+            self.assertEqual(type_error.exception.code, 415)
+
+            bad_host = urllib.request.Request(
+                f"{runner.base_url}/api/session",
+                headers={"Host": "evil.example"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as host_error:
+                urllib.request.urlopen(bad_host, timeout=3)
+            self.assertEqual(host_error.exception.code, 403)
+
+            valid = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=json.dumps({"event": "test", "details": {}}).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": runner.base_url,
+                    csrf_header: csrf_token,
+                },
+            )
+            response = json.loads(urllib.request.urlopen(valid, timeout=3).read().decode("utf-8"))
+            self.assertEqual(response["status"], "logged")
 
     def test_run_quote_job_uses_stderr_when_generator_stdout_has_no_errors(self):
         completed = mock.Mock(
@@ -713,18 +884,35 @@ class WebappServerTest(unittest.TestCase):
             "personLabel",
             "stampLabel",
             "dateLabel",
-            "generatorType",
             "assistantSubtitle",
             "intakeTitle",
             "widthLabel",
             "depthLabel",
             "quoteDetailsButton",
-            "closeDetailsDrawerButton",
-            "detailsDrawer",
-            "detailsBackdrop",
+            "quoteDetailsPanel",
+            "sideWorkspace",
+            "sideBackdrop",
+            "closeSideDrawerButton",
+            "sideDrawerTitle",
+            "sideBackButton",
+            "sideNextButton",
+            "sideDownloadButton",
             "imageIntake",
             "sampleDetailsButton",
             "matchSummary",
+            "pricingReviewMessages",
+            "pricingEmptyState",
+            "pricingTableWrap",
+            "profileSelect",
+            "presetNameInput",
+            "presetSelect",
+            "savePresetButton",
+            "resetPresetButton",
+            "loadPresetButton",
+            "deletePresetButton",
+            "presetStatus",
+            "headerLogoStatus",
+            "aiFailureBanner",
         ):
             self.assertIn(f'id="{field_id}"', html)
             self.assertIn(field_id, js)
@@ -742,31 +930,111 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Fill Quote Details before AI analysis", js)
         self.assertIn("Fill all Quote Details to enable assistant replies.", js)
         self.assertIn("elements.chatPrompt.disabled", js)
+        self.assertIn('elements.chatPrompt.addEventListener("keydown"', js)
+        self.assertIn('event.key !== "Enter"', js)
+        self.assertIn("event.shiftKey", js)
+        self.assertIn("elements.chatForm.requestSubmit()", js)
         self.assertIn("elements.chatTranscript.addEventListener(\"click\"", js)
         self.assertNotIn("Run AI Analysis", html)
         self.assertIn("Load Sample", html)
+        self.assertIn("sample-start-card", html)
         self.assertIn("renderMatchSummary", js)
+        self.assertIn("QUOTE_PRESETS_STORAGE_KEY", js)
+        self.assertIn("loadProfiles", js)
+        self.assertIn("/api/profiles", js)
+        self.assertIn("Profile/RAG pack changed", js)
+        self.assertIn("Profile presets are loaded from the active pack", html)
+        self.assertNotIn("Default preset already applied.", html)
+        self.assertNotIn("preset-skip-note", html)
+        self.assertNotIn("preset-skip-note", css)
+        self.assertIn("No preset selected", js)
+        self.assertIn("Clear Quote Details", html)
+        self.assertIn("clearQuoteDetails", js)
+        self.assertIn("Quote Details cleared.", js)
+        self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
+        self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
+        self.assertLess(html.index("Active Profile Pack"), html.index('id="imageInput"'))
+        self.assertLess(html.index("Quote Detail Presets"), html.index("Customer and Project"))
+        self.assertLess(html.index('id="savePresetButton"'), html.index('id="resetPresetButton"'))
+        self.assertIn("loadDefaultProfilePreset", js)
+        self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
+        self.assertIn("Quote Details were left unchanged", js)
+        self.assertIn("Save Current", html)
+        self.assertIn("Download Quotation", html)
+        self.assertNotIn("Download Excel", html)
+        self.assertIn("Use Download Quotation in the Output footer.", js)
+        self.assertIn('setSidePanel("images")', js)
         self.assertIn(".secondary-button:disabled", css)
+        self.assertIn("normalizeTextNewlines", js)
+        self.assertIn("applyColorRevision", js)
+        self.assertIn("CSRF_HEADER_NAME", js)
+        self.assertIn("/api/session", js)
+        self.assertIn("initializeSession", js)
+        self.assertIn("overflow-wrap: anywhere", css)
+        self.assertIn("AI analysis failed.", html)
+        self.assertIn("showAiFailureBanner", js)
+        self.assertIn("state.aiFailed", js)
+        self.assertIn("quote-basis-card-failed", css)
+        self.assertIn("z-index: 12", css)
+        self.assertIn("[hidden]", css)
+        self.assertIn("sidePanelBlockReason", js)
+        self.assertIn("Add reference images before opening this step.", js)
+        self.assertIn("Complete Quote Details before opening Output & Pricing", js)
+        self.assertIn(".rail-button.is-locked", css)
+
+        initial_values_body = js.split("function setInitialValues()", 1)[1].split("async function boot()", 1)[0]
+        profile_change_body = js.split("function handleProfileSelectionChange()", 1)[1].split("async function setSampleDetails()", 1)[0]
+        sample_loader_body = js.split("async function setSampleDetails()", 1)[1].split("function buildPayload()", 1)[0]
+        self.assertNotIn("loadDefaultProfilePreset", initial_values_body)
+        self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
+        self.assertIn("loadDefaultProfilePreset({ silent: true })", sample_loader_body)
 
     def test_static_webapp_uses_simplified_setup_assistant_flow(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('id="panel-analysis"', html)
         self.assertIn('id="imageIntake"', html)
-        self.assertIn('id="detailsDrawer"', html)
         self.assertIn('id="quoteDetailsButton"', html)
+        self.assertIn('data-side-panel="details"', html)
+        self.assertIn('data-side-panel-content="details"', html)
+        self.assertIn('id="quoteDetailsPanel"', html)
         self.assertIn("Swooshz Quote Generator", html)
-        self.assertIn("Generator type", html)
-        self.assertIn("Drop reference images to start", html)
-        self.assertIn("Drop booth render images to start", js)
+        self.assertNotIn("Generator type", html)
+        self.assertIn('class="command-rail"', html)
+        self.assertIn('class="side-workspace"', html)
+        self.assertIn('class="chat-main"', html)
+        self.assertIn('data-side-panel="images"', html)
+        self.assertNotIn('data-side-panel="presets"', html)
+        self.assertNotIn('data-side-panel-content="presets"', html)
+        self.assertIn('data-side-panel-content="images"', html)
+        self.assertIn("Output & Pricing", html)
+        self.assertIn("Brazil pavilion demo", html)
+        self.assertIn("Drag and drop reference images here", html)
+        self.assertIn("Start by dropping reference images", js)
+        self.assertIn("grid-template-areas", css)
+        self.assertIn("chat rail", css)
+        self.assertIn(".side-workspace.is-open", css)
+        self.assertIn(".chat-message.instruction", css)
+        self.assertIn("min-height: 640px", css)
+        self.assertIn("--accent: #f5c84c", css)
+        self.assertIn(".sample-start-card", css)
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="quoteDetailsPanel"'))
         self.assertIn("setDetailsDrawer", js)
+        self.assertIn("setSideDrawer", js)
+        self.assertIn("setSidePanel", js)
+        self.assertIn("SIDE_PANEL_SEQUENCE", js)
+        self.assertIn('SIDE_PANEL_SEQUENCE = ["images", "details", "pricing"]', js)
+        self.assertIn("goToNextSidePanel", js)
         self.assertIn("addImagesFromFiles", js)
         self.assertIn("currentGenerator", js)
-        self.assertIn("generator_type", js)
+        self.assertNotIn("generatorType", js)
+        self.assertNotIn("generator_type", js)
         self.assertNotIn("Koncept Quote Runner", html)
         self.assertNotIn("Local quotation workspace", html)
+        self.assertNotIn("Quote automation workspace", html)
         self.assertNotIn('class="brand"', html)
         self.assertNotIn('data-panel="setup"', html)
         self.assertNotIn('data-panel="analysis"', html)
@@ -776,6 +1044,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('activatePanel("output")', js)
         self.assertNotIn("activatePanel", js)
         self.assertNotIn('data-panel="details"', html)
+        self.assertNotIn('id="detailsDrawer"', html)
+        self.assertNotIn('id="detailsBackdrop"', html)
+        self.assertNotIn('id="closeDetailsDrawerButton"', html)
         self.assertNotIn('data-panel="basis"', html)
         self.assertNotIn('data-panel="items"', html)
         self.assertNotIn('value="6"', html)
@@ -790,7 +1061,6 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Nova Latitude Events Pte Ltd", js)
         self.assertNotIn("Koncept Image Pte Limited", js)
         self.assertNotIn("70% payment upon confirmation", js)
-        self.assertNotIn("Francies Cheng", js)
         self.assertNotIn("setBrazilSampleRows", js)
         self.assertNotIn("Painted overhead fascia and canopy", js)
         self.assertNotIn("Sample customer, project, and line items loaded.", js)
@@ -806,8 +1076,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('id="downloads"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
+        self.assertIn('id="pricingReviewMessages"', html)
         self.assertIn("Quotation package generated. The Excel download is ready below.", js)
-        self.assertIn("shown the pricing review below", js)
+        self.assertIn('Quotation package generated. The Excel download is ready below.", { tone: "instruction" }', js)
+        self.assertIn("match review in Output & Pricing", js)
         self.assertIn("/api/jobs", js)
         self.assertIn("pollJob", js)
         self.assertNotIn('postJson("/api/draft"', js)
@@ -829,6 +1101,7 @@ class WebappServerTest(unittest.TestCase):
 
         for field_id in (
             "workflowStage",
+            "aiFailureBanner",
             "chatTranscript",
             "chatActions",
             "chatPrompt",
@@ -859,6 +1132,34 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("starterRowsButton", html)
         self.assertNotIn("addLineButton", html)
         self.assertNotIn("setStarterRows", js)
+
+    def test_static_chat_supports_post_generation_revisions(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        for expected in (
+            "Revise by Chat",
+            "focus_chat",
+            "applyRevisionRequest",
+            "applyFlooringRevision",
+            "insertQuotedLine",
+            "data-revise-line",
+            "quotedRevisionLines",
+            "pendingFeedback",
+            "Using your feedback to revise the AI takeoff now.",
+            "change this to",
+            "change carpet to laminate",
+            "floor-design.white-laminated-flooring-on-raised-platform",
+            "floor-design.wood-grain-laminated-flooring-on-raised-platform",
+            "Revision applied. Regenerating quotation.",
+            "I could not apply that safely as a direct edit yet.",
+        ):
+            self.assertIn(expected, js)
+
+        self.assertNotIn("data-quote-line", js)
+        self.assertNotIn("basis-line-quote", js)
+
+        self.assertNotIn("I am keeping this guarded for now", js)
 
     def test_static_chat_blocks_secret_and_internal_prompt_requests(self):
         static_dir = ROOT / "webapp" / "static"

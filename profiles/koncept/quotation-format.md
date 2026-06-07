@@ -91,14 +91,7 @@ Use only sections needed by the quote brief.
 
 ## Terms
 
-Common payment terms:
-
-- `70% payment upon confirmation and signing of contract.`
-- `30% balance upon handover before show starts`
-- `60% payment upon confirmation and signing of contract.`
-- `40% balance 14 days after delivery`
-
-Bold the payment-term text in the customer quote. In the cheque instruction line, keep the sentence regular and bold only the payee name, for example `Koncept Image Pte Ltd`.
+Payment terms are not inserted by default. If a quotation needs payment terms, enter them manually in the quote details; payment-term text should be bold in the customer quote. In the cheque instruction line, keep the sentence regular and bold only the payee name, for example `Koncept Image Pte Ltd`.
 
 Common notes:
 
@@ -111,7 +104,6 @@ Common notes:
 - Design and artwork of graphics are not included unless stated.
 - Cancellation is subject to 75% of the agreement amount.
 - Deposits are non-refundable upon cancellation.
-- Late payment charge may apply after due date.
 
 ## Signature
 
