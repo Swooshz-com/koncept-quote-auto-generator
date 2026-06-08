@@ -466,6 +466,13 @@ def confirmation_issues(missing: list[str], lines: list[QuoteLine]) -> list[str]
     for line in lines:
         if line.match_status == "unmatched":
             issues.append(f"Unmatched pricing: {line.description} / keyword `{line.pricing_keyword}`")
+        display_price = clean_text(line.display_price)
+        unresolved_display_price = not display_price or display_price.lower() == "manual display price"
+        if line.match_status == "manual-display" and unresolved_display_price and line.amount is None:
+            issues.append(
+                f"Manual display pricing required: {line.description} / "
+                "enter a display price, mark included, choose a catalog keyword, or remove this line"
+            )
         if line.match_status == "ambiguous":
             options = "; ".join(
                 f"{row.pricing_id}: {row.section} - {row.description} ({row.sale_unit_price:.2f})"

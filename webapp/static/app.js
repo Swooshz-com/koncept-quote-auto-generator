@@ -43,10 +43,10 @@ const BASIS_FIELDS = [
 ];
 
 const BASIS_TAGS = [
-  ["Include", "Quoted in the draft"],
-  ["Confirm", "Needs your confirmation"],
-  ["Exclude", "Not included unless requested"],
-  ["Note", "Assumption or caveat"],
+  ["Include", "Matched", "Quoted in the draft"],
+  ["Confirm", "Confirm", "Needs your decision"],
+  ["Exclude", "Exclude", "Not included unless requested"],
+  ["Note", "Note", "FYI assumption or caveat"],
 ];
 
 const STAGE_LABELS = {
@@ -149,12 +149,10 @@ const elements = {
   chatForm: qs("#chatForm"),
   chatPrompt: qs("#chatPrompt"),
   sendChatButton: qs("#sendChatButton"),
-  generateButton: qs("#generateButton"),
   busyText: qs("#busyText"),
   assistantOutput: qs("#assistantOutput"),
   resultStatus: qs("#resultStatus"),
   messageList: qs("#messageList"),
-  downloads: qs("#downloads"),
   matchSummary: qs("#matchSummary"),
   pricingMatchesBody: qs("#pricingMatchesBody"),
   pricingTableWrap: qs("#pricingTableWrap"),
@@ -177,6 +175,7 @@ const elements = {
   basisChatContext: qs("#basisChatContext"),
   basisChatMessages: qs("#basisChatMessages"),
   basisChatProposal: qs("#basisChatProposal"),
+  basisChatProposalActions: qs("#basisChatProposalActions"),
   basisChatForm: qs("#basisChatForm"),
   basisChatPrompt: qs("#basisChatPrompt"),
   basisChatSendButton: qs("#basisChatSendButton"),
@@ -841,7 +840,7 @@ function clearGeneratedQuoteState() {
   renderBasisEmptyState();
   clearAiFailureBanner();
   renderMessages([]);
-  renderDownloads([]);
+  setDownloadFiles([]);
   renderMatchSummary({});
   renderPricingMatches([]);
   clearPricingReviewMessages();
@@ -946,30 +945,10 @@ function renderMessages(messages = [], tone = "") {
     .join("");
 }
 
-function renderDownloads(files = []) {
+function setDownloadFiles(files = []) {
   const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || files[0] || null;
   state.downloadFile = excelFile;
   updateDownloadButton();
-  if (!excelFile) {
-    elements.downloads.innerHTML = "";
-    return;
-  }
-  elements.downloads.innerHTML = `
-    <div class="download-ready-note">
-      <div style="display: flex; gap: 12px; align-items: center;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink: 0;">
-          <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9 15L15 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div>
-          <strong>${escapeHtml(excelFile.name || "quotation.xlsx")}</strong>
-          <span style="display: block; margin-top: 2px;">${formatBytes(Number(excelFile.bytes))} ready. Use Download Quotation in the Output footer.</span>
-        </div>
-      </div>
-    </div>
-  `;
 }
 
 function updateDownloadButton() {
@@ -1077,7 +1056,7 @@ function clearPricingReviewMessages() {
 function extractPricingIssues(errors = []) {
   return errors
     .map((error) => String(error || "").trim())
-    .filter((error) => /pricing:/i.test(error))
+    .filter((error) => /^(Unmatched pricing:|Ambiguous pricing:|Manual display pricing required:)/i.test(error))
     .map((error) => error.replace(/^-?\s*/, ""));
 }
 
@@ -1085,7 +1064,9 @@ function pricingIssueDescription(issue = "") {
   return String(issue)
     .replace(/^Unmatched pricing:\s*/i, "")
     .replace(/^Ambiguous pricing:\s*/i, "")
+    .replace(/^Manual display pricing required:\s*/i, "")
     .split(" / keyword ")[0]
+    .split(" / enter a display price")[0]
     .split(". Candidate matches:")[0]
     .trim();
 }
@@ -1281,14 +1262,35 @@ function basisLineMeta(line) {
   return { tag, text: match[2] || "" };
 }
 
+function unresolvedConfirmLines(basis = state.quoteBasis) {
+  return BASIS_FIELDS.flatMap(([key, label]) => basisLines(basis[key])
+    .filter((line) => basisLineMeta(line).tag === "Confirm")
+    .map((line) => `${label}: ${basisLineMeta(line).text || line}`));
+}
+
+function basisConfirmBlockReason(basis = state.quoteBasis) {
+  return unresolvedConfirmLines(basis).length
+    ? "Resolve all Confirm lines before confirming quotation basis."
+    : "";
+}
+
+function basisTagLabel(tag = "") {
+  return tag === "Include" ? "Matched" : tag;
+}
+
 function renderBasisLine(key, line) {
   const meta = basisLineMeta(line);
+  const rawLine = escapeHtml(line);
   return `
     <li class="basis-line-row basis-line-${escapeHtml(meta.tag.toLowerCase())}">
       <span class="basis-line-icon" aria-hidden="true"></span>
-      <span class="basis-line-pill">${escapeHtml(meta.tag)}</span>
+      <span class="basis-line-pill">${escapeHtml(basisTagLabel(meta.tag))}</span>
       <span class="basis-line-text" title="${escapeHtml(meta.text)}">${escapeHtml(meta.text)}</span>
-      <button class="basis-line-tool" type="button" data-revise-field="${escapeHtml(key)}" data-revise-line="${escapeHtml(line)}" aria-label="Revise this line" title="Revise this line">Re</button>
+      <span class="basis-line-actions">
+        <button class="basis-line-tag-button" type="button" data-basis-tag-field="${escapeHtml(key)}" data-basis-tag-line="${rawLine}" data-basis-tag="Include" aria-label="Mark this line as matched" title="Mark matched">&#x2713;</button>
+        <button class="basis-line-tag-button" type="button" data-basis-tag-field="${escapeHtml(key)}" data-basis-tag-line="${rawLine}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
+        <button class="basis-line-tool" type="button" data-revise-field="${escapeHtml(key)}" data-revise-line="${rawLine}" aria-label="Revise this line" title="Revise this line">Re</button>
+      </span>
     </li>
   `;
 }
@@ -1296,9 +1298,9 @@ function renderBasisLine(key, line) {
 function renderBasisTagLegend() {
   return `
     <div class="basis-tag-legend" aria-label="Quote basis tag meanings">
-      ${BASIS_TAGS.map(([tag, description]) => `
+      ${BASIS_TAGS.map(([tag, label, description]) => `
         <span class="basis-tag-legend-item basis-line-${escapeHtml(tag.toLowerCase())}">
-          <strong class="basis-line-pill">${escapeHtml(tag)}</strong>
+          <strong class="basis-line-pill">${escapeHtml(label)}</strong>
           <span>${escapeHtml(description)}</span>
         </span>
       `).join("")}
@@ -1338,11 +1340,6 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           </div>
         `).join("")}
       </div>
-      <div class="assistant-card-actions">
-        <button class="primary-button" type="button" data-chat-action="confirm_basis" ${aiFailed ? "disabled" : ""}>Confirm Quotation Basis</button>
-        <button class="secondary-button" type="button" data-chat-action="open_basis_chat">Ask for Changes</button>
-        <button class="secondary-button" type="button" data-chat-action="regenerate">Regenerate Analysis</button>
-      </div>
     </div>
   `;
 }
@@ -1360,9 +1357,29 @@ function updateQuoteBasisCard(source = "edited") {
   elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage(state.quoteBasis, source);
 }
 
+function retagBasisLine(field, line, nextTag) {
+  if (!field || !["Include", "Exclude"].includes(nextTag)) return;
+  const currentLines = splitLines(state.quoteBasis[field]);
+  const currentIndex = currentLines.findIndex((item) => item === line);
+
+  const meta = basisLineMeta(line);
+  const text = meta.tag === "Detail" ? line : meta.text;
+  if (currentIndex >= 0) {
+    currentLines[currentIndex] = `${nextTag}: ${text}`;
+  } else if (!currentLines.length && meta.tag === "Confirm") {
+    currentLines.push(`${nextTag}: ${text}`);
+  } else {
+    return;
+  }
+  state.quoteBasis[field] = currentLines.join("\n");
+  state.basisConfirmed = false;
+  updateQuoteBasisCard("edited");
+  syncControlStates();
+}
+
 function basisChatIntroMessage() {
   if (state.basisChat.scope === "line") {
-    return "Ask about this line or describe the change you want. I will show a proposed update before applying anything.";
+    return "Type a replacement like 200mm, or describe the change you want. I will show a proposed update before applying anything.";
   }
   return "Ask a question or describe changes to the quotation basis. I will show a proposed update before applying anything.";
 }
@@ -1382,6 +1399,7 @@ function resetBasisChatProposal() {
   state.basisChat.proposal = null;
   elements.basisChatProposal.hidden = true;
   elements.basisChatProposal.innerHTML = "";
+  elements.basisChatProposalActions.hidden = true;
   elements.basisChatApplyButton.disabled = true;
   elements.basisChatKeepButton.disabled = true;
 }
@@ -1410,9 +1428,10 @@ function setBasisChatProposal(proposal) {
   elements.basisChatProposal.innerHTML = `
     <strong>Proposed update</strong>
     <p>${escapeHtml(proposal.message || "Review this proposed quote basis change before applying it.")}</p>
-    ${linePreview ? `<div class="basis-chat-proposed-line"><span>Line preview</span><p>${escapeHtml(linePreview)}</p></div>` : ""}
+    ${linePreview ? `<div class="basis-chat-proposed-line"><span>Current quote text</span><p>${escapeHtml(state.basisChat.line)}</p><span>Proposed quote text</span><p>${escapeHtml(linePreview)}</p></div>` : ""}
     <p>${escapeHtml(changedFields.length ? `Changes: ${changedFields.join(", ")}` : "This updates quotation line items without changing visible basis text.")}</p>
   `;
+  elements.basisChatProposalActions.hidden = false;
   elements.basisChatApplyButton.disabled = false;
   elements.basisChatKeepButton.disabled = false;
 }
@@ -1433,9 +1452,21 @@ function openBasisChatOverlay(scope = "quote", options = {}) {
   };
   resetBasisChatProposal();
   elements.basisChatTitle.textContent = scope === "line" ? "Revise basis line" : "Ask for changes";
-  elements.basisChatContext.textContent = scope === "line"
-    ? `${basisFieldLabel(state.basisChat.field)}: ${state.basisChat.line}`
-    : "Ask about or revise the whole quote basis.";
+  elements.basisChatContext.classList.toggle("has-selected-line", scope === "line");
+  if (scope === "line") {
+    const meta = basisLineMeta(state.basisChat.line);
+    elements.basisChatContext.innerHTML = `
+      <span class="basis-chat-context-label">${escapeHtml(basisFieldLabel(state.basisChat.field))}</span>
+      <span class="basis-chat-selected-line">
+        <strong>${escapeHtml(basisTagLabel(meta.tag))}</strong>
+        <span>${escapeHtml(meta.text || state.basisChat.line)}</span>
+      </span>
+    `;
+    elements.basisChatPrompt.placeholder = "Type 200mm, exclude this item, or describe a change...";
+  } else {
+    elements.basisChatContext.textContent = "Ask about or revise the whole quote basis.";
+    elements.basisChatPrompt.placeholder = "Ask about this basis or describe a change...";
+  }
   elements.basisChatMessages.innerHTML = "";
   appendBasisChatMessage("assistant", basisChatIntroMessage());
   elements.basisChatPrompt.value = "";
@@ -1481,6 +1512,17 @@ function extractLineReplacementText(text) {
   return value;
 }
 
+function directLineRevisionTarget(text, normalizedText) {
+  const compact = String(text || "").trim().replace(/^["']|["']$/g, "");
+  if (!compact || wantsBasisExplanation(normalizedText) || /\?$/.test(compact)) return "";
+  const extracted = extractLineReplacementText(compact);
+  if (extracted) return extracted;
+  if (wantsBasisRevision(normalizedText)) return "";
+  const wordCount = compact.split(/\s+/).filter(Boolean).length;
+  if (wordCount > 6 || compact.length > 80) return "";
+  return compact;
+}
+
 function sentenceCaseLine(value) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -1488,9 +1530,25 @@ function sentenceCaseLine(value) {
   return `${punctuated[0].toUpperCase()}${punctuated.slice(1)}`;
 }
 
-function lineReplacementText(target, field, tag) {
+function replaceMeasurementToken(currentLine, target) {
+  const compact = String(target || "").trim();
+  const targetMatch = compact.match(/^\d+(?:\.\d+)?\s*(mm|cm|m|sqm)$/i);
+  if (!targetMatch) return "";
+  const meta = basisLineMeta(currentLine);
+  const tag = meta.tag === "Detail" ? "" : meta.tag;
+  const body = meta.tag === "Detail" ? String(currentLine || "") : meta.text;
+  const unit = targetMatch[1].toLowerCase();
+  const sameUnitPattern = new RegExp(`\\b\\d+(?:\\.\\d+)?\\s*${unit}\\b`, "i");
+  if (!sameUnitPattern.test(body)) return "";
+  const nextBody = body.replace(sameUnitPattern, compact);
+  return tag ? `${tag}: ${nextBody}` : nextBody;
+}
+
+function lineReplacementText(target, field, tag, currentLine = "") {
   if (/^(Include|Confirm|Exclude|Note):/i.test(target)) return target;
   const compact = target.trim();
+  const measurementReplacement = replaceMeasurementToken(currentLine, compact);
+  if (measurementReplacement) return measurementReplacement;
   const isShortToken = /^[A-Za-z0-9+./-]{2,12}$/.test(compact);
   if (tag === "Confirm" && isShortToken) {
     const fieldText = basisFieldLabel(field).toLowerCase().replace(/\s*\/\s*/g, " ");
@@ -1501,15 +1559,14 @@ function lineReplacementText(target, field, tag) {
 
 function draftLineTextRevision(text, normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
   if (state.basisChat.scope !== "line" || !state.basisChat.field || !state.basisChat.line) return null;
-  if (!wantsBasisRevision(normalizedText)) return null;
-  const target = extractLineReplacementText(text);
+  const target = directLineRevisionTarget(text, normalizedText);
   if (!target) return null;
 
   const currentLines = splitLines(basis[state.basisChat.field]);
   const currentIndex = currentLines.findIndex((line) => line === state.basisChat.line);
   const meta = basisLineMeta(state.basisChat.line);
   const tag = meta.tag === "Detail" ? "Confirm" : meta.tag;
-  const nextLine = lineReplacementText(target, state.basisChat.field, tag);
+  const nextLine = lineReplacementText(target, state.basisChat.field, tag, state.basisChat.line);
   const nextLines = currentLines.length ? [...currentLines] : [state.basisChat.line];
   if (currentIndex >= 0) {
     nextLines[currentIndex] = nextLine;
@@ -1815,7 +1872,6 @@ function setAnalysisButtons(disabled = false) {
 function syncControlStates() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   setAnalysisButtons(busy);
-  elements.generateButton.disabled = busy || state.aiFailed || !canStartAnalysis() || !state.lineItems.length || !state.basisConfirmed;
   updateSidePanelNav();
   renderCurrentActions();
 }
@@ -1912,6 +1968,13 @@ async function handleDraftBasis() {
 
 async function confirmBasis() {
   if (state.isAnalysisRunning || state.isGenerating) return;
+  const confirmBlockReason = basisConfirmBlockReason();
+  if (confirmBlockReason) {
+    setWorkflowStage("basis_review");
+    appendChatMessage("assistant", confirmBlockReason, { tone: "warn" });
+    syncControlStates();
+    return;
+  }
   if (state.aiFailed) {
     showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
     appendChatMessage("assistant", "AI analysis failed. Try again later before confirming or generating the quotation.", { tone: "error" });
@@ -1976,7 +2039,7 @@ async function handleGenerate() {
   setResultStatus("Running", "is-warn");
   if (elements.chatPrompt) elements.chatPrompt.value = "";
   renderMessages([]);
-  renderDownloads([]);
+  setDownloadFiles([]);
   renderMatchSummary({});
   renderPricingMatches([]);
   clearPricingReviewMessages();
@@ -2023,9 +2086,9 @@ async function handleGenerate() {
     renderMessages([]);
     clearPricingReviewMessages();
     setSidePanel("pricing");
-    appendChatMessage("assistant", "Quotation package generated. The Excel download is ready below.", { tone: "instruction" });
+    appendChatMessage("assistant", "Quotation package generated. The Excel download is ready in the Output footer.", { tone: "instruction" });
   }
-  renderDownloads(data.files || []);
+  setDownloadFiles(data.files || []);
   renderPricingMatches(data.pricing_matches || []);
   renderMatchSummary(data);
   syncControlStates();
@@ -2302,7 +2365,7 @@ async function applyRevisionRequest(text, normalizedText) {
   appendChatMessage("assistant", `${applied} I am regenerating the Excel quotation now.`);
   setResultStatus("Revision running", "is-warn");
   renderMessages(["Revision applied. Regenerating quotation."]);
-  renderDownloads([]);
+  setDownloadFiles([]);
   renderMatchSummary({});
   renderPricingMatches([]);
   await handleGenerate();
@@ -2321,6 +2384,8 @@ function sidePanelBlockReason(panelName) {
     const missing = missingDetailFields();
     if (missing.length) return `Complete Quote Details before opening Output & Pricing: ${missing.join(", ")}.`;
     if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Details before opening Output.";
+    const confirmBlockReason = basisConfirmBlockReason();
+    if (confirmBlockReason) return confirmBlockReason;
     if (!hasCompletedQuoteBasis()) return "Confirm Quotation Basis before opening Output.";
   }
   return "";
@@ -2369,6 +2434,7 @@ function updateSidePanelNav() {
   const index = activeSidePanelIndex();
   const lastIndex = SIDE_PANEL_SEQUENCE.length - 1;
   const isAnalysisStep = state.activeSidePanel === "details";
+  const isBasisStep = state.activeSidePanel === "basis";
   const isOutputStep = state.activeSidePanel === "pricing";
   const busy = state.isAnalysisRunning || state.isGenerating;
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
@@ -2386,16 +2452,19 @@ function updateSidePanelNav() {
   const nextLabels = {
     images: "Next: Quote Details",
     details: currentGenerator().analyzeLabel,
-    basis: "Next: Output",
+    basis: "Confirm Quotation Basis",
   };
   elements.sideNextButton.textContent = nextLabels[state.activeSidePanel] || "Next";
-  elements.sideNextButton.classList.toggle("primary-button", isAnalysisStep);
-  elements.sideNextButton.classList.toggle("secondary-button", !isAnalysisStep);
+  elements.sideNextButton.classList.toggle("primary-button", isAnalysisStep || isBasisStep);
+  elements.sideNextButton.classList.toggle("secondary-button", !(isAnalysisStep || isBasisStep));
   const nextPanel = SIDE_PANEL_SEQUENCE[Math.min(index + 1, lastIndex)];
-  elements.sideNextButton.disabled = busy || (isAnalysisStep ? !canStartAnalysis() : !canOpenSidePanel(nextPanel));
+  const basisBlockReason = isBasisStep ? basisConfirmBlockReason() : "";
+  elements.sideNextButton.disabled = busy
+    || (isAnalysisStep ? !canStartAnalysis() : false)
+    || (isBasisStep ? Boolean(basisBlockReason) : !canOpenSidePanel(nextPanel));
   elements.sideNextButton.title = isAnalysisStep
     ? (canStartAnalysis() ? "" : "Add images and complete Quote Details before starting analysis.")
-    : sidePanelBlockReason(nextPanel) || "";
+    : basisBlockReason || sidePanelBlockReason(nextPanel) || "";
   updateDownloadButton();
 }
 
@@ -2412,7 +2481,7 @@ function goToNextSidePanel() {
     return;
   }
   if (state.activeSidePanel === "basis") {
-    setSidePanel("pricing", { notify: true });
+    confirmBasis();
     return;
   }
   if (state.activeSidePanel === "pricing") return;
@@ -2481,6 +2550,15 @@ async function handleChatSubmit(event) {
 }
 
 function handleQuoteBasisClick(event) {
+  const tagButton = event.target.closest("[data-basis-tag]");
+  if (tagButton) {
+    retagBasisLine(
+      tagButton.dataset.basisTagField || "",
+      tagButton.dataset.basisTagLine || "",
+      tagButton.dataset.basisTag || ""
+    );
+    return;
+  }
   const reviseButton = event.target.closest("[data-revise-line]");
   if (reviseButton) {
     openBasisChatOverlay("line", {
@@ -2615,7 +2693,6 @@ function wireEvents() {
     input.addEventListener("input", syncControlStates);
     input.addEventListener("change", syncControlStates);
   });
-  elements.generateButton.addEventListener("click", handleGenerate);
   if (elements.chatForm) elements.chatForm.addEventListener("submit", handleChatSubmit);
   elements.basisChatForm.addEventListener("submit", handleBasisChatSubmit);
   elements.basisChatApplyButton.addEventListener("click", applyBasisChatProposal);

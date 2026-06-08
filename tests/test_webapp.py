@@ -738,14 +738,34 @@ class WebappServerTest(unittest.TestCase):
             )
             self.assertTrue(logged_error)
             log_text = next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8")
+            log_record = json.loads(log_text)
 
         self.assertIn("client_error", log_text)
         self.assertIn("sk-...", log_text)
         self.assertIn("[omitted]", log_text)
+        self.assertEqual(log_record["log_context"], "test")
+        self.assertTrue(log_record["is_test"])
+        self.assertIn("SGT", log_record["timestamp_sgt"])
+        self.assertIn("Client-side request failed", log_record["meaning"])
         self.assertNotIn("chat_message", log_text)
         self.assertNotIn("Please use", log_text)
         self.assertNotIn("sk-test-secret456", log_text)
         self.assertNotIn("secret-image", log_text)
+
+    def test_local_logs_explain_actual_generator_layout_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(webapp.os.environ, {webapp.LOG_CONTEXT_ENV_NAME: "actual"}):
+                logged = webapp.write_local_log(
+                    "generate_failed",
+                    {"errors": ["ValueError: Quote has too many rows for the preserved layout."]},
+                    log_root=Path(tmp),
+                )
+            self.assertTrue(logged)
+            log_record = json.loads(next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8"))
+
+        self.assertEqual(log_record["log_context"], "actual")
+        self.assertFalse(log_record["is_test"])
+        self.assertIn("The generated quote has more line items than the preserved Excel layout can fit", log_record["meaning"])
 
     def test_local_api_security_helpers_restrict_hosts_origins_and_content_type(self):
         self.assertTrue(webapp.is_allowed_host_header("127.0.0.1:8765"))
@@ -1023,7 +1043,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Save Current", html)
         self.assertIn("Download Quotation", html)
         self.assertNotIn("Download Excel", html)
-        self.assertIn("Use Download Quotation in the Output footer.", js)
+        self.assertNotIn("Use Download Quotation in the Output footer.", js)
         self.assertIn('setSidePanel("images")', js)
         self.assertIn('contenteditable="true"', html)
         self.assertIn('data-rich-text-source="headerDetails"', html)
@@ -1046,6 +1066,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn(".rich-text-tool.is-underline", css)
         self.assertIn("--chat-content-width: min(1120px", css)
         self.assertIn("width: min(100%, var(--chat-content-width));", css)
+        self.assertIn("grid-template-rows: auto minmax(0, 1fr);", css)
+        self.assertIn("grid-template-rows: auto minmax(0, 1fr) auto;", css)
+        self.assertIn("overflow: hidden;", css)
+        self.assertIn("overflow-y: auto;", css)
+        self.assertIn("height: 100%;", css)
         self.assertIn("justify-self: center", css)
         self.assertIn(".secondary-button:disabled", css)
         self.assertIn("normalizeTextNewlines", js)
@@ -1065,9 +1090,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Complete Quote Details before opening Output & Pricing", js)
         self.assertIn("Click Start Analysis from Quote Details before opening Quote Basis.", js)
         self.assertIn("Confirm Quotation Basis before opening Output.", js)
+        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
         self.assertIn("state.basisConfirmed", js)
         self.assertIn("hasSubmittedQuoteBasis", js)
         self.assertIn("hasCompletedQuoteBasis", js)
+        self.assertIn("unresolvedConfirmLines", js)
+        self.assertIn("basisConfirmBlockReason", js)
         self.assertIn("!state.basisConfirmed", js)
         self.assertIn("startNewQuote", js)
         self.assertIn('elements.newQuoteButton.addEventListener("click", startNewQuote)', js)
@@ -1139,6 +1167,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('basis: ["Quote Basis", "Confirm Draft"]', js)
         self.assertIn('setSidePanel("basis", { force: true })', js)
         self.assertIn("goToNextSidePanel", js)
+        self.assertIn("Confirm Quotation Basis", js)
+        self.assertNotIn("Next: Output", js)
         self.assertIn("addImagesFromFiles", js)
         self.assertIn("currentGenerator", js)
         self.assertNotIn("generatorType", js)
@@ -1181,18 +1211,29 @@ class WebappServerTest(unittest.TestCase):
     def test_static_webapp_shows_generated_downloads_inside_assistant_page(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('id="assistantOutput"', html)
-        self.assertIn('id="downloads"', html)
+        self.assertIn('id="sideDownloadButton"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
-        self.assertIn("Quotation package generated. The Excel download is ready below.", js)
-        self.assertIn('Quotation package generated. The Excel download is ready below.", { tone: "instruction" }', js)
+        self.assertIn("Quotation package generated. The Excel download is ready in the Output footer.", js)
+        self.assertIn('Quotation package generated. The Excel download is ready in the Output footer.", { tone: "instruction" }', js)
+        self.assertIn("state.downloadFile = excelFile", js)
+        self.assertIn("setDownloadFiles", js)
+        self.assertIn("updateDownloadButton", js)
         self.assertIn("match review in Output & Pricing", js)
         self.assertIn("/api/jobs", js)
         self.assertIn("pollJob", js)
+        self.assertNotIn('id="downloads"', html)
+        self.assertNotIn("downloads: qs", js)
+        self.assertNotIn("renderDownloads", js)
+        self.assertNotIn(".downloads", css)
+        self.assertNotIn("download-ready-note", js)
+        self.assertNotIn("download-ready-note", css)
+        self.assertNotIn("Use Download Quotation in the Output footer.", js)
         self.assertNotIn('postJson("/api/draft"', js)
         self.assertNotIn('postJson("/api/generate"', js)
         self.assertNotIn("ready in Output", js)
@@ -1333,6 +1374,9 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
         self.assertNotIn("starterRowsButton", html)
         self.assertNotIn("addLineButton", html)
         self.assertNotIn("setStarterRows", js)
+        self.assertNotIn("assistant-card-actions", js)
+        self.assertNotIn("assistant-card-actions", html)
+        self.assertNotIn('data-chat-action="confirm_basis"', js)
 
     def test_static_chat_supports_post_generation_revisions(self):
         static_dir = ROOT / "webapp" / "static"
@@ -1344,12 +1388,15 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
             "basisChatOverlay",
             "basisChatForm",
             "basisChatPrompt",
+            "basisChatProposalActions",
             "basisChatApplyButton",
             "basisChatKeepButton",
             "openBasisChatOverlay",
             "closeBasisChatOverlay",
             "buildRevisionProposal",
             "draftLineTextRevision",
+            "directLineRevisionTarget",
+            "replaceMeasurementToken",
             "applyBasisChatProposal",
             "Confirm Quotation Basis",
             "open_basis_chat",
@@ -1357,6 +1404,8 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
             "applyFlooringRevision",
             "data-revise-line",
             "data-revise-field",
+            "data-basis-tag",
+            "retagBasisLine",
             "quotedRevisionLines",
             "pendingFeedback",
             "Using your feedback to revise the AI takeoff now.",
@@ -1366,6 +1415,7 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
             "Revision applied. Regenerating quotation.",
             "I could not apply that safely as a direct edit yet.",
             "Drafted a visible replacement for this basis line.",
+            "Type a replacement like 200mm",
         ):
             self.assertIn(expected, js)
 
@@ -1375,6 +1425,7 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
             'id="basisChatContext"',
             'id="basisChatMessages"',
             'id="basisChatProposal"',
+            'id="basisChatProposalActions"',
             'id="basisChatForm"',
             'id="basisChatPrompt"',
             'id="basisChatApplyButton"',
@@ -1393,21 +1444,33 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
             ".basis-line-include .basis-line-icon::before",
             ".basis-line-exclude .basis-line-text",
             ".basis-line-exclude .basis-line-icon::before",
+            ".basis-line-actions",
+            ".basis-line-tag-button",
             'content: "\\2713"',
             'content: "X"',
-            "text-decoration-line: line-through",
+            ".basis-chat-context",
+            ".basis-chat-selected-line",
+            ".basis-chat-proposal-actions[hidden]",
             "@media (max-width: 880px)",
         ):
             self.assertIn(expected, css)
+        self.assertNotIn("text-decoration-line: line-through", css)
         self.assertNotIn('body[data-workflow-stage="basis_review"] .chat-main .chat-form', css)
 
         self.assertIn("> ${state.basisChat.line}", js)
         self.assertIn("elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage", js)
         self.assertIn("setBasisReviewStatus", js)
         self.assertIn("Analyzing reference images now. I will list the basis for confirmation before generating anything.", js)
-        self.assertIn("Apply Change", html)
-        self.assertIn("Keep Current", html)
+        self.assertIn("Apply Proposed Change", html)
+        self.assertIn("Discard Draft", html)
+        self.assertNotIn("Keep Current", html)
+        self.assertNotIn("assistant-card-actions", css)
+        self.assertNotIn('data-chat-action="open_basis_chat"', js)
         self.assertIn('aria-label="Revise this line"', js)
+        self.assertIn('aria-label="Mark this line as matched"', js)
+        self.assertIn('aria-label="Mark this line as excluded"', js)
+        self.assertIn('basisTagLabel(meta.tag)', js)
+        self.assertIn("Matched", js)
         self.assertIn(">Re<", js)
         self.assertNotIn('appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, data.source)', js)
 
@@ -1417,6 +1480,152 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
         self.assertNotIn("insertQuotedLine", js)
 
         self.assertNotIn("I am keeping this guarded for now", js)
+
+    def test_static_quote_basis_footer_confirmation_requires_resolved_confirm_lines(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('basis: "Confirm Quotation Basis"', js)
+        self.assertIn("basisConfirmBlockReason", js)
+        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
+        self.assertIn('confirmBasis();', js)
+        self.assertNotIn("Next: Output", js)
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required to execute static app helper behavior.")
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const BASIS_FIELDS = [["surfaces", "Surfaces / Structures"], ["graphics", "Graphics / Signage"]];
+const state = {
+  quoteBasis: {
+    surfaces: "Include: Raised platform.\nConfirm: Finish colour.\nNote: Assumption.",
+    graphics: "Exclude: LED screens.",
+  },
+};
+eval([
+  "normalizeTextNewlines",
+  "splitLines",
+  "basisLines",
+  "basisLineMeta",
+  "unresolvedConfirmLines",
+  "basisConfirmBlockReason",
+].map(extractFunction).join("\n"));
+
+assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasis), ["Surfaces / Structures: Finish colour."]);
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasis), "Resolve all Confirm lines before confirming quotation basis.");
+state.quoteBasis.surfaces = "Include: Raised platform.\nNote: Finish colour assumed.";
+assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasis), []);
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasis), "");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_line_revise_accepts_direct_measurement_replacement(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required to execute static app helper behavior.")
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const EMPTY_BASIS = { surfaces: "", counters: "", platform: "", graphics: "", furniture: "", electrical: "" };
+const BASIS_FIELDS = [["surfaces", "Surfaces / Structures"]];
+const line = "Include: Raised platform at 100mm with aluminium edging across the full 6m x 6m booth.";
+const state = {
+  basisChat: { scope: "line", field: "surfaces", line, proposal: null },
+  quoteBasis: { ...EMPTY_BASIS, surfaces: line },
+  lineItems: [{ section: "Surfaces", description: "Raised platform", quantity: "36", unit: "sqm" }],
+};
+
+const helperNames = [
+  "normalizeTextNewlines",
+  "splitLines",
+  "normalizeLineItem",
+  "cloneQuoteBasis",
+  "basisFieldLabel",
+  "basisLineMeta",
+  "wantsBasisRevision",
+  "wantsBasisExplanation",
+  "extractLineReplacementText",
+  "sentenceCaseLine",
+  "directLineRevisionTarget",
+  "replaceMeasurementToken",
+  "lineReplacementText",
+  "draftLineTextRevision",
+];
+eval(helperNames.map(extractFunction).join("\n"));
+
+const proposal = draftLineTextRevision("200mm", "200mm");
+assert.ok(proposal, "expected a local proposal for a direct measurement edit");
+assert.ok(proposal.quoteBasis.surfaces.includes("Include: Raised platform at 200mm"), proposal.quoteBasis.surfaces);
+assert.ok(proposal.quoteBasis.surfaces.includes("full 6m x 6m booth"), proposal.quoteBasis.surfaces);
+assert.ok(!proposal.quoteBasis.surfaces.includes("100mm"), proposal.quoteBasis.surfaces);
+assert.strictEqual(proposal.lineItems[0].description, "Raised platform");
+
+assert.strictEqual(draftLineTextRevision("why 100mm?", "why 100mm?"), null);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_static_chat_blocks_secret_and_internal_prompt_requests(self):
         static_dir = ROOT / "webapp" / "static"
@@ -1448,10 +1657,77 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
             "Mark included",
             "Manual display price",
             "Remove from quote",
+            "Manual display pricing required",
+            "enter a display price",
         ):
             self.assertIn(expected, js)
 
         self.assertNotIn('renderMessages(data.errors || ["Pricing needs review."], "error")', js)
+
+    def test_static_pricing_review_maps_manual_display_confirmation_rows(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required to execute static app helper behavior.")
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  lineItems: [
+    {
+      section: "Furniture Rental",
+      description: "Round cafe tables for seating clusters",
+      pricing_keyword: "",
+      display_price: "",
+    },
+  ],
+};
+eval([
+  "extractPricingIssues",
+  "pricingIssueDescription",
+  "findLineItemIndexForPricingIssue",
+].map(extractFunction).join("\n"));
+
+const errors = [
+  "Manual display pricing required: Round cafe tables for seating clusters / enter a display price, mark included, choose a catalog keyword, or remove this line",
+];
+const issues = extractPricingIssues(errors);
+assert.deepStrictEqual(issues, errors);
+assert.strictEqual(pricingIssueDescription(issues[0]), "Round cafe tables for seating clusters");
+assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_run_quote_job_never_passes_pdf_mode_to_generator(self):
         payload = valid_payload()

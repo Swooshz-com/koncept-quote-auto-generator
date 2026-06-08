@@ -380,6 +380,39 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             self.assertTrue((out_dir / "quotation.xlsx").exists())
             self.assertFalse(stale_pdf.exists())
 
+    def test_unresolved_manual_display_placeholder_blocks_quotation_output(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [
+                {
+                    "section": "Furniture Rental",
+                    "quantity": 4,
+                    "unit": "nos",
+                    "description": "Round cafe tables for seating clusters",
+                    "display_price": "Manual display price",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            brief_path = tmp_path / "brief.json"
+            out_dir = tmp_path / "out"
+            brief_path.write_text(json.dumps(brief), encoding="utf-8")
+
+            with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", str(brief_path), "--out", str(out_dir)]):
+                self.assertEqual(quote.main(), 2)
+
+            self.assertTrue((out_dir / "pricing_matches.csv").exists())
+            self.assertFalse((out_dir / "quotation.xlsx").exists())
+
     def test_build_quote_rows_preserves_display_price_text(self):
         brief = {
             "company_identity": "Koncept Image",
@@ -410,6 +443,58 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         rows = quote.build_quote_rows(brief, [line])
 
         self.assertTrue(any(row and row[-1] == "Included" for row in rows))
+
+    def test_unresolved_manual_display_rows_require_confirmation(self):
+        unresolved = quote.QuoteLine(
+            section="Furniture Rental",
+            quantity=4,
+            unit="nos",
+            description="Round cafe tables for seating clusters",
+            pricing_keyword="",
+            display_price="",
+            matched_price=None,
+            amount=None,
+            match_status="manual-display",
+            match_candidates=[],
+        )
+        placeholder = quote.QuoteLine(
+            section="Furniture Rental",
+            quantity=4,
+            unit="nos",
+            description="Round cafe tables for seating clusters",
+            pricing_keyword="",
+            display_price="Manual display price",
+            matched_price=None,
+            amount=None,
+            match_status="manual-display",
+            match_candidates=[],
+        )
+        included = quote.QuoteLine(
+            section="Furniture Rental",
+            quantity=1,
+            unit="lot",
+            description="Furniture package included in package",
+            pricing_keyword="",
+            display_price="Included",
+            matched_price=None,
+            amount=None,
+            match_status="manual-display",
+            match_candidates=[],
+        )
+
+        issues = quote.confirmation_issues([], [unresolved])
+        placeholder_issues = quote.confirmation_issues([], [placeholder])
+        confirmed_issues = quote.confirmation_issues([], [included])
+
+        self.assertIn(
+            "Manual display pricing required: Round cafe tables for seating clusters / enter a display price, mark included, choose a catalog keyword, or remove this line",
+            issues,
+        )
+        self.assertIn(
+            "Manual display pricing required: Round cafe tables for seating clusters / enter a display price, mark included, choose a catalog keyword, or remove this line",
+            placeholder_issues,
+        )
+        self.assertEqual(confirmed_issues, [])
 
     def test_structure_sections_are_itemized_by_default(self):
         lines = [

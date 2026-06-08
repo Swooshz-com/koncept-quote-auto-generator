@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
-    <link rel="stylesheet" href="/static/styles.css?v=13">
+    <link rel="stylesheet" href="/static/styles.css?v=16">
   </head>
   <body>
     <div class="app-shell">
@@ -125,10 +125,6 @@
                 <span>Output</span>
               </button>
             </nav>
-
-            <div class="action-row assistant-generate-row">
-              <button class="primary-button" type="button" id="generateButton">Generate Quotation</button>
-            </div>
 
             <aside class="side-workspace workspace-pane" id="sideWorkspace" aria-hidden="false" aria-labelledby="sideDrawerTitle">
               <div class="workspace-pane-header">
@@ -352,7 +348,6 @@
                   <div class="output-download-heading" style="justify-content: flex-end; padding-bottom: 0;">
                     <span class="result-pill" id="resultStatus">No job yet</span>
                   </div>
-                  <div class="downloads" id="downloads"></div>
                   <div class="message-list" id="messageList"></div>
                 </div>
                 <div class="side-empty-state" id="pricingEmptyState">
@@ -397,15 +392,15 @@
             <div>
               <span class="basis-chat-eyebrow">Quote basis</span>
               <h3 id="basisChatTitle">Ask for changes</h3>
-              <p id="basisChatContext">Ask a question or describe the revision you want.</p>
+              <div class="basis-chat-context" id="basisChatContext">Ask a question or describe the revision you want.</div>
             </div>
             <button class="icon-button basis-chat-close" type="button" id="basisChatCloseButton" aria-label="Close revision assistant">x</button>
           </header>
           <div class="basis-chat-messages" id="basisChatMessages" aria-live="polite"></div>
           <div class="basis-chat-proposal" id="basisChatProposal" hidden></div>
-          <div class="basis-chat-proposal-actions">
-            <button class="primary-button" type="button" id="basisChatApplyButton" disabled>Apply Change</button>
-            <button class="secondary-button" type="button" id="basisChatKeepButton" disabled>Keep Current</button>
+          <div class="basis-chat-proposal-actions" id="basisChatProposalActions" hidden>
+            <button class="primary-button" type="button" id="basisChatApplyButton" disabled>Apply Proposed Change</button>
+            <button class="secondary-button" type="button" id="basisChatKeepButton" disabled>Discard Draft</button>
           </div>
           <form class="basis-chat-form" id="basisChatForm">
             <textarea id="basisChatPrompt" rows="3" placeholder="Ask about this basis or describe a change..."></textarea>
@@ -420,6 +415,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=12"></script>
+    <script src="/static/app.js?v=16"></script>
   </body>
 </html>

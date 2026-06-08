@@ -14,6 +14,7 @@ import csv
 import datetime as dt
 import json
 import mimetypes
+import os
 import re
 import secrets
 import subprocess
@@ -47,7 +48,9 @@ DOWNLOADABLE_FILES = {"quotation.xlsx"}
 DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
 CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
 CSRF_TOKEN_ENV_NAME = "LOCAL_RUNNER_CSRF_TOKEN"
+LOG_CONTEXT_ENV_NAME = "LOCAL_RUNNER_LOG_CONTEXT"
 PROCESS_CSRF_TOKEN = secrets.token_urlsafe(32)
+SGT = dt.timezone(dt.timedelta(hours=8), "SGT")
 ALLOWED_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RATE_LIMIT_WINDOW_SECONDS = 60
 POST_RATE_LIMITS = {
@@ -185,6 +188,21 @@ def safe_error_messages(messages: list[Any], limit: int = 500) -> list[str]:
     return safe_messages or ["Unexpected local runner error."]
 
 
+def sgt_timestamp(now: dt.datetime) -> str:
+    return now.astimezone(SGT).strftime("%Y-%m-%d %H:%M:%S SGT")
+
+
+def current_log_context() -> str:
+    configured = clean_text(os.environ.get(LOG_CONTEXT_ENV_NAME)).lower()
+    if configured in {"actual", "test"}:
+        return configured
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return "test"
+    if any(name == "unittest" or name.startswith("unittest.") for name in sys.modules):
+        return "test"
+    return "actual"
+
+
 def log_event_name(event_type: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", clean_text(event_type).lower()).strip("_")
 
@@ -213,6 +231,47 @@ def sanitize_log_value(value: Any) -> Any:
     return value
 
 
+def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
+    reason = clean_text(details.get("reason")).lower()
+    errors = details.get("errors")
+    error_text = " ".join(clean_text(error) for error in errors) if isinstance(errors, list) else clean_text(errors)
+
+    security_reasons = {
+        "invalid_csrf": "Request was blocked because the local session token was missing or invalid. In the browser, refresh the webapp and retry; in tests, this is an expected security check.",
+        "untrusted_host": "Request was blocked because the Host header was not localhost or loopback. In tests, this is an expected host-allowlist check.",
+        "cross_origin": "Request was blocked because the Origin header was not same-origin with the local runner.",
+        "cross_origin_referer": "Request was blocked because the Referer header was not same-origin with the local runner.",
+        "rate_limit": "Request was blocked because too many local runner requests were sent in a short window.",
+    }
+
+    if event == "security_event":
+        meaning = security_reasons.get(reason, "A local runner security guard blocked the request. Check details.reason for the specific guard.")
+    elif event == "client_error":
+        meaning = "Client-side request failed or was reported by the browser. Check details.url, then confirm the local server is reachable and the page has a fresh session."
+    elif event == "server_error":
+        meaning = "The browser received a non-OK response from the local server. Check details.status and details.errors for the specific server response."
+    elif event == "generate_failed" and "too many rows for the preserved layout" in error_text.lower():
+        meaning = "The generated quote has more line items than the preserved Excel layout can fit. Reduce/merge line items or extend the layout before generating the customer-ready workbook."
+    elif event == "generate_failed":
+        meaning = "Quote generation failed. Check details.errors for the generator message."
+    elif event == "generate_needs_review":
+        meaning = "Quote generation stopped for pricing review. Check details.errors for unmatched or ambiguous catalog pricing that needs operator confirmation."
+    elif event == "draft_blocked":
+        meaning = "AI draft analysis was blocked before provider calls, usually because images or required quote details were missing."
+    elif event in {"draft_failed", "draft_worker_failed", "openai_draft_failed", "gemini_draft_failed"}:
+        meaning = "AI quote-basis drafting failed. Check details.errors or provider_errors; retry after fixing provider/network/configuration issues."
+    elif event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
+        meaning = "Remote AI analysis was unavailable or unconfigured, so the app used or offered a local fallback path."
+    elif event == "abuse_signal":
+        meaning = security_reasons.get(reason, "The local runner detected repeated or suspicious local requests.")
+    else:
+        meaning = "Local runner diagnostic event. Check details for the specific path, status, errors, or reason."
+
+    if context == "test":
+        return f"Test validation log: {meaning}"
+    return f"Actual local-runner log: {meaning}"
+
+
 def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | None = None) -> bool:
     event = log_event_name(event_type)
     if not is_loggable_event(event):
@@ -221,10 +280,16 @@ def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | N
     try:
         root.mkdir(parents=True, exist_ok=True)
         now = dt.datetime.now(dt.UTC)
+        context = current_log_context()
+        safe_details = sanitize_log_value(details)
         record = {
             "timestamp": now.isoformat().replace("+00:00", "Z"),
+            "timestamp_sgt": sgt_timestamp(now),
+            "log_context": context,
+            "is_test": context == "test",
             "event": event,
-            "details": sanitize_log_value(details),
+            "meaning": log_meaning(event, safe_details if isinstance(safe_details, dict) else {}, context),
+            "details": safe_details,
         }
         path = root / f"{now:%Y-%m-%d}.jsonl"
         with path.open("a", encoding="utf-8") as f:

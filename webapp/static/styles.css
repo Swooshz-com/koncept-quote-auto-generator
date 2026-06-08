@@ -439,17 +439,16 @@ h3 {
 .panel.is-active {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(420px, auto) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "rail"
-    "workspace"
-    "generate";
+    "workspace";
   align-items: start;
-  gap: 18px;
+  gap: 12px;
   min-height: 0;
   height: 100%;
-  padding: 0;
-  overflow-y: auto;
+  padding: 16px 0 0;
+  overflow: hidden;
 }
 
 .panel-heading {
@@ -509,6 +508,8 @@ h3 {
    ============================================================ */
 .command-rail {
   grid-area: rail;
+  position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -516,7 +517,7 @@ h3 {
   gap: 10px;
   justify-self: center;
   width: min(100%, var(--chat-content-width));
-  margin-top: 16px;
+  margin-top: 0;
   padding: 14px clamp(16px, 3vw, 64px);
   overflow-x: auto;
   border: 1px solid rgba(255, 255, 255, 0.6);
@@ -610,8 +611,8 @@ h3 {
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   width: min(100%, var(--chat-content-width));
-  min-height: 520px;
-  height: auto;
+  min-height: 0;
+  height: 100%;
   position: relative;
   z-index: 1;
   justify-self: center;
@@ -645,10 +646,13 @@ h3 {
 .workspace-pane-scroll {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px 28px 28px;
 }
 
 .workspace-pane-footer {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
@@ -1562,7 +1566,7 @@ select:focus {
 
 .basis-line-row {
   display: grid;
-  grid-template-columns: 28px 78px minmax(0, 1fr) 42px;
+  grid-template-columns: 28px 88px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
   min-height: 30px;
@@ -1643,9 +1647,6 @@ select:focus {
 
 .basis-line-exclude .basis-line-text {
   color: #a1382f;
-  text-decoration-line: line-through;
-  text-decoration-color: #dc2626;
-  text-decoration-thickness: 2px;
 }
 
 .basis-line-note .basis-line-pill {
@@ -1667,9 +1668,17 @@ select:focus {
   font-size: 14px;
 }
 
-.basis-line-tool {
+.basis-line-actions {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.basis-line-tool,
+.basis-line-tag-button {
   align-self: start;
-  width: 38px;
+  width: 32px;
   min-height: 28px;
   padding: 0;
   border: 1px solid var(--line);
@@ -1682,7 +1691,30 @@ select:focus {
   transition: all var(--duration-fast) ease;
 }
 
-.basis-line-tool:hover {
+.basis-line-tool {
+  width: 38px;
+}
+
+.basis-line-tag-button {
+  color: #42526b;
+}
+
+.basis-line-tag-button[data-basis-tag="Include"]:hover,
+.basis-line-tag-button[data-basis-tag="Include"]:focus-visible {
+  border-color: #8bcfb0;
+  color: #0d6944;
+  background: #f1fbf6;
+}
+
+.basis-line-tag-button[data-basis-tag="Exclude"]:hover,
+.basis-line-tag-button[data-basis-tag="Exclude"]:focus-visible {
+  border-color: #efaca5;
+  color: #a1382f;
+  background: #fff1ef;
+}
+
+.basis-line-tool:hover,
+.basis-line-tool:focus-visible {
   border-color: var(--green);
   color: var(--green);
   background: #f0faf8;
@@ -1716,30 +1748,7 @@ select:focus {
 /* ============================================================
    ACTION CARD BUTTONS — confirm/ask/regenerate
    ============================================================ */
-.assistant-card-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 10px;
-  padding: 0 20px 18px;
-}
-
-.assistant-card-actions button {
-  min-height: 40px;
-  font-size: 14px;
-}
-
 /* "Ask for Changes" — amber-tinted secondary */
-.assistant-card-actions button[data-chat-action="open_basis_chat"] {
-  border-color: var(--amber-border);
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.assistant-card-actions button[data-chat-action="open_basis_chat"]:hover:not(:disabled) {
-  border-color: #e5a93a;
-  background: #fff2d6;
-}
-
 .send-button {
   width: 42px;
   min-width: 42px;
@@ -1756,14 +1765,6 @@ select:focus {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.9;
-}
-
-/* ============================================================
-   GENERATE ROW
-   ============================================================ */
-.assistant-generate-row {
-  grid-area: generate;
-  display: none;
 }
 
 /* ============================================================
@@ -1786,7 +1787,6 @@ select:focus {
 }
 
 .side-workspace .assistant-output .message-list,
-.side-workspace .assistant-output .downloads,
 .side-workspace .assistant-output .match-summary {
   margin-right: 0;
   margin-left: 0;
@@ -2043,7 +2043,8 @@ td input {
   line-height: 1.15;
 }
 
-.basis-chat-header p {
+.basis-chat-header p,
+.basis-chat-context {
   margin: 0;
   color: var(--ink-secondary);
   font-size: 13px;
@@ -2051,11 +2052,53 @@ td input {
   overflow-wrap: anywhere;
 }
 
+.basis-chat-context {
+  display: grid;
+  gap: 8px;
+}
+
+.basis-chat-context-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.basis-chat-selected-line {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #c8d7e6;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: #10223b;
+  box-shadow: var(--shadow-xs);
+}
+
+.basis-chat-selected-line strong {
+  width: max-content;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: #dcf5e8;
+  color: #0d6944;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.basis-chat-selected-line span {
+  color: #10223b;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .basis-chat-messages {
   display: grid;
   align-content: start;
   gap: 10px;
-  min-height: 180px;
+  min-height: 112px;
+  max-height: 240px;
   padding: 14px 16px;
   overflow-y: auto;
   background: #f8fafc;
@@ -2142,11 +2185,19 @@ td input {
   text-transform: uppercase;
 }
 
+.basis-chat-proposed-line span:not(:first-child) {
+  margin-top: 10px;
+}
+
 .basis-chat-proposal-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   padding: 12px 16px;
+}
+
+.basis-chat-proposal-actions[hidden] {
+  display: none;
 }
 
 .basis-chat-form {
@@ -2259,30 +2310,6 @@ td input {
   border-color: var(--amber-border);
   background: var(--amber-soft);
   color: var(--amber);
-}
-
-.downloads {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.download-ready-note {
-  display: grid;
-  gap: 3px;
-  padding: 12px 14px;
-  border: 1px solid #cfe3d8;
-  border-left: 5px solid var(--green);
-  border-radius: var(--radius-md);
-  background: linear-gradient(90deg, #f0fbf6, #f8fdfb);
-  color: #123b2f;
-  font-size: 14px;
-  line-height: 1.35;
-}
-
-.download-ready-note span {
-  color: #43615c;
 }
 
 .download-link {
@@ -2424,8 +2451,7 @@ td input {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "rail"
-      "workspace"
-      "generate";
+      "workspace";
   }
 
   .assistant-output {
@@ -2507,8 +2533,7 @@ td input {
     grid-template-columns: 1fr;
     grid-template-areas:
       "rail"
-      "workspace"
-      "generate";
+      "workspace";
   }
 
   .command-rail {
@@ -2523,8 +2548,8 @@ td input {
 
   .side-workspace {
     width: auto;
-    height: auto;
-    min-height: 520px;
+    height: 100%;
+    min-height: 0;
     top: auto;
     right: auto;
     border-top: 1px solid var(--line);
@@ -2551,7 +2576,7 @@ td input {
   }
 
   .basis-line-row {
-    grid-template-columns: 24px minmax(0, 1fr) 38px;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
     gap: 8px;
   }
 
@@ -2584,11 +2609,6 @@ td input {
   .stat-card-icon {
     margin: 0;
     grid-row: span 2;
-  }
-
-  .assistant-card-actions {
-    grid-template-columns: 1fr;
-    padding: 0 16px 16px;
   }
 
   .basis-chat-overlay {
