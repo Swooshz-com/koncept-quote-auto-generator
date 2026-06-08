@@ -9,8 +9,8 @@ Use this guide to format Koncept quotation outputs. Past quotation files are ref
   - Client company name.
   - Address lines.
   - Country or city line.
-- Add `Attention: <name>` and the contact title on the next line if available.
-- Add the quote date below the attention block.
+- Add `Attention:` as its own label, then place the contact name on the next row and the contact title below it if available.
+- Add the quote date two blank rows below the contact title.
 - Add `RE: <project title>` before the line-item table.
 - Add company details and bank details near the top-right for Koncept Image-style quotes when generating XLSX.
 - Treat the formatted XLSX as the customer-ready output. Generate PDF only when explicitly requested, and keep it secondary to the XLSX.
