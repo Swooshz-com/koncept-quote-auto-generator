@@ -2323,7 +2323,7 @@ td input {
 /* Stat card row for pricing summary */
 .stat-card-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-top: 8px;
 }
@@ -2356,6 +2356,11 @@ td input {
 .stat-card-icon.amber {
   background: var(--amber-soft);
   color: var(--amber);
+}
+
+.stat-card-icon.red {
+  background: var(--red-soft);
+  color: var(--red);
 }
 
 .stat-card-icon.blue {
@@ -2428,7 +2433,7 @@ td input {
   }
 
   .stat-card-row {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
 

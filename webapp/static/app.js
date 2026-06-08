@@ -983,33 +983,62 @@ function updateDownloadButton() {
   elements.sideDownloadButton.download = enabled ? file.name || "quotation.xlsx" : "";
 }
 
+function pricingMatchStatus(row = {}) {
+  const status = typeof row === "string" ? row : row.status;
+  return String(status || "").trim().toLowerCase();
+}
+
+function pricingStatusLabel(status = "") {
+  const labels = {
+    matched: "Catalog match",
+    "matched-from-ambiguous": "Ambiguous match selected",
+    ambiguous: "Ambiguous match",
+    "manual-display": "Manual display price",
+    unmatched: "Unmatched",
+  };
+  const normalized = pricingMatchStatus(status);
+  return labels[normalized] || String(status || "").trim() || "Unknown";
+}
+
+function matchSummaryStats(rows = []) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const total = safeRows.reduce((sum, row) => {
+    const amount = Number(String(row.amount || "").replaceAll(",", ""));
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+  const confident = safeRows.filter((row) => pricingMatchStatus(row) === "matched").length;
+  const needsReview = safeRows.filter((row) => pricingMatchStatus(row) !== "matched").length;
+  const confidence = safeRows.length > 0 ? Math.round((confident / safeRows.length) * 100) : 0;
+  return { total, confident, needsReview, confidence };
+}
+
 function renderMatchSummary(result = {}) {
   const rows = result.pricing_matches || [];
   if (!rows.length) {
     elements.matchSummary.innerHTML = "";
     return;
   }
-  const total = rows.reduce((sum, row) => {
-    const amount = Number(String(row.amount || "").replaceAll(",", ""));
-    return Number.isFinite(amount) ? sum + amount : sum;
-  }, 0);
-  const matched = rows.filter((row) => String(row.status || "").toLowerCase() !== "unmatched").length;
-  const confidence = rows.length > 0 ? Math.round((matched / rows.length) * 100) : 0;
+  const stats = matchSummaryStats(rows);
   elements.matchSummary.innerHTML = `
     <div class="stat-card-row">
       <div class="stat-card">
         <span class="stat-card-icon green" aria-hidden="true">&#x1F4CB;</span>
         <span class="stat-card-value">${rows.length}</span>
-        <span class="stat-card-label">Priced lines</span>
+        <span class="stat-card-label">Quote lines</span>
       </div>
       <div class="stat-card">
         <span class="stat-card-icon amber" aria-hidden="true">&#x1F3AF;</span>
-        <span class="stat-card-value">${confidence}%</span>
-        <span class="stat-card-label">Match confidence</span>
+        <span class="stat-card-value">${stats.confidence}%</span>
+        <span class="stat-card-label">Catalog confidence</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card-icon red" aria-hidden="true">&#x26A0;</span>
+        <span class="stat-card-value">${stats.needsReview}</span>
+        <span class="stat-card-label">Needs review</span>
       </div>
       <div class="stat-card">
         <span class="stat-card-icon blue" aria-hidden="true">&#x1F4B0;</span>
-        <span class="stat-card-value">SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <span class="stat-card-value">SGD ${stats.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         <span class="stat-card-label">Total (excl. GST)</span>
       </div>
     </div>
@@ -1026,7 +1055,7 @@ function renderPricingMatches(rows = []) {
   elements.pricingMatchesBody.innerHTML = rows
     .map((row) => `
       <tr>
-        <td>${escapeHtml(row.status)}</td>
+        <td title="${escapeHtml(row.status)}">${escapeHtml(pricingStatusLabel(row.status))}</td>
         <td>${escapeHtml(row.section)}</td>
         <td>${escapeHtml(row.description)}</td>
         <td>${escapeHtml(row.pricing_id || "")}</td>
