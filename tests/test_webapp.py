@@ -3,6 +3,8 @@ import threading
 import unittest
 import io
 import json
+import shutil
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -1202,6 +1204,75 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn("Local server connection failed", js)
         self.assertIn("Local server returned a non-JSON response", js)
+
+    def test_match_summary_counts_only_exact_catalog_matches_as_confident(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        summary_body = js.split("function renderMatchSummary", 1)[1].split("function renderPricingMatches", 1)[0]
+        table_body = js.split("function renderPricingMatches", 1)[1].split("function clearPricingReviewMessages", 1)[0]
+        self.assertNotIn('!== "unmatched"', summary_body)
+        self.assertIn('pricingMatchStatus(row) === "matched"', js)
+        self.assertIn('pricingMatchStatus(row) !== "matched"', js)
+        self.assertIn("Catalog confidence", summary_body)
+        self.assertIn("Needs review", summary_body)
+        self.assertIn("pricingStatusLabel(row.status)", table_body)
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required to execute static app helper behavior.")
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval(extractFunction("pricingMatchStatus"));
+eval(extractFunction("pricingStatusLabel"));
+eval(extractFunction("matchSummaryStats"));
+
+const rows = [
+  { status: "matched", amount: "1,200" },
+  { status: "matched-from-ambiguous", amount: "500" },
+  { status: "manual-display", amount: "" },
+  { status: "unmatched", amount: "" },
+];
+const stats = matchSummaryStats(rows);
+
+assert.strictEqual(stats.confident, 1);
+assert.strictEqual(stats.needsReview, 3);
+assert.strictEqual(stats.confidence, 25);
+assert.strictEqual(stats.total, 1700);
+assert.strictEqual(pricingStatusLabel("matched-from-ambiguous"), "Ambiguous match selected");
+assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_static_webapp_uses_menu_quote_basis_workflow_without_raw_line_item_editor(self):
         static_dir = ROOT / "webapp" / "static"
