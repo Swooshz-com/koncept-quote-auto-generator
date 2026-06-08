@@ -16,9 +16,9 @@ This folder is usable by any AI coding agent or direct local script. The user sh
 - Do not silently assume materials, finishes, dimensions, or inclusions. Suggest a quote basis from images and user notes, then ask the user to confirm it before generating.
 - Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
 - Use `profiles/koncept/pricing-catalog.json` as the only authoritative pricing source for quote generation.
-- To update pricing from a future cost workbook, run `python scripts/build_pricing_catalog.py --source path/to/source.xlsx --out profiles/koncept/pricing-catalog.json --rag-md-out profiles/koncept/pricing-catalog.rag.md`.
+- To update pricing from a future cost workbook, run `python scripts/build_pricing_catalog.py --source path/to/source.xlsx --out profiles/koncept/pricing-catalog.json --ai-reference-md-out profiles/koncept/pricing-catalog.ai-reference.md`.
 - Keep `profiles/koncept/pricing-catalog.json` as a structured pricing catalog that preserves stable catalog IDs, joined continuation descriptions, multiple remarks, default quantities/amounts, extra values, aliases, and search terms.
-- Use `profiles/koncept/pricing-catalog.rag.md` only as the generated AI/RAG reading view. Do not use Markdown as the source for pricing calculations.
+- Use `profiles/koncept/pricing-catalog.ai-reference.md` only as the generated AI reference reading view. Do not use Markdown as the source for pricing calculations.
 - Use `profiles/koncept/quotation-layout.xlsx` as the customer-facing quote layout source.
 - Preserve the customer-facing XLSX layout rules in `profiles/koncept/quotation-format.md`: the quantity column must be wide enough for values like `24 m length`, the bottom totals block must show `Total`, `GST 9%` when GST applies, and `Total including GST` with the same border treatment as the sample layout, the Koncept signatory title should appear below the signatory name when provided, and the logo/detail header group must stay inside the print area with top-aligned, readable company-detail text below the logo.
 - Keep quote table headers bold, center-align quantity values and the `Quantity` header, format prices with thousands separators, bold the default payment-term text and the payee name in the cheque line, keep notes plainly numbered, and avoid placing acceptance/signature text over terms or notes.
@@ -78,7 +78,7 @@ Formatting rules:
 - Start with the Markdown heading `**Quote Basis To Confirm**`.
 - Use bold labels for every category.
 - Under each category, use point form only.
-- Start bullets with `Include:`, `Confirm:`, `Exclude:`, or `Note:`.
+- Start bullets with `Include:`, `Confirm:`, `Exclude:`, or `Assumption:`.
 - Keep bullets short, ideally one line each.
 - Do not write paragraph-style category descriptions.
 - Split missing client/project details into a separate `**Missing Info Needed**` section.

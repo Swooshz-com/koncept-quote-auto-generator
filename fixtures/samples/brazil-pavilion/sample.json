@@ -16,11 +16,16 @@
       "address": "18 Cross Street\n#09-02 Cross Street Exchange\nSingapore 048423"
     },
     "project": {
-      "title": "Brazil Experience Pavilion - 6m x 6m Draft",
-      "booth_width": "6",
-      "booth_depth": "6"
+      "title": "RE: Brazil Experience Pavilion - 6m x 6m Draft"
     },
-    "quote_date": "2026-06-05",
-    "project_number": "KI-SAMPLE-001"
+    "project_number": "KI-SAMPLE-001",
+    "rich_text": {
+      "clientName": "<div><strong>Nova Latitude Events Pte Ltd</strong></div>",
+      "clientAddress": "<div><strong>18 Cross Street</strong></div><div><strong>#09-02 Cross Street Exchange</strong></div><div><strong>Singapore 048423</strong></div>",
+      "clientAttention": "<div><strong>Melissa Ong</strong></div>",
+      "clientTitle": "<div>Senior Event Producer</div>",
+      "projectTitle": "<div><strong>RE: Brazil Experience Pavilion - 6m x 6m Draft</strong></div>",
+      "projectNumber": "<div>KI-SAMPLE-001</div>"
+    }
   }
 }

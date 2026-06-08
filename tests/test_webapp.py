@@ -3,6 +3,7 @@ import threading
 import unittest
 import io
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -50,6 +51,7 @@ def valid_payload():
         "company": {
             "name": "Sample Quotation Co Pte Ltd",
             "header_details": "Sample Quotation Co Pte Ltd\nDynamic header address\nDynamic bank detail",
+            "logo_data_url": "data:image/jpeg;base64,ZmFrZS1sb2dv",
         },
         "quote_text": {
             "terms_heading": "Commercial Terms",
@@ -82,6 +84,7 @@ def valid_payload():
         "signature": {
             "koncept_signatory": "Francies Cheng",
             "koncept_title": "Director",
+            "koncept_date_label": "Date:",
         },
         "rich_text": {
             "clientAddress": "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>",
@@ -129,11 +132,34 @@ class WebappServerTest(unittest.TestCase):
     def test_validate_generation_payload_requires_complete_quote_details(self):
         payload = valid_payload()
         payload["project_number"] = ""
-        payload["company"]["header_details"] = ""
 
         errors = webapp.validate_generation_payload(payload)
 
         self.assertTrue(any("Project number" in error for error in errors))
+        self.assertFalse(any("Header details" in error for error in errors))
+
+    def test_quote_details_do_not_require_visible_cheque_payee_field(self):
+        payload = valid_payload()
+        payload["quote_text"].pop("cheque_payee")
+
+        errors = webapp.validate_generation_payload(payload)
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertFalse(any("Cheque" in error for error in errors))
+        self.assertFalse(any("Header details" in error for error in errors))
+        self.assertEqual(brief["company"]["name"], "Sample Quotation Co Pte Ltd")
+        self.assertEqual(brief["cheque_payee"], "")
+
+    def test_quote_details_require_visible_company_header_fields(self):
+        payload = valid_payload()
+        payload["company"]["name"] = ""
+        payload["company"]["header_details"] = ""
+        payload["company"]["logo_data_url"] = ""
+
+        errors = webapp.validate_generation_payload(payload)
+
+        self.assertTrue(any("Quotation Company" in error for error in errors))
+        self.assertTrue(any("Header logo" in error for error in errors))
         self.assertTrue(any("Header details" in error for error in errors))
 
     def test_payload_to_brief_maps_confirmed_form_fields(self):
@@ -156,12 +182,37 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["notes_heading"], "Editable Notes")
         self.assertEqual(brief["standard_notes"], ["Editable note one", "Editable note two"])
         self.assertEqual(brief["acceptance"]["text"], "Accepted by customer")
+        self.assertEqual(brief["signature"]["koncept_date_label"], "Date:")
         self.assertEqual(brief["line_items"][0]["section"], "Floor Design")
         self.assertEqual(brief["line_items"][0]["quantity"], 12.0)
         self.assertEqual(brief["line_items"][0]["unit"], "sqm")
         self.assertEqual(brief["rich_text"]["clientAddress"], "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>")
         self.assertIn("<strong>Sample Quotation Co Pte Ltd</strong>", brief["rich_text"]["headerDetails"])
         self.assertIn("Quote basis confirmed from webapp", brief["notes"][0])
+
+    def test_payload_to_brief_derives_booth_size_from_title_without_manual_fields(self):
+        payload = valid_payload()
+        payload["project"].pop("booth_width", None)
+        payload["project"].pop("booth_depth", None)
+        payload["project"]["title"] = "RE: Demo Booth - 4.5m x 3m"
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertEqual(brief["project"]["booth_size"], "4.5m x 3m")
+        self.assertEqual(brief["project"]["booth_width"], 4.5)
+        self.assertEqual(brief["project"]["booth_depth"], 3.0)
+
+    def test_payload_to_brief_uses_default_booth_size_when_title_has_no_dimensions(self):
+        payload = valid_payload()
+        payload["project"].pop("booth_width", None)
+        payload["project"].pop("booth_depth", None)
+        payload["project"]["title"] = "RE: Demo Booth"
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertEqual(brief["project"]["booth_size"], "6m x 6m")
+        self.assertEqual(brief["project"]["booth_width"], 6.0)
+        self.assertEqual(brief["project"]["booth_depth"], 6.0)
 
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
@@ -185,20 +236,55 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
         self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
         self.assertTrue((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
-        self.assertTrue((KONCEPT_PROFILE / "pricing-catalog.rag.md").exists())
+        self.assertTrue((KONCEPT_PROFILE / "pricing-catalog.ai-reference.md").exists())
+        self.assertEqual(webapp.list_pricing_references()[0]["id"], "koncept")
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertNotIn("quotation_format", profile)
         self.assertNotIn("pricing_catalog", webapp.profile_public_summary(profile))
         public_profile = webapp.profile_public_summary(profile_pack)
         self.assertEqual(public_profile["default_quote_detail_preset"], "koncept-image-default")
-        self.assertEqual(public_profile["quote_detail_presets"][0]["name"], "Koncept Images Pte. Ltd.")
-        preset_company = public_profile["quote_detail_presets"][0]["details"]["company"]
-        preset_rich_text = public_profile["quote_detail_presets"][0]["details"]["rich_text"]
+        default_preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "default")
+        self.assertEqual(default_preset["name"], "Default")
+        self.assertNotIn("company", default_preset["details"])
+        self.assertEqual(default_preset["details"]["quote_text"]["terms_heading"], "Terms & Conditions:")
+        self.assertEqual(default_preset["details"]["quote_text"]["notes_heading"], "Note:")
+        preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "koncept-image-default")
+        self.assertEqual(preset["name"], "Koncept Images Pte. Ltd.")
+        preset_company = preset["details"]["company"]
+        preset_quote_text = preset["details"]["quote_text"]
+        preset_rich_text = preset["details"]["rich_text"]
         self.assertTrue(preset_company["logo_data_url"].startswith("data:image/jpeg;base64,"))
         self.assertEqual(preset_company["logo_name"], "koncept-header-logo.jpeg")
+        self.assertEqual(
+            preset_quote_text["payment_terms"][-1],
+            "All cheques should be crossed and made payable to Koncept Image Pte Ltd",
+        )
         self.assertIn("<strong>Koncept Image Pte Limited</strong>", preset_rich_text["headerDetails"])
+        self.assertEqual(preset_rich_text["quoteCompanyName"], "<div>Koncept Image Pte Ltd</div>")
+        self.assertIn("<strong>Terms &amp; Conditions:</strong>", preset_rich_text["termsHeading"])
         self.assertIn("<strong>70% payment", preset_rich_text["paymentTerms"])
+        self.assertIn("All cheques should be crossed and made payable to <strong>Koncept Image Pte Ltd</strong>", preset_rich_text["paymentTerms"])
+        self.assertIn("<strong>Note:</strong>", preset_rich_text["notesHeading"])
+        self.assertEqual(preset_rich_text["acceptanceText"], "<div>We accept the quotation amount and the terms</div>")
+        self.assertEqual(preset_rich_text["konceptDateLabel"], "<div>Date:</div>")
+        for key in (
+            "quoteCompanyName",
+            "headerDetails",
+            "termsHeading",
+            "paymentTerms",
+            "notesHeading",
+            "standardNotes",
+            "acceptanceText",
+            "konceptSignatory",
+            "konceptTitle",
+            "konceptDateLabel",
+            "personLabel",
+            "stampLabel",
+            "dateLabel",
+        ):
+            self.assertIn(key, preset_rich_text)
+        self.assertNotIn("chequePayee", preset_rich_text)
         self.assertNotIn("logo_path", preset_company)
         self.assertNotIn("pricing-catalog", json.dumps(public_profile))
 
@@ -207,8 +293,23 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIsNotNone(sample)
         self.assertEqual(sample["profile_id"], "koncept")
-        self.assertEqual(sample["details"]["project"]["booth_width"], "6")
+        self.assertEqual(sample["details"]["project"]["title"], "RE: Brazil Experience Pavilion - 6m x 6m Draft")
+        self.assertNotIn("booth_width", sample["details"]["project"])
+        self.assertNotIn("booth_depth", sample["details"]["project"])
+        self.assertNotIn("quote_date", sample["details"])
         self.assertEqual(sample["details"]["project_number"], "KI-SAMPLE-001")
+        self.assertEqual(sample["details"]["rich_text"]["clientName"], "<div><strong>Nova Latitude Events Pte Ltd</strong></div>")
+        self.assertEqual(
+            sample["details"]["rich_text"]["clientAddress"],
+            "<div><strong>18 Cross Street</strong></div><div><strong>#09-02 Cross Street Exchange</strong></div><div><strong>Singapore 048423</strong></div>",
+        )
+        self.assertEqual(sample["details"]["rich_text"]["clientAttention"], "<div><strong>Melissa Ong</strong></div>")
+        self.assertEqual(sample["details"]["rich_text"]["clientTitle"], "<div>Senior Event Producer</div>")
+        self.assertEqual(
+            sample["details"]["rich_text"]["projectTitle"],
+            "<div><strong>RE: Brazil Experience Pavilion - 6m x 6m Draft</strong></div>",
+        )
+        self.assertEqual(sample["details"]["rich_text"]["projectNumber"], "<div>KI-SAMPLE-001</div>")
         self.assertNotIn("company", sample["details"])
         self.assertNotIn("quote_text", sample["details"])
         self.assertEqual(len(sample["images"]), 3)
@@ -216,13 +317,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("internal_cost", json.dumps(sample))
         self.assertNotIn("pricing-catalog", json.dumps(sample))
 
-    def test_payload_to_brief_uses_profile_logo_when_payload_has_no_logo(self):
+    def test_payload_to_brief_does_not_backfill_profile_logo(self):
         payload = valid_payload()
         payload["company"].pop("logo_data_url", None)
 
         brief = webapp.payload_to_brief(payload)
+        errors = webapp.validate_generation_payload(payload)
 
-        self.assertTrue(brief["company"]["logo_data_url"].startswith("data:image/jpeg;base64,"))
+        self.assertEqual(brief["company"]["logo_data_url"], "")
+        self.assertTrue(any("Header logo" in error for error in errors))
 
     def test_create_draft_job_requires_complete_quote_details_before_ai(self):
         payload = valid_payload()
@@ -302,14 +405,20 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("ai_api_key", webapp.payload_to_brief(payload))
 
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):
+        payload = valid_payload()
+        payload["project"].pop("booth_width", None)
+        payload["project"].pop("booth_depth", None)
+        payload["project"]["title"] = "RE: Compact Stand - 4m x 3m"
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "PROJECT_ROOT", Path(tmp)):
                 with mock.patch.object(webapp, "write_local_log") as write_log:
                     with mock.patch.object(webapp, "request_openai_quote_basis") as request:
-                        result = webapp.draft_quote_basis(valid_payload())
+                        result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "local")
         self.assertTrue(result["ai_failed"])
+        self.assertEqual(result["project"]["booth_size"], "4m x 3m")
+        self.assertEqual(result["line_items"][0]["quantity"], 12.0)
         self.assertIn("Remote AI is not configured", "\n".join(result["warnings"]))
         self.assertIn("OPENAI_API_KEY", "\n".join(result["warnings"]))
         self.assertIn("GEMINI_API_KEY", "\n".join(result["warnings"]))
@@ -940,34 +1049,30 @@ class WebappServerTest(unittest.TestCase):
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         for field_id in (
-            "boothWidth",
-            "boothDepth",
-            "quoteCompanyName",
             "headerDetails",
             "headerLogoInput",
+            "headerLogoPreview",
+            "quoteCompanyName",
             "termsHeading",
-            "chequePayee",
             "notesHeading",
             "standardNotes",
             "acceptanceText",
             "personLabel",
             "stampLabel",
+            "konceptDateLabel",
             "dateLabel",
-            "intakeTitle",
-            "widthLabel",
-            "depthLabel",
-            "quoteDetailsButton",
-            "quoteDetailsPanel",
+            "customerDetailsButton",
+            "quoteCompanyButton",
+            "customerDetailsPanel",
+            "quoteCompanyPanel",
             "sideWorkspace",
             "sideDrawerTitle",
+            "sideDrawerSubtitle",
             "sideBackButton",
             "sideNextButton",
             "sideDownloadButton",
             "quoteBasisButton",
             "newQuoteButton",
-            "profilePresetMenu",
-            "profilePresetMenuButton",
-            "profilePresetMenuPanel",
             "imageIntake",
             "sampleDetailsButton",
             "matchSummary",
@@ -978,11 +1083,11 @@ class WebappServerTest(unittest.TestCase):
             "presetNameInput",
             "presetSelect",
             "savePresetButton",
-            "resetPresetButton",
+            "clearCustomerButton",
+            "clearQuoteCompanyButton",
             "loadPresetButton",
             "deletePresetButton",
             "presetStatus",
-            "headerLogoStatus",
             "aiFailureBanner",
         ):
             self.assertIn(f'id="{field_id}"', html)
@@ -990,6 +1095,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('id="runAiAnalysisButton"', html)
         self.assertNotIn("runAiAnalysisButton", js)
         self.assertNotIn('id="boothSize"', html)
+        self.assertNotIn('id="boothWidth"', html)
+        self.assertNotIn('id="boothDepth"', html)
+        self.assertNotIn('id="widthLabel"', html)
+        self.assertNotIn('id="depthLabel"', html)
         self.assertNotIn('id="aiApiKey"', html)
         self.assertNotIn('id="companyIdentity"', html)
         self.assertNotIn("companyIdentity", js)
@@ -998,7 +1107,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Koncept World", html)
         self.assertNotIn('id="regenerateAnalysisButton"', html)
         self.assertIn("Regenerate Analysis", js)
-        self.assertIn("Fill Quote Details before AI analysis", js)
+        self.assertIn("Fill Customer and Quote Company before AI analysis", js)
         self.assertNotIn('id="assistantSubtitle"', html)
         self.assertNotIn('id="chatPrompt"', html)
         self.assertNotIn('id="chatForm"', html)
@@ -1008,38 +1117,110 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('id="busyText"', html)
         self.assertNotIn("Run AI Analysis", html)
         self.assertIn("Load Sample", html)
-        self.assertIn("sample-start-card", html)
+        self.assertIn('id="sampleDetailsButton" disabled', html)
+        self.assertNotIn("sample-start-card", html)
         self.assertIn("renderMatchSummary", js)
         self.assertIn("QUOTE_PRESETS_STORAGE_KEY", js)
         self.assertIn("loadProfiles", js)
         self.assertIn("/api/profiles", js)
-        self.assertIn("Profile/RAG pack changed", js)
-        self.assertIn("Profile presets are loaded from the active pack", html)
+        self.assertIn("Pricing reference changed", js)
+        self.assertIn("Quote Pricing Reference", html)
+        self.assertNotIn("Quote type", html)
+        self.assertNotIn("Quote type changed", js)
+        self.assertNotIn('id="imageCount"', html)
+        self.assertNotIn("imageCount", js)
+        self.assertNotIn(".image-count", css)
+        self.assertNotIn("0 loaded", html)
+        self.assertNotIn('id="profileDescription"', html)
+        self.assertNotIn("profileDescription", js)
+        self.assertNotIn("Koncept pricing catalog, analysis reference, and customer quotation layout", html)
+        forbidden_source_term = "".join(("R", "AG"))
+        self.assertNotIn(f"Profile/{forbidden_source_term}", js)
+        self.assertNotIn(f"{forbidden_source_term} context", html)
+        self.assertNotIn(f"({forbidden_source_term})", js)
+        self.assertIn("Presets are stored locally in this browser and can include the uploaded header logo.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
         self.assertNotIn("preset-skip-note", css)
         self.assertIn("No preset selected", js)
-        self.assertIn("Clear Quote Details", html)
-        self.assertIn("clearQuoteDetails", js)
-        self.assertIn("Quote Details cleared.", js)
+        self.assertIn("Clear Customer", html)
+        self.assertIn("Reset Quote Company", html)
+        self.assertIn("clearCustomerDetails", js)
+        self.assertIn("clearQuoteCompanyDetails", js)
+        self.assertIn("Customer details and pricing reference cleared.", js)
+        self.assertIn("Quote-company defaults reset.", js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
-        self.assertLess(html.index('id="profilePresetMenuPanel"'), html.index('id="newQuoteButton"'))
-        self.assertLess(html.index('id="profilePresetMenuPanel"'), html.index('id="imageIntake"'))
-        self.assertLess(html.index("Active Profile Pack"), html.index('id="newQuoteButton"'))
-        self.assertLess(html.index("Quote Detail Presets"), html.index('id="newQuoteButton"'))
-        self.assertLess(html.index('id="quoteDetailsPanel"'), html.index('id="resetPresetButton"'))
-        self.assertLess(html.index('id="resetPresetButton"'), html.index("Customer and Project"))
-        self.assertLess(html.index('id="savePresetButton"'), html.index('id="resetPresetButton"'))
-        self.assertIn("setProfilePresetMenuOpen", js)
-        self.assertIn("toggleProfilePresetMenu", js)
-        self.assertIn("isProfilePresetMenuOpen", js)
-        self.assertIn(".topbar-menu-panel", css)
-        self.assertIn(".topbar-action.is-active", css)
-        self.assertIn(".quote-details-clear-button", css)
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageIntake"'))
+        self.assertLess(html.index('id="clearCustomerButton"'), html.index('id="customerDetailsPanel"'))
+        self.assertLess(html.index('id="clearQuoteCompanyButton"'), html.index('id="quoteCompanyPanel"'))
+        self.assertGreater(html.index('id="profileSelect"'), html.index('id="imageInput"'))
+        self.assertLess(html.index('id="profileSelect"'), html.index('id="clientName"'))
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageInput"'))
+        self.assertLess(html.index('id="quoteCompanyPanel"'), html.index('id="presetSelect"'))
+        self.assertLess(html.index('id="clientName"'), html.index('id="clientAddress"'))
+        self.assertLess(html.index('id="clientAddress"'), html.index('id="clientAttention"'))
+        self.assertLess(html.index('id="quoteDate"'), html.index('id="projectTitle"'))
+        self.assertLess(html.index('id="projectTitle"'), html.index('id="projectNumber"'))
+        self.assertIn("Company header", html)
+        self.assertIn("Quotation Company", html)
+        self.assertNotIn("Quotation company name", html)
+        self.assertIn("Header logo", html)
+        self.assertIn("Header details", html)
+        self.assertIn('id="quoteCompanyName"', html)
+        self.assertNotIn("state.quoteCompanyName", js)
+        self.assertNotIn("quoteCompanyRichText", js)
+        self.assertNotIn("HIDDEN_QUOTE_COMPANY", js)
+        self.assertNotIn("currentChequePayee", js)
+        self.assertIn('id="headerDetails"', html)
+        self.assertIn('id="headerLogoInput"', html)
+        self.assertIn('id="headerLogoPreview"', html)
+        self.assertNotIn('id="headerLogoStatus"', html)
+        self.assertNotIn("Loaded logo:", js)
+        self.assertIn("header-logo-row", html)
+        self.assertIn("header-logo-input", html)
+        self.assertIn('role="button"', html)
+        self.assertIn('aria-label="Select header logo"', html)
+        self.assertIn(".header-logo-row", css)
+        self.assertIn(".header-logo-input", css)
+        self.assertNotIn("header-logo-picker", html)
+        self.assertNotIn(".header-logo-picker", css)
+        self.assertIn("Payment terms", html)
+        self.assertNotIn("Payment terms (profile preset, optional)", html)
+        self.assertNotIn('id="chequePayee"', html)
+        self.assertNotIn('data-rich-text-source="chequePayee"', html)
+        self.assertNotIn("All cheques should be crossed and made payable to", html)
+        self.assertNotIn("Cheque payee", html)
+        self.assertLess(html.index("Terms"), html.index("Notes"))
+        self.assertLess(html.index("Notes"), html.index("Signature"))
+        self.assertIn("signature-field-grid", html)
+        self.assertIn(".signature-field-grid", css)
+        self.assertNotIn("signature-field-columns", html)
+        self.assertNotIn(".signature-field-columns", css)
+        self.assertLess(html.index("Quotation Company"), html.index("Company signatory"))
+        self.assertLess(html.index("Quotation Company"), html.index("Acceptance text"))
+        self.assertLess(html.index("Company signatory"), html.index("Signatory title"))
+        self.assertLess(html.index('id="konceptTitle"'), html.index('id="konceptDateLabel"'))
+        self.assertLess(html.index("Person label"), html.index("Stamp label"))
+        self.assertLess(html.index("Stamp label"), html.rindex("Date label"))
+        self.assertNotIn("Customer Section", html)
+        self.assertNotIn("Quotation Company Section", html)
+        self.assertNotIn("Customer and Project", html)
+        self.assertNotIn("Quote Header", html)
+        self.assertNotIn("Terms and Notes", html)
+        self.assertNotIn("profilePresetMenu", js)
+        self.assertNotIn(".topbar-menu-panel", css)
+        self.assertNotIn(".topbar-action.is-active", css)
+        self.assertIn(".panel-clear-button", css)
+        self.assertIn(".pricing-reference-panel", css)
+        self.assertIn(".pricing-reference-controls", css)
+        self.assertIn(".company-preset-panel", css)
+        self.assertIn(".company-preset-controls", css)
+        self.assertNotIn(".quote-company-toolbar", css)
+        self.assertNotIn(".quote-details-clear-button", css)
         self.assertIn("loadDefaultProfilePreset", js)
         self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
-        self.assertIn("Quote Details were left unchanged", js)
+        self.assertIn("Customer and quote-company details were left unchanged", js)
         self.assertIn("Save Current", html)
         self.assertIn("Download Quotation", html)
         self.assertNotIn("Download Excel", html)
@@ -1047,12 +1228,32 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('setSidePanel("images")', js)
         self.assertIn('contenteditable="true"', html)
         self.assertIn('data-rich-text-source="headerDetails"', html)
+        self.assertIn('data-rich-text-source="quoteCompanyName"', html)
+        self.assertIn('data-rich-text-source="konceptDateLabel"', html)
         self.assertIn('data-rich-text-source="paymentTerms"', html)
+        self.assertFalse(any("rich-text-field" in label for label in re.findall(r"<label\b[^>]*>.*?</label>", html, re.DOTALL)))
+        self.assertIn("field-control", html)
         self.assertIn('data-rich-command="bold"', html)
         self.assertIn('data-rich-command="italic"', html)
         self.assertIn('data-rich-command="underline"', html)
         self.assertIn("wireRichTextEditors", js)
         self.assertIn("syncRichTextSources", js)
+        self.assertIn("startAnalysisBlockReason", js)
+        self.assertIn("state.isBooting", js)
+        self.assertIn("if (state.isBooting || state.isAnalysisRunning || state.isGenerating) return;", js)
+        self.assertIn("if (!state.profiles.length) await loadProfiles();", js)
+        self.assertIn("Complete Customer details before starting analysis", js)
+        self.assertIn("Complete Quote Company details before starting analysis", js)
+        self.assertIn("Complete Customer details before opening Quote Company", js)
+        self.assertIn("nextBlockReason = startAnalysisBlockReason();", js)
+        self.assertNotIn("|| (isBasisStep ? basisBlockReason : sidePanelBlockReason(nextPanel))", js)
+        self.assertIn('elements.sideNextButton.setAttribute("aria-disabled"', js)
+        self.assertIn('elements.sideNextButton.classList.add("primary-button")', js)
+        self.assertIn('elements.sideNextButton.classList.remove("secondary-button")', js)
+        self.assertNotIn('elements.sideNextButton.classList.toggle("primary-button"', js)
+        self.assertNotIn('elements.sideNextButton.classList.toggle("secondary-button"', js)
+        self.assertIn(".primary-button[aria-disabled=\"true\"]", css)
+        self.assertIn(".secondary-button[aria-disabled=\"true\"]", css)
         self.assertIn("rich_text: collectRichTextDetails()", js)
         self.assertIn("richTextEditorPlainText", js)
         self.assertIn("editor.innerHTML = richTextPlainHtml(input.value", js)
@@ -1087,10 +1288,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("[hidden]", css)
         self.assertIn("sidePanelBlockReason", js)
         self.assertIn("Add reference images before opening this step.", js)
-        self.assertIn("Complete Quote Details before opening Output & Pricing", js)
-        self.assertIn("Click Start Analysis from Quote Details before opening Quote Basis.", js)
-        self.assertIn("Confirm Quotation Basis before opening Output.", js)
-        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
+        self.assertIn("Complete Customer and Quote Company details before opening Pricing", js)
+        self.assertIn('pricingBlockReason.replace("opening Pricing", "opening Output")', js)
+        self.assertIn("Click Start Analysis from Quote Company before opening Quote Basis.", js)
+        self.assertIn("Confirm Quotation Basis before opening Pricing.", js)
+        self.assertIn("Resolve all Confirm or Assumption lines before confirming quotation basis.", js)
         self.assertIn("state.basisConfirmed", js)
         self.assertIn("hasSubmittedQuoteBasis", js)
         self.assertIn("hasCompletedQuoteBasis", js)
@@ -1127,13 +1329,17 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn('id="panel-analysis"', html)
         self.assertIn('id="imageIntake"', html)
-        self.assertIn('id="quoteDetailsButton"', html)
+        self.assertIn('id="customerDetailsButton"', html)
+        self.assertIn('id="quoteCompanyButton"', html)
         self.assertIn('id="quoteBasisButton"', html)
-        self.assertIn('data-side-panel="details"', html)
+        self.assertIn('data-side-panel="customer"', html)
+        self.assertIn('data-side-panel="quote_company"', html)
         self.assertIn('data-side-panel="basis"', html)
-        self.assertIn('data-side-panel-content="details"', html)
+        self.assertIn('data-side-panel-content="customer"', html)
+        self.assertIn('data-side-panel-content="quote_company"', html)
         self.assertIn('data-side-panel-content="basis"', html)
-        self.assertIn('id="quoteDetailsPanel"', html)
+        self.assertIn('id="customerDetailsPanel"', html)
+        self.assertIn('id="quoteCompanyPanel"', html)
         self.assertIn("Swooshz Quote Generator", html)
         self.assertNotIn("Generator type", html)
         self.assertIn('class="command-rail"', html)
@@ -1143,10 +1349,33 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('data-side-panel="presets"', html)
         self.assertNotIn('data-side-panel-content="presets"', html)
         self.assertIn('data-side-panel-content="images"', html)
-        self.assertIn("Output & Pricing", html)
-        self.assertIn("Brazil pavilion demo", html)
+        self.assertIn("Pricing", html)
+        self.assertIn("Output", html)
+        self.assertNotIn("Brazil pavilion demo", html)
         self.assertIn("Drag and drop reference images here", html)
-        self.assertIn("Load images and complete Quote Details, then start analysis to review the draft here.", js)
+        self.assertIn("Quote Pricing Reference", html)
+        self.assertIn('id="sampleDetailsButton" disabled', html)
+        self.assertNotIn("0 loaded", html)
+        self.assertNotIn('id="imageCount"', html)
+        self.assertNotIn('id="profileDescription"', html)
+        self.assertIn("Client block", html)
+        self.assertIn("Quote reference", html)
+        self.assertIn("Company preset", html)
+        self.assertIn("Company header", html)
+        self.assertIn("Select header logo", html)
+        self.assertIn(".header-logo-preview", css)
+        self.assertIn("headerLogoPreview", js)
+        self.assertIn('elements.headerLogoInput.click();', js)
+        self.assertIn("Header details", html)
+        self.assertIn("Quotation Company", html)
+        self.assertNotIn("Quotation company name", html)
+        self.assertIn('id="quoteCompanyName"', html)
+        self.assertIn("Terms", html)
+        self.assertIn("Notes", html)
+        self.assertIn("Signature", html)
+        self.assertNotIn("Customer Section", html)
+        self.assertNotIn("Quotation Company Section", html)
+        self.assertIn("Load images, complete Customer and Quote Company, then start analysis to review the draft here.", js)
         self.assertIn("grid-template-areas", css)
         self.assertIn('"rail"', css)
         self.assertIn('"workspace"', css)
@@ -1157,18 +1386,29 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn(".chat-main", css)
         self.assertNotIn(".chat-form", css)
         self.assertIn("--accent: #f5c84c", css)
-        self.assertIn(".sample-start-card", css)
-        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="quoteDetailsPanel"'))
+        self.assertNotIn(".sample-start-card", css)
+        self.assertIn(".secondary-button.sample-button", css)
+        self.assertIn(".secondary-button.panel-clear-button", css)
+        self.assertIn(".company-preset-panel", css)
+        self.assertNotIn(".quote-company-toolbar", css)
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageInput"'))
+        self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageIntake"'))
+        self.assertLess(html.index('id="clearCustomerButton"'), html.index('id="customerDetailsPanel"'))
+        self.assertLess(html.index('id="clearQuoteCompanyButton"'), html.index('id="quoteCompanyPanel"'))
+        self.assertGreater(html.index('id="profileSelect"'), html.index('id="imageInput"'))
+        self.assertLess(html.index('id="profileSelect"'), html.index('id="clientName"'))
         self.assertIn("setDetailsDrawer", js)
         self.assertNotIn("setSideDrawer", js)
         self.assertIn("setSidePanel", js)
         self.assertIn("SIDE_PANEL_SEQUENCE", js)
-        self.assertIn('SIDE_PANEL_SEQUENCE = ["images", "details", "basis", "pricing"]', js)
-        self.assertIn('basis: ["Quote Basis", "Confirm Draft"]', js)
+        self.assertIn('SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "pricing", "output"]', js)
+        self.assertIn('basis: ["Quote Basis", "Confirm Draft", "Review the drafted basis', js)
+        self.assertIn('pricing: ["Pricing", "Price Review", "Catalog matches', js)
+        self.assertIn('output: ["Output", "Generated Quotation", "Final quotation status', js)
         self.assertIn('setSidePanel("basis", { force: true })', js)
         self.assertIn("goToNextSidePanel", js)
         self.assertIn("Confirm Quotation Basis", js)
-        self.assertNotIn("Next: Output", js)
+        self.assertIn("Next: Output", js)
         self.assertIn("addImagesFromFiles", js)
         self.assertIn("currentGenerator", js)
         self.assertNotIn("generatorType", js)
@@ -1196,6 +1436,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("70% payment upon confirmation", html)
         self.assertNotIn("Francies Cheng", html)
         self.assertIn("setSampleDetails", js)
+        self.assertIn("function todayDateInputValue", js)
+        self.assertIn("function applyDefaultQuoteDate", js)
+        self.assertIn("applyDefaultQuoteDate();", js)
+        self.assertIn("setInputValue(elements.quoteDate, todayDateInputValue())", js)
         self.assertIn("/api/samples/", js)
         self.assertIn("DEFAULT_SAMPLE_ID", js)
         self.assertNotIn("Brazil Experience Pavilion - 6m x 6m Draft", js)
@@ -1208,6 +1452,129 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Sample customer and project details loaded.", js)
         self.assertIn("AI analysis will populate line items here.", js)
 
+    def test_static_start_analysis_reason_lists_exact_blocker(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("} else if (isQuoteCompanyStep) {", js)
+        self.assertIn("nextBlockReason = startAnalysisBlockReason();", js)
+        self.assertIn('if (panelName === "quote_company")', js)
+        self.assertIn('customerDetailsBlockReason("Complete Customer details before opening Quote Company")', js)
+        self.assertNotIn('isAnalysisStep ? startAnalysisBlockReason()', js)
+        self.assertNotIn("sidePanelBlockReason(nextPanel))", js)
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required to execute static app helper behavior.")
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+function field(value = "") {
+  return { value };
+}
+
+let syncCalls = 0;
+function syncRichTextSources() {
+  syncCalls += 1;
+}
+
+const state = {
+  profileId: "koncept",
+  images: [],
+  headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
+  isAnalysisRunning: false,
+  isGenerating: false,
+};
+const elements = {
+  clientName: field("Nova Latitude Events Pte Ltd"),
+  clientAttention: field("Melissa Ong"),
+  clientTitle: field("Senior Event Producer"),
+  clientAddress: field("10 Sample Street\nSingapore 000010"),
+  projectTitle: field("RE: Brazil Experience Pavilion - 6m x 6m Draft"),
+  quoteDate: field("2026-06-08"),
+  projectNumber: field("KI-001"),
+  headerDetails: field("Koncept Image Pte Limited\n61 Kaki Bukit Ave 1"),
+  termsHeading: field("Commercial Terms"),
+  notesHeading: field("Notes"),
+  standardNotes: field("All designs are subject to final site verification."),
+  quoteCompanyName: field("Koncept Image Pte Ltd"),
+  acceptanceText: field("Accepted by customer"),
+  konceptSignatory: field("Francies Cheng"),
+  konceptTitle: field("Director"),
+  konceptDateLabel: field("Date:"),
+  personLabel: field("Person in charge"),
+  stampLabel: field("Company stamp"),
+  dateLabel: field("Date"),
+};
+
+eval([
+  "normalizeTextNewlines",
+  "splitLines",
+  "missingCustomerFields",
+  "missingQuoteCompanyFields",
+  "missingDetailFields",
+  "customerDetailsBlockReason",
+  "quoteCompanyDetailsBlockReason",
+  "startAnalysisBlockReason",
+  "sidePanelBlockReason",
+  "canStartAnalysis",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(startAnalysisBlockReason(), "Add at least one reference image before starting analysis.");
+state.images = [{}];
+assert.strictEqual(startAnalysisBlockReason(), "");
+elements.notesHeading.value = "";
+assert.strictEqual(startAnalysisBlockReason(), "");
+elements.acceptanceText.value = "";
+assert.strictEqual(startAnalysisBlockReason(), "Complete Quote Company details before starting analysis: Acceptance text.");
+elements.clientAddress.value = "";
+assert.strictEqual(
+  sidePanelBlockReason("quote_company"),
+  "Complete Customer details before opening Quote Company: Client address."
+);
+assert.strictEqual(
+  startAnalysisBlockReason(),
+  "Complete Customer details before starting analysis: Client address."
+);
+assert.ok(syncCalls > 0, "missing detail checks should sync rich-text sources first");
+elements.clientAddress.value = "10 Sample Street\nSingapore 000010";
+elements.notesHeading.value = "Notes";
+elements.acceptanceText.value = "Accepted by customer";
+assert.strictEqual(startAnalysisBlockReason(), "");
+assert.strictEqual(sidePanelBlockReason("quote_company"), "");
+assert.strictEqual(canStartAnalysis(), true);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_webapp_shows_generated_downloads_inside_assistant_page(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
@@ -1219,12 +1586,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
-        self.assertIn("Quotation package generated. The Excel download is ready in the Output footer.", js)
-        self.assertIn('Quotation package generated. The Excel download is ready in the Output footer.", { tone: "instruction" }', js)
+        self.assertIn("Pricing is clear. The Excel quotation is ready in Output.", js)
+        self.assertIn("I found pricing items that need review. I have shown them in Pricing instead of creating the final output.", js)
         self.assertIn("state.downloadFile = excelFile", js)
         self.assertIn("setDownloadFiles", js)
         self.assertIn("updateDownloadButton", js)
-        self.assertIn("match review in Output & Pricing", js)
+        self.assertIn('pricing: ["Pricing", "Price Review", "Catalog matches', js)
+        self.assertIn('output: ["Output", "Generated Quotation", "Final quotation status', js)
         self.assertIn("/api/jobs", js)
         self.assertIn("pollJob", js)
         self.assertNotIn('id="downloads"', html)
@@ -1236,7 +1604,6 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Use Download Quotation in the Output footer.", js)
         self.assertNotIn('postJson("/api/draft"', js)
         self.assertNotIn('postJson("/api/generate"', js)
-        self.assertNotIn("ready in Output", js)
         self.assertNotIn("opened Output", js)
 
     def test_static_webapp_handles_fetch_failures_without_throwing(self):
@@ -1487,9 +1854,9 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
 
         self.assertIn('basis: "Confirm Quotation Basis"', js)
         self.assertIn("basisConfirmBlockReason", js)
-        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
+        self.assertIn("Resolve all Confirm or Assumption lines before confirming quotation basis.", js)
         self.assertIn('confirmBasis();', js)
-        self.assertNotIn("Next: Output", js)
+        self.assertIn("Next: Output", js)
 
         node = shutil.which("node")
         if not node:
@@ -1521,7 +1888,7 @@ function extractFunction(name) {
 const BASIS_FIELDS = [["surfaces", "Surfaces / Structures"], ["graphics", "Graphics / Signage"]];
 const state = {
   quoteBasis: {
-    surfaces: "Include: Raised platform.\nConfirm: Finish colour.\nNote: Assumption.",
+    surfaces: "Include: Raised platform.\nConfirm: Finish colour.\nAssumption: Finish colour assumed.",
     graphics: "Exclude: LED screens.",
   },
 };
@@ -1534,9 +1901,9 @@ eval([
   "basisConfirmBlockReason",
 ].map(extractFunction).join("\n"));
 
-assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasis), ["Surfaces / Structures: Finish colour."]);
-assert.strictEqual(basisConfirmBlockReason(state.quoteBasis), "Resolve all Confirm lines before confirming quotation basis.");
-state.quoteBasis.surfaces = "Include: Raised platform.\nNote: Finish colour assumed.";
+assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasis), ["Surfaces / Structures: Finish colour.", "Surfaces / Structures: Finish colour assumed."]);
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasis), "Resolve all Confirm or Assumption lines before confirming quotation basis.");
+state.quoteBasis.surfaces = "Include: Raised platform.";
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasis), []);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasis), "");
 """
@@ -1649,18 +2016,18 @@ assert.strictEqual(draftLineTextRevision("why 100mm?", "why 100mm?"), null);
             "handlePricingChoice",
             "data-pricing-action",
             "nearest_keyword",
-            "mark_included",
             "manual_price",
             "remove_line",
             "I could not confidently price",
             "Use nearest match",
-            "Mark included",
             "Manual display price",
             "Remove from quote",
             "Manual display pricing required",
             "enter a display price",
         ):
             self.assertIn(expected, js)
+        self.assertNotIn("mark_included", js)
+        self.assertNotIn("Mark included", js)
 
         self.assertNotIn('renderMessages(data.errors || ["Pricing needs review."], "error")', js)
 
@@ -1712,7 +2079,7 @@ eval([
 ].map(extractFunction).join("\n"));
 
 const errors = [
-  "Manual display pricing required: Round cafe tables for seating clusters / enter a display price, mark included, choose a catalog keyword, or remove this line",
+  "Manual display pricing required: Round cafe tables for seating clusters / enter a display price, choose a catalog keyword, or remove this line",
 ];
 const issues = extractPricingIssues(errors);
 assert.deepStrictEqual(issues, errors);

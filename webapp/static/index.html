@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
-    <link rel="stylesheet" href="/static/styles.css?v=16">
+    <link rel="icon" href="/static/assets/swooshz-mark.png">
+    <link rel="stylesheet" href="/static/styles.css?v=28">
   </head>
   <body>
     <div class="app-shell">
@@ -21,50 +22,6 @@
           <div class="topbar-status" id="topbarStatus">
             <span class="status-dot" id="statusDot"></span>
             <span id="healthText" class="health-text">Checking local server</span>
-          </div>
-          <div class="topbar-menu" id="profilePresetMenu">
-            <button class="topbar-action topbar-menu-button" type="button" id="profilePresetMenuButton" aria-label="Open profile and preset settings" aria-expanded="false" aria-controls="profilePresetMenuPanel">
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M4 7h5"></path>
-                <path d="M15 7h5"></path>
-                <path d="M11 5v4"></path>
-                <path d="M4 17h9"></path>
-                <path d="M19 17h1"></path>
-                <path d="M15 15v4"></path>
-              </svg>
-              <span>Profile &amp; Presets</span>
-            </button>
-            <div class="topbar-menu-panel" id="profilePresetMenuPanel" aria-labelledby="profilePresetMenuButton" hidden>
-              <div class="settings-group topbar-settings-group profile-pack-group">
-                <h4>Active Profile Pack</h4>
-                <label>
-                  Profile / RAG source
-                  <select id="profileSelect"></select>
-                </label>
-                <p class="settings-note" id="profileDescription">Loading available profile packs...</p>
-                <p class="settings-note">The selected profile controls pricing, RAG context, quote layout, and built-in quote detail presets.</p>
-              </div>
-
-              <div class="settings-group topbar-settings-group quote-detail-presets-group">
-                <h4>Quote Detail Presets</h4>
-                <label>
-                  Preset
-                  <select id="presetSelect"></select>
-                </label>
-                <div class="settings-button-row">
-                  <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                  <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
-                </div>
-                <label>
-                  Save current details as
-                  <input id="presetNameInput" type="text" placeholder="Example: Koncept default header">
-                </label>
-                <div class="settings-button-row">
-                  <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
-                </div>
-                <p class="settings-note" id="presetStatus">Profile presets are loaded from the active pack. Saved presets stay local to this browser.</p>
-              </div>
-            </div>
           </div>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -90,7 +47,7 @@
                 </span>
                 <span>Images</span>
               </button>
-              <button class="rail-button" type="button" id="quoteDetailsButton" data-side-panel="details">
+              <button class="rail-button" type="button" id="customerDetailsButton" data-side-panel="customer">
                 <span class="rail-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="M7 4h10l2 2v16H7V4Z"></path>
@@ -100,7 +57,18 @@
                     <path d="M10 19h4"></path>
                   </svg>
                 </span>
-                <span>Quote Details</span>
+                <span>Customer</span>
+              </button>
+              <button class="rail-button" type="button" id="quoteCompanyButton" data-side-panel="quote_company">
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M6 20V5h8l4 4v11H6Z"></path>
+                    <path d="M14 5v4h4"></path>
+                    <path d="M9 13h6"></path>
+                    <path d="M9 17h6"></path>
+                  </svg>
+                </span>
+                <span>Quote Company</span>
               </button>
               <button class="rail-button" type="button" id="quoteBasisButton" data-side-panel="basis">
                 <span class="rail-icon" aria-hidden="true">
@@ -113,7 +81,18 @@
                 </span>
                 <span>Quote Basis</span>
               </button>
-              <button class="rail-button" type="button" data-side-panel="pricing">
+              <button class="rail-button" type="button" id="pricingButton" data-side-panel="pricing">
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 7h16"></path>
+                    <path d="M4 12h16"></path>
+                    <path d="M4 17h10"></path>
+                    <path d="m17 15 2 2 3-4"></path>
+                  </svg>
+                </span>
+                <span>Pricing</span>
+              </button>
+              <button class="rail-button" type="button" id="outputButton" data-side-panel="output">
                 <span class="rail-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false">
                     <path d="M7 3h7l5 5v13H7V3Z"></path>
@@ -131,19 +110,17 @@
                 <div>
                   <p class="workspace-pane-eyebrow" id="sideDrawerEyebrow">Workspace</p>
                   <h2 id="sideDrawerTitle">Images</h2>
+                  <p class="workspace-pane-subtitle" id="sideDrawerSubtitle">Upload reference images or load the sample fixture.</p>
+                </div>
+                <div class="workspace-pane-header-actions">
+                  <button class="secondary-button sample-button" type="button" id="sampleDetailsButton" disabled>Load Sample</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Clear Customer</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset Quote Company</button>
                 </div>
               </div>
 
               <div class="workspace-pane-scroll">
               <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference images">
-                <div class="side-panel-heading">
-                  <div>
-                    <h3 id="intakeTitle">Images</h3>
-                    <p id="intakeSubtitle">Upload reference images or load the sample fixture.</p>
-                  </div>
-                  <span class="image-count" id="imageCount">0 loaded</span>
-                </div>
-
                 <label class="dropzone" for="imageInput">
                   <input id="imageInput" type="file" accept="image/*" multiple>
                   <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -155,89 +132,150 @@
                   <span class="drop-action">Choose Files</span>
                 </label>
                 <div class="file-list" id="fileList" aria-live="polite"></div>
-                <div class="sample-start-card">
+              </section>
+
+              <section class="side-panel-card side-panel-section quote-details-panel" id="customerDetailsPanel" data-side-panel-content="customer">
+                <div class="pricing-reference-panel">
                   <div>
-                    <span class="sample-kicker">Need example data?</span>
-                    <strong>Brazil pavilion demo</strong>
-                    <p>Loads sample customer/project details and 3 reference images so you can test the workflow.</p>
+                    <h3>Quote Pricing Reference</h3>
+                    <p>Choose the pricing catalog and analysis reference for this quotation.</p>
                   </div>
-                  <button class="secondary-button sample-button" type="button" id="sampleDetailsButton">Load Sample</button>
+                  <div class="pricing-reference-controls">
+                    <label class="compact-control">
+                      Quote Pricing Reference
+                      <select id="profileSelect"></select>
+                    </label>
+                    <p class="settings-note">Required before moving to Quote Company.</p>
+                  </div>
+                </div>
+
+                  <div class="section-band first-band quote-form-section">
+                   <h3>Client block</h3>
+                   <div class="form-grid">
+                     <div class="field-control">
+                       <span>Client name</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Client name formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="clientNameEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="clientName"></div>
+                         <textarea class="rich-text-source" id="clientName" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                     <div class="field-control wide">
+                       <span>Client address</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Client address formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor" id="clientAddressEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="clientAddress"></div>
+                         <textarea class="rich-text-source" id="clientAddress" rows="3" hidden></textarea>
+                       </div>
+                     </div>
+                     <div class="field-control">
+                       <span>Attention person</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Attention person formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="clientAttentionEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="clientAttention"></div>
+                         <textarea class="rich-text-source" id="clientAttention" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                     <div class="field-control">
+                       <span>Attention title</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Attention title formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="clientTitleEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="clientTitle"></div>
+                         <textarea class="rich-text-source" id="clientTitle" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+                <div class="section-band quote-form-section">
+                  <h3>Quote reference</h3>
+                   <div class="form-grid">
+                     <label>
+                       Quote date
+                       <input id="quoteDate" type="date">
+                     </label>
+                     <div class="field-control">
+                       <span>Quotation Title</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Quotation Title formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="projectTitleEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="projectTitle"></div>
+                         <textarea class="rich-text-source" id="projectTitle" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                     <div class="field-control">
+                       <span>Project number</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Project number formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="projectNumberEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="projectNumber"></div>
+                         <textarea class="rich-text-source" id="projectNumber" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                  </div>
                 </div>
               </section>
 
-              <section class="side-panel-card side-panel-section quote-details-panel" id="quoteDetailsPanel" data-side-panel-content="details">
-                <div class="side-panel-heading">
+              <section class="side-panel-card side-panel-section quote-details-panel" id="quoteCompanyPanel" data-side-panel-content="quote_company">
+                <div class="company-preset-panel">
                   <div>
-                    <h3>Quote Details</h3>
-                    <p>Customer, project, header, terms, and signature text. Presets can fill the reusable company fields.</p>
+                    <h3>Company preset</h3>
+                    <p>Load reusable company defaults, then adjust the quotation fields below.</p>
                   </div>
-                  <button class="secondary-button quote-details-clear-button" type="button" id="resetPresetButton">Clear Quote Details</button>
+                  <div class="company-preset-controls">
+                    <label class="compact-control">
+                      Company preset
+                      <select id="presetSelect"></select>
+                    </label>
+                    <div class="settings-button-row">
+                      <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
+                      <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                    </div>
+                    <label class="compact-control preset-save-name">
+                      Save as
+                      <input id="presetNameInput" type="text" placeholder="Example: Koncept default header">
+                    </label>
+                    <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                  </div>
+                  <p class="settings-note" id="presetStatus">Presets are stored locally in this browser and can include the uploaded header logo.</p>
                 </div>
 
-                <div class="section-band first-band">
-                  <h3>Customer and Project</h3>
-                  <div class="form-grid">
-                    <label>
-                      Client name
-                      <input id="clientName" type="text" autocomplete="organization">
-                    </label>
-                    <label>
-                      Attention person
-                      <input id="clientAttention" type="text" autocomplete="name">
-                    </label>
-                    <label>
-                      Attention title
-                      <input id="clientTitle" type="text">
-                    </label>
-                    <label>
-                      Project / event
-                      <input id="projectTitle" type="text">
-                    </label>
-                    <label>
-                      <span id="widthLabel">Width (m)</span>
-                      <input id="boothWidth" type="number" min="0" step="0.1" inputmode="decimal">
-                    </label>
-                    <label>
-                      <span id="depthLabel">Depth (m)</span>
-                      <input id="boothDepth" type="number" min="0" step="0.1" inputmode="decimal">
-                    </label>
-                    <label>
-                      Quote date
-                      <input id="quoteDate" type="date">
-                    </label>
-                    <label>
-                      Project number
-                      <input id="projectNumber" type="text">
-                    </label>
-                    <label class="wide">
-                      Client address
-                      <div class="rich-text-field">
-                        <div class="rich-text-toolbar" aria-label="Client address formatting">
-                          <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
-                          <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
-                          <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                <div class="section-band first-band quote-form-section">
+                  <h3>Company header</h3>
+                  <div class="form-grid compact">
+                    <div class="field-block wide">
+                      <span>Header logo</span>
+                      <div class="header-logo-row">
+                        <input class="header-logo-input" id="headerLogoInput" type="file" accept="image/png,image/jpeg" aria-label="Select header logo" tabindex="-1">
+                        <div class="header-logo-preview" id="headerLogoPreview" role="button" tabindex="0" aria-label="Select header logo" aria-live="polite">
+                          <span>No logo loaded</span>
                         </div>
-                        <div class="rich-text-editor" id="clientAddressEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="clientAddress"></div>
-                        <textarea class="rich-text-source" id="clientAddress" rows="3" hidden></textarea>
                       </div>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="section-band">
-                  <h3>Quote Header</h3>
-                  <div class="form-grid">
-                    <label>
-                      Quotation company name
-                      <input id="quoteCompanyName" type="text">
-                    </label>
-                    <label>
-                      Header logo
-                      <input id="headerLogoInput" type="file" accept="image/png,image/jpeg">
-                      <span class="field-status" id="headerLogoStatus">No preset logo loaded.</span>
-                    </label>
-                    <label class="wide">
-                      Header details
+                    </div>
+                    <div class="field-control wide">
+                      <span>Header details</span>
                       <div class="rich-text-field">
                         <div class="rich-text-toolbar" aria-label="Header details formatting">
                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
@@ -247,43 +285,57 @@
                         <div class="rich-text-editor" id="headerDetailsEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="headerDetails"></div>
                         <textarea class="rich-text-source" id="headerDetails" rows="8" hidden></textarea>
                       </div>
-                    </label>
+                    </div>
                   </div>
                 </div>
 
-                <div class="section-band">
-                  <h3>Terms and Notes</h3>
+                <div class="section-band quote-form-section">
+                  <h3>Terms <span class="section-title-note">(Optional -- Leave empty)</span></h3>
                   <div class="form-grid compact">
-                    <label>
-                      Terms heading
-                      <input id="termsHeading" type="text">
-                    </label>
-                    <label>
-                      Cheque payee
-                      <input id="chequePayee" type="text">
-                    </label>
-                    <label class="wide">
-                      Payment terms (profile preset, optional)
-                      <div class="rich-text-field">
-                        <div class="rich-text-toolbar" aria-label="Payment terms formatting">
-                          <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                     <div class="field-control wide">
+                       <span>Terms heading</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Terms heading formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="termsHeadingEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="termsHeading"></div>
+                         <textarea class="rich-text-source" id="termsHeading" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                     <div class="field-control wide">
+                       <span>Payment terms</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Payment terms formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
                         </div>
                         <div class="rich-text-editor" id="paymentTermsEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="paymentTerms" data-placeholder="Leave blank to omit payment-term rows. Loaded presets can fill this automatically."></div>
-                        <textarea class="rich-text-source" id="paymentTerms" rows="3" hidden></textarea>
-                      </div>
-                    </label>
-                    <label>
-                      Notes heading
-                      <input id="notesHeading" type="text">
-                    </label>
-                    <label>
-                      Acceptance text
-                      <input id="acceptanceText" type="text">
-                    </label>
-                    <label class="wide">
-                      Standard notes
+                         <textarea class="rich-text-source" id="paymentTerms" rows="3" hidden></textarea>
+                       </div>
+                     </div>
+                  </div>
+                </div>
+
+                <div class="section-band quote-form-section">
+                  <h3>Notes <span class="section-title-note">(Optional -- Leave empty)</span></h3>
+                  <div class="form-grid compact">
+                     <div class="field-control">
+                       <span>Notes heading</span>
+                       <div class="rich-text-field">
+                         <div class="rich-text-toolbar" aria-label="Notes heading formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                         </div>
+                         <div class="rich-text-editor is-single-line" id="notesHeadingEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="notesHeading"></div>
+                         <textarea class="rich-text-source" id="notesHeading" rows="1" hidden></textarea>
+                       </div>
+                     </div>
+                    <div class="field-control wide">
+                      <span>Standard notes</span>
                       <div class="rich-text-field">
                         <div class="rich-text-toolbar" aria-label="Standard notes formatting">
                           <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
@@ -293,38 +345,118 @@
                         <div class="rich-text-editor" id="standardNotesEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="standardNotes"></div>
                         <textarea class="rich-text-source" id="standardNotes" rows="10" hidden></textarea>
                       </div>
-                    </label>
-                    <label>
-                      Company signatory
-                      <input id="konceptSignatory" type="text">
-                    </label>
-                    <label>
-                      Signatory title
-                      <input id="konceptTitle" type="text">
-                    </label>
-                    <label>
-                      Person label
-                      <input id="personLabel" type="text">
-                    </label>
-                    <label>
-                      Stamp label
-                      <input id="stampLabel" type="text">
-                    </label>
-                    <label>
-                      Date label
-                      <input id="dateLabel" type="text">
-                    </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="section-band quote-form-section">
+                  <h3>Signature</h3>
+                  <div class="signature-field-grid">
+                    <div class="signature-field-group">
+                      <div class="field-control">
+                        <span>Quotation Company</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Quotation Company formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="quoteCompanyNameEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="quoteCompanyName"></div>
+                          <textarea class="rich-text-source" id="quoteCompanyName" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                      <div class="field-control">
+                        <span>Company signatory</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Company signatory formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="konceptSignatoryEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="konceptSignatory"></div>
+                          <textarea class="rich-text-source" id="konceptSignatory" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                      <div class="field-control">
+                        <span>Signatory title</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Signatory title formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="konceptTitleEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="konceptTitle"></div>
+                          <textarea class="rich-text-source" id="konceptTitle" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                      <div class="field-control">
+                        <span>Date label</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Company date label formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="konceptDateLabelEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="konceptDateLabel"></div>
+                          <textarea class="rich-text-source" id="konceptDateLabel" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="signature-field-group">
+                      <div class="field-control">
+                        <span>Acceptance text</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Acceptance text formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="acceptanceTextEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="acceptanceText"></div>
+                          <textarea class="rich-text-source" id="acceptanceText" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                      <div class="field-control">
+                        <span>Person label</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Person label formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="personLabelEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="personLabel"></div>
+                          <textarea class="rich-text-source" id="personLabel" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                      <div class="field-control">
+                        <span>Stamp label</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Stamp label formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="stampLabelEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="stampLabel"></div>
+                          <textarea class="rich-text-source" id="stampLabel" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                      <div class="field-control">
+                        <span>Date label</span>
+                        <div class="rich-text-field">
+                          <div class="rich-text-toolbar" aria-label="Date label formatting">
+                            <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                            <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                            <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                          </div>
+                          <div class="rich-text-editor is-single-line" id="dateLabelEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="dateLabel"></div>
+                          <textarea class="rich-text-source" id="dateLabel" rows="1" hidden></textarea>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>
 
               <section class="side-panel-card side-panel-section" id="quoteBasisPanel" data-side-panel-content="basis">
-                <div class="side-panel-heading">
-                  <div>
-                    <h3>Quote Basis</h3>
-                    <p>Review the drafted basis, revise individual lines, or request a full-basis change.</p>
-                  </div>
-                </div>
                 <div class="ai-failure-banner" id="aiFailureBanner" role="alert" hidden>
                   <strong>AI analysis failed.</strong>
                   <span>Try again later.</span>
@@ -332,27 +464,15 @@
                 <section class="basis-review-surface" id="basisReviewSurface" aria-live="polite">
                   <div class="basis-empty-state">
                     <strong>Quotation basis draft</strong>
-                    <p>Load images and complete Quote Details, then start analysis to review the draft here.</p>
+                    <p>Load images, complete Customer and Quote Company, then start analysis to review the draft here.</p>
                   </div>
                 </section>
               </section>
 
               <section class="side-panel-card side-panel-section" id="pricingSidePanel" data-side-panel-content="pricing">
-                <div class="side-panel-heading">
-                  <div>
-                    <h3>Output & Pricing</h3>
-                    <p>Excel download, quotation status, catalog matches, and pricing review appear after generation.</p>
-                  </div>
-                </div>
-                <div class="assistant-output" id="assistantOutput">
-                  <div class="output-download-heading" style="justify-content: flex-end; padding-bottom: 0;">
-                    <span class="result-pill" id="resultStatus">No job yet</span>
-                  </div>
-                  <div class="message-list" id="messageList"></div>
-                </div>
                 <div class="side-empty-state" id="pricingEmptyState">
                   <strong>No pricing review yet</strong>
-                  <p>Generate a quotation to see matched rows, unmatched items, and manual pricing actions.</p>
+                  <p>Confirm the quotation basis to check pricing before output is created.</p>
                 </div>
                 <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
                 <div class="match-summary" id="matchSummary"></div>
@@ -374,11 +494,20 @@
                 </div>
               </section>
 
+              <section class="side-panel-card side-panel-section" id="outputSidePanel" data-side-panel-content="output">
+                <div class="assistant-output" id="assistantOutput">
+                  <div class="output-download-heading output-status-heading">
+                    <span class="result-pill" id="resultStatus">No job yet</span>
+                  </div>
+                  <div class="message-list" id="messageList"></div>
+                </div>
+              </section>
+
               </div>
               <div class="workspace-pane-footer">
                 <button class="secondary-button" type="button" id="sideBackButton">Back</button>
                 <a class="primary-button workspace-download-button is-disabled" id="sideDownloadButton" href="#" aria-disabled="true" tabindex="-1" download hidden>Download Quotation</a>
-                <button class="secondary-button" type="button" id="sideNextButton">Next</button>
+                <button class="primary-button" type="button" id="sideNextButton">Next</button>
               </div>
             </aside>
           </section>
@@ -415,6 +544,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=16"></script>
+    <script src="/static/app.js?v=36"></script>
   </body>
 </html>

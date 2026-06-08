@@ -3,26 +3,65 @@ const DEFAULT_PROFILE_ID = "koncept";
 const DEFAULT_SAMPLE_ID = "brazil-pavilion";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
+const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const LOCAL_PRESET_PREFIX = "local:";
+const DEFAULT_DATE_LABEL = "Date:";
+const DEFAULT_TERMS_HEADING = "Terms & Conditions:";
+const DEFAULT_NOTES_HEADING = "Note:";
+const DEFAULT_ACCEPTANCE_TEXT = "We accept the quotation amount and the terms";
+const DEFAULT_PERSON_LABEL = "Person in charge";
+const DEFAULT_STAMP_LABEL = "Company name & stamp";
+const DEFAULT_QUOTE_COMPANY_RICH_TEXT = {
+  termsHeading: "<div>Terms &amp; Conditions:</div>",
+  notesHeading: "<div>Note:</div>",
+  acceptanceText: "<div>We accept the quotation amount and the terms</div>",
+  personLabel: "<div>Person in charge</div>",
+  stampLabel: "<div>Company name &amp; stamp</div>",
+  konceptDateLabel: "<div>Date:</div>",
+  dateLabel: "<div>Date:</div>",
+};
+const DEFAULT_BOOTH_DIMENSIONS = {
+  booth_width: "6",
+  booth_depth: "6",
+  booth_size: "6m x 6m",
+  dimension_source: "default",
+};
 
 const QUOTE_COPY = {
   label: "Quotation",
   assistantSubtitle: "Start with reference images or a sample fixture, confirm one quotation basis, then generate Excel.",
-  intakeTitle: "Start a quotation",
   intakeSubtitle: "Drop reference images for a real quote, or load the demo fixture for a quick test run.",
   dropTitle: "Drop reference images to start",
   dropMeta: "JPG, PNG, or WebP. Add more references anytime; files stay local to this runner.",
   imageNoun: "reference image",
   analyzeLabel: "Start Analysis",
   fallbackAction: "review the reference images",
-  widthLabel: "Width (m)",
-  depthLabel: "Depth (m)",
 };
 
-const SIDE_PANEL_SEQUENCE = ["images", "details", "basis", "pricing"];
-const RICH_TEXT_SOURCE_IDS = ["clientAddress", "headerDetails", "paymentTerms", "standardNotes"];
+const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "pricing", "output"];
+const RICH_TEXT_SOURCE_IDS = [
+  "clientName",
+  "clientAttention",
+  "clientTitle",
+  "clientAddress",
+  "projectTitle",
+  "projectNumber",
+  "headerDetails",
+  "termsHeading",
+  "paymentTerms",
+  "notesHeading",
+  "standardNotes",
+  "quoteCompanyName",
+  "acceptanceText",
+  "konceptSignatory",
+  "konceptTitle",
+  "konceptDateLabel",
+  "personLabel",
+  "stampLabel",
+  "dateLabel",
+];
 
 const EMPTY_BASIS = {
   surfaces: "",
@@ -46,7 +85,7 @@ const BASIS_TAGS = [
   ["Include", "Matched", "Quoted in the draft"],
   ["Confirm", "Confirm", "Needs your decision"],
   ["Exclude", "Exclude", "Not included unless requested"],
-  ["Note", "Note", "FYI assumption or caveat"],
+  ["Assumption", "Assumption", "Must be confirmed or changed"],
 ];
 
 const STAGE_LABELS = {
@@ -61,24 +100,30 @@ const STAGE_LABELS = {
 };
 
 const state = {
-  profileId: DEFAULT_PROFILE_ID,
+  profileId: "",
   profiles: [],
+  pricingReferences: [],
   images: [],
   headerLogo: null,
   workflowStage: "needs_images",
   quoteBasis: { ...EMPTY_BASIS },
   lineItems: [],
+  boothDimensions: { ...DEFAULT_BOOTH_DIMENSIONS },
   basisConfirmed: false,
   chatMessages: [],
   isAnalysisRunning: false,
   isGenerating: false,
   aiFailed: false,
   draftSource: "",
+  isBooting: true,
   csrfHeaderName: CSRF_HEADER_NAME,
   csrfToken: "",
   pendingFeedback: "",
   activeSidePanel: "images",
   downloadFile: null,
+  pricingMatches: [],
+  pricingIssues: [],
+  activeJob: null,
   basisChat: {
     scope: "quote",
     field: "",
@@ -95,49 +140,45 @@ const elements = {
   topbarStatus: qs("#topbarStatus"),
   assistantSubtitle: qs("#assistantSubtitle"),
   imageIntake: qs("#imageIntake"),
-  intakeTitle: qs("#intakeTitle"),
-  intakeSubtitle: qs("#intakeSubtitle"),
   dropTitle: qs("#dropTitle"),
   dropMeta: qs("#dropMeta"),
-  imageCount: qs("#imageCount"),
   dropzone: qs(".dropzone"),
   imageInput: qs("#imageInput"),
   fileList: qs("#fileList"),
-  quoteDetailsButton: qs("#quoteDetailsButton"),
+  customerDetailsButton: qs("#customerDetailsButton"),
+  quoteCompanyButton: qs("#quoteCompanyButton"),
   quoteBasisButton: qs("#quoteBasisButton"),
-  quoteDetailsPanel: qs("#quoteDetailsPanel"),
+  pricingButton: qs("#pricingButton"),
+  outputButton: qs("#outputButton"),
+  customerDetailsPanel: qs("#customerDetailsPanel"),
+  quoteCompanyPanel: qs("#quoteCompanyPanel"),
   quoteBasisPanel: qs("#quoteBasisPanel"),
+  outputSidePanel: qs("#outputSidePanel"),
   newQuoteButton: qs("#newQuoteButton"),
-  profilePresetMenu: qs("#profilePresetMenu"),
-  profilePresetMenuButton: qs("#profilePresetMenuButton"),
-  profilePresetMenuPanel: qs("#profilePresetMenuPanel"),
   sideWorkspace: qs("#sideWorkspace"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
   sideDrawerEyebrow: qs("#sideDrawerEyebrow"),
+  sideDrawerSubtitle: qs("#sideDrawerSubtitle"),
   sampleDetailsButton: qs("#sampleDetailsButton"),
-  quoteCompanyName: qs("#quoteCompanyName"),
-  headerDetails: qs("#headerDetails"),
-  headerLogoInput: qs("#headerLogoInput"),
-  headerLogoStatus: qs("#headerLogoStatus"),
   clientName: qs("#clientName"),
   clientAttention: qs("#clientAttention"),
   clientTitle: qs("#clientTitle"),
   clientAddress: qs("#clientAddress"),
   projectTitle: qs("#projectTitle"),
-  boothWidth: qs("#boothWidth"),
-  boothDepth: qs("#boothDepth"),
-  widthLabel: qs("#widthLabel"),
-  depthLabel: qs("#depthLabel"),
   quoteDate: qs("#quoteDate"),
   projectNumber: qs("#projectNumber"),
+  headerDetails: qs("#headerDetails"),
+  headerLogoInput: qs("#headerLogoInput"),
+  headerLogoPreview: qs("#headerLogoPreview"),
   termsHeading: qs("#termsHeading"),
   paymentTerms: qs("#paymentTerms"),
-  chequePayee: qs("#chequePayee"),
   notesHeading: qs("#notesHeading"),
   standardNotes: qs("#standardNotes"),
+  quoteCompanyName: qs("#quoteCompanyName"),
   acceptanceText: qs("#acceptanceText"),
   konceptSignatory: qs("#konceptSignatory"),
   konceptTitle: qs("#konceptTitle"),
+  konceptDateLabel: qs("#konceptDateLabel"),
   personLabel: qs("#personLabel"),
   stampLabel: qs("#stampLabel"),
   dateLabel: qs("#dateLabel"),
@@ -159,13 +200,13 @@ const elements = {
   pricingEmptyState: qs("#pricingEmptyState"),
   pricingReviewMessages: qs("#pricingReviewMessages"),
   profileSelect: qs("#profileSelect"),
-  profileDescription: qs("#profileDescription"),
   presetNameInput: qs("#presetNameInput"),
   presetSelect: qs("#presetSelect"),
   savePresetButton: qs("#savePresetButton"),
   loadPresetButton: qs("#loadPresetButton"),
   deletePresetButton: qs("#deletePresetButton"),
-  resetPresetButton: qs("#resetPresetButton"),
+  clearCustomerButton: qs("#clearCustomerButton"),
+  clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
   presetStatus: qs("#presetStatus"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
@@ -187,7 +228,7 @@ const elements = {
 };
 
 function currentProfile() {
-  return state.profiles.find((profile) => profile.id === state.profileId) || {
+  return state.profiles.find((profile) => profile.id === DEFAULT_PROFILE_ID) || state.profiles[0] || {
     id: DEFAULT_PROFILE_ID,
     label: "Quotation Profile",
     description: "",
@@ -195,22 +236,24 @@ function currentProfile() {
   };
 }
 
+function currentPricingReference() {
+  return state.pricingReferences.find((reference) => reference.id === state.profileId) || null;
+}
+
 function currentGenerator() {
+  const pricingReference = currentPricingReference();
   return {
     ...QUOTE_COPY,
-    label: currentProfile().label || QUOTE_COPY.label,
+    label: pricingReference?.label || QUOTE_COPY.label,
   };
 }
 
 function updateGeneratorCopy() {
   const generator = currentGenerator();
   if (elements.assistantSubtitle) elements.assistantSubtitle.textContent = generator.assistantSubtitle;
-  elements.intakeTitle.textContent = generator.intakeTitle;
-  elements.intakeSubtitle.textContent = generator.intakeSubtitle;
+  if (state.activeSidePanel === "images") elements.sideDrawerSubtitle.textContent = generator.intakeSubtitle;
   elements.dropTitle.textContent = state.images.length ? "Add more reference images" : generator.dropTitle;
   elements.dropMeta.textContent = generator.dropMeta;
-  elements.widthLabel.textContent = generator.widthLabel;
-  elements.depthLabel.textContent = generator.depthLabel;
 }
 
 function setWorkflowStage(stage) {
@@ -252,7 +295,7 @@ function clearAiFailureBanner() {
 
 function setDetailsDrawer(open) {
   if (open) {
-    setSidePanel("details");
+    setSidePanel(firstMissingDetailsPanel(), { force: true });
   }
 }
 
@@ -340,9 +383,21 @@ function splitLines(value) {
     .filter(Boolean);
 }
 
+function todayDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function applyDefaultQuoteDate() {
+  if (!elements.quoteDate.value.trim()) {
+    setInputValue(elements.quoteDate, todayDateInputValue());
+  }
+}
+
 function renderFiles() {
   elements.imageIntake.classList.toggle("has-images", Boolean(state.images.length));
-  elements.imageCount.textContent = `${state.images.length} loaded`;
   updateGeneratorCopy();
   if (!state.images.length) {
     elements.fileList.innerHTML = "";
@@ -466,7 +521,15 @@ function restoreRichTextDetails(details = {}, options = {}) {
   });
 }
 
+function hasEditableSelection(editor) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  return editor.contains(range.commonAncestorContainer);
+}
+
 function runRichTextCommand(editor, command) {
+  if (!hasEditableSelection(editor)) return;
   editor.focus();
   if (command === "bold") {
     document.execCommand("bold", false, null);
@@ -496,7 +559,11 @@ function wireRichTextEditors() {
     });
   });
   elements.richTextToolbar.forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+    });
+    button.addEventListener("click", (event) => {
+      if (event.detail > 1) return;
       const field = button.closest(".rich-text-field");
       const editor = field?.querySelector("[data-rich-text-source]");
       if (editor) runRichTextCommand(editor, button.dataset.richCommand || "bold");
@@ -507,6 +574,22 @@ function wireRichTextEditors() {
 function setInputValue(input, value) {
   input.value = value ?? "";
   syncRichTextEditor(input);
+}
+
+function normalizeBoothDimensions(project = {}) {
+  const width = Number(project.booth_width);
+  const depth = Number(project.booth_depth);
+  if (Number.isFinite(width) && Number.isFinite(depth) && width > 0 && depth > 0) {
+    const formattedWidth = Number.isInteger(width) ? String(width) : String(width);
+    const formattedDepth = Number.isInteger(depth) ? String(depth) : String(depth);
+    return {
+      booth_width: formattedWidth,
+      booth_depth: formattedDepth,
+      booth_size: project.booth_size || `${formattedWidth}m x ${formattedDepth}m`,
+      dimension_source: project.dimension_source || "analysis",
+    };
+  }
+  return { ...DEFAULT_BOOTH_DIMENSIONS };
 }
 
 function collectQuoteDetails() {
@@ -522,8 +605,6 @@ function collectQuoteDetails() {
     },
     project: {
       title: elements.projectTitle.value.trim(),
-      booth_width: elements.boothWidth.value,
-      booth_depth: elements.boothDepth.value,
     },
     company: {
       name: elements.quoteCompanyName.value.trim(),
@@ -535,7 +616,6 @@ function collectQuoteDetails() {
     quote_text: {
       terms_heading: elements.termsHeading.value.trim(),
       payment_terms: splitLines(elements.paymentTerms.value),
-      cheque_payee: elements.chequePayee.value.trim(),
       notes_heading: elements.notesHeading.value.trim(),
       standard_notes: splitLines(elements.standardNotes.value),
       acceptance_text: elements.acceptanceText.value.trim(),
@@ -546,6 +626,7 @@ function collectQuoteDetails() {
     signature: {
       koncept_signatory: elements.konceptSignatory.value.trim(),
       koncept_title: elements.konceptTitle.value.trim(),
+      koncept_date_label: elements.konceptDateLabel.value.trim(),
     },
     rich_text: collectRichTextDetails(),
   };
@@ -564,20 +645,21 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(client, "title", partial)) setInputValue(elements.clientTitle, client.title);
   if (shouldApply(client, "address", partial)) setInputValue(elements.clientAddress, client.address);
   if (shouldApply(project, "title", partial)) setInputValue(elements.projectTitle, project.title);
-  if (shouldApply(project, "booth_width", partial)) setInputValue(elements.boothWidth, project.booth_width);
-  if (shouldApply(project, "booth_depth", partial)) setInputValue(elements.boothDepth, project.booth_depth);
+  if (!partial || shouldApply(project, "booth_width", true) || shouldApply(project, "booth_depth", true)) {
+    state.boothDimensions = normalizeBoothDimensions(project);
+  }
   if (shouldApply(details, "quote_date", partial)) setInputValue(elements.quoteDate, details.quote_date);
   if (shouldApply(details, "project_number", partial)) setInputValue(elements.projectNumber, details.project_number);
   if (shouldApply(company, "name", partial)) setInputValue(elements.quoteCompanyName, company.name);
   if (shouldApply(company, "header_details", partial)) setInputValue(elements.headerDetails, company.header_details);
   if (shouldApply(quoteText, "terms_heading", partial)) setInputValue(elements.termsHeading, quoteText.terms_heading);
   if (shouldApply(quoteText, "payment_terms", partial)) setInputValue(elements.paymentTerms, linesValue(quoteText.payment_terms));
-  if (shouldApply(quoteText, "cheque_payee", partial)) setInputValue(elements.chequePayee, quoteText.cheque_payee);
   if (shouldApply(quoteText, "notes_heading", partial)) setInputValue(elements.notesHeading, quoteText.notes_heading);
   if (shouldApply(quoteText, "standard_notes", partial)) setInputValue(elements.standardNotes, linesValue(quoteText.standard_notes));
   if (shouldApply(quoteText, "acceptance_text", partial)) setInputValue(elements.acceptanceText, quoteText.acceptance_text);
   if (shouldApply(signature, "koncept_signatory", partial)) setInputValue(elements.konceptSignatory, signature.koncept_signatory);
   if (shouldApply(signature, "koncept_title", partial)) setInputValue(elements.konceptTitle, signature.koncept_title);
+  if (shouldApply(signature, "koncept_date_label", partial)) setInputValue(elements.konceptDateLabel, signature.koncept_date_label);
   if (shouldApply(quoteText, "person_label", partial)) setInputValue(elements.personLabel, quoteText.person_label);
   if (shouldApply(quoteText, "stamp_label", partial)) setInputValue(elements.stampLabel, quoteText.stamp_label);
   if (shouldApply(quoteText, "date_label", partial)) setInputValue(elements.dateLabel, quoteText.date_label);
@@ -595,8 +677,111 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (hasRichText || !partial) {
     restoreRichTextDetails(hasRichText ? details.rich_text : {}, { partial: partial && hasRichText });
   }
-  renderHeaderLogoStatus();
+  applyDefaultQuoteDate();
+  renderHeaderLogoPreview();
   renderPresetStatus();
+}
+
+function applyDefaultQuoteCompanyFields() {
+  setInputValue(elements.termsHeading, DEFAULT_TERMS_HEADING);
+  setInputValue(elements.notesHeading, DEFAULT_NOTES_HEADING);
+  setInputValue(elements.acceptanceText, DEFAULT_ACCEPTANCE_TEXT);
+  setInputValue(elements.konceptDateLabel, DEFAULT_DATE_LABEL);
+  setInputValue(elements.personLabel, DEFAULT_PERSON_LABEL);
+  setInputValue(elements.stampLabel, DEFAULT_STAMP_LABEL);
+  setInputValue(elements.dateLabel, DEFAULT_DATE_LABEL);
+  restoreRichTextDetails(DEFAULT_QUOTE_COMPANY_RICH_TEXT, { partial: true });
+}
+
+function safeSessionJson() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(QUOTE_SESSION_STORAGE_KEY) || "null");
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSessionState() {
+  try {
+    window.localStorage.removeItem(QUOTE_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures; the local workflow can continue without refresh recovery.
+  }
+}
+
+function saveSessionState() {
+  if (state.isBooting) return;
+  try {
+    const snapshot = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      profileId: state.profileId,
+      images: state.images,
+      quoteDetails: collectQuoteDetails(),
+      workflowStage: state.workflowStage,
+      quoteBasis: state.quoteBasis,
+      lineItems: state.lineItems,
+      boothDimensions: state.boothDimensions,
+      basisConfirmed: state.basisConfirmed,
+      aiFailed: state.aiFailed,
+      draftSource: state.draftSource,
+      activeSidePanel: state.activeSidePanel,
+      downloadFile: state.downloadFile,
+      pricingMatches: state.pricingMatches,
+      pricingIssues: state.pricingIssues,
+      chatMessages: state.chatMessages.slice(-80),
+      activeJob: state.activeJob,
+    };
+    window.localStorage.setItem(QUOTE_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Large image payloads can exceed storage quota; refresh recovery is best-effort.
+  }
+}
+
+function restoreSessionState() {
+  const saved = safeSessionJson();
+  if (!saved || saved.version !== 1) return false;
+  state.profileId = saved.profileId || "";
+  renderProfileOptions();
+  applyQuoteDetails(saved.quoteDetails || {}, { includeLogo: true, clearLogo: true });
+  state.images = Array.isArray(saved.images) ? saved.images : [];
+  state.quoteBasis = cloneQuoteBasis(saved.quoteBasis || {});
+  state.lineItems = Array.isArray(saved.lineItems) ? saved.lineItems.map(normalizeLineItem) : [];
+  state.boothDimensions = normalizeBoothDimensions(saved.boothDimensions || saved.quoteDetails?.project || {});
+  state.basisConfirmed = Boolean(saved.basisConfirmed);
+  state.aiFailed = Boolean(saved.aiFailed);
+  state.draftSource = saved.draftSource || "";
+  state.downloadFile = saved.downloadFile || null;
+  state.pricingMatches = Array.isArray(saved.pricingMatches) ? saved.pricingMatches : [];
+  state.pricingIssues = Array.isArray(saved.pricingIssues) ? saved.pricingIssues : [];
+  state.chatMessages = Array.isArray(saved.chatMessages) ? saved.chatMessages : [];
+  state.activeJob = saved.activeJob && saved.activeJob.id ? saved.activeJob : null;
+  renderFiles();
+  renderChat();
+  renderPricingMatches(state.pricingMatches);
+  renderMatchSummary({ pricing_matches: state.pricingMatches });
+  if (state.pricingIssues.length) {
+    renderPricingReviewMessages({ errors: state.pricingIssues, pricing_matches: state.pricingMatches });
+  } else {
+    clearPricingReviewMessages();
+  }
+  if (state.lineItems.length || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0)) {
+    updateQuoteBasisCard(saved.draftSource || "restored");
+  } else {
+    renderBasisEmptyState();
+  }
+  updateDownloadButton();
+  setResultStatus(state.downloadFile ? "Completed" : "No job yet", state.downloadFile ? "is-ok" : "");
+  setWorkflowStage(saved.workflowStage || (state.images.length ? "ready_to_analyze" : "needs_images"));
+  if (state.aiFailed) {
+    showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
+  } else {
+    clearAiFailureBanner();
+  }
+  const restoredPanel = SIDE_PANEL_SEQUENCE.includes(saved.activeSidePanel) ? saved.activeSidePanel : "images";
+  setSidePanel(restoredPanel, { force: true });
+  return true;
 }
 
 function safeStorageJson() {
@@ -617,15 +802,22 @@ function selectedPresetId() {
 }
 
 function profilePresets() {
-  const profile = currentProfile();
-  return Array.isArray(profile.quote_detail_presets) ? profile.quote_detail_presets : [];
+  return state.profiles.flatMap((profile) => {
+    const presets = Array.isArray(profile.quote_detail_presets) ? profile.quote_detail_presets : [];
+    return presets.map((preset) => ({
+      ...preset,
+      profile_id: preset.profile_id || profile.id,
+      profile_label: profile.label || profile.id,
+    }));
+  });
 }
 
 function defaultProfilePresetId() {
   const profile = currentProfile();
-  const configured = profile.default_quote_detail_preset || "";
+  const configured = profile.default_quote_detail_preset || "default";
   const presets = profilePresets();
   if (configured && presets.some((preset) => preset.id === configured)) return configured;
+  if (presets.some((preset) => preset.id === "default")) return "default";
   return presets[0]?.id || "";
 }
 
@@ -651,19 +843,18 @@ function selectedPreset() {
 
 function renderPresetStatus(message = "") {
   if (!elements.presetStatus) return;
-  const logoText = state.headerLogo ? ` Header logo loaded: ${state.headerLogo.name || "preset logo"}.` : "";
-  elements.presetStatus.textContent = message || `Presets are stored locally in this browser and can include the uploaded header logo.${logoText}`;
+  elements.presetStatus.textContent = message || "Presets are stored locally in this browser and can include the uploaded header logo.";
 }
 
-function renderHeaderLogoStatus() {
-  if (!elements.headerLogoStatus) return;
+function renderHeaderLogoPreview() {
+  if (!elements.headerLogoPreview) return;
   if (state.headerLogo) {
-    elements.headerLogoStatus.textContent = `Loaded logo: ${state.headerLogo.name || "preset logo"}`;
-    elements.headerLogoStatus.classList.add("is-loaded");
+    elements.headerLogoPreview.classList.add("has-logo");
+    elements.headerLogoPreview.innerHTML = `<img src="${escapeHtml(state.headerLogo.data_url)}" alt="Selected header logo preview">`;
     return;
   }
-  elements.headerLogoStatus.textContent = "No preset logo loaded.";
-  elements.headerLogoStatus.classList.remove("is-loaded");
+  elements.headerLogoPreview.classList.remove("has-logo");
+  elements.headerLogoPreview.innerHTML = "<span>No logo loaded</span>";
 }
 
 function renderPresetOptions() {
@@ -677,7 +868,7 @@ function renderPresetOptions() {
     .join("");
   elements.presetSelect.innerHTML = [
     `<option value="">No preset selected</option>`,
-    builtInOptions ? `<optgroup label="Profile presets">${builtInOptions}</optgroup>` : "",
+    builtInOptions ? `<optgroup label="Company presets">${builtInOptions}</optgroup>` : "",
     localOptions ? `<optgroup label="Saved locally">${localOptions}</optgroup>` : "",
     !builtInOptions && !localOptions ? `<option value="">No presets available</option>` : "",
   ].join("");
@@ -702,7 +893,7 @@ function saveCurrentPreset() {
   const preset = {
     id: existingIndex >= 0 ? presets[existingIndex].id : `preset-${Date.now().toString(36)}`,
     name,
-    profile_id: state.profileId || DEFAULT_PROFILE_ID,
+    profile_id: currentProfile().id || DEFAULT_PROFILE_ID,
     details: collectQuoteDetails(),
     saved_at: new Date().toISOString(),
   };
@@ -715,7 +906,7 @@ function saveCurrentPreset() {
   renderPresetOptions();
   elements.presetSelect.value = localPresetOptionValue(preset.id);
   updatePresetButtons();
-  renderPresetStatus(`Saved "${name}" as a local quote detail preset.`);
+  renderPresetStatus(`Saved "${name}" as a local company preset.`);
 }
 
 function loadSelectedPreset(options = {}) {
@@ -724,15 +915,14 @@ function loadSelectedPreset(options = {}) {
     renderPresetStatus("Choose a preset to load.");
     return;
   }
-  state.profileId = preset.profile_id || state.profileId || DEFAULT_PROFILE_ID;
-  updateGeneratorCopy();
-  applyQuoteDetails(preset.details || {}, { includeLogo: true, clearLogo: true, partial: true });
-  renderProfileOptions();
+  const details = preset.details || {};
+  const clearsLogo = Boolean(details.company && typeof details.company === "object");
+  applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   syncControlStates();
   if (!options.silent) {
-    appendChatMessage("assistant", `Loaded quote detail preset "${preset.name}". Reference images still need to be uploaded or loaded separately.`);
+    appendChatMessage("assistant", `Loaded company preset "${preset.name}". Pricing reference and reference images are unchanged.`);
   }
   renderPresetStatus(`Loaded "${preset.name}".`);
 }
@@ -744,39 +934,58 @@ function loadDefaultProfilePreset(options = {}) {
   loadSelectedPreset(options);
 }
 
-function isProfilePresetMenuOpen() {
-  return Boolean(elements.profilePresetMenuPanel && !elements.profilePresetMenuPanel.hidden);
+function clearCustomerDetails() {
+  state.profileId = "";
+  setInputValue(elements.clientName, "");
+  setInputValue(elements.clientAttention, "");
+  setInputValue(elements.clientTitle, "");
+  setInputValue(elements.clientAddress, "");
+  setInputValue(elements.projectTitle, "");
+  state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
+  setInputValue(elements.quoteDate, todayDateInputValue());
+  setInputValue(elements.projectNumber, "");
+  clearGeneratedQuoteState();
+  renderProfileOptions();
+  setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
+  syncControlStates();
+  appendChatMessage("assistant", "Customer details and pricing reference cleared. Images and quote-company defaults were left unchanged.");
 }
 
-function setProfilePresetMenuOpen(isOpen) {
-  if (!elements.profilePresetMenuButton || !elements.profilePresetMenuPanel) return;
-  elements.profilePresetMenuPanel.hidden = !isOpen;
-  elements.profilePresetMenuButton.setAttribute("aria-expanded", String(isOpen));
-  elements.profilePresetMenuButton.classList.toggle("is-active", isOpen);
-}
-
-function toggleProfilePresetMenu() {
-  setProfilePresetMenuOpen(!isProfilePresetMenuOpen());
-}
-
-function clearQuoteDetails() {
+function clearQuoteCompanyDetails() {
   elements.presetSelect.value = "";
   elements.presetNameInput.value = "";
+  setInputValue(elements.headerDetails, "");
+  setInputValue(elements.termsHeading, "");
+  setInputValue(elements.paymentTerms, "");
+  setInputValue(elements.notesHeading, "");
+  setInputValue(elements.standardNotes, "");
+  setInputValue(elements.quoteCompanyName, "");
+  setInputValue(elements.acceptanceText, "");
+  setInputValue(elements.konceptSignatory, "");
+  setInputValue(elements.konceptTitle, "");
+  setInputValue(elements.konceptDateLabel, "");
+  setInputValue(elements.personLabel, "");
+  setInputValue(elements.stampLabel, "");
+  setInputValue(elements.dateLabel, "");
+  applyDefaultQuoteCompanyFields();
+  state.headerLogo = null;
   elements.headerLogoInput.value = "";
-  applyQuoteDetails({}, { clearLogo: true });
   clearGeneratedQuoteState();
-  setWorkflowStage(state.images.length ? "details_review" : "needs_images");
+  setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   updatePresetButtons();
+  renderHeaderLogoPreview();
   syncControlStates();
-  renderPresetStatus("Quote Details cleared. Load a preset or fill the fields before starting analysis.");
-  appendChatMessage("assistant", "Quote Details cleared. Images and the active profile pack were left unchanged.");
+  renderPresetStatus("Quote-company defaults reset. Header, logo, company, payment terms, notes, and signatory fields still need to be filled or loaded.");
+  appendChatMessage("assistant", "Quote-company defaults reset. Customer details, pricing reference, and images were left unchanged.");
 }
 
 function startNewQuote() {
   if (state.isAnalysisRunning || state.isGenerating) return;
-  setProfilePresetMenuOpen(false);
+  clearSessionState();
+  state.profileId = "";
   state.images = [];
   state.headerLogo = null;
+  state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
   state.pendingFeedback = "";
   state.chatMessages = [];
   state.downloadFile = null;
@@ -785,11 +994,12 @@ function startNewQuote() {
   elements.presetSelect.value = "";
   elements.presetNameInput.value = "";
   applyQuoteDetails({}, { clearLogo: true });
+  applyDefaultQuoteCompanyFields();
   clearGeneratedQuoteState();
   renderFiles();
   renderProfileOptions();
   renderPresetOptions();
-  renderHeaderLogoStatus();
+  renderHeaderLogoPreview();
   renderPresetStatus("Started a new quote.");
   setWorkflowStage("needs_images");
   setSidePanel("images", { force: true });
@@ -813,20 +1023,22 @@ function deleteSelectedPreset() {
 
 function renderProfileOptions() {
   if (!elements.profileSelect) return;
-  const profiles = state.profiles.length ? state.profiles : [{ id: DEFAULT_PROFILE_ID, label: "Koncept Exhibition Quotations", description: "" }];
-  elements.profileSelect.innerHTML = profiles
-    .map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.label || profile.id)}</option>`)
+  const references = state.pricingReferences.length ? state.pricingReferences : [];
+  const options = references
+    .map((reference) => `<option value="${escapeHtml(reference.id)}">${escapeHtml(reference.label || reference.id)}</option>`)
     .join("");
-  elements.profileSelect.value = state.profileId || DEFAULT_PROFILE_ID;
-  const selected = profiles.find((profile) => profile.id === elements.profileSelect.value) || profiles[0];
-  elements.profileDescription.textContent = selected.description || `${selected.label || selected.id} is selected.`;
+  elements.profileSelect.innerHTML = `<option value="">No pricing reference selected</option>${options}`;
+  elements.profileSelect.value = state.profileId || "";
 }
 
 async function loadProfiles() {
   const { ok, data } = await getJson("/api/profiles");
   if (ok && Array.isArray(data.profiles)) {
     state.profiles = data.profiles;
-    state.profileId = data.default_profile_id || state.profileId || DEFAULT_PROFILE_ID;
+    state.pricingReferences = Array.isArray(data.pricing_references) ? data.pricing_references : [];
+    if (state.profileId && !state.pricingReferences.some((reference) => reference.id === state.profileId)) {
+      state.profileId = "";
+    }
   }
   renderProfileOptions();
 }
@@ -837,6 +1049,7 @@ function clearGeneratedQuoteState() {
   state.basisConfirmed = false;
   state.aiFailed = false;
   state.draftSource = "";
+  state.activeJob = null;
   renderBasisEmptyState();
   clearAiFailureBanner();
   renderMessages([]);
@@ -848,19 +1061,18 @@ function clearGeneratedQuoteState() {
 }
 
 function handleProfileSelectionChange() {
-  const nextProfileId = elements.profileSelect.value || DEFAULT_PROFILE_ID;
+  const nextProfileId = elements.profileSelect.value || "";
   if (nextProfileId === state.profileId) return;
   state.profileId = nextProfileId;
   renderProfileOptions();
-  renderPresetOptions();
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? (canStartAnalysis() ? "ready_to_analyze" : "details_review") : "needs_images");
-  appendChatMessage("assistant", "Profile/RAG pack changed. I cleared the previous draft so the next analysis uses the selected pricing context. Quote Details were left unchanged.");
+  appendChatMessage("assistant", "Pricing reference changed. I cleared the previous draft so the next analysis uses the selected pricing context. Customer and quote-company details were left unchanged.");
   syncControlStates();
 }
 
 async function setSampleDetails() {
-  if (state.isAnalysisRunning || state.isGenerating) return;
+  if (state.isBooting || state.isAnalysisRunning || state.isGenerating) return;
   elements.sampleDetailsButton.disabled = true;
   try {
     const { ok, data } = await getJson(`/api/samples/${DEFAULT_SAMPLE_ID}`);
@@ -869,6 +1081,7 @@ async function setSampleDetails() {
       return;
     }
     state.profileId = data.profile_id || DEFAULT_PROFILE_ID;
+    if (!state.profiles.length) await loadProfiles();
     renderProfileOptions();
     renderPresetOptions();
     loadDefaultProfilePreset({ silent: true });
@@ -885,11 +1098,21 @@ async function setSampleDetails() {
   }
 }
 
-function buildPayload() {
+function buildPayload(options = {}) {
   syncRichTextSources();
   const generator = currentGenerator();
+  const includeBoothDimensions = options.includeBoothDimensions !== false;
+  const project = {
+    title: elements.projectTitle.value.trim(),
+  };
+  if (includeBoothDimensions) {
+    project.booth_width = state.boothDimensions.booth_width;
+    project.booth_depth = state.boothDimensions.booth_depth;
+    project.booth_size = state.boothDimensions.booth_size;
+    project.dimension_source = state.boothDimensions.dimension_source;
+  }
   return {
-    profile_id: state.profileId || DEFAULT_PROFILE_ID,
+    profile_id: state.profileId || "",
     generator_label: generator.label,
     images: state.images,
     confirmed: true,
@@ -901,15 +1124,13 @@ function buildPayload() {
       title: elements.clientTitle.value.trim(),
       address: elements.clientAddress.value,
     },
-    project: {
-      title: elements.projectTitle.value.trim(),
-      booth_width: elements.boothWidth.value,
-      booth_depth: elements.boothDepth.value,
-    },
+    project,
     company: {
       name: elements.quoteCompanyName.value.trim(),
       header_details: elements.headerDetails.value,
       logo_data_url: state.headerLogo ? state.headerLogo.data_url : "",
+      logo_name: state.headerLogo ? state.headerLogo.name : "",
+      logo_type: state.headerLogo ? state.headerLogo.type : "",
     },
     user_feedback: state.pendingFeedback,
     quote_basis: { ...state.quoteBasis },
@@ -917,7 +1138,6 @@ function buildPayload() {
     quote_text: {
       terms_heading: elements.termsHeading.value.trim(),
       payment_terms: splitLines(elements.paymentTerms.value),
-      cheque_payee: elements.chequePayee.value.trim(),
       notes_heading: elements.notesHeading.value.trim(),
       standard_notes: splitLines(elements.standardNotes.value),
       acceptance_text: elements.acceptanceText.value.trim(),
@@ -928,6 +1148,7 @@ function buildPayload() {
     signature: {
       koncept_signatory: elements.konceptSignatory.value.trim(),
       koncept_title: elements.konceptTitle.value.trim(),
+      koncept_date_label: elements.konceptDateLabel.value.trim(),
     },
     rich_text: collectRichTextDetails(),
   };
@@ -965,6 +1186,34 @@ function updateDownloadButton() {
 function pricingMatchStatus(row = {}) {
   const status = typeof row === "string" ? row : row.status;
   return String(status || "").trim().toLowerCase();
+}
+
+function pricingRowNeedsReview(row = {}) {
+  const status = pricingMatchStatus(row);
+  const amount = String(row.amount || "").trim();
+  if (["unmatched", "ambiguous", "matched-from-ambiguous"].includes(status)) return true;
+  return status === "manual-display" && (!amount || amount.toLowerCase() === "manual display price");
+}
+
+function pricingIssueForRow(row = {}) {
+  if (!pricingRowNeedsReview(row)) return "";
+  const description = row.description || "Pricing row";
+  const status = pricingMatchStatus(row);
+  if (status === "manual-display") return `Manual display pricing required: ${description} / enter a display price, choose a catalog keyword, or remove this line.`;
+  if (status === "matched-from-ambiguous") return `Ambiguous pricing: ${description} / confirm selected catalog match.`;
+  if (status === "ambiguous") return `Ambiguous pricing: ${description} / choose a catalog match.`;
+  return `Unmatched pricing: ${description} / choose a catalog match or remove from quote.`;
+}
+
+function pricingReviewIssues(result = {}) {
+  const errorIssues = extractPricingIssues(result.errors || []);
+  const rowIssues = (result.pricing_matches || []).map(pricingIssueForRow).filter(Boolean);
+  return [...new Set([...errorIssues, ...rowIssues])];
+}
+
+function pricingReviewBlockReason() {
+  const count = state.pricingIssues.length || state.pricingMatches.filter(pricingRowNeedsReview).length;
+  return count ? `Resolve ${count} pricing item${count === 1 ? "" : "s"} before opening Output.` : "";
 }
 
 function pricingStatusLabel(status = "") {
@@ -1025,6 +1274,7 @@ function renderMatchSummary(result = {}) {
 }
 
 function renderPricingMatches(rows = []) {
+  state.pricingMatches = Array.isArray(rows) ? rows : [];
   elements.pricingTableWrap.hidden = !rows.length;
   elements.pricingEmptyState.hidden = Boolean(rows.length) || Boolean(elements.pricingReviewMessages.innerHTML.trim());
   if (!rows.length) {
@@ -1047,6 +1297,7 @@ function renderPricingMatches(rows = []) {
 }
 
 function clearPricingReviewMessages() {
+  state.pricingIssues = [];
   elements.pricingReviewMessages.innerHTML = "";
   const pricingText = (elements.pricingMatchesBody.textContent || "").trim();
   const hasRows = Boolean(pricingText) && !/No pricing matches yet/i.test(pricingText);
@@ -1088,16 +1339,9 @@ async function handlePricingChoice(action, issue) {
   }
 
   const item = state.lineItems[index];
-  if (action === "mark_included") {
-    item.display_price = "Included";
-    appendChatMessage("assistant", `Marked "${item.description}" as included and regenerated the quotation.`);
-    await handleGenerate();
-    return;
-  }
-
   if (action === "remove_line") {
     const [removed] = state.lineItems.splice(index, 1);
-    appendChatMessage("assistant", `Removed "${removed.description}" from the quotation and regenerated.`);
+    appendChatMessage("assistant", `Removed "${removed.description}" from the quotation. Checking pricing again.`);
     await handleGenerate();
     return;
   }
@@ -1106,7 +1350,7 @@ async function handlePricingChoice(action, issue) {
     const manualPrice = window.prompt("Manual display price", item.display_price || "");
     if (!manualPrice || !manualPrice.trim()) return;
     item.display_price = manualPrice.trim();
-    appendChatMessage("assistant", `Set a manual display price for "${item.description}" and regenerated.`);
+    appendChatMessage("assistant", `Set a manual display price for "${item.description}". Checking pricing again.`);
     await handleGenerate();
     return;
   }
@@ -1116,13 +1360,14 @@ async function handlePricingChoice(action, issue) {
     if (!keyword || !keyword.trim()) return;
     item.pricing_keyword = keyword.trim();
     item.display_price = "";
-    appendChatMessage("assistant", `Updated the pricing keyword for "${item.description}" and regenerated.`);
+    appendChatMessage("assistant", `Updated the pricing keyword for "${item.description}". Checking pricing again.`);
     await handleGenerate();
   }
 }
 
 function renderPricingReviewMessages(result = {}) {
-  const issues = extractPricingIssues(result.errors || []);
+  const issues = pricingReviewIssues(result);
+  state.pricingIssues = issues;
   if (!issues.length) {
     elements.pricingReviewMessages.innerHTML = (result.errors || ["Pricing needs review."])
       .map((message) => `<div class="message warn">${escapeHtml(message)}</div>`)
@@ -1142,7 +1387,6 @@ function renderPricingReviewMessages(result = {}) {
           <strong>${escapeHtml(issue)}</strong>
           <div class="pricing-review-actions">
             <button class="secondary-button" type="button" data-pricing-action="nearest_keyword" data-pricing-issue="${escapeHtml(issue)}">Use nearest match</button>
-            <button class="secondary-button" type="button" data-pricing-action="mark_included" data-pricing-issue="${escapeHtml(issue)}">Mark included</button>
             <button class="secondary-button" type="button" data-pricing-action="manual_price" data-pricing-issue="${escapeHtml(issue)}">Manual display price</button>
             <button class="secondary-button" type="button" data-pricing-action="remove_line" data-pricing-issue="${escapeHtml(issue)}">Remove from quote</button>
           </div>
@@ -1186,7 +1430,7 @@ function renderChat() {
   elements.chatTranscript.scrollTop = elements.chatTranscript.scrollHeight;
 }
 
-function renderBasisEmptyState(message = "Load images and complete Quote Details, then start analysis to review the draft here.") {
+function renderBasisEmptyState(message = "Load images, complete Customer and Quote Company, then start analysis to review the draft here.") {
   elements.basisReviewSurface.innerHTML = `
     <div class="basis-empty-state">
       <strong>Quotation basis draft</strong>
@@ -1254,23 +1498,24 @@ function basisLines(value) {
 }
 
 function basisLineMeta(line) {
-  const match = String(line || "").match(/^(Include|Confirm|Exclude|Note):\s*(.*)$/i);
+  const match = String(line || "").match(/^(Include|Confirm|Exclude|Assumption|Note):\s*(.*)$/i);
   if (!match) {
     return { tag: "Detail", text: String(line || "") };
   }
-  const tag = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  const rawTag = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  const tag = rawTag === "Note" ? "Assumption" : rawTag;
   return { tag, text: match[2] || "" };
 }
 
 function unresolvedConfirmLines(basis = state.quoteBasis) {
   return BASIS_FIELDS.flatMap(([key, label]) => basisLines(basis[key])
-    .filter((line) => basisLineMeta(line).tag === "Confirm")
+    .filter((line) => ["Confirm", "Assumption"].includes(basisLineMeta(line).tag))
     .map((line) => `${label}: ${basisLineMeta(line).text || line}`));
 }
 
 function basisConfirmBlockReason(basis = state.quoteBasis) {
   return unresolvedConfirmLines(basis).length
-    ? "Resolve all Confirm lines before confirming quotation basis."
+    ? "Resolve all Confirm or Assumption lines before confirming quotation basis."
     : "";
 }
 
@@ -1325,7 +1570,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and confirm, revise a line, or request changes."}</p>
         </div>
         <div class="quote-basis-source">
-          <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog (RAG)"}</span>
+          <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog"}</span>
           <strong>${escapeHtml(summaryText)}</strong>
         </div>
       </div>
@@ -1500,9 +1745,9 @@ function wantsBasisExplanation(normalizedText) {
 
 function basisExplanationText() {
   if (state.basisChat.scope === "line") {
-    return `This line sits under ${basisFieldLabel(state.basisChat.field)}. It is part of the quotation basis that must be confirmed before Excel generation. If the wording is wrong, describe the change and I will draft a replacement for you to apply.`;
+    return `AI was not used for this reply. This line sits under ${basisFieldLabel(state.basisChat.field)}. It is part of the quotation basis that must be confirmed before Excel generation. If the wording is wrong, describe the change and I will draft a replacement for you to apply.`;
   }
-  return "The quotation basis is the customer-facing checklist of what the draft quote includes, excludes, assumes, or still needs confirmed. Changes here should be reviewed before generating the Excel quotation.";
+  return "AI was not used for this reply. The quotation basis is the customer-facing checklist of what the draft quote includes, excludes, assumes, or still needs confirmed. Changes here should be reviewed before generating the Excel quotation.";
 }
 
 function extractLineReplacementText(text) {
@@ -1545,7 +1790,7 @@ function replaceMeasurementToken(currentLine, target) {
 }
 
 function lineReplacementText(target, field, tag, currentLine = "") {
-  if (/^(Include|Confirm|Exclude|Note):/i.test(target)) return target;
+  if (/^(Include|Confirm|Exclude|Assumption|Note):/i.test(target)) return target.replace(/^Note:/i, "Assumption:");
   const compact = target.trim();
   const measurementReplacement = replaceMeasurementToken(currentLine, compact);
   if (measurementReplacement) return measurementReplacement;
@@ -1627,6 +1872,48 @@ async function buildAiRevisionProposal(text) {
   }
 }
 
+function basisChatPayload(text) {
+  return {
+    ...buildPayload(),
+    basis_chat: {
+      question: text,
+      scope: state.basisChat.scope,
+      field: state.basisChat.field,
+      line: state.basisChat.line,
+    },
+  };
+}
+
+async function buildAiBasisChatAnswer(text) {
+  if (!canStartAnalysis()) return null;
+  const previousRunning = state.isAnalysisRunning;
+  state.isAnalysisRunning = true;
+  setBasisChatBusy(true);
+  syncControlStates();
+  appendBasisChatMessage("assistant", "Checking the selected basis.");
+  try {
+    const started = await startJob("basis_chat", basisChatPayload(text));
+    if (!started.ok) {
+      appendBasisChatMessage("assistant", (started.data.errors || ["I could not answer that yet."]).join("\n"));
+      return null;
+    }
+    const polled = await pollJob(started.data.job_id, (job) => {
+      setBusyText(job.status === "running" ? "Answering basis question..." : "Queued...");
+    });
+    const data = polled.data.result || {};
+    if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
+      appendBasisChatMessage("assistant", (data.errors || polled.data.errors || ["I could not answer that yet."]).join("\n"));
+      return null;
+    }
+    return data.answer || null;
+  } finally {
+    state.isAnalysisRunning = previousRunning;
+    setBusyText("");
+    setBasisChatBusy(false);
+    syncControlStates();
+  }
+}
+
 async function handleBasisChatSubmit(event) {
   event.preventDefault();
   const text = elements.basisChatPrompt.value.trim();
@@ -1643,7 +1930,7 @@ async function handleBasisChatSubmit(event) {
 
   const localProposal = buildRevisionProposal(text, normalized);
   if (localProposal) {
-    appendBasisChatMessage("assistant", "I drafted a proposed change. Review it first, then apply it if it looks right.");
+    appendBasisChatMessage("assistant", "AI was not used for this draft. I made a local proposed change from the selected line. Review it first, then apply it if it looks right.");
     setBasisChatProposal(localProposal);
     return;
   }
@@ -1657,8 +1944,9 @@ async function handleBasisChatSubmit(event) {
     }
   }
 
-  if (wantsBasisExplanation(normalized)) {
-    appendBasisChatMessage("assistant", basisExplanationText());
+  if (wantsBasisExplanation(normalized) || !wantsBasisRevision(normalized)) {
+    const aiAnswer = await buildAiBasisChatAnswer(text);
+    appendBasisChatMessage("assistant", aiAnswer || basisExplanationText());
     return;
   }
 
@@ -1674,43 +1962,76 @@ function applyBasisChatProposal() {
   updateQuoteBasisCard("edited");
   resetBasisChatProposal();
   appendBasisChatMessage("assistant", "Change applied to the quote basis. Review the updated basis before confirming the quotation basis.");
+  closeBasisChatOverlay();
   syncControlStates();
 }
 
 function keepCurrentBasis() {
   resetBasisChatProposal();
   appendBasisChatMessage("assistant", "Kept the current quote basis unchanged.");
+  closeBasisChatOverlay();
 }
 
-function missingDetailFields() {
+function missingCustomerFields() {
+  syncRichTextSources();
   const missing = [];
   const hasLines = (value) => splitLines(value).length > 0;
+  if (!String(state.profileId || "").trim()) missing.push("Quote Pricing Reference");
   if (!elements.clientName.value.trim()) missing.push("Client name");
   if (!elements.clientAttention.value.trim()) missing.push("Attention person");
   if (!elements.clientTitle.value.trim()) missing.push("Attention title");
   if (!hasLines(elements.clientAddress.value)) missing.push("Client address");
-  if (!elements.projectTitle.value.trim()) missing.push("Project / event");
-  if (!elements.boothWidth.value.trim()) missing.push(currentGenerator().widthLabel);
-  if (!elements.boothDepth.value.trim()) missing.push(currentGenerator().depthLabel);
+  if (!elements.projectTitle.value.trim()) missing.push("Quotation Title");
   if (!elements.quoteDate.value.trim()) missing.push("Quote date");
   if (!elements.projectNumber.value.trim()) missing.push("Project number");
-  if (!elements.quoteCompanyName.value.trim()) missing.push("Quotation company name");
+  return missing;
+}
+
+function missingQuoteCompanyFields() {
+  syncRichTextSources();
+  const missing = [];
+  const hasLines = (value) => splitLines(value).length > 0;
+  if (!state.headerLogo?.data_url) missing.push("Header logo");
   if (!hasLines(elements.headerDetails.value)) missing.push("Header details");
-  if (!elements.termsHeading.value.trim()) missing.push("Terms heading");
-  if (!elements.chequePayee.value.trim()) missing.push("Cheque payee");
-  if (!elements.notesHeading.value.trim()) missing.push("Notes heading");
-  if (!hasLines(elements.standardNotes.value)) missing.push("Standard notes");
+  if (!elements.quoteCompanyName.value.trim()) missing.push("Quotation Company");
   if (!elements.acceptanceText.value.trim()) missing.push("Acceptance text");
   if (!elements.konceptSignatory.value.trim()) missing.push("Company signatory");
   if (!elements.konceptTitle.value.trim()) missing.push("Signatory title");
+  if (!elements.konceptDateLabel.value.trim()) missing.push("Company date label");
   if (!elements.personLabel.value.trim()) missing.push("Person label");
   if (!elements.stampLabel.value.trim()) missing.push("Stamp label");
   if (!elements.dateLabel.value.trim()) missing.push("Date label");
   return missing;
 }
 
+function missingDetailFields() {
+  return [...missingCustomerFields(), ...missingQuoteCompanyFields()];
+}
+
+function customerDetailsBlockReason(prefix = "Complete Customer details") {
+  const missing = missingCustomerFields();
+  return missing.length ? `${prefix}: ${missing.join(", ")}.` : "";
+}
+
+function quoteCompanyDetailsBlockReason(prefix = "Complete Quote Company details") {
+  const missing = missingQuoteCompanyFields();
+  return missing.length ? `${prefix}: ${missing.join(", ")}.` : "";
+}
+
+function firstMissingDetailsPanel() {
+  return missingCustomerFields().length ? "customer" : "quote_company";
+}
+
+function startAnalysisBlockReason() {
+  if (state.isAnalysisRunning) return "Analysis is already running.";
+  if (state.isGenerating) return "Quotation generation is already running.";
+  if (!state.images.length) return "Add at least one reference image before starting analysis.";
+  return customerDetailsBlockReason("Complete Customer details before starting analysis")
+    || quoteCompanyDetailsBlockReason("Complete Quote Company details before starting analysis");
+}
+
 function canStartAnalysis() {
-  return Boolean(state.images.length) && missingDetailFields().length === 0;
+  return !startAnalysisBlockReason();
 }
 
 function hasSubmittedQuoteBasis() {
@@ -1846,7 +2167,8 @@ async function initializeSession() {
 }
 
 function setAnalysisButtons(disabled = false) {
-  const readyForAnalysis = canStartAnalysis();
+  const analysisBlockReason = startAnalysisBlockReason();
+  const readyForAnalysis = !analysisBlockReason;
   const busy = state.isAnalysisRunning || state.isGenerating || disabled;
   const inputDisabled = busy || !readyForAnalysis;
   if (!elements.chatPrompt || !elements.sendChatButton) return;
@@ -1854,8 +2176,8 @@ function setAnalysisButtons(disabled = false) {
   elements.sendChatButton.disabled = inputDisabled;
   if (!readyForAnalysis) {
     elements.chatPrompt.placeholder = state.images.length
-      ? "Fill all Quote Details to enable assistant replies."
-      : "Drop reference images and fill Quote Details to enable assistant replies.";
+      ? "Fill Customer and Quote Company details to enable assistant replies."
+      : "Drop reference images and fill Customer and Quote Company details to enable assistant replies.";
     return;
   }
   if (state.workflowStage === "completed" || state.workflowStage === "pricing_review") {
@@ -1871,9 +2193,14 @@ function setAnalysisButtons(disabled = false) {
 
 function syncControlStates() {
   const busy = state.isAnalysisRunning || state.isGenerating;
+  elements.newQuoteButton.disabled = busy;
+  elements.newQuoteButton.title = busy
+    ? (state.isAnalysisRunning ? "Analysis is running." : "Quotation generation is running.")
+    : "";
   setAnalysisButtons(busy);
   updateSidePanelNav();
   renderCurrentActions();
+  saveSessionState();
 }
 
 async function handleDraftBasis() {
@@ -1890,7 +2217,7 @@ async function handleDraftBasis() {
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
-    appendChatMessage("assistant", `Fill Quote Details before AI analysis: ${missing.join(", ")}.`, { tone: "warn" });
+    appendChatMessage("assistant", `Fill Customer and Quote Company before AI analysis: ${missing.join(", ")}.`, { tone: "warn" });
     setDetailsDrawer(true);
     syncControlStates();
     return;
@@ -1913,7 +2240,9 @@ async function handleDraftBasis() {
   setAnalysisButtons(true);
   renderChatActions([{ label: "Analyzing...", action: "noop", disabled: true }]);
 
-  const started = await startJob("draft", buildPayload());
+  const started = await startJob("draft", buildPayload({
+    includeBoothDimensions: state.boothDimensions.dimension_source !== "default",
+  }));
   if (!started.ok) {
     state.isAnalysisRunning = false;
     setBusyText("");
@@ -1925,11 +2254,14 @@ async function handleDraftBasis() {
     syncControlStates();
     return;
   }
+  state.activeJob = { id: started.data.job_id, type: "draft" };
+  saveSessionState();
 
   const polled = await pollJob(started.data.job_id, (job) => {
     setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
   });
   state.isAnalysisRunning = false;
+  state.activeJob = null;
   setBusyText("");
   setAnalysisButtons(false);
 
@@ -1945,6 +2277,7 @@ async function handleDraftBasis() {
   const data = polled.data.result || {};
   applyDraftBasis(data.quote_basis || {});
   applyDraftLineItems(data.line_items || []);
+  state.boothDimensions = normalizeBoothDimensions(data.project || state.boothDimensions);
   state.draftSource = data.source || "";
   state.aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
   setWorkflowStage("basis_review");
@@ -1996,7 +2329,7 @@ async function confirmBasis() {
     return;
   }
   state.basisConfirmed = true;
-  appendChatMessage("assistant", "Basis confirmed. Generating the Excel quotation now.");
+  appendChatMessage("assistant", "Basis confirmed. Checking pricing before creating the final output.");
   await handleGenerate();
 }
 
@@ -2035,8 +2368,8 @@ async function handleGenerate() {
 
   state.isGenerating = true;
   setWorkflowStage("generating");
-  setBusyText("Generating quotation...");
-  setResultStatus("Running", "is-warn");
+  setBusyText("Checking pricing...");
+  setResultStatus("Checking pricing", "is-warn");
   if (elements.chatPrompt) elements.chatPrompt.value = "";
   renderMessages([]);
   setDownloadFiles([]);
@@ -2055,11 +2388,14 @@ async function handleGenerate() {
     syncControlStates();
     return;
   }
+  state.activeJob = { id: started.data.job_id, type: "generate" };
+  saveSessionState();
 
   const polled = await pollJob(started.data.job_id, (job) => {
-    setBusyText(job.status === "running" ? "Generating quotation..." : "Queued...");
+    setBusyText(job.status === "running" ? "Checking pricing..." : "Queued...");
   });
   state.isGenerating = false;
+  state.activeJob = null;
   setBusyText("");
 
   const data = polled.data.result || polled.data || {};
@@ -2074,23 +2410,140 @@ async function handleGenerate() {
     return;
   }
 
-  if (polled.data.status === "needs_review" || data.status === "needs_confirmation") {
+  const needsPricingReview = polled.data.status === "needs_review"
+    || data.status === "needs_confirmation"
+    || pricingReviewIssues(data).length > 0;
+  if (needsPricingReview) {
     setWorkflowStage("pricing_review");
-    setResultStatus("Needs review", "is-warn");
+    setResultStatus("Needs pricing review", "is-warn");
     renderPricingReviewMessages(data);
     setSidePanel("pricing");
-    appendChatMessage("assistant", "I found pricing items that need review. I have shown the match review in Output & Pricing instead of dumping the raw generator log.", { tone: "warn" });
+    setDownloadFiles([]);
+    appendChatMessage("assistant", "I found pricing items that need review. I have shown them in Pricing instead of creating the final output.", { tone: "warn" });
   } else {
     setWorkflowStage("completed");
     setResultStatus("Completed", "is-ok");
     renderMessages([]);
     clearPricingReviewMessages();
-    setSidePanel("pricing");
-    appendChatMessage("assistant", "Quotation package generated. The Excel download is ready in the Output footer.", { tone: "instruction" });
+    setSidePanel("output");
+    appendChatMessage("assistant", "Pricing is clear. The Excel quotation is ready in Output.", { tone: "instruction" });
+    setDownloadFiles(data.files || []);
   }
-  setDownloadFiles(data.files || []);
   renderPricingMatches(data.pricing_matches || []);
   renderMatchSummary(data);
+  syncControlStates();
+}
+
+async function resumeSavedJob() {
+  const activeJob = state.activeJob;
+  if (!activeJob || !activeJob.id) return;
+
+  if (activeJob.type === "draft") {
+    state.isAnalysisRunning = true;
+    state.isGenerating = false;
+    setWorkflowStage("analyzing");
+    showAiRunningBanner("Resuming the analysis job after refresh.");
+    setBasisReviewStatus("Resuming the saved analysis job.", "warn");
+    setSidePanel("basis", { force: true });
+    setBusyText("Checking saved analysis job...");
+    syncControlStates();
+
+    const polled = await pollJob(activeJob.id, (job) => {
+      setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
+    });
+    state.isAnalysisRunning = false;
+    state.activeJob = null;
+    setBusyText("");
+    setAnalysisButtons(false);
+
+    if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
+      setWorkflowStage("ready_to_analyze");
+      showAiFailureBanner("Try again later.");
+      setBasisReviewStatus((polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), "error");
+      appendChatMessage("assistant", (polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), { tone: "error" });
+      syncControlStates();
+      return;
+    }
+
+    const data = polled.data.result || {};
+    applyDraftBasis(data.quote_basis || {});
+    applyDraftLineItems(data.line_items || []);
+    state.draftSource = data.source || "";
+    state.aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
+    setWorkflowStage("basis_review");
+    if (state.aiFailed) {
+      const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
+      showAiFailureBanner(warningText || "Try again later. A local fallback draft is shown for reference only.");
+      appendChatMessage("assistant", "AI analysis failed. Try again later. I showed a local fallback draft, but it is blocked from quotation generation until remote AI analysis succeeds.", { tone: "error" });
+    } else {
+      clearAiFailureBanner();
+    }
+    if (Array.isArray(data.warnings) && data.warnings.length) {
+      appendChatMessage("assistant", data.warnings.join("\n"), { tone: "warn" });
+    }
+    updateQuoteBasisCard(data.source);
+    setSidePanel("basis", { force: true });
+    if (!state.lineItems.length) {
+      appendChatMessage("assistant", EMPTY_LINE_ITEMS_MESSAGE, { tone: "warn" });
+    }
+    syncControlStates();
+    return;
+  }
+
+  if (activeJob.type === "generate") {
+    state.isGenerating = true;
+    state.isAnalysisRunning = false;
+    setWorkflowStage("generating");
+    setBusyText("Checking saved pricing job...");
+    setResultStatus("Checking pricing", "is-warn");
+    setSidePanel("pricing", { force: true });
+    syncControlStates();
+
+    const polled = await pollJob(activeJob.id, (job) => {
+      setBusyText(job.status === "running" ? "Checking pricing..." : "Queued...");
+    });
+    state.isGenerating = false;
+    state.activeJob = null;
+    setBusyText("");
+
+    const data = polled.data.result || polled.data || {};
+    if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
+      setWorkflowStage("details_review");
+      setResultStatus(data.status || "Failed", "is-bad");
+      renderMessages(data.errors || ["Generation failed."], "error");
+      renderPricingMatches(data.pricing_matches || []);
+      renderMatchSummary(data);
+      appendChatMessage("assistant", (data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
+      syncControlStates();
+      return;
+    }
+
+    const needsPricingReview = polled.data.status === "needs_review"
+      || data.status === "needs_confirmation"
+      || pricingReviewIssues(data).length > 0;
+    if (needsPricingReview) {
+      setWorkflowStage("pricing_review");
+      setResultStatus("Needs pricing review", "is-warn");
+      renderPricingReviewMessages(data);
+      setSidePanel("pricing");
+      setDownloadFiles([]);
+      appendChatMessage("assistant", "I found pricing items that need review. I have shown them in Pricing instead of creating the final output.", { tone: "warn" });
+    } else {
+      setWorkflowStage("completed");
+      setResultStatus("Completed", "is-ok");
+      renderMessages([]);
+      clearPricingReviewMessages();
+      setSidePanel("output");
+      appendChatMessage("assistant", "Pricing is clear. The Excel quotation is ready in Output.", { tone: "instruction" });
+      setDownloadFiles(data.files || []);
+    }
+    renderPricingMatches(data.pricing_matches || []);
+    renderMatchSummary(data);
+    syncControlStates();
+    return;
+  }
+
+  state.activeJob = null;
   syncControlStates();
 }
 
@@ -2145,8 +2598,9 @@ function isSensitiveChatRequest(normalizedText) {
 }
 
 function estimatedAreaQuantity() {
-  const width = Number(elements.boothWidth.value);
-  const depth = Number(elements.boothDepth.value);
+  const dimensions = normalizeBoothDimensions(state.boothDimensions);
+  const width = Number(dimensions.booth_width);
+  const depth = Number(dimensions.booth_depth);
   if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) return "";
   return Math.round(width * depth * 100) / 100;
 }
@@ -2375,18 +2829,28 @@ async function applyRevisionRequest(text, normalizedText) {
 function sidePanelBlockReason(panelName) {
   if (panelName === "images") return "";
   if (!state.images.length) return "Add reference images before opening this step.";
+  if (panelName === "quote_company") {
+    return customerDetailsBlockReason("Complete Customer details before opening Quote Company");
+  }
   if (panelName === "basis") {
     const missing = missingDetailFields();
-    if (missing.length) return `Complete Quote Details before opening Quote Basis: ${missing.join(", ")}.`;
-    if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Details before opening Quote Basis.";
+    if (missing.length) return `Complete Customer and Quote Company details before opening Quote Basis: ${missing.join(", ")}.`;
+    if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Company before opening Quote Basis.";
   }
   if (panelName === "pricing") {
     const missing = missingDetailFields();
-    if (missing.length) return `Complete Quote Details before opening Output & Pricing: ${missing.join(", ")}.`;
-    if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Details before opening Output.";
+    if (missing.length) return `Complete Customer and Quote Company details before opening Pricing: ${missing.join(", ")}.`;
+    if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Company before opening Pricing.";
     const confirmBlockReason = basisConfirmBlockReason();
     if (confirmBlockReason) return confirmBlockReason;
-    if (!hasCompletedQuoteBasis()) return "Confirm Quotation Basis before opening Output.";
+    if (!hasCompletedQuoteBasis()) return "Confirm Quotation Basis before opening Pricing.";
+  }
+  if (panelName === "output") {
+    const pricingBlockReason = sidePanelBlockReason("pricing");
+    if (pricingBlockReason) return pricingBlockReason.replace("opening Pricing", "opening Output");
+    const reviewBlockReason = pricingReviewBlockReason();
+    if (reviewBlockReason) return reviewBlockReason;
+    if (!state.downloadFile) return "Generate a priced quotation before opening Output.";
   }
   return "";
 }
@@ -2397,10 +2861,12 @@ function canOpenSidePanel(panelName) {
 
 function setSidePanel(panelName, options = {}) {
   const panelTitles = {
-    images: ["Images", "Reference Inputs"],
-    details: ["Quote Details", "Editable Quote Configuration"],
-    basis: ["Quote Basis", "Confirm Draft"],
-    pricing: ["Output & Pricing", "Generated Quotation"],
+    images: ["Images", "Reference Inputs", currentGenerator().intakeSubtitle],
+    customer: ["Customer", "Customer Details", "Customer, project, booth size, and customer address for this quotation."],
+    quote_company: ["Quote Company", "Quotation Defaults", "Reusable quotation-company header, payment terms, notes, and signature defaults."],
+    basis: ["Quote Basis", "Confirm Draft", "Review the drafted basis, revise individual lines, or request a full-basis change."],
+    pricing: ["Pricing", "Price Review", "Catalog matches, manual display prices, and unresolved pricing must be cleared before output."],
+    output: ["Output", "Generated Quotation", "Final quotation status and Excel download appear here after pricing review clears."],
   };
   const nextPanel = panelTitles[panelName] ? panelName : "images";
   const blockReason = sidePanelBlockReason(nextPanel);
@@ -2409,11 +2875,12 @@ function setSidePanel(panelName, options = {}) {
     updateSidePanelNav();
     return false;
   }
-  const [title, eyebrow] = panelTitles[nextPanel] || panelTitles.images;
+  const [title, eyebrow, subtitle] = panelTitles[nextPanel] || panelTitles.images;
   state.activeSidePanel = nextPanel;
   document.body.dataset.sidePanel = state.activeSidePanel;
   elements.sideDrawerTitle.textContent = title;
   elements.sideDrawerEyebrow.textContent = eyebrow;
+  elements.sideDrawerSubtitle.textContent = subtitle || "";
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.sidePanel === state.activeSidePanel);
   });
@@ -2433,10 +2900,17 @@ function updateSidePanelNav() {
   if (!elements.sideBackButton || !elements.sideNextButton) return;
   const index = activeSidePanelIndex();
   const lastIndex = SIDE_PANEL_SEQUENCE.length - 1;
-  const isAnalysisStep = state.activeSidePanel === "details";
+  const isQuoteCompanyStep = state.activeSidePanel === "quote_company";
   const isBasisStep = state.activeSidePanel === "basis";
-  const isOutputStep = state.activeSidePanel === "pricing";
+  const isPricingStep = state.activeSidePanel === "pricing";
+  const isOutputStep = state.activeSidePanel === "output";
   const busy = state.isAnalysisRunning || state.isGenerating;
+  elements.sampleDetailsButton.hidden = state.activeSidePanel !== "images";
+  elements.sampleDetailsButton.disabled = state.isBooting || busy;
+  elements.clearCustomerButton.hidden = state.activeSidePanel !== "customer";
+  elements.clearQuoteCompanyButton.hidden = state.activeSidePanel !== "quote_company";
+  elements.clearCustomerButton.disabled = busy;
+  elements.clearQuoteCompanyButton.disabled = busy;
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
     const panelName = button.dataset.sidePanel || "images";
     const blockReason = sidePanelBlockReason(panelName);
@@ -2450,21 +2924,33 @@ function updateSidePanelNav() {
   elements.sideNextButton.hidden = isOutputStep;
   elements.sideDownloadButton.hidden = !isOutputStep;
   const nextLabels = {
-    images: "Next: Quote Details",
-    details: currentGenerator().analyzeLabel,
+    images: "Next: Customer",
+    customer: "Next: Quote Company",
+    quote_company: currentGenerator().analyzeLabel,
     basis: "Confirm Quotation Basis",
+    pricing: "Next: Output",
   };
   elements.sideNextButton.textContent = nextLabels[state.activeSidePanel] || "Next";
-  elements.sideNextButton.classList.toggle("primary-button", isAnalysisStep || isBasisStep);
-  elements.sideNextButton.classList.toggle("secondary-button", !(isAnalysisStep || isBasisStep));
+  elements.sideNextButton.classList.add("primary-button");
+  elements.sideNextButton.classList.remove("secondary-button");
   const nextPanel = SIDE_PANEL_SEQUENCE[Math.min(index + 1, lastIndex)];
   const basisBlockReason = isBasisStep ? basisConfirmBlockReason() : "";
-  elements.sideNextButton.disabled = busy
-    || (isAnalysisStep ? !canStartAnalysis() : false)
-    || (isBasisStep ? Boolean(basisBlockReason) : !canOpenSidePanel(nextPanel));
-  elements.sideNextButton.title = isAnalysisStep
-    ? (canStartAnalysis() ? "" : "Add images and complete Quote Details before starting analysis.")
-    : basisBlockReason || sidePanelBlockReason(nextPanel) || "";
+  let nextBlockReason = "";
+  if (busy) {
+    nextBlockReason = state.isAnalysisRunning ? "Analysis is already running." : "Quotation generation is already running.";
+  } else if (isQuoteCompanyStep) {
+    nextBlockReason = startAnalysisBlockReason();
+  } else if (isBasisStep) {
+    nextBlockReason = basisBlockReason;
+  } else if (isPricingStep) {
+    nextBlockReason = pricingReviewBlockReason() || sidePanelBlockReason(nextPanel);
+  } else {
+    nextBlockReason = sidePanelBlockReason(nextPanel);
+  }
+  elements.sideNextButton.disabled = false;
+  elements.sideNextButton.setAttribute("aria-disabled", String(Boolean(nextBlockReason)));
+  elements.sideNextButton.classList.toggle("is-disabled", Boolean(nextBlockReason));
+  elements.sideNextButton.title = nextBlockReason || "";
   updateDownloadButton();
 }
 
@@ -2476,7 +2962,14 @@ function goToPreviousSidePanel() {
 
 function goToNextSidePanel() {
   const index = activeSidePanelIndex();
-  if (state.activeSidePanel === "details") {
+  if (elements.sideNextButton?.getAttribute("aria-disabled") === "true") {
+    const reason = elements.sideNextButton.title || "This step is not ready yet.";
+    elements.sideNextButton.title = "";
+    elements.sideNextButton.blur();
+    appendChatMessage("assistant", reason, { tone: "warn" });
+    return;
+  }
+  if (state.activeSidePanel === "quote_company") {
     handleDraftBasis();
     return;
   }
@@ -2484,7 +2977,11 @@ function goToNextSidePanel() {
     confirmBasis();
     return;
   }
-  if (state.activeSidePanel === "pricing") return;
+  if (state.activeSidePanel === "pricing") {
+    setSidePanel("output", { notify: true });
+    return;
+  }
+  if (state.activeSidePanel === "output") return;
   setSidePanel(SIDE_PANEL_SEQUENCE[index + 1], { notify: true });
 }
 
@@ -2544,7 +3041,7 @@ async function handleChatSubmit(event) {
 
   appendChatMessage(
     "assistant",
-    `I could not apply that safely as a direct edit yet. Try a specific revision like "change floor finish to laminate", or regenerate analysis for a fresh AI takeoff. Quote Details still controls customer, company, header, and terms text.`
+    `I could not apply that safely as a direct edit yet. Try a specific revision like "change floor finish to laminate", or regenerate analysis for a fresh AI takeoff. Customer and Quote Company still control customer, terms, notes, and signature text.`
   );
   renderCurrentActions();
 }
@@ -2589,8 +3086,17 @@ function wireEvents() {
           data_url: await fileToDataUrl(file),
         }
       : null;
-    renderHeaderLogoStatus();
+    renderHeaderLogoPreview();
     renderPresetStatus();
+    syncControlStates();
+  });
+  elements.headerLogoPreview.addEventListener("click", () => {
+    elements.headerLogoInput.click();
+  });
+  elements.headerLogoPreview.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    elements.headerLogoInput.click();
   });
 
   elements.dropzone.addEventListener("dragenter", (event) => {
@@ -2634,9 +3140,6 @@ function wireEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (isProfilePresetMenuOpen()) {
-        setProfilePresetMenuOpen(false);
-      }
       if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
       }
@@ -2645,18 +3148,6 @@ function wireEvents() {
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
-  elements.profilePresetMenuButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleProfilePresetMenu();
-  });
-  elements.profilePresetMenuPanel.addEventListener("click", (event) => {
-    event.stopPropagation();
-  });
-  document.addEventListener("click", (event) => {
-    if (!isProfilePresetMenuOpen()) return;
-    if (elements.profilePresetMenu && elements.profilePresetMenu.contains(event.target)) return;
-    setProfilePresetMenuOpen(false);
-  });
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.presetSelect.addEventListener("change", () => {
     updatePresetButtons();
@@ -2665,27 +3156,26 @@ function wireEvents() {
   elements.savePresetButton.addEventListener("click", saveCurrentPreset);
   elements.loadPresetButton.addEventListener("click", loadSelectedPreset);
   elements.deletePresetButton.addEventListener("click", deleteSelectedPreset);
-  elements.resetPresetButton.addEventListener("click", clearQuoteDetails);
+  elements.clearCustomerButton.addEventListener("click", clearCustomerDetails);
+  elements.clearQuoteCompanyButton.addEventListener("click", clearQuoteCompanyDetails);
   [
-    elements.quoteCompanyName,
-    elements.headerDetails,
     elements.clientName,
     elements.clientAttention,
     elements.clientTitle,
     elements.clientAddress,
     elements.projectTitle,
-    elements.boothWidth,
-    elements.boothDepth,
     elements.quoteDate,
     elements.projectNumber,
+    elements.headerDetails,
     elements.termsHeading,
     elements.paymentTerms,
-    elements.chequePayee,
     elements.notesHeading,
     elements.standardNotes,
+    elements.quoteCompanyName,
     elements.acceptanceText,
     elements.konceptSignatory,
     elements.konceptTitle,
+    elements.konceptDateLabel,
     elements.personLabel,
     elements.stampLabel,
     elements.dateLabel,
@@ -2712,6 +3202,13 @@ function wireEvents() {
       }
     });
   }
+  elements.basisChatPrompt.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    if (!elements.basisChatSendButton.disabled) {
+      elements.basisChatForm.requestSubmit();
+    }
+  });
   if (elements.chatActions) {
     elements.chatActions.addEventListener("click", (event) => {
       const button = event.target.closest("[data-chat-action]");
@@ -2732,8 +3229,15 @@ function setInitialValues() {
   updateGeneratorCopy();
   renderProfileOptions();
   renderPresetOptions();
-  renderHeaderLogoStatus();
+  renderHeaderLogoPreview();
   renderPresetStatus();
+  if (restoreSessionState()) {
+    renderCurrentActions();
+    syncControlStates();
+    return;
+  }
+  applyDefaultQuoteDate();
+  applyDefaultQuoteCompanyFields();
   renderFiles();
   renderPricingMatches([]);
   renderMatchSummary({});
@@ -2746,10 +3250,16 @@ function setInitialValues() {
 
 async function boot() {
   wireEvents();
-  await initializeSession();
-  await loadProfiles();
-  setInitialValues();
-  checkHealth();
+  try {
+    await initializeSession();
+    await loadProfiles();
+    setInitialValues();
+    checkHealth();
+  } finally {
+    state.isBooting = false;
+    syncControlStates();
+  }
+  await resumeSavedJob();
 }
 
 boot();
