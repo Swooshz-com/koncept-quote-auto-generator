@@ -71,13 +71,40 @@ def cell_inline_runs(root, ref):
     runs = inline.findall(f"{NS_MAIN}r")
     if not runs:
         text = inline.find(f"{NS_MAIN}t")
-        return [((text.text if text is not None else ""), False)]
+        return [((text.text if text is not None else ""), False, False, False)]
     result = []
     for run in runs:
         text = "".join(text_node.text or "" for text_node in run.findall(f"{NS_MAIN}t"))
         run_props = run.find(f"{NS_MAIN}rPr")
-        result.append((text, run_props is not None and run_props.find(f"{NS_MAIN}b") is not None))
+        result.append(
+            (
+                text,
+                run_props is not None and run_props.find(f"{NS_MAIN}b") is not None,
+                run_props is not None and run_props.find(f"{NS_MAIN}i") is not None,
+                run_props is not None and run_props.find(f"{NS_MAIN}u") is not None,
+            )
+        )
     return result
+
+
+def drawing_paragraph_runs(root):
+    paragraphs = []
+    for paragraph in root.findall(f".//{NS_A}p"):
+        runs = []
+        for run in paragraph.findall(f"{NS_A}r"):
+            text = "".join(text_node.text or "" for text_node in run.findall(f"{NS_A}t"))
+            run_props = run.find(f"{NS_A}rPr")
+            runs.append(
+                (
+                    text,
+                    run_props is not None and run_props.attrib.get("b") == "1",
+                    run_props is not None and run_props.attrib.get("i") == "1",
+                    run_props is not None and run_props.attrib.get("u") == "sng",
+                )
+            )
+        if runs:
+            paragraphs.append(runs)
+    return paragraphs
 
 
 def cell_style(root, ref):
@@ -711,8 +738,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(
             cell_inline_runs(sheet, "B33"),
             [
-                ("All cheques should be crossed and made payable to ", False),
-                ("Koncept Image Pte Ltd", True),
+                ("All cheques should be crossed and made payable to ", False, False, False),
+                ("Koncept Image Pte Ltd", True, False, False),
             ],
         )
 
@@ -962,6 +989,76 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIn("Dynamic bank line", paragraphs)
         self.assertIn("Target=\"../media/header_logo.png\"", drawing_rels)
         self.assertIn("xl/media/header_logo.png", media_names)
+
+    def test_quote_detail_rich_text_runs_are_written_to_layout_output(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "quotation.xlsx"
+        brief = {
+            "company_identity": "Other Company",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+                "address": ["10 Sample Street", "Singapore 000010"],
+            },
+            "project": {"title": "Sample Project"},
+            "line_items": [],
+            "payment_terms": ["50% deposit"],
+            "terms_heading": "Commercial Terms",
+            "cheque_payee": "Other Company Pte Ltd",
+            "notes_heading": "Editable Notes",
+            "standard_notes": ["First editable note"],
+            "company": {
+                "name": "Other Company Pte Ltd",
+                "header_lines": ["Other Company Pte Ltd", "Dynamic address line"],
+            },
+            "rich_text": {
+                "clientAddress": "<div><strong>10 Sample</strong> <em>Street</em></div><div><u>Singapore 000010</u></div>",
+                "headerDetails": "<div><strong>Other Company Pte Ltd</strong></div><div><em><u>Dynamic address line</u></em></div>",
+                "paymentTerms": "<div><strong>50%</strong> <em>deposit</em></div>",
+                "standardNotes": "<div>First <u>editable</u> note</div>",
+            },
+        }
+        price = quote.PriceRow(1, "Floor", "m2 needle punch carpet in colour", "sqm", 7, 1.09, 1.5, "")
+        line = quote.QuoteLine("Floor", 1, "sqm", "Needle punch carpet", "needle punch carpet in colour", "", price, 10.5, "matched", [])
+
+        quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            drawing = ET.fromstring(zf.read("xl/drawings/drawing1.xml"))
+
+        self.assertEqual(
+            cell_inline_runs(sheet, "A7"),
+            [
+                ("10 Sample", True, False, False),
+                (" ", False, False, False),
+                ("Street", False, True, False),
+            ],
+        )
+        self.assertEqual(cell_inline_runs(sheet, "A8"), [("Singapore 000010", False, False, True)])
+        self.assertEqual(
+            cell_inline_runs(sheet, "B33"),
+            [
+                ("50%", True, False, False),
+                (" ", False, False, False),
+                ("deposit", False, True, False),
+            ],
+        )
+        note_ref = find_cell_ref(sheet, "First editable note")
+        self.assertTrue(note_ref.startswith("B"))
+        self.assertEqual(
+            cell_inline_runs(sheet, note_ref),
+            [
+                ("First ", False, False, False),
+                ("editable", False, False, True),
+                (" note", False, False, False),
+            ],
+        )
+        header_runs = drawing_paragraph_runs(drawing)
+        self.assertIn([("Other Company Pte Ltd", True, False, False)], header_runs)
+        self.assertIn([("Dynamic address line", False, True, True)], header_runs)
 
     def test_missing_logo_removes_template_logo_from_output(self):
         tmp = tempfile.TemporaryDirectory()

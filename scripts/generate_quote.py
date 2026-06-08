@@ -26,6 +26,7 @@ import subprocess
 import textwrap
 import zipfile
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable
 from xml.etree import ElementTree as ET
@@ -149,6 +150,14 @@ class QuoteLine:
     amount: float | None
     match_status: str
     match_candidates: list[PriceRow]
+
+
+@dataclass
+class RichTextRun:
+    text: str
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
 
 
 def col_to_index(cell_ref: str) -> int:
@@ -588,6 +597,117 @@ def spreadsheet_safe_text(value: Any) -> Any:
     return value
 
 
+class QuoteRichTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.lines: list[list[RichTextRun]] = [[]]
+        self.bold_depth = 0
+        self.italic_depth = 0
+        self.underline_depth = 0
+        self.skip_depth = 0
+
+    def _append_line(self) -> None:
+        self.lines.append([])
+
+    def _append_text(self, text: str) -> None:
+        if not text:
+            return
+        run = RichTextRun(
+            text,
+            bold=self.bold_depth > 0,
+            italic=self.italic_depth > 0,
+            underline=self.underline_depth > 0,
+        )
+        current = self.lines[-1]
+        if current and (
+            current[-1].bold,
+            current[-1].italic,
+            current[-1].underline,
+        ) == (run.bold, run.italic, run.underline):
+            current[-1].text += run.text
+        else:
+            current.append(run)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style"}:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
+        if tag in {"div", "p"}:
+            if self.lines[-1]:
+                self._append_line()
+            return
+        if tag == "br":
+            self._append_line()
+            return
+        if tag in {"b", "strong"}:
+            self.bold_depth += 1
+        elif tag in {"i", "em"}:
+            self.italic_depth += 1
+        elif tag == "u":
+            self.underline_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style"}:
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+        if self.skip_depth:
+            return
+        if tag in {"div", "p"}:
+            if self.lines[-1]:
+                self._append_line()
+            return
+        if tag in {"b", "strong"}:
+            self.bold_depth = max(0, self.bold_depth - 1)
+        elif tag in {"i", "em"}:
+            self.italic_depth = max(0, self.italic_depth - 1)
+        elif tag == "u":
+            self.underline_depth = max(0, self.underline_depth - 1)
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
+        parts = data.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        for index, part in enumerate(parts):
+            if index:
+                self._append_line()
+            self._append_text(part)
+
+    def parsed_lines(self) -> list[list[RichTextRun]]:
+        while len(self.lines) > 1 and not self.lines[-1]:
+            self.lines.pop()
+        return self.lines
+
+
+def parse_rich_text_html(value: Any) -> list[list[RichTextRun]]:
+    raw = str(value or "")
+    if not raw:
+        return []
+    parser = QuoteRichTextParser()
+    parser.feed(raw)
+    parser.close()
+    return parser.parsed_lines()
+
+
+def plain_rich_text_lines(lines: list[Any], *, bold: bool = False) -> list[list[RichTextRun]]:
+    return [[RichTextRun(str(line), bold=bold)] for line in lines]
+
+
+def brief_rich_text_lines(
+    brief: dict[str, Any],
+    key: str,
+    fallback_lines: list[Any],
+    *,
+    fallback_bold: bool = False,
+) -> list[list[RichTextRun]]:
+    rich_text = brief.get("rich_text") if isinstance(brief.get("rich_text"), dict) else {}
+    parsed = parse_rich_text_html(rich_text.get(key)) if isinstance(rich_text, dict) else []
+    return parsed if parsed else plain_rich_text_lines(fallback_lines, bold=fallback_bold)
+
+
 def is_draft_or_placeholder_note(note: str) -> bool:
     lowered = clean_text(note).lower()
     return any(word in lowered for word in ("draft", "placeholder"))
@@ -794,22 +914,55 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
 
 
-def append_ooxml_text_run(inline: ET.Element, text_value: str, *, bold: bool = False) -> None:
+def append_ooxml_text_run(
+    inline: ET.Element,
+    text_value: str,
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+) -> None:
     run = ET.SubElement(inline, f"{NS_MAIN}r")
-    if bold:
+    if bold or italic or underline:
         run_props = ET.SubElement(run, f"{NS_MAIN}rPr")
-        ET.SubElement(run_props, f"{NS_MAIN}b")
+        if bold:
+            ET.SubElement(run_props, f"{NS_MAIN}b")
+        if italic:
+            ET.SubElement(run_props, f"{NS_MAIN}i")
+        if underline:
+            ET.SubElement(run_props, f"{NS_MAIN}u")
     text = ET.SubElement(run, f"{NS_MAIN}t")
     text.text = text_value
     if text_value != text_value.strip():
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
 
 
+def normalize_ooxml_text_run(value: Any) -> RichTextRun:
+    if isinstance(value, RichTextRun):
+        return value
+    if isinstance(value, dict):
+        return RichTextRun(
+            str(value.get("text") or ""),
+            bold=bool(value.get("bold")),
+            italic=bool(value.get("italic")),
+            underline=bool(value.get("underline")),
+        )
+    if isinstance(value, tuple):
+        text = str(value[0]) if value else ""
+        return RichTextRun(
+            text,
+            bold=bool(value[1]) if len(value) > 1 else False,
+            italic=bool(value[2]) if len(value) > 2 else False,
+            underline=bool(value[3]) if len(value) > 3 else False,
+        )
+    return RichTextRun(str(value or ""))
+
+
 def set_ooxml_rich_text_cell(
     root: ET.Element,
     row_number: int,
     col_number: int,
-    runs: list[tuple[Any, bool]],
+    runs: list[Any],
     style: str | None = None,
 ) -> None:
     sheet_data = root.find(f"{NS_MAIN}sheetData")
@@ -818,13 +971,20 @@ def set_ooxml_rich_text_cell(
     row = get_or_create_row(sheet_data, row_number)
     cell = get_or_create_cell(row, row_number, col_number, style)
     clear_cell(cell)
-    cleaned_runs = [(str(text), bold) for text, bold in runs if str(text)]
+    cleaned_runs = [normalize_ooxml_text_run(run) for run in runs]
+    cleaned_runs = [run for run in cleaned_runs if run.text]
     if not cleaned_runs:
         return
     cell.attrib["t"] = "inlineStr"
     inline = ET.SubElement(cell, f"{NS_MAIN}is")
-    for text, bold in cleaned_runs:
-        append_ooxml_text_run(inline, text, bold=bold)
+    for run in cleaned_runs:
+        append_ooxml_text_run(
+            inline,
+            run.text,
+            bold=run.bold,
+            italic=run.italic,
+            underline=run.underline,
+        )
 
 
 def cached_number_text(value: float | int) -> str:
@@ -1090,7 +1250,33 @@ def update_drawing_project_number(xml: bytes, project_number: str) -> bytes:
     return updated.encode("utf-8") if count else xml
 
 
-def update_repeating_header_drawing(xml: bytes, project_number: str, header_lines: list[str] | None = None) -> bytes:
+def append_drawing_text_run(paragraph: ET.Element, run: RichTextRun) -> None:
+    drawing_run = ET.SubElement(paragraph, f"{NS_A}r")
+    run_props = ET.SubElement(drawing_run, f"{NS_A}rPr")
+    run_props.attrib.update(
+        {
+            "lang": "en-US",
+            "sz": "900",
+            "b": "1" if run.bold else "0",
+            "i": "1" if run.italic else "0",
+            "baseline": "0",
+        }
+    )
+    if run.underline:
+        run_props.attrib["u"] = "sng"
+    ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
+    ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
+    ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
+    text = ET.SubElement(drawing_run, f"{NS_A}t")
+    text.text = run.text
+
+
+def update_repeating_header_drawing(
+    xml: bytes,
+    project_number: str,
+    header_lines: list[str] | None = None,
+    header_runs: list[list[RichTextRun]] | None = None,
+) -> bytes:
     root = ET.fromstring(xml)
     anchors = root.findall(f"{NS_DRAWING}twoCellAnchor")
     text_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None), None)
@@ -1153,22 +1339,20 @@ def update_repeating_header_drawing(xml: bytes, project_number: str, header_line
         if child.tag == f"{NS_A}p":
             tx_body.remove(child)
 
-    lines = [clean_text(line) if line is not None else "" for line in (header_lines or DEFAULT_HEADER_LINES)]
+    source_runs = header_runs or plain_rich_text_lines([clean_text(line) if line is not None else "" for line in (header_lines or DEFAULT_HEADER_LINES)])
+    line_runs = [list(runs) for runs in source_runs]
     if project_number:
-        lines.extend(["", f"Project No: {project_number}"])
+        line_runs.extend([[], [RichTextRun(f"Project No: {project_number}")]])
 
-    for line in lines:
+    for runs in line_runs:
         paragraph = ET.SubElement(tx_body, f"{NS_A}p")
         paragraph_props = ET.SubElement(paragraph, f"{NS_A}pPr")
         paragraph_props.attrib["algn"] = "l"
-        run = ET.SubElement(paragraph, f"{NS_A}r")
-        run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "900", "b": "0", "i": "0", "baseline": "0"})
-        ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
-        ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
-        ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
-        text = ET.SubElement(run, f"{NS_A}t")
-        text.text = line
+        if not runs:
+            append_drawing_text_run(paragraph, RichTextRun(""))
+            continue
+        for run in runs:
+            append_drawing_text_run(paragraph, run)
 
     sp_pr = sp.find(f"{NS_DRAWING}spPr") if sp is not None else None
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
@@ -1667,10 +1851,12 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     currency = brief.get("currency", "SGD")
     company = brief.get("company") if isinstance(brief.get("company"), dict) else {}
     company_name = clean_text(company.get("name")) or f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd"
+    client_address_runs = brief_rich_text_lines(brief, "clientAddress", client.get("address") or [])
+    header_line_runs = brief_rich_text_lines(brief, "headerDetails", company.get("header_lines") or DEFAULT_HEADER_LINES)
 
     set_ooxml_cell(root, 6, 1, client.get("name", ""), "12")
-    for offset, line in enumerate((client.get("address") or [])[:4], start=7):
-        set_ooxml_cell(root, offset, 1, line, layout_styles["client_address"])
+    for offset, runs in enumerate(client_address_runs[:4], start=7):
+        set_ooxml_rich_text_cell(root, offset, 1, runs, layout_styles["client_address"])
     set_ooxml_cell(root, 12, 1, f"Attention: {client.get('attention', '')}".strip(), "26")
     set_ooxml_cell(root, 13, 2, client.get("title", ""), "24")
     set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), "101")
@@ -1760,11 +1946,13 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_cell(root, grand_row, 6, currency, layout_styles["grand_currency"])
 
     payment_terms = brief.get("payment_terms") or []
+    payment_term_runs = brief_rich_text_lines(brief, "paymentTerms", payment_terms)
     terms_row = grand_row + 3
     set_ooxml_cell(root, terms_row, 1, clean_text(brief.get("terms_heading")) or "Terms & Conditions :", "37")
     for index, term in enumerate(payment_terms, start=1):
         set_ooxml_cell(root, terms_row + index, 1, f"{index:.2f}", "40")
-        set_ooxml_rich_text_cell(root, terms_row + index, 2, [(term, True)], "41")
+        runs = payment_term_runs[index - 1] if index - 1 < len(payment_term_runs) else [RichTextRun(term)]
+        set_ooxml_rich_text_cell(root, terms_row + index, 2, runs, "41")
     cheque_row = terms_row + len(payment_terms) + 1
     set_ooxml_rich_text_cell(
         root,
@@ -1778,12 +1966,14 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     )
 
     standard_notes = brief.get("standard_notes") or DEFAULT_STANDARD_NOTES
+    standard_note_runs = brief_rich_text_lines(brief, "standardNotes", standard_notes)
     notes_row = cheque_row + 2
     set_ooxml_cell(root, notes_row, 1, clean_text(brief.get("notes_heading")) or "Note : ", "37")
     for index, note in enumerate(standard_notes, start=1):
         target_row = notes_row + index
         set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
-        set_ooxml_cell(root, target_row, 2, note, "41")
+        runs = standard_note_runs[index - 1] if index - 1 < len(standard_note_runs) else [RichTextRun(note)]
+        set_ooxml_rich_text_cell(root, target_row, 2, runs, "41")
 
     acceptance = brief.get("acceptance") if isinstance(brief.get("acceptance"), dict) else {}
     signature = brief.get("signature") if isinstance(brief.get("signature"), dict) else {}
@@ -1806,7 +1996,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         project_number = clean_text(brief.get("project_number") or project.get("number") or "")
         drawing_xml = update_drawing_project_number(parts["xl/drawings/drawing1.xml"], project_number)
         header_lines = company.get("header_lines") if isinstance(company.get("header_lines"), list) else None
-        parts["xl/drawings/drawing1.xml"] = update_repeating_header_drawing(drawing_xml, project_number, header_lines)
+        parts["xl/drawings/drawing1.xml"] = update_repeating_header_drawing(drawing_xml, project_number, header_lines, header_line_runs)
     replace_header_logo(parts, clean_text(company.get("logo_data_url")))
     if "xl/workbook.xml" in parts:
         workbook_xml = update_print_titles(parts["xl/workbook.xml"])

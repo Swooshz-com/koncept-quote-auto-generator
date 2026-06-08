@@ -58,6 +58,45 @@ POST_RATE_LIMITS = {
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
+ALLOWED_LOG_EVENTS = {
+    "abuse_signal",
+    "ai_draft_fallback_used",
+    "ai_draft_remote_unconfigured",
+    "client_error",
+    "draft_blocked",
+    "draft_failed",
+    "draft_worker_failed",
+    "generate_failed",
+    "generate_needs_review",
+    "gemini_draft_failed",
+    "openai_draft_failed",
+    "security_event",
+    "server_error",
+}
+LOG_OMIT_KEYS = {
+    "address",
+    "brief",
+    "client",
+    "company",
+    "content",
+    "customer",
+    "data_url",
+    "details_text",
+    "header_details",
+    "image_base64",
+    "image_data",
+    "line_items",
+    "notes",
+    "payment_terms",
+    "payload",
+    "prompt",
+    "quote_basis",
+    "rich_text",
+    "standard_notes",
+    "text",
+    "user_input",
+}
+RICH_TEXT_DETAIL_KEYS = {"clientAddress", "headerDetails", "paymentTerms", "standardNotes"}
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_DRAFT_MODEL = "gpt-5-mini"
 OPENAI_API_KEY_ENV_NAME = "OPENAI_API_KEY"
@@ -146,12 +185,21 @@ def safe_error_messages(messages: list[Any], limit: int = 500) -> list[str]:
     return safe_messages or ["Unexpected local runner error."]
 
 
+def log_event_name(event_type: str) -> str:
+    return re.sub(r"[^a-z0-9_]+", "_", clean_text(event_type).lower()).strip("_")
+
+
+def is_loggable_event(event_type: str) -> bool:
+    event = log_event_name(event_type)
+    return event in ALLOWED_LOG_EVENTS or event.startswith(("error_", "security_", "abuse_"))
+
+
 def sanitize_log_value(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized: dict[str, Any] = {}
         for key, item in value.items():
             key_text = clean_text(key).lower()
-            if key_text in {"data_url", "logo_data_url", "image_data", "image_base64"}:
+            if key_text in LOG_OMIT_KEYS or key_text in {"logo_data_url"}:
                 sanitized[key] = "[omitted]"
             elif "api_key" in key_text or "authorization" in key_text or key_text in {"token", "secret"}:
                 sanitized[key] = SECRET_REDACTION
@@ -165,21 +213,26 @@ def sanitize_log_value(value: Any) -> Any:
     return value
 
 
-def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | None = None) -> None:
+def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | None = None) -> bool:
+    event = log_event_name(event_type)
+    if not is_loggable_event(event):
+        return False
     root = log_root or DEFAULT_LOG_ROOT
     try:
         root.mkdir(parents=True, exist_ok=True)
         now = dt.datetime.now(dt.UTC)
         record = {
             "timestamp": now.isoformat().replace("+00:00", "Z"),
-            "event": clean_text(event_type) or "event",
+            "event": event,
             "details": sanitize_log_value(details),
         }
         path = root / f"{now:%Y-%m-%d}.jsonl"
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=True) + "\n")
+        return True
     except OSError as exc:
         safe_stderr(f"Could not write local webapp log: {exc}\n")
+        return False
 
 
 def subprocess_error_lines(completed: subprocess.CompletedProcess[str]) -> list[str]:
@@ -755,6 +808,17 @@ def quote_basis_notes(payload: dict[str, Any]) -> list[str]:
     return notes
 
 
+def quote_detail_rich_text(payload: dict[str, Any]) -> dict[str, str]:
+    value = payload.get("rich_text")
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: str(value.get(key) or "")[:20000]
+        for key in sorted(RICH_TEXT_DETAIL_KEYS)
+        if str(value.get(key) or "")
+    }
+
+
 def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
     client_address = nested_value(payload, "client", "address", "client_address")
     project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
@@ -813,6 +877,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "koncept_signatory": clean_text(signature.get("koncept_signatory")) or clean_text(default_signature.get("koncept_signatory")),
             "koncept_title": clean_text(signature.get("koncept_title")) or clean_text(default_signature.get("koncept_title")),
         },
+        "rich_text": quote_detail_rich_text(payload),
         "notes": quote_basis_notes(payload),
     }
 
@@ -1276,7 +1341,26 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
             "warnings": warnings,
         }
 
-    return {"status": "drafted", "source": "local", "quote_basis": fallback, "line_items": fallback_line_items}
+    warnings = safe_error_messages([
+        "Remote AI is not configured on this PC. Add OPENAI_API_KEY or GEMINI_API_KEY to .env, restart the local server, then regenerate analysis.",
+    ])
+    write_local_log(
+        "ai_draft_remote_unconfigured",
+        {
+            "source": "local",
+            "missing_env": [OPENAI_API_KEY_ENV_NAME, GEMINI_API_KEY_ENV_NAME],
+            "warnings": warnings,
+            "line_item_count": len(fallback_line_items),
+        },
+    )
+    return {
+        "status": "drafted",
+        "source": "local",
+        "ai_failed": True,
+        "quote_basis": fallback,
+        "line_items": fallback_line_items,
+        "warnings": warnings,
+    }
 
 
 def save_uploaded_images(images: list[dict[str, Any]], job_dir: Path) -> list[dict[str, Any]]:
@@ -1498,15 +1582,6 @@ def create_job(job_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     thread = threading.Thread(target=worker, args=(job_id, payload), daemon=True)
     set_job_state(job_id, status="running")
     thread.start()
-    write_local_log(
-        "job_created",
-        {
-            "job_id": job_id,
-            "type": normalized_type,
-            "profile_id": profile_id_from_payload(payload),
-            "image_count": len(image_entries(payload)),
-        },
-    )
     with JOBS_LOCK:
         return public_job(JOBS[job_id])
 
@@ -1577,17 +1652,16 @@ def run_quote_job(
         status = "failed"
     errors_for_response = [] if status == "completed" else safe_error_messages(subprocess_error_lines(completed))
 
-    write_local_log(
-        "generate_result",
-        {
-            "job_id": job_id,
-            "status": status,
-            "return_code": completed.returncode,
-            "errors": errors_for_response,
-            "pricing_match_count": len(read_pricing_matches(output_dir / "pricing_matches.csv")),
-            "files": output_files(job_id, output_dir),
-        },
-    )
+    if status != "completed":
+        write_local_log(
+            "generate_needs_review" if status == "needs_confirmation" else "generate_failed",
+            {
+                "job_id": job_id,
+                "status": status,
+                "return_code": completed.returncode,
+                "errors": errors_for_response,
+            },
+        )
 
     return {
         "job_id": job_id,
@@ -1688,14 +1762,6 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             try:
                 result = draft_quote_basis(payload)
-                write_local_log(
-                    "draft_result",
-                    {
-                        "status": result.get("status"),
-                        "source": result.get("source"),
-                        "line_item_count": len(result.get("line_items") or []),
-                    },
-                )
                 self.send_json(result)
             except OpenAIAnalysisError as exc:
                 errors = safe_error_messages([str(exc)])
@@ -1718,11 +1784,11 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/log":
-            write_local_log(
+            logged = write_local_log(
                 clean_text(payload.get("event")) or "client_event",
                 payload.get("details") if isinstance(payload.get("details"), dict) else {},
             )
-            self.send_json({"status": "logged"})
+            self.send_json({"status": "logged" if logged else "ignored"})
             return
 
         self.send_json({"error": "Not found"}, status=404)
@@ -1735,24 +1801,29 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
     def block_untrusted_host(self) -> bool:
         if is_allowed_host_header(self.headers.get("Host", "")):
             return False
+        write_local_log("security_event", {"reason": "untrusted_host", "path": self.path, "status": 403})
         self.send_json({"status": "blocked", "errors": ["Request host is not allowed for this local runner."]}, status=403)
         return True
 
     def block_unsafe_post(self, path: str) -> bool:
         host_header = self.headers.get("Host", "")
         if not is_same_origin_request(self.headers.get("Origin", ""), host_header):
+            write_local_log("security_event", {"reason": "cross_origin", "path": path, "status": 403})
             self.send_json({"status": "blocked", "errors": ["Cross-origin requests are not allowed."]}, status=403)
             return True
         referer = self.headers.get("Referer", "")
         if referer and not is_same_origin_request(referer, host_header):
+            write_local_log("security_event", {"reason": "cross_origin_referer", "path": path, "status": 403})
             self.send_json({"status": "blocked", "errors": ["Cross-origin requests are not allowed."]}, status=403)
             return True
         supplied_token = self.headers.get(configured_csrf_header_name(), "")
         if not secrets.compare_digest(supplied_token, configured_csrf_token()):
+            write_local_log("security_event", {"reason": "invalid_csrf", "path": path, "status": 403})
             self.send_json({"status": "blocked", "errors": ["Missing or invalid local session token."]}, status=403)
             return True
         client_id = self.client_address[0] if self.client_address else "unknown"
         if is_rate_limited(client_id, path):
+            write_local_log("abuse_signal", {"reason": "rate_limit", "path": path, "status": 429})
             self.send_json({"status": "blocked", "errors": ["Too many local runner requests. Wait a moment and retry."]}, status=429)
             return True
         return False

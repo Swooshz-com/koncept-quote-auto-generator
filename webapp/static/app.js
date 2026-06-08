@@ -9,7 +9,7 @@ const LOCAL_PRESET_PREFIX = "local:";
 
 const QUOTE_COPY = {
   label: "Quotation",
-  assistantSubtitle: "Start with reference images or a sample fixture, confirm the AI takeoff, then generate Excel.",
+  assistantSubtitle: "Start with reference images or a sample fixture, confirm one quotation basis, then generate Excel.",
   intakeTitle: "Start a quotation",
   intakeSubtitle: "Drop reference images for a real quote, or load the demo fixture for a quick test run.",
   dropTitle: "Drop reference images to start",
@@ -21,7 +21,8 @@ const QUOTE_COPY = {
   depthLabel: "Depth (m)",
 };
 
-const SIDE_PANEL_SEQUENCE = ["images", "details", "pricing"];
+const SIDE_PANEL_SEQUENCE = ["images", "details", "basis", "pricing"];
+const RICH_TEXT_SOURCE_IDS = ["clientAddress", "headerDetails", "paymentTerms", "standardNotes"];
 
 const EMPTY_BASIS = {
   surfaces: "",
@@ -67,6 +68,7 @@ const state = {
   workflowStage: "needs_images",
   quoteBasis: { ...EMPTY_BASIS },
   lineItems: [],
+  basisConfirmed: false,
   chatMessages: [],
   isAnalysisRunning: false,
   isGenerating: false,
@@ -77,6 +79,12 @@ const state = {
   pendingFeedback: "",
   activeSidePanel: "images",
   downloadFile: null,
+  basisChat: {
+    scope: "quote",
+    field: "",
+    line: "",
+    proposal: null,
+  },
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -96,10 +104,14 @@ const elements = {
   imageInput: qs("#imageInput"),
   fileList: qs("#fileList"),
   quoteDetailsButton: qs("#quoteDetailsButton"),
+  quoteBasisButton: qs("#quoteBasisButton"),
   quoteDetailsPanel: qs("#quoteDetailsPanel"),
+  quoteBasisPanel: qs("#quoteBasisPanel"),
+  newQuoteButton: qs("#newQuoteButton"),
+  profilePresetMenu: qs("#profilePresetMenu"),
+  profilePresetMenuButton: qs("#profilePresetMenuButton"),
+  profilePresetMenuPanel: qs("#profilePresetMenuPanel"),
   sideWorkspace: qs("#sideWorkspace"),
-  sideBackdrop: qs("#sideBackdrop"),
-  closeSideDrawerButton: qs("#closeSideDrawerButton"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
   sideDrawerEyebrow: qs("#sideDrawerEyebrow"),
   sampleDetailsButton: qs("#sampleDetailsButton"),
@@ -131,6 +143,7 @@ const elements = {
   dateLabel: qs("#dateLabel"),
   workflowStage: qs("#workflowStage"),
   aiFailureBanner: qs("#aiFailureBanner"),
+  basisReviewSurface: qs("#basisReviewSurface"),
   chatTranscript: qs("#chatTranscript"),
   chatActions: qs("#chatActions"),
   chatForm: qs("#chatForm"),
@@ -159,6 +172,19 @@ const elements = {
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
+  basisChatOverlay: qs("#basisChatOverlay"),
+  basisChatTitle: qs("#basisChatTitle"),
+  basisChatContext: qs("#basisChatContext"),
+  basisChatMessages: qs("#basisChatMessages"),
+  basisChatProposal: qs("#basisChatProposal"),
+  basisChatForm: qs("#basisChatForm"),
+  basisChatPrompt: qs("#basisChatPrompt"),
+  basisChatSendButton: qs("#basisChatSendButton"),
+  basisChatApplyButton: qs("#basisChatApplyButton"),
+  basisChatKeepButton: qs("#basisChatKeepButton"),
+  basisChatCloseButton: qs("#basisChatCloseButton"),
+  richTextEditors: Array.from(document.querySelectorAll("[data-rich-text-source]")),
+  richTextToolbar: Array.from(document.querySelectorAll("[data-rich-command]")),
 };
 
 function currentProfile() {
@@ -179,7 +205,7 @@ function currentGenerator() {
 
 function updateGeneratorCopy() {
   const generator = currentGenerator();
-  elements.assistantSubtitle.textContent = generator.assistantSubtitle;
+  if (elements.assistantSubtitle) elements.assistantSubtitle.textContent = generator.assistantSubtitle;
   elements.intakeTitle.textContent = generator.intakeTitle;
   elements.intakeSubtitle.textContent = generator.intakeSubtitle;
   elements.dropTitle.textContent = state.images.length ? "Add more reference images" : generator.dropTitle;
@@ -190,8 +216,10 @@ function updateGeneratorCopy() {
 
 function setWorkflowStage(stage) {
   state.workflowStage = stage;
-  elements.workflowStage.textContent = STAGE_LABELS[stage] || stage;
-  elements.workflowStage.dataset.stage = stage;
+  if (elements.workflowStage) {
+    elements.workflowStage.textContent = STAGE_LABELS[stage] || stage;
+    elements.workflowStage.dataset.stage = stage;
+  }
   document.body.dataset.workflowStage = stage;
 }
 
@@ -226,16 +254,7 @@ function clearAiFailureBanner() {
 function setDetailsDrawer(open) {
   if (open) {
     setSidePanel("details");
-  } else {
-    setSideDrawer(false);
   }
-}
-
-function setSideDrawer(open) {
-  elements.sideWorkspace.classList.toggle("is-open", open);
-  elements.sideWorkspace.setAttribute("aria-hidden", open ? "false" : "true");
-  elements.sideBackdrop.hidden = !open;
-  document.body.classList.toggle("side-drawer-open", open);
 }
 
 function formatBytes(bytes) {
@@ -379,11 +398,120 @@ function shouldApply(object, key, partial) {
   return !partial || hasOwnValue(object, key);
 }
 
+function richTextEditorFor(input) {
+  if (!input) return null;
+  return elements.richTextEditors.find((editor) => editor.dataset.richTextSource === input.id) || null;
+}
+
+function richTextPlainHtml(value) {
+  const lines = normalizeTextNewlines(value).split("\n");
+  if (!lines.length || (lines.length === 1 && !lines[0])) return "<div><br></div>";
+  return lines.map((line) => `<div>${line ? escapeHtml(line) : "<br>"}</div>`).join("");
+}
+
+function richTextEditorPlainText(editor) {
+  const blockTags = new Set(["DIV", "P", "LI"]);
+  const readNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    if (node.nodeName === "BR") return "\n";
+    const isBlock = blockTags.has(node.nodeName);
+    const text = Array.from(node.childNodes).map(readNode).join("");
+    return isBlock ? `${text}\n` : text;
+  };
+  return normalizeTextNewlines(Array.from(editor.childNodes).map(readNode).join("")).replace(/\n+$/g, "");
+}
+
+function syncRichTextSource(editor) {
+  if (!editor) return;
+  const input = qs(`#${editor.dataset.richTextSource}`);
+  if (!input) return;
+  input.value = richTextEditorPlainText(editor).trimEnd();
+}
+
+function syncRichTextSources() {
+  elements.richTextEditors.forEach(syncRichTextSource);
+}
+
+function syncRichTextEditor(input, richHtml = "") {
+  const editor = richTextEditorFor(input);
+  if (!editor || document.activeElement === editor) return;
+  if (richHtml) {
+    editor.innerHTML = richHtml;
+    return;
+  }
+  editor.innerHTML = richTextPlainHtml(input.value ?? "");
+}
+
+function collectRichTextDetails() {
+  return RICH_TEXT_SOURCE_IDS.reduce((details, id) => {
+    const editor = elements.richTextEditors.find((item) => item.dataset.richTextSource === id);
+    if (editor) details[id] = editor.innerHTML;
+    return details;
+  }, {});
+}
+
+function restoreRichTextDetails(details = {}, options = {}) {
+  const partial = Boolean(options.partial);
+  RICH_TEXT_SOURCE_IDS.forEach((id) => {
+    const input = qs(`#${id}`);
+    const editor = elements.richTextEditors.find((item) => item.dataset.richTextSource === id);
+    if (!input || !editor) return;
+    if (details[id]) {
+      editor.innerHTML = details[id];
+    } else if (!partial) {
+      editor.innerHTML = richTextPlainHtml(input.value ?? "");
+    } else {
+      return;
+    }
+    syncRichTextSource(editor);
+  });
+}
+
+function runRichTextCommand(editor, command) {
+  editor.focus();
+  if (command === "bold") {
+    document.execCommand("bold", false, null);
+  } else if (command === "italic") {
+    document.execCommand("italic", false, null);
+  } else {
+    document.execCommand("underline", false, null);
+  }
+  syncRichTextSource(editor);
+  syncControlStates();
+}
+
+function wireRichTextEditors() {
+  elements.richTextEditors.forEach((editor) => {
+    syncRichTextEditor(qs(`#${editor.dataset.richTextSource}`));
+    editor.addEventListener("input", () => {
+      syncRichTextSource(editor);
+      syncControlStates();
+    });
+    editor.addEventListener("keydown", (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (!["b", "i", "u"].includes(key)) return;
+      event.preventDefault();
+      const command = key === "b" ? "bold" : key === "i" ? "italic" : "underline";
+      runRichTextCommand(editor, command);
+    });
+  });
+  elements.richTextToolbar.forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.closest(".rich-text-field");
+      const editor = field?.querySelector("[data-rich-text-source]");
+      if (editor) runRichTextCommand(editor, button.dataset.richCommand || "bold");
+    });
+  });
+}
+
 function setInputValue(input, value) {
   input.value = value ?? "";
+  syncRichTextEditor(input);
 }
 
 function collectQuoteDetails() {
+  syncRichTextSources();
   return {
     quote_date: elements.quoteDate.value,
     project_number: elements.projectNumber.value.trim(),
@@ -420,6 +548,7 @@ function collectQuoteDetails() {
       koncept_signatory: elements.konceptSignatory.value.trim(),
       koncept_title: elements.konceptTitle.value.trim(),
     },
+    rich_text: collectRichTextDetails(),
   };
 }
 
@@ -462,6 +591,10 @@ function applyQuoteDetails(details = {}, options = {}) {
     };
   } else if (options.clearLogo) {
     state.headerLogo = null;
+  }
+  const hasRichText = hasOwnValue(details, "rich_text") && details.rich_text && typeof details.rich_text === "object";
+  if (hasRichText || !partial) {
+    restoreRichTextDetails(hasRichText ? details.rich_text : {}, { partial: partial && hasRichText });
   }
   renderHeaderLogoStatus();
   renderPresetStatus();
@@ -612,6 +745,21 @@ function loadDefaultProfilePreset(options = {}) {
   loadSelectedPreset(options);
 }
 
+function isProfilePresetMenuOpen() {
+  return Boolean(elements.profilePresetMenuPanel && !elements.profilePresetMenuPanel.hidden);
+}
+
+function setProfilePresetMenuOpen(isOpen) {
+  if (!elements.profilePresetMenuButton || !elements.profilePresetMenuPanel) return;
+  elements.profilePresetMenuPanel.hidden = !isOpen;
+  elements.profilePresetMenuButton.setAttribute("aria-expanded", String(isOpen));
+  elements.profilePresetMenuButton.classList.toggle("is-active", isOpen);
+}
+
+function toggleProfilePresetMenu() {
+  setProfilePresetMenuOpen(!isProfilePresetMenuOpen());
+}
+
 function clearQuoteDetails() {
   elements.presetSelect.value = "";
   elements.presetNameInput.value = "";
@@ -623,6 +771,30 @@ function clearQuoteDetails() {
   syncControlStates();
   renderPresetStatus("Quote Details cleared. Load a preset or fill the fields before starting analysis.");
   appendChatMessage("assistant", "Quote Details cleared. Images and the active profile pack were left unchanged.");
+}
+
+function startNewQuote() {
+  if (state.isAnalysisRunning || state.isGenerating) return;
+  setProfilePresetMenuOpen(false);
+  state.images = [];
+  state.headerLogo = null;
+  state.pendingFeedback = "";
+  state.chatMessages = [];
+  state.downloadFile = null;
+  elements.imageInput.value = "";
+  elements.headerLogoInput.value = "";
+  elements.presetSelect.value = "";
+  elements.presetNameInput.value = "";
+  applyQuoteDetails({}, { clearLogo: true });
+  clearGeneratedQuoteState();
+  renderFiles();
+  renderProfileOptions();
+  renderPresetOptions();
+  renderHeaderLogoStatus();
+  renderPresetStatus("Started a new quote.");
+  setWorkflowStage("needs_images");
+  setSidePanel("images", { force: true });
+  syncControlStates();
 }
 
 function deleteSelectedPreset() {
@@ -663,8 +835,10 @@ async function loadProfiles() {
 function clearGeneratedQuoteState() {
   state.quoteBasis = { ...EMPTY_BASIS };
   state.lineItems = [];
+  state.basisConfirmed = false;
   state.aiFailed = false;
   state.draftSource = "";
+  renderBasisEmptyState();
   clearAiFailureBanner();
   renderMessages([]);
   renderDownloads([]);
@@ -713,6 +887,7 @@ async function setSampleDetails() {
 }
 
 function buildPayload() {
+  syncRichTextSources();
   const generator = currentGenerator();
   return {
     profile_id: state.profileId || DEFAULT_PROFILE_ID,
@@ -755,6 +930,7 @@ function buildPayload() {
       koncept_signatory: elements.konceptSignatory.value.trim(),
       koncept_title: elements.konceptTitle.value.trim(),
     },
+    rich_text: collectRichTextDetails(),
   };
 }
 
@@ -974,16 +1150,11 @@ function appendChatMessage(role, content, options = {}) {
     html: Boolean(options.html),
     tone: options.tone || "",
   });
-  logClientEvent("chat_message", {
-    role,
-    tone: options.tone || "",
-    stage: state.workflowStage,
-    content: loggableContent(content, Boolean(options.html)),
-  });
   renderChat();
 }
 
 function renderChat() {
+  if (!elements.chatTranscript) return;
   elements.chatTranscript.innerHTML = state.chatMessages
     .map((message) => {
       const label = message.role === "user" ? "You" : "Assistant";
@@ -1005,6 +1176,23 @@ function renderChat() {
   elements.chatTranscript.scrollTop = elements.chatTranscript.scrollHeight;
 }
 
+function renderBasisEmptyState(message = "Load images and complete Quote Details, then start analysis to review the draft here.") {
+  elements.basisReviewSurface.innerHTML = `
+    <div class="basis-empty-state">
+      <strong>Quotation basis draft</strong>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function setBasisReviewStatus(message, tone = "") {
+  elements.basisReviewSurface.innerHTML = `
+    <div class="basis-status-card ${escapeHtml(tone)}">
+      <strong>${escapeHtml(message)}</strong>
+    </div>
+  `;
+}
+
 function actionButton(action) {
   const className = action.primary ? "primary-button" : "secondary-button";
   return `
@@ -1015,6 +1203,7 @@ function actionButton(action) {
 }
 
 function renderChatActions(actions = []) {
+  if (!elements.chatActions) return;
   elements.chatActions.innerHTML = actions.map(actionButton).join("");
 }
 
@@ -1039,7 +1228,7 @@ function renderCurrentActions() {
   }
   if (state.workflowStage === "completed") {
     renderChatActions([
-      { label: "Revise by Chat", action: "focus_chat", primary: true, disabled: busy || !readyForAnalysis },
+      { label: "Revise Quote", action: "open_basis_chat", primary: true, disabled: busy || !readyForAnalysis },
       { label: "Regenerate Analysis", action: "regenerate", disabled: busy || !readyForAnalysis },
     ]);
     return;
@@ -1067,9 +1256,10 @@ function renderBasisLine(key, line) {
   const meta = basisLineMeta(line);
   return `
     <li class="basis-line-row basis-line-${escapeHtml(meta.tag.toLowerCase())}">
+      <span class="basis-line-icon" aria-hidden="true"></span>
       <span class="basis-line-pill">${escapeHtml(meta.tag)}</span>
       <span class="basis-line-text" title="${escapeHtml(meta.text)}">${escapeHtml(meta.text)}</span>
-      <button class="basis-line-tool" type="button" data-revise-line="${escapeHtml(line)}">Revise</button>
+      <button class="basis-line-tool" type="button" data-revise-field="${escapeHtml(key)}" data-revise-line="${escapeHtml(line)}" aria-label="Revise this line" title="Revise this line">Re</button>
     </li>
   `;
 }
@@ -1101,7 +1291,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
             <h3>Quote basis to confirm</h3>
             <span>${escapeHtml(statusText)}</span>
           </div>
-          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and confirm, quote a line, or request changes."}</p>
+          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and confirm, revise a line, or request changes."}</p>
         </div>
         <div class="quote-basis-source">
           <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog (RAG)"}</span>
@@ -1120,12 +1310,290 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         `).join("")}
       </div>
       <div class="assistant-card-actions">
-        <button class="primary-button" type="button" data-chat-action="confirm_basis" ${aiFailed ? "disabled" : ""}>Confirm Basis</button>
-        <button class="secondary-button" type="button" data-chat-action="focus_chat">Ask for Changes</button>
+        <button class="primary-button" type="button" data-chat-action="confirm_basis" ${aiFailed ? "disabled" : ""}>Confirm Quotation Basis</button>
+        <button class="secondary-button" type="button" data-chat-action="open_basis_chat">Ask for Changes</button>
         <button class="secondary-button" type="button" data-chat-action="regenerate">Regenerate Analysis</button>
       </div>
     </div>
   `;
+}
+
+function basisFieldLabel(field) {
+  return BASIS_FIELDS.find(([key]) => key === field)?.[1] || "Quote basis";
+}
+
+function currentQuoteBasisCard() {
+  const cards = Array.from(elements.basisReviewSurface.querySelectorAll(".quote-basis-card"));
+  return cards.at(-1) || null;
+}
+
+function updateQuoteBasisCard(source = "edited") {
+  elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage(state.quoteBasis, source);
+}
+
+function basisChatIntroMessage() {
+  if (state.basisChat.scope === "line") {
+    return "Ask about this line or describe the change you want. I will show a proposed update before applying anything.";
+  }
+  return "Ask a question or describe changes to the quotation basis. I will show a proposed update before applying anything.";
+}
+
+function appendBasisChatMessage(role, text) {
+  const message = document.createElement("div");
+  message.className = `basis-chat-message ${role}`;
+  message.innerHTML = `
+    <span>${role === "user" ? "You" : "Assistant"}</span>
+    ${renderPlainText(text)}
+  `;
+  elements.basisChatMessages.appendChild(message);
+  elements.basisChatMessages.scrollTop = elements.basisChatMessages.scrollHeight;
+}
+
+function resetBasisChatProposal() {
+  state.basisChat.proposal = null;
+  elements.basisChatProposal.hidden = true;
+  elements.basisChatProposal.innerHTML = "";
+  elements.basisChatApplyButton.disabled = true;
+  elements.basisChatKeepButton.disabled = true;
+}
+
+function proposalChangedFields(proposal) {
+  const nextBasis = proposal?.quoteBasis || {};
+  return BASIS_FIELDS
+    .filter(([key]) => normalizeTextNewlines(nextBasis[key]) !== normalizeTextNewlines(state.quoteBasis[key]))
+    .map(([, label]) => label);
+}
+
+function proposalLinePreview(proposal) {
+  if (state.basisChat.scope !== "line" || !state.basisChat.field) return "";
+  const currentLines = splitLines(state.quoteBasis[state.basisChat.field]);
+  const proposedLines = splitLines(proposal.quoteBasis[state.basisChat.field]);
+  const index = currentLines.findIndex((line) => line === state.basisChat.line);
+  if (index < 0 || proposedLines[index] === currentLines[index]) return "";
+  return proposedLines[index] || "";
+}
+
+function setBasisChatProposal(proposal) {
+  state.basisChat.proposal = proposal;
+  const changedFields = proposalChangedFields(proposal);
+  const linePreview = proposalLinePreview(proposal);
+  elements.basisChatProposal.hidden = false;
+  elements.basisChatProposal.innerHTML = `
+    <strong>Proposed update</strong>
+    <p>${escapeHtml(proposal.message || "Review this proposed quote basis change before applying it.")}</p>
+    ${linePreview ? `<div class="basis-chat-proposed-line"><span>Line preview</span><p>${escapeHtml(linePreview)}</p></div>` : ""}
+    <p>${escapeHtml(changedFields.length ? `Changes: ${changedFields.join(", ")}` : "This updates quotation line items without changing visible basis text.")}</p>
+  `;
+  elements.basisChatApplyButton.disabled = false;
+  elements.basisChatKeepButton.disabled = false;
+}
+
+function setBasisChatBusy(isBusy) {
+  elements.basisChatPrompt.disabled = isBusy;
+  elements.basisChatSendButton.disabled = isBusy;
+  elements.basisChatApplyButton.disabled = isBusy || !state.basisChat.proposal;
+  elements.basisChatKeepButton.disabled = isBusy || !state.basisChat.proposal;
+}
+
+function openBasisChatOverlay(scope = "quote", options = {}) {
+  state.basisChat = {
+    scope,
+    field: options.field || "",
+    line: options.line || "",
+    proposal: null,
+  };
+  resetBasisChatProposal();
+  elements.basisChatTitle.textContent = scope === "line" ? "Revise basis line" : "Ask for changes";
+  elements.basisChatContext.textContent = scope === "line"
+    ? `${basisFieldLabel(state.basisChat.field)}: ${state.basisChat.line}`
+    : "Ask about or revise the whole quote basis.";
+  elements.basisChatMessages.innerHTML = "";
+  appendBasisChatMessage("assistant", basisChatIntroMessage());
+  elements.basisChatPrompt.value = "";
+  elements.basisChatOverlay.hidden = false;
+  elements.basisChatOverlay.classList.add("is-open");
+  document.body.classList.add("basis-chat-open");
+  window.setTimeout(() => elements.basisChatPrompt.focus(), 0);
+}
+
+function closeBasisChatOverlay() {
+  elements.basisChatOverlay.classList.remove("is-open");
+  elements.basisChatOverlay.hidden = true;
+  document.body.classList.remove("basis-chat-open");
+  resetBasisChatProposal();
+}
+
+function basisChatRevisionText(text) {
+  if (state.basisChat.line) {
+    return `> ${state.basisChat.line}\n\n${text}`;
+  }
+  return text;
+}
+
+function wantsBasisRevision(normalizedText) {
+  return /\b(add|change|delete|exclude|include|make|omit|remove|replace|revise|switch|turn|update|use)\b/.test(normalizedText);
+}
+
+function wantsBasisExplanation(normalizedText) {
+  return /\b(what|why|explain|meaning|mean|clarify|question)\b/.test(normalizedText);
+}
+
+function basisExplanationText() {
+  if (state.basisChat.scope === "line") {
+    return `This line sits under ${basisFieldLabel(state.basisChat.field)}. It is part of the quotation basis that must be confirmed before Excel generation. If the wording is wrong, describe the change and I will draft a replacement for you to apply.`;
+  }
+  return "The quotation basis is the customer-facing checklist of what the draft quote includes, excludes, assumes, or still needs confirmed. Changes here should be reviewed before generating the Excel quotation.";
+}
+
+function extractLineReplacementText(text) {
+  const match = String(text || "").match(/\b(?:change|replace|make|update|revise|switch)(?:\s+(?:this|it|line|item))?\s+(?:to|into|as)\s+([\s\S]+)$/i);
+  const fallback = String(text || "").match(/^\s*(?:to|as)\s+([\s\S]+)$/i);
+  const value = (match?.[1] || fallback?.[1] || "").trim().replace(/^["']|["']$/g, "");
+  return value;
+}
+
+function sentenceCaseLine(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const punctuated = /[.!?]$/.test(text) ? text : `${text}.`;
+  return `${punctuated[0].toUpperCase()}${punctuated.slice(1)}`;
+}
+
+function lineReplacementText(target, field, tag) {
+  if (/^(Include|Confirm|Exclude|Note):/i.test(target)) return target;
+  const compact = target.trim();
+  const isShortToken = /^[A-Za-z0-9+./-]{2,12}$/.test(compact);
+  if (tag === "Confirm" && isShortToken) {
+    const fieldText = basisFieldLabel(field).toLowerCase().replace(/\s*\/\s*/g, " ");
+    return `Confirm: Please confirm ${compact} ${fieldText} requirement.`;
+  }
+  return `${tag}: ${sentenceCaseLine(compact)}`;
+}
+
+function draftLineTextRevision(text, normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
+  if (state.basisChat.scope !== "line" || !state.basisChat.field || !state.basisChat.line) return null;
+  if (!wantsBasisRevision(normalizedText)) return null;
+  const target = extractLineReplacementText(text);
+  if (!target) return null;
+
+  const currentLines = splitLines(basis[state.basisChat.field]);
+  const currentIndex = currentLines.findIndex((line) => line === state.basisChat.line);
+  const meta = basisLineMeta(state.basisChat.line);
+  const tag = meta.tag === "Detail" ? "Confirm" : meta.tag;
+  const nextLine = lineReplacementText(target, state.basisChat.field, tag);
+  const nextLines = currentLines.length ? [...currentLines] : [state.basisChat.line];
+  if (currentIndex >= 0) {
+    nextLines[currentIndex] = nextLine;
+  } else {
+    nextLines.push(nextLine);
+  }
+  const nextBasis = cloneQuoteBasis(basis);
+  nextBasis[state.basisChat.field] = nextLines.join("\n");
+  return {
+    message: "Drafted a visible replacement for this basis line.",
+    quoteBasis: nextBasis,
+    lineItems: lineItems.map(normalizeLineItem),
+  };
+}
+
+function buildRevisionProposal(text, normalizedText) {
+  const contextualText = basisChatRevisionText(text);
+  const contextualNormalized = contextualText.toLowerCase();
+  return draftColorRevision(contextualText, contextualNormalized)
+    || draftFlooringRevision(normalizedText)
+    || draftLineTextRevision(text, normalizedText);
+}
+
+async function buildAiRevisionProposal(text) {
+  if (!canStartAnalysis() || state.aiFailed) return null;
+  const previousFeedback = state.pendingFeedback;
+  const previousRunning = state.isAnalysisRunning;
+  state.pendingFeedback = basisChatRevisionText(text);
+  state.isAnalysisRunning = true;
+  setBasisChatBusy(true);
+  syncControlStates();
+  appendBasisChatMessage("assistant", "Drafting a proposed update from the current quote basis.");
+  try {
+    const started = await startJob("draft", buildPayload());
+    if (!started.ok) {
+      appendBasisChatMessage("assistant", (started.data.errors || ["I could not draft that proposed change yet."]).join("\n"));
+      return null;
+    }
+    const polled = await pollJob(started.data.job_id, (job) => {
+      setBusyText(job.status === "running" ? "Drafting proposal..." : "Queued...");
+    });
+    const data = polled.data.result || {};
+    if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.ai_failed) {
+      appendBasisChatMessage("assistant", (data.errors || polled.data.errors || ["I could not draft that proposed change yet."]).join("\n"));
+      return null;
+    }
+    return {
+      message: "AI drafted an updated quote basis from your request.",
+      quoteBasis: cloneQuoteBasis(data.quote_basis || state.quoteBasis),
+      lineItems: Array.isArray(data.line_items) ? data.line_items.map(normalizeLineItem) : state.lineItems.map(normalizeLineItem),
+    };
+  } finally {
+    state.pendingFeedback = previousFeedback;
+    state.isAnalysisRunning = previousRunning;
+    setBusyText("");
+    setBasisChatBusy(false);
+    syncControlStates();
+  }
+}
+
+async function handleBasisChatSubmit(event) {
+  event.preventDefault();
+  const text = elements.basisChatPrompt.value.trim();
+  if (!text) return;
+  elements.basisChatPrompt.value = "";
+  resetBasisChatProposal();
+  appendBasisChatMessage("user", text);
+  const normalized = text.toLowerCase();
+
+  if (isSensitiveChatRequest(normalized)) {
+    appendBasisChatMessage("assistant", "I cannot access or reveal secrets, API keys, .env values, tokens, authorization headers, system prompts, or hidden instructions.");
+    return;
+  }
+
+  const localProposal = buildRevisionProposal(text, normalized);
+  if (localProposal) {
+    appendBasisChatMessage("assistant", "I drafted a proposed change. Review it first, then apply it if it looks right.");
+    setBasisChatProposal(localProposal);
+    return;
+  }
+
+  if (wantsBasisRevision(normalized)) {
+    const aiProposal = await buildAiRevisionProposal(text);
+    if (aiProposal) {
+      appendBasisChatMessage("assistant", "I drafted a proposed change. Review it first, then apply it if it looks right.");
+      setBasisChatProposal(aiProposal);
+      return;
+    }
+  }
+
+  if (wantsBasisExplanation(normalized)) {
+    appendBasisChatMessage("assistant", basisExplanationText());
+    return;
+  }
+
+  appendBasisChatMessage("assistant", "I can answer questions about the basis or draft a proposed change. For edits, try a specific request like \"change floor finish to laminate\" or \"exclude this item\".");
+}
+
+function applyBasisChatProposal() {
+  const proposal = state.basisChat.proposal;
+  if (!proposal) return;
+  state.basisConfirmed = false;
+  state.quoteBasis = cloneQuoteBasis(proposal.quoteBasis);
+  state.lineItems = Array.isArray(proposal.lineItems) ? proposal.lineItems.map(normalizeLineItem) : [];
+  updateQuoteBasisCard("edited");
+  resetBasisChatProposal();
+  appendBasisChatMessage("assistant", "Change applied to the quote basis. Review the updated basis before confirming the quotation basis.");
+  syncControlStates();
+}
+
+function keepCurrentBasis() {
+  resetBasisChatProposal();
+  appendBasisChatMessage("assistant", "Kept the current quote basis unchanged.");
 }
 
 function missingDetailFields() {
@@ -1159,11 +1627,22 @@ function canStartAnalysis() {
   return Boolean(state.images.length) && missingDetailFields().length === 0;
 }
 
+function hasSubmittedQuoteBasis() {
+  return ["basis_review", "generating", "pricing_review", "completed"].includes(state.workflowStage)
+    && (state.lineItems.length > 0 || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0));
+}
+
+function hasCompletedQuoteBasis() {
+  return state.basisConfirmed || ["pricing_review", "completed"].includes(state.workflowStage);
+}
+
 function applyDraftBasis(basis = {}) {
+  state.basisConfirmed = false;
   state.quoteBasis = cloneQuoteBasis(basis);
 }
 
 function applyDraftLineItems(lineItems = []) {
+  state.basisConfirmed = false;
   state.lineItems = lineItems.map(normalizeLineItem);
 }
 
@@ -1254,14 +1733,13 @@ async function pollJob(jobId, onStatus) {
   return { ok: false, data: { status: "failed", errors: ["Job was not created."] } };
 }
 
-function loggableContent(content, html = false) {
-  if (!html) return String(content || "");
-  const container = document.createElement("div");
-  container.innerHTML = String(content || "");
-  return container.textContent.replace(/\s+/g, " ").trim();
+function setBusyText(message = "") {
+  if (elements.busyText) elements.busyText.textContent = message;
 }
 
 function logClientEvent(event, details = {}) {
+  const allowedEvents = new Set(["client_error", "server_error", "security_event", "abuse_signal"]);
+  if (!allowedEvents.has(event)) return;
   const headers = { "Content-Type": "application/json" };
   if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
   fetch("/api/log", {
@@ -1285,6 +1763,7 @@ function setAnalysisButtons(disabled = false) {
   const readyForAnalysis = canStartAnalysis();
   const busy = state.isAnalysisRunning || state.isGenerating || disabled;
   const inputDisabled = busy || !readyForAnalysis;
+  if (!elements.chatPrompt || !elements.sendChatButton) return;
   elements.chatPrompt.disabled = inputDisabled;
   elements.sendChatButton.disabled = inputDisabled;
   if (!readyForAnalysis) {
@@ -1307,7 +1786,7 @@ function setAnalysisButtons(disabled = false) {
 function syncControlStates() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   setAnalysisButtons(busy);
-  elements.generateButton.disabled = busy || state.aiFailed || !canStartAnalysis() || !state.lineItems.length;
+  elements.generateButton.disabled = busy || state.aiFailed || !canStartAnalysis() || !state.lineItems.length || !state.basisConfirmed;
   updateSidePanelNav();
   renderCurrentActions();
 }
@@ -1338,39 +1817,40 @@ async function handleDraftBasis() {
   clearAiFailureBanner();
   setWorkflowStage("analyzing");
   showAiRunningBanner();
-  elements.busyText.textContent = "Running analysis...";
-  setAnalysisButtons(true);
-  renderChatActions([{ label: "Analyzing...", action: "noop", disabled: true }]);
-  appendChatMessage(
-    "assistant",
+  setBasisReviewStatus(
     hasFeedback
       ? "Using your feedback to revise the AI takeoff now. I will return an updated basis for confirmation."
-      : "Analyzing the reference images now. I will list the basis for confirmation before generating anything.",
-    { tone: "warn" }
+      : "Analyzing reference images now. I will list the basis for confirmation before generating anything.",
+    "warn"
   );
+  setBusyText("Running analysis...");
+  setAnalysisButtons(true);
+  renderChatActions([{ label: "Analyzing...", action: "noop", disabled: true }]);
 
   const started = await startJob("draft", buildPayload());
   if (!started.ok) {
     state.isAnalysisRunning = false;
-    elements.busyText.textContent = "";
+    setBusyText("");
     setAnalysisButtons(false);
     setWorkflowStage("ready_to_analyze");
     showAiFailureBanner("Try again later.");
+    setBasisReviewStatus((started.data.errors || ["Draft failed."]).join("\n"), "error");
     appendChatMessage("assistant", (started.data.errors || ["Draft failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
   }
 
   const polled = await pollJob(started.data.job_id, (job) => {
-    elements.busyText.textContent = job.status === "running" ? "Running analysis..." : "Queued...";
+    setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
   });
   state.isAnalysisRunning = false;
-  elements.busyText.textContent = "";
+  setBusyText("");
   setAnalysisButtons(false);
 
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
     setWorkflowStage("ready_to_analyze");
     showAiFailureBanner("Try again later.");
+    setBasisReviewStatus((polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), "error");
     appendChatMessage("assistant", (polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
@@ -1382,8 +1862,9 @@ async function handleDraftBasis() {
   state.draftSource = data.source || "";
   state.aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
   setWorkflowStage("basis_review");
+  const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
   if (state.aiFailed) {
-    showAiFailureBanner("Try again later. A local fallback draft is shown for reference only.");
+    showAiFailureBanner(warningText || "Try again later. A local fallback draft is shown for reference only.");
     appendChatMessage("assistant", "AI analysis failed. Try again later. I showed a local fallback draft, but it is blocked from quotation generation until remote AI analysis succeeds.", { tone: "error" });
   } else {
     clearAiFailureBanner();
@@ -1391,7 +1872,8 @@ async function handleDraftBasis() {
   if (Array.isArray(data.warnings) && data.warnings.length) {
     appendChatMessage("assistant", data.warnings.join("\n"), { tone: "warn" });
   }
-  appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, data.source), { html: true, tone: data.source === "openai" ? "" : "warn" });
+  updateQuoteBasisCard(data.source);
+  setSidePanel("basis", { force: true });
   if (!state.lineItems.length) {
     appendChatMessage("assistant", EMPTY_LINE_ITEMS_MESSAGE, { tone: "warn" });
   }
@@ -1420,12 +1902,22 @@ async function confirmBasis() {
     syncControlStates();
     return;
   }
+  state.basisConfirmed = true;
   appendChatMessage("assistant", "Basis confirmed. Generating the Excel quotation now.");
   await handleGenerate();
 }
 
 async function handleGenerate() {
   if (state.isGenerating) return;
+  if (!state.basisConfirmed) {
+    if (hasSubmittedQuoteBasis()) {
+      setWorkflowStage("basis_review");
+      setSidePanel("basis", { force: true });
+      appendChatMessage("assistant", "Confirm Quotation Basis before generating the Excel quotation.", { tone: "warn" });
+    }
+    syncControlStates();
+    return;
+  }
   if (state.aiFailed) {
     setWorkflowStage("basis_review");
     showAiFailureBanner("Try again later. Regenerate analysis before generating Excel.");
@@ -1450,9 +1942,9 @@ async function handleGenerate() {
 
   state.isGenerating = true;
   setWorkflowStage("generating");
-  elements.busyText.textContent = "Generating quotation...";
+  setBusyText("Generating quotation...");
   setResultStatus("Running", "is-warn");
-  elements.chatPrompt.value = "";
+  if (elements.chatPrompt) elements.chatPrompt.value = "";
   renderMessages([]);
   renderDownloads([]);
   renderMatchSummary({});
@@ -1462,7 +1954,7 @@ async function handleGenerate() {
   const started = await startJob("generate", buildPayload());
   if (!started.ok) {
     state.isGenerating = false;
-    elements.busyText.textContent = "";
+    setBusyText("");
     setWorkflowStage("details_review");
     setResultStatus(started.data.status || "Failed", "is-bad");
     renderMessages(started.data.errors || ["Generation failed."], "error");
@@ -1472,10 +1964,10 @@ async function handleGenerate() {
   }
 
   const polled = await pollJob(started.data.job_id, (job) => {
-    elements.busyText.textContent = job.status === "running" ? "Generating quotation..." : "Queued...";
+    setBusyText(job.status === "running" ? "Generating quotation..." : "Queued...");
   });
   state.isGenerating = false;
-  elements.busyText.textContent = "";
+  setBusyText("");
 
   const data = polled.data.result || polled.data || {};
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
@@ -1524,7 +2016,6 @@ async function checkHealth() {
 
 function handleChatAction(action) {
   if (action === "analyze" || action === "regenerate") {
-    setSideDrawer(false);
     handleDraftBasis();
     return;
   }
@@ -1540,8 +2031,8 @@ function handleChatAction(action) {
     handleGenerate();
     return;
   }
-  if (action === "focus_chat") {
-    elements.chatPrompt.focus();
+  if (action === "open_basis_chat") {
+    openBasisChatOverlay("quote");
   }
 }
 
@@ -1567,12 +2058,12 @@ function estimatedAreaQuantity() {
   return Math.round(width * depth * 100) / 100;
 }
 
-function findFloorFinishLineIndex() {
+function findFloorFinishLineIndex(lineItems = state.lineItems) {
   const finishPattern = /(carpet|flooring|laminate|pvc)/i;
   const floorPattern = /(floor|platform)/i;
-  const finishIndex = state.lineItems.findIndex((item) => finishPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
+  const finishIndex = lineItems.findIndex((item) => finishPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
   if (finishIndex >= 0) return finishIndex;
-  return state.lineItems.findIndex((item) => floorPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
+  return lineItems.findIndex((item) => floorPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
 }
 
 function revisedBasisText(value, line) {
@@ -1663,12 +2154,12 @@ function findColorRevision(text, normalizedText) {
   return { sourceColor, targetColor, quotedLines };
 }
 
-function applyColorRevision(text, normalizedText) {
+function draftColorRevision(text, normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
   const revision = findColorRevision(text, normalizedText);
   if (!revision) return null;
 
   let changedCount = 0;
-  const nextBasis = { ...state.quoteBasis };
+  const nextBasis = cloneQuoteBasis(basis);
   const quotedLines = revision.quotedLines || [];
   const quoteMatched = quotedLines.length
     ? Object.keys(nextBasis).some((key) => {
@@ -1696,19 +2187,30 @@ function applyColorRevision(text, normalizedText) {
     });
   }
 
-  const nextLineItems = state.lineItems.map((item) => {
+  const nextLineItems = lineItems.map((item) => {
     const nextDescription = replaceColorWord(item.description, revision.sourceColor, revision.targetColor);
     if (nextDescription !== item.description) changedCount += 1;
     return { ...item, description: nextDescription };
   });
 
   if (!changedCount) return null;
-  state.quoteBasis = nextBasis;
-  state.lineItems = nextLineItems;
-  return `Updated ${changedCount} draft field${changedCount === 1 ? "" : "s"} from ${revision.sourceColor} to ${revision.targetColor}.`;
+  return {
+    message: `Updated ${changedCount} draft field${changedCount === 1 ? "" : "s"} from ${revision.sourceColor} to ${revision.targetColor}.`,
+    quoteBasis: nextBasis,
+    lineItems: nextLineItems,
+  };
 }
 
-function applyFlooringRevision(normalizedText) {
+function applyColorRevision(text, normalizedText) {
+  const proposal = draftColorRevision(text, normalizedText);
+  if (!proposal) return null;
+  state.basisConfirmed = false;
+  state.quoteBasis = proposal.quoteBasis;
+  state.lineItems = proposal.lineItems;
+  return proposal.message;
+}
+
+function draftFlooringRevision(normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
   if (!/laminat|carpet|floor|flooring|platform/.test(normalizedText)) return null;
   if (!/(change|replace|switch|revise|update|make|use|laminat)/.test(normalizedText)) return null;
 
@@ -1719,7 +2221,6 @@ function applyFlooringRevision(normalizedText) {
   const pricingKeyword = woodGrain
     ? "floor-design.wood-grain-laminated-flooring-on-raised-platform"
     : "floor-design.white-laminated-flooring-on-raised-platform";
-  const index = findFloorFinishLineIndex();
   const nextItem = {
     section: "Floor Design",
     quantity: estimatedAreaQuantity(),
@@ -1729,16 +2230,32 @@ function applyFlooringRevision(normalizedText) {
     display_price: "",
   };
 
+  const nextBasis = cloneQuoteBasis(basis);
+  const nextLineItems = lineItems.map((item) => ({ ...item }));
+  const index = findFloorFinishLineIndex(nextLineItems);
   if (index >= 0) {
-    state.lineItems[index] = { ...state.lineItems[index], ...nextItem };
+    nextLineItems[index] = { ...nextLineItems[index], ...nextItem };
   } else {
-    state.lineItems.unshift(nextItem);
+    nextLineItems.unshift(nextItem);
   }
-  state.quoteBasis.platform = revisedBasisText(
-    state.quoteBasis.platform,
+  nextBasis.platform = revisedBasisText(
+    nextBasis.platform,
     `Confirm: Platform flooring revised to ${description.toLowerCase()}.`
   );
-  return `Updated the floor finish to ${description.toLowerCase()} using catalog item ${pricingKeyword}.`;
+  return {
+    message: `Updated the floor finish to ${description.toLowerCase()} using catalog item ${pricingKeyword}.`,
+    quoteBasis: nextBasis,
+    lineItems: nextLineItems,
+  };
+}
+
+function applyFlooringRevision(normalizedText) {
+  const proposal = draftFlooringRevision(normalizedText);
+  if (!proposal) return null;
+  state.basisConfirmed = false;
+  state.quoteBasis = proposal.quoteBasis;
+  state.lineItems = proposal.lineItems;
+  return proposal.message;
 }
 
 async function applyRevisionRequest(text, normalizedText) {
@@ -1747,7 +2264,7 @@ async function applyRevisionRequest(text, normalizedText) {
 
   if (state.workflowStage === "basis_review") {
     appendChatMessage("assistant", `${applied} Review the updated basis below, then confirm when it looks right.`);
-    appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, "edited"), { html: true });
+    updateQuoteBasisCard("edited");
     syncControlStates();
     return true;
   }
@@ -1762,20 +2279,19 @@ async function applyRevisionRequest(text, normalizedText) {
   return true;
 }
 
-function insertQuotedLine(line, revise = false) {
-  const prefix = `> ${line}\n\n`;
-  elements.chatPrompt.value = revise ? `${prefix}change this to ` : prefix;
-  elements.chatPrompt.disabled = false;
-  elements.chatPrompt.focus();
-  elements.chatPrompt.setSelectionRange(elements.chatPrompt.value.length, elements.chatPrompt.value.length);
-}
-
 function sidePanelBlockReason(panelName) {
   if (panelName === "images") return "";
   if (!state.images.length) return "Add reference images before opening this step.";
+  if (panelName === "basis") {
+    const missing = missingDetailFields();
+    if (missing.length) return `Complete Quote Details before opening Quote Basis: ${missing.join(", ")}.`;
+    if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Details before opening Quote Basis.";
+  }
   if (panelName === "pricing") {
     const missing = missingDetailFields();
     if (missing.length) return `Complete Quote Details before opening Output & Pricing: ${missing.join(", ")}.`;
+    if (!hasSubmittedQuoteBasis()) return "Click Start Analysis from Quote Details before opening Output.";
+    if (!hasCompletedQuoteBasis()) return "Confirm Quotation Basis before opening Output.";
   }
   return "";
 }
@@ -1788,6 +2304,7 @@ function setSidePanel(panelName, options = {}) {
   const panelTitles = {
     images: ["Images", "Reference Inputs"],
     details: ["Quote Details", "Editable Quote Configuration"],
+    basis: ["Quote Basis", "Confirm Draft"],
     pricing: ["Output & Pricing", "Generated Quotation"],
   };
   const nextPanel = panelTitles[panelName] ? panelName : "images";
@@ -1799,6 +2316,7 @@ function setSidePanel(panelName, options = {}) {
   }
   const [title, eyebrow] = panelTitles[nextPanel] || panelTitles.images;
   state.activeSidePanel = nextPanel;
+  document.body.dataset.sidePanel = state.activeSidePanel;
   elements.sideDrawerTitle.textContent = title;
   elements.sideDrawerEyebrow.textContent = eyebrow;
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
@@ -1807,8 +2325,8 @@ function setSidePanel(panelName, options = {}) {
   document.querySelectorAll(".side-panel-section[data-side-panel-content]").forEach((section) => {
     section.classList.toggle("is-active", section.dataset.sidePanelContent === state.activeSidePanel);
   });
+  elements.sideWorkspace.setAttribute("aria-hidden", "false");
   updateSidePanelNav();
-  setSideDrawer(true);
   return true;
 }
 
@@ -1838,6 +2356,7 @@ function updateSidePanelNav() {
   const nextLabels = {
     images: "Next: Quote Details",
     details: currentGenerator().analyzeLabel,
+    basis: "Next: Output",
   };
   elements.sideNextButton.textContent = nextLabels[state.activeSidePanel] || "Next";
   elements.sideNextButton.classList.toggle("primary-button", isAnalysisStep);
@@ -1845,7 +2364,7 @@ function updateSidePanelNav() {
   const nextPanel = SIDE_PANEL_SEQUENCE[Math.min(index + 1, lastIndex)];
   elements.sideNextButton.disabled = busy || (isAnalysisStep ? !canStartAnalysis() : !canOpenSidePanel(nextPanel));
   elements.sideNextButton.title = isAnalysisStep
-    ? sidePanelBlockReason("pricing") || (canStartAnalysis() ? "" : "Add images and complete Quote Details before starting analysis.")
+    ? (canStartAnalysis() ? "" : "Add images and complete Quote Details before starting analysis.")
     : sidePanelBlockReason(nextPanel) || "";
   updateDownloadButton();
 }
@@ -1862,12 +2381,17 @@ function goToNextSidePanel() {
     handleDraftBasis();
     return;
   }
+  if (state.activeSidePanel === "basis") {
+    setSidePanel("pricing", { notify: true });
+    return;
+  }
   if (state.activeSidePanel === "pricing") return;
   setSidePanel(SIDE_PANEL_SEQUENCE[index + 1], { notify: true });
 }
 
 async function handleChatSubmit(event) {
   event.preventDefault();
+  if (!elements.chatPrompt) return;
   const text = elements.chatPrompt.value.trim();
   if (!text) return;
 
@@ -1926,7 +2450,22 @@ async function handleChatSubmit(event) {
   renderCurrentActions();
 }
 
+function handleQuoteBasisClick(event) {
+  const reviseButton = event.target.closest("[data-revise-line]");
+  if (reviseButton) {
+    openBasisChatOverlay("line", {
+      field: reviseButton.dataset.reviseField || "",
+      line: reviseButton.dataset.reviseLine || "",
+    });
+    return;
+  }
+  const button = event.target.closest("[data-chat-action]");
+  if (!button || button.disabled) return;
+  handleChatAction(button.dataset.chatAction);
+}
+
 function wireEvents() {
+  wireRichTextEditors();
   elements.imageInput.addEventListener("change", async (event) => {
     await addImagesFromFiles(event.target.files || []);
     elements.imageInput.value = "";
@@ -1978,7 +2517,6 @@ function wireEvents() {
   document.querySelectorAll("[data-side-panel]").forEach((button) => {
     button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images", { notify: true }));
   });
-  elements.closeSideDrawerButton.addEventListener("click", () => setSideDrawer(false));
   elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);
   elements.sideNextButton.addEventListener("click", goToNextSidePanel);
   elements.sideDownloadButton.addEventListener("click", (event) => {
@@ -1986,14 +2524,31 @@ function wireEvents() {
       event.preventDefault();
     }
   });
-  elements.sideBackdrop.addEventListener("click", () => setSideDrawer(false));
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      setSideDrawer(false);
+      if (isProfilePresetMenuOpen()) {
+        setProfilePresetMenuOpen(false);
+      }
+      if (!elements.basisChatOverlay.hidden) {
+        closeBasisChatOverlay();
+      }
     }
   });
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
+  elements.newQuoteButton.addEventListener("click", startNewQuote);
+  elements.profilePresetMenuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleProfilePresetMenu();
+  });
+  elements.profilePresetMenuPanel.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  document.addEventListener("click", (event) => {
+    if (!isProfilePresetMenuOpen()) return;
+    if (elements.profilePresetMenu && elements.profilePresetMenu.contains(event.target)) return;
+    setProfilePresetMenuOpen(false);
+  });
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.presetSelect.addEventListener("change", () => {
     updatePresetButtons();
@@ -2031,29 +2586,34 @@ function wireEvents() {
     input.addEventListener("change", syncControlStates);
   });
   elements.generateButton.addEventListener("click", handleGenerate);
-  elements.chatForm.addEventListener("submit", handleChatSubmit);
-  elements.chatPrompt.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    event.preventDefault();
-    if (!elements.sendChatButton.disabled) {
-      elements.chatForm.requestSubmit();
+  if (elements.chatForm) elements.chatForm.addEventListener("submit", handleChatSubmit);
+  elements.basisChatForm.addEventListener("submit", handleBasisChatSubmit);
+  elements.basisChatApplyButton.addEventListener("click", applyBasisChatProposal);
+  elements.basisChatKeepButton.addEventListener("click", keepCurrentBasis);
+  elements.basisChatCloseButton.addEventListener("click", closeBasisChatOverlay);
+  elements.basisChatOverlay.addEventListener("click", (event) => {
+    if (event.target.closest("[data-basis-chat-close]")) {
+      closeBasisChatOverlay();
     }
   });
-  elements.chatActions.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-chat-action]");
-    if (!button || button.disabled) return;
-    handleChatAction(button.dataset.chatAction);
-  });
-  elements.chatTranscript.addEventListener("click", (event) => {
-    const reviseButton = event.target.closest("[data-revise-line]");
-    if (reviseButton) {
-      insertQuotedLine(reviseButton.dataset.reviseLine || "", true);
-      return;
-    }
-    const button = event.target.closest("[data-chat-action]");
-    if (!button || button.disabled) return;
-    handleChatAction(button.dataset.chatAction);
-  });
+  if (elements.chatPrompt && elements.chatForm && elements.sendChatButton) {
+    elements.chatPrompt.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.shiftKey) return;
+      event.preventDefault();
+      if (!elements.sendChatButton.disabled) {
+        elements.chatForm.requestSubmit();
+      }
+    });
+  }
+  if (elements.chatActions) {
+    elements.chatActions.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-chat-action]");
+      if (!button || button.disabled) return;
+      handleChatAction(button.dataset.chatAction);
+    });
+  }
+  elements.basisReviewSurface.addEventListener("click", handleQuoteBasisClick);
+  if (elements.chatTranscript) elements.chatTranscript.addEventListener("click", handleQuoteBasisClick);
   elements.pricingReviewMessages.addEventListener("click", (event) => {
     const button = event.target.closest("[data-pricing-action]");
     if (!button || button.disabled) return;
@@ -2071,11 +2631,7 @@ function setInitialValues() {
   renderPricingMatches([]);
   renderMatchSummary({});
   setWorkflowStage("needs_images");
-  appendChatMessage(
-    "assistant",
-    "Start by dropping reference images, or click Load Sample in Images for a quick test. Presets hold reusable company, header, and terms text; Quote Details holds customer and project text.",
-    { tone: "instruction" }
-  );
+  renderBasisEmptyState();
   renderCurrentActions();
   syncControlStates();
   setSidePanel("images");
