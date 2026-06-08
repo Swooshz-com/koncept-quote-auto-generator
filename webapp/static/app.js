@@ -1852,6 +1852,7 @@ async function handleDraftBasis() {
       : "Analyzing reference images now. I will list the basis for confirmation before generating anything.",
     "warn"
   );
+  setSidePanel("basis", { force: true });
   setBusyText("Running analysis...");
   setAnalysisButtons(true);
   renderChatActions([{ label: "Analyzing...", action: "noop", disabled: true }]);

@@ -1274,6 +1274,18 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_start_analysis_shows_quote_basis_running_state_immediately(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+        draft_body = js.split("async function handleDraftBasis()", 1)[1].split("async function confirmBasis()", 1)[0]
+
+        status_index = draft_body.index("setBasisReviewStatus(")
+        panel_index = draft_body.index('setSidePanel("basis", { force: true })')
+        job_index = draft_body.index('const started = await startJob("draft"')
+
+        self.assertLess(status_index, panel_index)
+        self.assertLess(panel_index, job_index)
+
     def test_static_webapp_uses_menu_quote_basis_workflow_without_raw_line_item_editor(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
