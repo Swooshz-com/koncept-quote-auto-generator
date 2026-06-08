@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
-    <link rel="stylesheet" href="/static/styles.css?v=8">
+    <link rel="stylesheet" href="/static/styles.css?v=13">
   </head>
   <body>
     <div class="app-shell">
@@ -22,47 +22,63 @@
             <span class="status-dot" id="statusDot"></span>
             <span id="healthText" class="health-text">Checking local server</span>
           </div>
+          <div class="topbar-menu" id="profilePresetMenu">
+            <button class="topbar-action topbar-menu-button" type="button" id="profilePresetMenuButton" aria-label="Open profile and preset settings" aria-expanded="false" aria-controls="profilePresetMenuPanel">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M4 7h5"></path>
+                <path d="M15 7h5"></path>
+                <path d="M11 5v4"></path>
+                <path d="M4 17h9"></path>
+                <path d="M19 17h1"></path>
+                <path d="M15 15v4"></path>
+              </svg>
+              <span>Profile &amp; Presets</span>
+            </button>
+            <div class="topbar-menu-panel" id="profilePresetMenuPanel" aria-labelledby="profilePresetMenuButton" hidden>
+              <div class="settings-group topbar-settings-group profile-pack-group">
+                <h4>Active Profile Pack</h4>
+                <label>
+                  Profile / RAG source
+                  <select id="profileSelect"></select>
+                </label>
+                <p class="settings-note" id="profileDescription">Loading available profile packs...</p>
+                <p class="settings-note">The selected profile controls pricing, RAG context, quote layout, and built-in quote detail presets.</p>
+              </div>
+
+              <div class="settings-group topbar-settings-group quote-detail-presets-group">
+                <h4>Quote Detail Presets</h4>
+                <label>
+                  Preset
+                  <select id="presetSelect"></select>
+                </label>
+                <div class="settings-button-row">
+                  <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
+                  <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                </div>
+                <label>
+                  Save current details as
+                  <input id="presetNameInput" type="text" placeholder="Example: Koncept default header">
+                </label>
+                <div class="settings-button-row">
+                  <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                </div>
+                <p class="settings-note" id="presetStatus">Profile presets are loaded from the active pack. Saved presets stay local to this browser.</p>
+              </div>
+            </div>
+          </div>
+          <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+            <span>New Quote</span>
+          </button>
         </div>
       </header>
 
       <div class="workspace chat-workspace">
         <main class="panels">
           <section class="panel is-active chat-shell" id="panel-analysis" data-panel-id="analysis">
-            <main class="chat-main" aria-label="Quote assistant conversation">
-              <div class="panel-heading assistant-heading">
-                <div>
-                  <h2>Swooshz Assistant</h2>
-                  <p id="assistantSubtitle">Start with reference images or a sample fixture, confirm the AI takeoff, then generate Excel. After generation, type a change and I will revise the quotation draft where it is safe to do so.</p>
-                </div>
-              </div>
-
-              <div class="workflow-bar">
-                <div class="assistant-status-row">
-                  <span class="workflow-stage" id="workflowStage">Needs images</span>
-                  <span id="busyText" class="busy-text" aria-live="polite"></span>
-                </div>
-                <div class="chat-actions" id="chatActions"></div>
-              </div>
-
-              <div class="ai-failure-banner" id="aiFailureBanner" role="alert" hidden>
-                <strong>AI analysis failed.</strong>
-                <span>Try again later.</span>
-              </div>
-
-              <div class="chat-transcript" id="chatTranscript" aria-live="polite"></div>
-
-              <form class="chat-form" id="chatForm">
-                <textarea id="chatPrompt" rows="2" placeholder="Ask anything, request changes, or confirm..."></textarea>
-                <button class="primary-button send-button" type="submit" id="sendChatButton" aria-label="Send message">
-                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                    <path d="M5 12 20 5l-7 15-2-7-6-1Z"></path>
-                    <path d="m11 13 4-4"></path>
-                  </svg>
-                  <span class="sr-only">Send</span>
-                </button>
-              </form>
-            </main>
-
             <nav class="command-rail" aria-label="Quote workspace panels">
               <button class="rail-button is-active" type="button" data-side-panel="images">
                 <span class="rail-icon" aria-hidden="true">
@@ -86,6 +102,17 @@
                 </span>
                 <span>Quote Details</span>
               </button>
+              <button class="rail-button" type="button" id="quoteBasisButton" data-side-panel="basis">
+                <span class="rail-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M5 4h14v16H5V4Z"></path>
+                    <path d="M8 9h8"></path>
+                    <path d="M8 13h8"></path>
+                    <path d="m8 17 2 2 4-5"></path>
+                  </svg>
+                </span>
+                <span>Quote Basis</span>
+              </button>
               <button class="rail-button" type="button" data-side-panel="pricing">
                 <span class="rail-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false">
@@ -103,16 +130,15 @@
               <button class="primary-button" type="button" id="generateButton">Generate Quotation</button>
             </div>
 
-            <aside class="side-workspace" id="sideWorkspace" aria-hidden="true" aria-labelledby="sideDrawerTitle">
-              <div class="side-drawer-header">
+            <aside class="side-workspace workspace-pane" id="sideWorkspace" aria-hidden="false" aria-labelledby="sideDrawerTitle">
+              <div class="workspace-pane-header">
                 <div>
-                  <p class="drawer-eyebrow" id="sideDrawerEyebrow">Workspace</p>
+                  <p class="workspace-pane-eyebrow" id="sideDrawerEyebrow">Workspace</p>
                   <h2 id="sideDrawerTitle">Images</h2>
                 </div>
-                <button class="icon-close-button" type="button" id="closeSideDrawerButton" aria-label="Close workspace panel">x</button>
               </div>
 
-              <div class="side-drawer-scroll">
+              <div class="workspace-pane-scroll">
               <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference images">
                 <div class="side-panel-heading">
                   <div>
@@ -120,16 +146,6 @@
                     <p id="intakeSubtitle">Upload reference images or load the sample fixture.</p>
                   </div>
                   <span class="image-count" id="imageCount">0 loaded</span>
-                </div>
-
-                <div class="settings-group profile-pack-group">
-                  <h4>Active Profile Pack</h4>
-                  <label>
-                    Profile / RAG source
-                    <select id="profileSelect"></select>
-                  </label>
-                  <p class="settings-note" id="profileDescription">Loading available profile packs...</p>
-                  <p class="settings-note">The selected profile controls pricing, RAG context, quote layout, and built-in quote detail presets.</p>
                 </div>
 
                 <label class="dropzone" for="imageInput">
@@ -159,29 +175,7 @@
                     <h3>Quote Details</h3>
                     <p>Customer, project, header, terms, and signature text. Presets can fill the reusable company fields.</p>
                   </div>
-                </div>
-
-                <div class="settings-group quote-detail-presets-group">
-                  <h4>Quote Detail Presets</h4>
-                  <label>
-                    Preset
-                    <select id="presetSelect"></select>
-                  </label>
-                  <div class="settings-button-row">
-                    <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                    <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
-                  </div>
-                  <label>
-                    Save current details as
-                    <input id="presetNameInput" type="text" placeholder="Example: Koncept default header">
-                  </label>
-                  <div class="settings-button-row">
-                    <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
-                  </div>
-                  <div class="settings-button-row">
-                    <button class="secondary-button" type="button" id="resetPresetButton">Clear Quote Details</button>
-                  </div>
-                  <p class="settings-note" id="presetStatus">Profile presets are loaded from the active pack. Saved presets stay local to this browser.</p>
+                  <button class="secondary-button quote-details-clear-button" type="button" id="resetPresetButton">Clear Quote Details</button>
                 </div>
 
                 <div class="section-band first-band">
@@ -221,7 +215,15 @@
                     </label>
                     <label class="wide">
                       Client address
-                      <textarea id="clientAddress" rows="3"></textarea>
+                      <div class="rich-text-field">
+                        <div class="rich-text-toolbar" aria-label="Client address formatting">
+                          <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                          <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                          <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                        </div>
+                        <div class="rich-text-editor" id="clientAddressEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="clientAddress"></div>
+                        <textarea class="rich-text-source" id="clientAddress" rows="3" hidden></textarea>
+                      </div>
                     </label>
                   </div>
                 </div>
@@ -240,7 +242,15 @@
                     </label>
                     <label class="wide">
                       Header details
-                      <textarea id="headerDetails" rows="8"></textarea>
+                      <div class="rich-text-field">
+                        <div class="rich-text-toolbar" aria-label="Header details formatting">
+                          <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                          <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                          <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                        </div>
+                        <div class="rich-text-editor" id="headerDetailsEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="headerDetails"></div>
+                        <textarea class="rich-text-source" id="headerDetails" rows="8" hidden></textarea>
+                      </div>
                     </label>
                   </div>
                 </div>
@@ -258,7 +268,15 @@
                     </label>
                     <label class="wide">
                       Payment terms (profile preset, optional)
-                      <textarea id="paymentTerms" rows="3" placeholder="Leave blank to omit payment-term rows. Loaded presets can fill this automatically."></textarea>
+                      <div class="rich-text-field">
+                        <div class="rich-text-toolbar" aria-label="Payment terms formatting">
+                          <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                          <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                          <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                        </div>
+                        <div class="rich-text-editor" id="paymentTermsEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="paymentTerms" data-placeholder="Leave blank to omit payment-term rows. Loaded presets can fill this automatically."></div>
+                        <textarea class="rich-text-source" id="paymentTerms" rows="3" hidden></textarea>
+                      </div>
                     </label>
                     <label>
                       Notes heading
@@ -270,7 +288,15 @@
                     </label>
                     <label class="wide">
                       Standard notes
-                      <textarea id="standardNotes" rows="10"></textarea>
+                      <div class="rich-text-field">
+                        <div class="rich-text-toolbar" aria-label="Standard notes formatting">
+                          <button class="rich-text-tool is-bold" type="button" data-rich-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                          <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                          <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                        </div>
+                        <div class="rich-text-editor" id="standardNotesEditor" contenteditable="true" role="textbox" aria-multiline="true" data-rich-text-source="standardNotes"></div>
+                        <textarea class="rich-text-source" id="standardNotes" rows="10" hidden></textarea>
+                      </div>
                     </label>
                     <label>
                       Company signatory
@@ -294,6 +320,25 @@
                     </label>
                   </div>
                 </div>
+              </section>
+
+              <section class="side-panel-card side-panel-section" id="quoteBasisPanel" data-side-panel-content="basis">
+                <div class="side-panel-heading">
+                  <div>
+                    <h3>Quote Basis</h3>
+                    <p>Review the drafted basis, revise individual lines, or request a full-basis change.</p>
+                  </div>
+                </div>
+                <div class="ai-failure-banner" id="aiFailureBanner" role="alert" hidden>
+                  <strong>AI analysis failed.</strong>
+                  <span>Try again later.</span>
+                </div>
+                <section class="basis-review-surface" id="basisReviewSurface" aria-live="polite">
+                  <div class="basis-empty-state">
+                    <strong>Quotation basis draft</strong>
+                    <p>Load images and complete Quote Details, then start analysis to review the draft here.</p>
+                  </div>
+                </section>
               </section>
 
               <section class="side-panel-card side-panel-section" id="pricingSidePanel" data-side-panel-content="pricing">
@@ -335,9 +380,9 @@
               </section>
 
               </div>
-              <div class="side-drawer-footer">
+              <div class="workspace-pane-footer">
                 <button class="secondary-button" type="button" id="sideBackButton">Back</button>
-                <a class="primary-button drawer-download-button is-disabled" id="sideDownloadButton" href="#" aria-disabled="true" tabindex="-1" download hidden>Download Quotation</a>
+                <a class="primary-button workspace-download-button is-disabled" id="sideDownloadButton" href="#" aria-disabled="true" tabindex="-1" download hidden>Download Quotation</a>
                 <button class="secondary-button" type="button" id="sideNextButton">Next</button>
               </div>
             </aside>
@@ -345,8 +390,36 @@
         </main>
       </div>
 
-      <div class="side-backdrop" id="sideBackdrop" hidden></div>
+      <div class="basis-chat-overlay" id="basisChatOverlay" role="dialog" aria-modal="true" aria-labelledby="basisChatTitle" hidden>
+        <div class="basis-chat-backdrop" data-basis-chat-close></div>
+        <section class="basis-chat-panel" aria-label="Quote basis revision assistant">
+          <header class="basis-chat-header">
+            <div>
+              <span class="basis-chat-eyebrow">Quote basis</span>
+              <h3 id="basisChatTitle">Ask for changes</h3>
+              <p id="basisChatContext">Ask a question or describe the revision you want.</p>
+            </div>
+            <button class="icon-button basis-chat-close" type="button" id="basisChatCloseButton" aria-label="Close revision assistant">x</button>
+          </header>
+          <div class="basis-chat-messages" id="basisChatMessages" aria-live="polite"></div>
+          <div class="basis-chat-proposal" id="basisChatProposal" hidden></div>
+          <div class="basis-chat-proposal-actions">
+            <button class="primary-button" type="button" id="basisChatApplyButton" disabled>Apply Change</button>
+            <button class="secondary-button" type="button" id="basisChatKeepButton" disabled>Keep Current</button>
+          </div>
+          <form class="basis-chat-form" id="basisChatForm">
+            <textarea id="basisChatPrompt" rows="3" placeholder="Ask about this basis or describe a change..."></textarea>
+            <button class="primary-button send-button" type="submit" id="basisChatSendButton" aria-label="Send basis question">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M5 12 20 5l-7 15-2-7-6-1Z"></path>
+                <path d="m11 13 4-4"></path>
+              </svg>
+              <span class="sr-only">Send</span>
+            </button>
+          </form>
+        </section>
+      </div>
     </div>
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=11"></script>
   </body>
 </html>

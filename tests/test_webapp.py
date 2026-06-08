@@ -81,6 +81,12 @@ def valid_payload():
             "koncept_signatory": "Francies Cheng",
             "koncept_title": "Director",
         },
+        "rich_text": {
+            "clientAddress": "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>",
+            "headerDetails": "<div><strong>Sample Quotation Co Pte Ltd</strong></div><div>Dynamic header address</div>",
+            "paymentTerms": "<div><strong>70% payment upon confirmation.</strong></div>",
+            "standardNotes": "<div>Editable <em>note</em> one</div>",
+        },
     }
 
 
@@ -151,6 +157,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["line_items"][0]["section"], "Floor Design")
         self.assertEqual(brief["line_items"][0]["quantity"], 12.0)
         self.assertEqual(brief["line_items"][0]["unit"], "sqm")
+        self.assertEqual(brief["rich_text"]["clientAddress"], "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>")
+        self.assertIn("<strong>Sample Quotation Co Pte Ltd</strong>", brief["rich_text"]["headerDetails"])
         self.assertIn("Quote basis confirmed from webapp", brief["notes"][0])
 
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
@@ -184,8 +192,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(public_profile["default_quote_detail_preset"], "koncept-image-default")
         self.assertEqual(public_profile["quote_detail_presets"][0]["name"], "Koncept Images Pte. Ltd.")
         preset_company = public_profile["quote_detail_presets"][0]["details"]["company"]
+        preset_rich_text = public_profile["quote_detail_presets"][0]["details"]["rich_text"]
         self.assertTrue(preset_company["logo_data_url"].startswith("data:image/jpeg;base64,"))
         self.assertEqual(preset_company["logo_name"], "koncept-header-logo.jpeg")
+        self.assertIn("<strong>Koncept Image Pte Limited</strong>", preset_rich_text["headerDetails"])
+        self.assertIn("<strong>70% payment", preset_rich_text["paymentTerms"])
         self.assertNotIn("logo_path", preset_company)
         self.assertNotIn("pricing-catalog", json.dumps(public_profile))
 
@@ -291,10 +302,17 @@ class WebappServerTest(unittest.TestCase):
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "PROJECT_ROOT", Path(tmp)):
-                with mock.patch.object(webapp, "request_openai_quote_basis") as request:
-                    result = webapp.draft_quote_basis(valid_payload())
+                with mock.patch.object(webapp, "write_local_log") as write_log:
+                    with mock.patch.object(webapp, "request_openai_quote_basis") as request:
+                        result = webapp.draft_quote_basis(valid_payload())
 
         self.assertEqual(result["source"], "local")
+        self.assertTrue(result["ai_failed"])
+        self.assertIn("Remote AI is not configured", "\n".join(result["warnings"]))
+        self.assertIn("OPENAI_API_KEY", "\n".join(result["warnings"]))
+        self.assertIn("GEMINI_API_KEY", "\n".join(result["warnings"]))
+        write_log.assert_called()
+        self.assertEqual(write_log.call_args.args[0], "ai_draft_remote_unconfigured")
         request.assert_not_called()
 
     def test_draft_quote_basis_uses_gemini_fallback_when_openai_fails(self):
@@ -692,9 +710,9 @@ class WebappServerTest(unittest.TestCase):
             self.assertEqual(webapp.configured_csrf_header_name(), webapp.DEFAULT_CSRF_HEADER_NAME)
             self.assertEqual(webapp.configured_csrf_token(), webapp.PROCESS_CSRF_TOKEN)
 
-    def test_local_logs_redact_secrets_and_omit_image_data_urls(self):
+    def test_local_logs_only_privacy_safe_error_security_and_abuse_events(self):
         with tempfile.TemporaryDirectory() as tmp:
-            webapp.write_local_log(
+            logged_routine = webapp.write_local_log(
                 "chat_message",
                 {
                     "content": "Please use sk-test-secret456",
@@ -703,11 +721,27 @@ class WebappServerTest(unittest.TestCase):
                 },
                 log_root=Path(tmp),
             )
+            self.assertFalse(logged_routine)
+            self.assertEqual(list(Path(tmp).glob("*.jsonl")), [])
+
+            logged_error = webapp.write_local_log(
+                "client_error",
+                {
+                    "content": "Please use sk-test-secret456",
+                    "authorization": "Bearer sk-test-secret456",
+                    "image": {"data_url": "data:image/png;base64,secret-image"},
+                    "url": "/api/jobs",
+                },
+                log_root=Path(tmp),
+            )
+            self.assertTrue(logged_error)
             log_text = next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8")
 
-        self.assertIn("chat_message", log_text)
+        self.assertIn("client_error", log_text)
         self.assertIn("sk-...", log_text)
         self.assertIn("[omitted]", log_text)
+        self.assertNotIn("chat_message", log_text)
+        self.assertNotIn("Please use", log_text)
         self.assertNotIn("sk-test-secret456", log_text)
         self.assertNotIn("secret-image", log_text)
 
@@ -788,9 +822,22 @@ class WebappServerTest(unittest.TestCase):
                 urllib.request.urlopen(bad_host, timeout=3)
             self.assertEqual(host_error.exception.code, 403)
 
-            valid = urllib.request.Request(
+            ignored = urllib.request.Request(
                 f"{runner.base_url}/api/log",
                 data=json.dumps({"event": "test", "details": {}}).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": runner.base_url,
+                    csrf_header: csrf_token,
+                },
+            )
+            response = json.loads(urllib.request.urlopen(ignored, timeout=3).read().decode("utf-8"))
+            self.assertEqual(response["status"], "ignored")
+
+            valid = urllib.request.Request(
+                f"{runner.base_url}/api/log",
+                data=json.dumps({"event": "client_error", "details": {"url": "/api/jobs"}}).encode("utf-8"),
                 method="POST",
                 headers={
                     "Content-Type": "application/json",
@@ -884,19 +931,21 @@ class WebappServerTest(unittest.TestCase):
             "personLabel",
             "stampLabel",
             "dateLabel",
-            "assistantSubtitle",
             "intakeTitle",
             "widthLabel",
             "depthLabel",
             "quoteDetailsButton",
             "quoteDetailsPanel",
             "sideWorkspace",
-            "sideBackdrop",
-            "closeSideDrawerButton",
             "sideDrawerTitle",
             "sideBackButton",
             "sideNextButton",
             "sideDownloadButton",
+            "quoteBasisButton",
+            "newQuoteButton",
+            "profilePresetMenu",
+            "profilePresetMenuButton",
+            "profilePresetMenuPanel",
             "imageIntake",
             "sampleDetailsButton",
             "matchSummary",
@@ -928,13 +977,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('id="regenerateAnalysisButton"', html)
         self.assertIn("Regenerate Analysis", js)
         self.assertIn("Fill Quote Details before AI analysis", js)
-        self.assertIn("Fill all Quote Details to enable assistant replies.", js)
-        self.assertIn("elements.chatPrompt.disabled", js)
-        self.assertIn('elements.chatPrompt.addEventListener("keydown"', js)
-        self.assertIn('event.key !== "Enter"', js)
-        self.assertIn("event.shiftKey", js)
-        self.assertIn("elements.chatForm.requestSubmit()", js)
-        self.assertIn("elements.chatTranscript.addEventListener(\"click\"", js)
+        self.assertNotIn('id="assistantSubtitle"', html)
+        self.assertNotIn('id="chatPrompt"', html)
+        self.assertNotIn('id="chatForm"', html)
+        self.assertNotIn('id="chatTranscript"', html)
+        self.assertNotIn('id="chatActions"', html)
+        self.assertNotIn('id="workflowStage"', html)
+        self.assertNotIn('id="busyText"', html)
         self.assertNotIn("Run AI Analysis", html)
         self.assertIn("Load Sample", html)
         self.assertIn("sample-start-card", html)
@@ -953,9 +1002,19 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Quote Details cleared.", js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
-        self.assertLess(html.index("Active Profile Pack"), html.index('id="imageInput"'))
-        self.assertLess(html.index("Quote Detail Presets"), html.index("Customer and Project"))
+        self.assertLess(html.index('id="profilePresetMenuPanel"'), html.index('id="newQuoteButton"'))
+        self.assertLess(html.index('id="profilePresetMenuPanel"'), html.index('id="imageIntake"'))
+        self.assertLess(html.index("Active Profile Pack"), html.index('id="newQuoteButton"'))
+        self.assertLess(html.index("Quote Detail Presets"), html.index('id="newQuoteButton"'))
+        self.assertLess(html.index('id="quoteDetailsPanel"'), html.index('id="resetPresetButton"'))
+        self.assertLess(html.index('id="resetPresetButton"'), html.index("Customer and Project"))
         self.assertLess(html.index('id="savePresetButton"'), html.index('id="resetPresetButton"'))
+        self.assertIn("setProfilePresetMenuOpen", js)
+        self.assertIn("toggleProfilePresetMenu", js)
+        self.assertIn("isProfilePresetMenuOpen", js)
+        self.assertIn(".topbar-menu-panel", css)
+        self.assertIn(".topbar-action.is-active", css)
+        self.assertIn(".quote-details-clear-button", css)
         self.assertIn("loadDefaultProfilePreset", js)
         self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
         self.assertIn("Quote Details were left unchanged", js)
@@ -964,6 +1023,28 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Download Excel", html)
         self.assertIn("Use Download Quotation in the Output footer.", js)
         self.assertIn('setSidePanel("images")', js)
+        self.assertIn('contenteditable="true"', html)
+        self.assertIn('data-rich-text-source="headerDetails"', html)
+        self.assertIn('data-rich-text-source="paymentTerms"', html)
+        self.assertIn('data-rich-command="bold"', html)
+        self.assertIn('data-rich-command="italic"', html)
+        self.assertIn('data-rich-command="underline"', html)
+        self.assertIn("wireRichTextEditors", js)
+        self.assertIn("syncRichTextSources", js)
+        self.assertIn("rich_text: collectRichTextDetails()", js)
+        self.assertIn("richTextEditorPlainText", js)
+        self.assertIn("editor.innerHTML = richTextPlainHtml(input.value", js)
+        self.assertIn("restoreRichTextDetails(details = {}, options = {})", js)
+        self.assertIn("hasRichText || !partial", js)
+        self.assertNotIn("restoreRichTextDetails(details.rich_text || {})", js)
+        self.assertIn('document.execCommand("bold"', js)
+        self.assertIn('const key = event.key.toLowerCase()', js)
+        self.assertIn('"u"].includes(key)', js)
+        self.assertIn(".rich-text-editor", css)
+        self.assertIn(".rich-text-tool.is-underline", css)
+        self.assertIn("--chat-content-width: min(1120px", css)
+        self.assertIn("width: min(100%, var(--chat-content-width));", css)
+        self.assertIn("justify-self: center", css)
         self.assertIn(".secondary-button:disabled", css)
         self.assertIn("normalizeTextNewlines", js)
         self.assertIn("applyColorRevision", js)
@@ -980,7 +1061,26 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("sidePanelBlockReason", js)
         self.assertIn("Add reference images before opening this step.", js)
         self.assertIn("Complete Quote Details before opening Output & Pricing", js)
+        self.assertIn("Click Start Analysis from Quote Details before opening Quote Basis.", js)
+        self.assertIn("Confirm Quotation Basis before opening Output.", js)
+        self.assertIn("state.basisConfirmed", js)
+        self.assertIn("hasSubmittedQuoteBasis", js)
+        self.assertIn("hasCompletedQuoteBasis", js)
+        self.assertIn("!state.basisConfirmed", js)
+        self.assertIn("startNewQuote", js)
+        self.assertIn('elements.newQuoteButton.addEventListener("click", startNewQuote)', js)
         self.assertIn(".rail-button.is-locked", css)
+        self.assertIn(".topbar-action", css)
+        self.assertIn('data-side-panel="basis"', html)
+        self.assertIn('data-side-panel-content="basis"', html)
+        self.assertNotIn('body[data-side-panel="basis"] .side-workspace', css)
+        self.assertIn("workspace", css)
+        self.assertNotIn('id="sideBackdrop"', html)
+        self.assertNotIn('id="closeSideDrawerButton"', html)
+        self.assertNotIn("closeSideDrawerButton", js)
+        self.assertNotIn("setSideDrawer", js)
+        self.assertNotIn("side-drawer-open", js)
+        self.assertNotIn(".side-workspace.is-open", css)
 
         initial_values_body = js.split("function setInitialValues()", 1)[1].split("async function boot()", 1)[0]
         profile_change_body = js.split("function handleProfileSelectionChange()", 1)[1].split("async function setSampleDetails()", 1)[0]
@@ -998,14 +1098,17 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('id="panel-analysis"', html)
         self.assertIn('id="imageIntake"', html)
         self.assertIn('id="quoteDetailsButton"', html)
+        self.assertIn('id="quoteBasisButton"', html)
         self.assertIn('data-side-panel="details"', html)
+        self.assertIn('data-side-panel="basis"', html)
         self.assertIn('data-side-panel-content="details"', html)
+        self.assertIn('data-side-panel-content="basis"', html)
         self.assertIn('id="quoteDetailsPanel"', html)
         self.assertIn("Swooshz Quote Generator", html)
         self.assertNotIn("Generator type", html)
         self.assertIn('class="command-rail"', html)
-        self.assertIn('class="side-workspace"', html)
-        self.assertIn('class="chat-main"', html)
+        self.assertIn('class="side-workspace workspace-pane"', html)
+        self.assertNotIn('class="chat-main"', html)
         self.assertIn('data-side-panel="images"', html)
         self.assertNotIn('data-side-panel="presets"', html)
         self.assertNotIn('data-side-panel-content="presets"', html)
@@ -1013,20 +1116,26 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Output & Pricing", html)
         self.assertIn("Brazil pavilion demo", html)
         self.assertIn("Drag and drop reference images here", html)
-        self.assertIn("Start by dropping reference images", js)
+        self.assertIn("Load images and complete Quote Details, then start analysis to review the draft here.", js)
         self.assertIn("grid-template-areas", css)
-        self.assertIn("chat rail", css)
-        self.assertIn(".side-workspace.is-open", css)
-        self.assertIn(".chat-message.instruction", css)
-        self.assertIn("min-height: 640px", css)
+        self.assertIn('"rail"', css)
+        self.assertIn('"workspace"', css)
+        self.assertIn("grid-area: workspace", css)
+        self.assertIn("workspace-pane", css)
+        self.assertNotIn("grid-area: chat", css)
+        self.assertNotIn(".chat-message", css)
+        self.assertNotIn(".chat-main", css)
+        self.assertNotIn(".chat-form", css)
         self.assertIn("--accent: #f5c84c", css)
         self.assertIn(".sample-start-card", css)
         self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="quoteDetailsPanel"'))
         self.assertIn("setDetailsDrawer", js)
-        self.assertIn("setSideDrawer", js)
+        self.assertNotIn("setSideDrawer", js)
         self.assertIn("setSidePanel", js)
         self.assertIn("SIDE_PANEL_SEQUENCE", js)
-        self.assertIn('SIDE_PANEL_SEQUENCE = ["images", "details", "pricing"]', js)
+        self.assertIn('SIDE_PANEL_SEQUENCE = ["images", "details", "basis", "pricing"]', js)
+        self.assertIn('basis: ["Quote Basis", "Confirm Draft"]', js)
+        self.assertIn('setSidePanel("basis", { force: true })', js)
         self.assertIn("goToNextSidePanel", js)
         self.assertIn("addImagesFromFiles", js)
         self.assertIn("currentGenerator", js)
@@ -1094,33 +1203,42 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Local server connection failed", js)
         self.assertIn("Local server returned a non-JSON response", js)
 
-    def test_static_webapp_uses_guided_chat_workflow_without_raw_line_item_editor(self):
+    def test_static_webapp_uses_menu_quote_basis_workflow_without_raw_line_item_editor(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         for field_id in (
-            "workflowStage",
             "aiFailureBanner",
+            "basisReviewSurface",
+            "quoteBasisButton",
+            "quoteBasisPanel",
+        ):
+            self.assertIn(f'id="{field_id}"', html)
+            self.assertIn(field_id, js)
+
+        for removed_id in (
+            "workflowStage",
             "chatTranscript",
             "chatActions",
             "chatPrompt",
             "sendChatButton",
         ):
-            self.assertIn(f'id="{field_id}"', html)
-            self.assertIn(field_id, js)
+            self.assertNotIn(f'id="{removed_id}"', html)
 
         for expected in (
             "workflowStage",
             "basis_review",
             "details_review",
             "pricing_review",
-            "handleChatSubmit",
+            "renderBasisEmptyState",
+            "setBasisReviewStatus",
             "renderQuoteBasisMessage",
             "confirmBasis",
         ):
             self.assertIn(expected, js)
 
+        self.assertLess(html.index('id="quoteBasisPanel"'), html.index('id="basisReviewSurface"'))
         self.assertNotIn("Confirm quote details", js)
         self.assertNotIn("Edit exact wording in Quote Details", js)
         self.assertNotIn("Rows passed to the existing generator.", html)
@@ -1135,29 +1253,85 @@ class WebappServerTest(unittest.TestCase):
 
     def test_static_chat_supports_post_generation_revisions(self):
         static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         for expected in (
-            "Revise by Chat",
-            "focus_chat",
+            "basisChatOverlay",
+            "basisChatForm",
+            "basisChatPrompt",
+            "basisChatApplyButton",
+            "basisChatKeepButton",
+            "openBasisChatOverlay",
+            "closeBasisChatOverlay",
+            "buildRevisionProposal",
+            "draftLineTextRevision",
+            "applyBasisChatProposal",
+            "Confirm Quotation Basis",
+            "open_basis_chat",
             "applyRevisionRequest",
             "applyFlooringRevision",
-            "insertQuotedLine",
             "data-revise-line",
+            "data-revise-field",
             "quotedRevisionLines",
             "pendingFeedback",
             "Using your feedback to revise the AI takeoff now.",
-            "change this to",
             "change carpet to laminate",
             "floor-design.white-laminated-flooring-on-raised-platform",
             "floor-design.wood-grain-laminated-flooring-on-raised-platform",
             "Revision applied. Regenerating quotation.",
             "I could not apply that safely as a direct edit yet.",
+            "Drafted a visible replacement for this basis line.",
         ):
             self.assertIn(expected, js)
 
+        for expected in (
+            'id="basisChatOverlay"',
+            'id="basisChatTitle"',
+            'id="basisChatContext"',
+            'id="basisChatMessages"',
+            'id="basisChatProposal"',
+            'id="basisChatForm"',
+            'id="basisChatPrompt"',
+            'id="basisChatApplyButton"',
+            'id="basisChatKeepButton"',
+        ):
+            self.assertIn(expected, html)
+
+        for expected in (
+            ".basis-chat-overlay",
+            ".basis-chat-panel",
+            "place-items: center",
+            "width: min(760px",
+            ".basis-review-surface",
+            ".basis-line-icon::before",
+            ".basis-line-include .basis-line-text",
+            ".basis-line-include .basis-line-icon::before",
+            ".basis-line-exclude .basis-line-text",
+            ".basis-line-exclude .basis-line-icon::before",
+            'content: "\\2713"',
+            'content: "X"',
+            "text-decoration-line: line-through",
+            "@media (max-width: 880px)",
+        ):
+            self.assertIn(expected, css)
+        self.assertNotIn('body[data-workflow-stage="basis_review"] .chat-main .chat-form', css)
+
+        self.assertIn("> ${state.basisChat.line}", js)
+        self.assertIn("elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage", js)
+        self.assertIn("setBasisReviewStatus", js)
+        self.assertIn("Analyzing reference images now. I will list the basis for confirmation before generating anything.", js)
+        self.assertIn("Apply Change", html)
+        self.assertIn("Keep Current", html)
+        self.assertIn('aria-label="Revise this line"', js)
+        self.assertIn(">Re<", js)
+        self.assertNotIn('appendChatMessage("assistant", renderQuoteBasisMessage(state.quoteBasis, data.source)', js)
+
         self.assertNotIn("data-quote-line", js)
         self.assertNotIn("basis-line-quote", js)
+        self.assertNotIn("focus_chat", js)
+        self.assertNotIn("insertQuotedLine", js)
 
         self.assertNotIn("I am keeping this guarded for now", js)
 
