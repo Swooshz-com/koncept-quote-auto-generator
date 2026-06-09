@@ -1991,6 +1991,7 @@ function buildPayload(options = {}) {
   const pricingReference = currentPricingReference();
   const profileId = resolvedProfileIdForPayload();
   const includeBoothDimensions = options.includeBoothDimensions !== false;
+  const includeDraftContext = options.includeDraftContext !== false;
   const project = {
     title: elements.projectTitle.value.trim(),
   };
@@ -2024,9 +2025,9 @@ function buildPayload(options = {}) {
       logo_type: state.headerLogo ? state.headerLogo.type : "",
     },
     user_feedback: state.pendingFeedback,
-    quote_basis: { ...state.quoteBasis, ...quoteBasisFromSections(state.quoteBasisSections) },
-    quote_basis_sections: cloneQuoteBasisSections(state.quoteBasisSections),
-    line_items: state.outputRows.length ? outputRowsToLineItems(state.outputRows) : state.lineItems,
+    quote_basis: includeDraftContext ? { ...state.quoteBasis, ...quoteBasisFromSections(state.quoteBasisSections) } : {},
+    quote_basis_sections: includeDraftContext ? cloneQuoteBasisSections(state.quoteBasisSections) : [],
+    line_items: includeDraftContext ? (state.outputRows.length ? outputRowsToLineItems(state.outputRows) : state.lineItems) : [],
     quote_text: {
       terms_heading: elements.termsHeading.value.trim(),
       payment_terms: splitLines(elements.paymentTerms.value),
@@ -3338,6 +3339,7 @@ async function handleDraftBasis() {
 
   const started = await startJob("draft", buildPayload({
     includeBoothDimensions: state.boothDimensions.dimension_source !== "default",
+    includeDraftContext: hasFeedback,
   }));
   if (!started.ok) {
     state.isAnalysisRunning = false;

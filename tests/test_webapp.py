@@ -333,6 +333,53 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(legacy[0]["lines"][1], {"tag": "Confirm", "text": "Colour to confirm."})
         self.assertEqual(legacy[1]["lines"][0], {"tag": "Confirm", "text": "Artwork pending."})
 
+        dynamic_basis = webapp.normalize_quote_basis_sections({
+            "quote_basis": {
+                "Brazil Feature Wall": "Include: Curved yellow framed display wall.",
+                "flooring-zone": "Include: Green carpet with yellow inset flooring.",
+            }
+        })
+        self.assertEqual([section["id"] for section in dynamic_basis], ["brazil-feature-wall", "flooring-zone"])
+        self.assertEqual([section["title"] for section in dynamic_basis], ["Brazil Feature Wall", "Flooring Zone"])
+        self.assertEqual(dynamic_basis[0]["lines"][0]["text"], "Curved yellow framed display wall.")
+
+    def test_normalize_line_items_uses_customer_facing_sqm_text(self):
+        items = webapp.normalize_line_items({
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": "36",
+                    "unit": "m2",
+                    "description": "m2 needle-punch carpet and sq. m printed floor panel",
+                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                }
+            ]
+        })
+
+        self.assertEqual(items[0]["unit"], "sqm")
+        self.assertEqual(items[0]["description"], "sqm needle-punch carpet and sqm printed floor panel")
+
+    def test_normalize_ai_draft_preserves_all_model_line_items(self):
+        parsed = {
+            "quote_basis": {"surfaces": "Include: Custom booth wall."},
+            "line_items": [
+                {
+                    "section": "Section",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": f"AI row {index}",
+                    "pricing_keyword": "included",
+                    "display_price": "Included",
+                }
+                for index in range(20)
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed)
+
+        self.assertEqual(len(draft["line_items"]), 20)
+        self.assertEqual(draft["line_items"][-1]["description"], "AI row 19")
+
     def test_payload_to_brief_uses_dynamic_quote_basis_sections_for_notes(self):
         payload = valid_payload()
         payload.pop("quote_basis")
@@ -362,6 +409,39 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
         self.assertNotIn("2 to 4 short lines", prompt)
         self.assertNotIn("Assumption:", prompt)
+
+    def test_ai_prompt_omits_stale_draft_context_without_user_feedback(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "id": "stale",
+                "title": "Stale Generic Basis",
+                "lines": [{"tag": "Confirm", "text": "Please confirm generic stale placeholder."}],
+            }
+        ]
+        payload["line_items"] = [
+            {
+                "section": "Stale",
+                "quantity": 1,
+                "unit": "lot",
+                "description": "Stale draft row",
+                "pricing_keyword": "stale",
+            }
+        ]
+
+        prompt = webapp.build_quote_draft_prompt(payload)
+
+        self.assertIn("fresh analysis from the uploaded images", prompt)
+        self.assertIn('"current_quote_basis_sections": []', prompt)
+        self.assertIn('"line_items": []', prompt)
+        self.assertNotIn("Stale Generic Basis", prompt)
+        self.assertNotIn("Stale draft row", prompt)
+
+        payload["user_feedback"] = "revise the stale draft"
+        revision_prompt = webapp.build_quote_draft_prompt(payload)
+
+        self.assertIn("Stale Generic Basis", revision_prompt)
+        self.assertIn("Stale draft row", revision_prompt)
 
     def test_deploy_mode_blocks_public_access_without_auth_config(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "deploy"}, clear=True):
@@ -654,10 +734,41 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["source"], "openai")
         self.assertEqual(result["quote_basis"]["surfaces"], "AI surfaces")
         self.assertEqual(result["quote_basis"]["graphics"], "AI graphics")
+        self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["description"], "AI vinyl graphics")
         self.assertEqual(result["line_items"][0]["quantity"], 12.0)
         request.assert_called_once_with(payload, "sk-test-redacted")
         self.assertNotIn("ai_api_key", webapp.payload_to_brief(payload))
+
+    def test_draft_quote_basis_keeps_dynamic_ai_quote_basis_keys(self):
+        payload = valid_payload()
+        ai_draft = {
+            "quote_basis": {
+                "Brazil Feature Wall": "Include: Curved yellow framed display wall.",
+                "Flooring Zone": "Include: Green carpet and yellow inset flooring.",
+            },
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": "36",
+                    "unit": "m2",
+                    "description": "m2 green carpet across pavilion footprint",
+                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                }
+            ],
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", return_value="sk-test-redacted"):
+            with mock.patch.object(webapp, "write_local_log"):
+                with mock.patch.object(webapp, "request_openai_quote_basis", return_value=ai_draft):
+                    result = webapp.draft_quote_basis(payload)
+
+        self.assertEqual(result["source"], "openai")
+        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Brazil Feature Wall", "Flooring Zone"])
+        self.assertIn("brazil-feature-wall", result["quote_basis"])
+        self.assertNotIn("counters", result["quote_basis"])
+        self.assertEqual(result["line_items"][0]["unit"], "sqm")
+        self.assertEqual(result["line_items"][0]["description"], "sqm green carpet across pavilion footprint")
 
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):
         payload = valid_payload()
@@ -707,9 +818,34 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["source"], "gemini")
         self.assertEqual(result["quote_basis"]["surfaces"], "Gemini surfaces")
+        self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["description"], "Gemini vinyl graphics")
         self.assertIn("OpenAI failed", result["warnings"][0])
         gemini.assert_called_once_with(valid_payload(), "gemini-test-redacted")
+
+    def test_draft_quote_basis_rejects_empty_ai_basis_instead_of_padding_defaults(self):
+        payload = valid_payload()
+        payload["line_items"] = []
+        empty_draft = {"quote_basis": {}, "quote_basis_sections": [], "line_items": []}
+        keys = {
+            webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+            webapp.GEMINI_API_KEY_ENV_NAME: "gemini-test-redacted",
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
+            with mock.patch.object(webapp, "write_local_log") as write_log:
+                with mock.patch.object(webapp, "request_openai_quote_basis", return_value=empty_draft):
+                    with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=empty_draft):
+                        result = webapp.draft_quote_basis(payload)
+
+        logged_events = [call.args[0] for call in write_log.call_args_list]
+        self.assertIn("openai_draft_failed", logged_events)
+        self.assertIn("gemini_draft_failed", logged_events)
+        self.assertIn("ai_draft_fallback_used", logged_events)
+        self.assertEqual(result["source"], "local")
+        self.assertTrue(result["ai_failed"])
+        self.assertIn("OpenAI returned no usable quote basis", "\n".join(result["provider_errors"]))
+        self.assertIn("Gemini fallback returned no usable quote basis", "\n".join(result["provider_errors"]))
 
     def test_draft_quote_basis_uses_local_fallback_when_remote_ai_fails(self):
         payload = valid_payload()
@@ -924,7 +1060,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("quote_basis_sections", prompt)
         self.assertIn("dynamic sections", prompt)
         self.assertIn("Tags must be Include, Confirm, or Exclude only", prompt)
-        self.assertIn("8 to 14 itemized line_items", prompt)
+        self.assertIn("all relevant itemized line_items", prompt)
+        self.assertIn("any other customer-facing scope", prompt)
         self.assertIn("individual customer-facing rows", prompt)
         self.assertIn("flooring, structures, counters, graphics, furniture, electrical", prompt)
         self.assertIn("do not turn visible items", prompt)
@@ -2180,6 +2317,12 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
         self.assertIn("const analysisRequestedAt = new Date().toISOString()", draft_body)
         self.assertIn("started.data.created_at || analysisRequestedAt", draft_body)
         self.assertIn('state.activeJob = { id: started.data.job_id, type: "draft", startedAt }', draft_body)
+        self.assertIn("const hasFeedback = Boolean(state.pendingFeedback.trim())", draft_body)
+        self.assertIn("includeDraftContext: hasFeedback", draft_body)
+        self.assertIn("const includeDraftContext = options.includeDraftContext !== false", js)
+        self.assertIn("quote_basis: includeDraftContext ?", js)
+        self.assertIn("quote_basis_sections: includeDraftContext ?", js)
+        self.assertIn("line_items: includeDraftContext ?", js)
         self.assertIn("analysisElapsed", js)
         self.assertIn("startAnalysisElapsedTimer", js)
         self.assertIn("formatElapsedDuration", js)

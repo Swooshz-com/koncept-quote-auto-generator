@@ -100,8 +100,10 @@ ALLOWED_LOG_EVENTS = {
     "generate_failed",
     "generate_needs_review",
     "gemini_basis_chat_failed",
+    "gemini_draft_completed",
     "gemini_draft_failed",
     "openai_basis_chat_failed",
+    "openai_draft_completed",
     "openai_draft_failed",
     "security_event",
     "server_error",
@@ -336,6 +338,8 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         "gemini_basis_chat_failed",
     }:
         meaning = "AI quote-basis drafting or revision chat failed. Check details.errors or provider_errors; retry after fixing provider/network/configuration issues."
+    elif event in {"openai_draft_completed", "gemini_draft_completed"}:
+        meaning = "AI quote-basis drafting completed. Check details counts and section titles to confirm whether the model returned usable quote content."
     elif event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
         meaning = "Remote AI analysis was unavailable or unconfigured, so the app used or offered a local fallback path."
     elif event == "abuse_signal":
@@ -691,16 +695,16 @@ def quote_basis_with_default_dimension_confirmation(
     dimensions: dict[str, Any],
 ) -> dict[str, str]:
     cleaned = {
-        key: clean_multiline(basis.get(key))
-        for key in QUOTE_BASIS_KEYS
-        if clean_multiline(basis.get(key))
+        safe_section_id(key, f"section-{index}"): clean_multiline(value)
+        for index, (key, value) in enumerate((basis or {}).items(), start=1)
+        if clean_text(key) and clean_multiline(value)
     }
     if clean_text(dimensions.get("dimension_source")) != "default":
         return cleaned
 
     confirmation_line = default_booth_dimension_confirmation_line(dimensions)
     found_default_line = False
-    for key in QUOTE_BASIS_KEYS:
+    for key in list(cleaned.keys()):
         lines = multiline_list(cleaned.get(key))
         next_lines: list[str] = []
         for line in lines:
@@ -716,9 +720,17 @@ def quote_basis_with_default_dimension_confirmation(
             cleaned.pop(key, None)
 
     if not found_default_line:
-        target_lines = multiline_list(cleaned.get(DEFAULT_DIMENSION_BASIS_FIELD))
+        target_key = next(
+            (
+                key
+                for key in cleaned
+                if "platform" in key.lower() or "floor" in key.lower()
+            ),
+            DEFAULT_DIMENSION_BASIS_FIELD,
+        )
+        target_lines = multiline_list(cleaned.get(target_key))
         target_lines.append(confirmation_line)
-        cleaned[DEFAULT_DIMENSION_BASIS_FIELD] = "\n".join(target_lines)
+        cleaned[target_key] = "\n".join(target_lines)
     return cleaned
 
 
@@ -777,6 +789,13 @@ def normalize_basis_line(value: Any) -> dict[str, str] | None:
     return {"tag": "Confirm", "text": raw}
 
 
+def quote_basis_title_from_key(key: str) -> str:
+    if key in QUOTE_BASIS_LEGACY_LABELS:
+        return QUOTE_BASIS_LEGACY_LABELS[key]
+    title = re.sub(r"[_-]+", " ", clean_text(key)).strip()
+    return title.title() if title else "Quote Basis"
+
+
 def normalize_quote_basis_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raw_sections = payload.get("quote_basis_sections")
     sections: list[dict[str, Any]] = []
@@ -798,16 +817,19 @@ def normalize_quote_basis_sections(payload: dict[str, Any]) -> list[dict[str, An
                 sections.append({"id": section_id or f"section-{index}", "title": title, "lines": lines})
         return sections
 
-    legacy_basis = payload.get("quote_basis") if isinstance(payload.get("quote_basis"), dict) else {}
-    for key in QUOTE_BASIS_KEYS:
-        value = clean_multiline(legacy_basis.get(key))
+    raw_basis = payload.get("quote_basis") if isinstance(payload.get("quote_basis"), dict) else {}
+    ordered_keys = [key for key in QUOTE_BASIS_KEYS if key in raw_basis]
+    ordered_keys.extend(key for key in raw_basis.keys() if key not in ordered_keys)
+    for key in ordered_keys:
+        section_id = safe_section_id(key, f"section-{len(sections) + 1}")
+        value = clean_multiline(raw_basis.get(key))
         if not value:
             continue
         lines = [line for line in (normalize_basis_line(item) for item in multiline_list(value)) if line]
         if lines:
             sections.append({
-                "id": key,
-                "title": QUOTE_BASIS_LEGACY_LABELS[key],
+                "id": section_id,
+                "title": quote_basis_title_from_key(clean_text(key)),
                 "lines": lines,
             })
     return sections
@@ -861,6 +883,13 @@ def normalize_pricing_unit(value: Any) -> str:
     if unit.lower() in {"m2", "m^2", "sq m", "sq.m", "sq.m.", "square metre", "square meter", "square metres", "square meters"}:
         return "sqm"
     return unit
+
+
+def normalize_customer_unit_text(value: Any) -> str:
+    text = clean_text(value)
+    text = re.sub(r"(?i)(?<![A-Za-z0-9])m\s*(?:2|\^2)(?![A-Za-z0-9])", "sqm", text)
+    text = re.sub(r"(?i)(?<![A-Za-z0-9])sq\.?\s*m\.?(?![A-Za-z0-9])", "sqm", text)
+    return clean_text(text)
 
 
 def parse_pricing_number(value: Any) -> float | None:
@@ -1419,7 +1448,7 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     for raw in raw_items:
         if not isinstance(raw, dict):
             continue
-        description = clean_text(raw.get("description"))
+        description = normalize_customer_unit_text(raw.get("description"))
         display_price = clean_text(raw.get("display_price"))
         pricing_keyword = clean_text(raw.get("pricing_keyword"))
         price_mode = clean_text(raw.get("price_mode")).title()
@@ -1431,7 +1460,7 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
         item: dict[str, Any] = {
             "section": clean_text(raw.get("section")),
             "quantity": parse_float_or_none(raw.get("quantity")),
-            "unit": clean_text(raw.get("unit")),
+            "unit": normalize_pricing_unit(raw.get("unit")),
             "description": description,
             "pricing_keyword": pricing_keyword,
             "price_mode": price_mode,
@@ -1808,11 +1837,12 @@ def pricing_catalog_prompt_rows_for_payload(payload: dict[str, Any], profile_id:
 def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
     project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
     client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
-    line_items = payload.get("line_items") if isinstance(payload.get("line_items"), list) else []
-    sections = normalize_quote_basis_sections(payload)
     profile = load_profile_pack(profile_id_from_payload(payload))
     generator_label = clean_text(payload.get("generator_label")) or clean_text(profile.config.get("label")) or "Quotation"
     user_feedback = clean_multiline(payload.get("user_feedback"))
+    include_current_draft = bool(user_feedback)
+    line_items = payload.get("line_items") if include_current_draft and isinstance(payload.get("line_items"), list) else []
+    sections = normalize_quote_basis_sections(payload) if include_current_draft else []
     derived_dimensions = booth_dimensions_from_payload(payload)
     brief_context = {
         "profile": profile_prompt_summary(profile),
@@ -1859,6 +1889,8 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "current_quote_basis_sections and line_items. Apply the revision directly when it is compatible with the "
         "pricing catalog and visible quote context; otherwise regenerate the closest safe draft and make "
         "unclear parts Confirm lines. "
+        "When user_feedback is empty, create a fresh analysis from the uploaded images and pricing catalog; "
+        "do not copy existing quote-basis placeholders or prior draft line_items. "
         "The JSON must have quote_basis_sections as an array of dynamic sections. Dynamic section count "
         "and line count should follow the actual booth evidence; do not force a fixed category set. "
         "Each section must include id, title, and lines. Each line must include tag and text. "
@@ -1877,9 +1909,9 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Use the same depth as a Quote Basis To Confirm takeoff: describe visible materials, "
         "finishes, structures, platform/flooring, graphics/signage, furniture/plants/AV, "
         "lighting, sockets, and unclear confirmation points. "
-        "Also include 8 to 14 itemized line_items for the quotation table covering visible/recommended "
-        "flooring, structures, counters, graphics, furniture, electrical, assembly, and transportation "
-        "where relevant. Follow the quotation template naturally: use section headings conceptually, "
+        "Also include all relevant itemized line_items for the quotation table covering visible/recommended "
+        "flooring, structures, counters, graphics, furniture, electrical, assembly, transportation, "
+        "and any other customer-facing scope visible or reasonably recommended. Follow the quotation template naturally: use section headings conceptually, "
         "but make line_items individual customer-facing rows rather than broad category subtotal rows. "
         "Do not collapse a full section into a single subtotal unless that item is genuinely sold as one lump-sum service. "
         "Each line item must include "
@@ -2197,6 +2229,29 @@ def unpack_ai_draft(ai_draft: dict[str, Any]) -> tuple[dict[str, str], list[dict
     return basis, line_items, project, sections
 
 
+def require_usable_ai_basis(provider: str, basis: dict[str, str], sections: list[dict[str, Any]]) -> None:
+    has_section_lines = any(section.get("lines") for section in sections)
+    if basis or has_section_lines:
+        return
+    raise OpenAIAnalysisError(f"{provider} returned no usable quote basis.")
+
+
+def ai_draft_diagnostic_details(
+    source: str,
+    basis: dict[str, str],
+    sections: list[dict[str, Any]],
+    line_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "source": source,
+        "quote_basis_key_count": len(basis),
+        "quote_basis_keys": list(basis.keys())[:20],
+        "quote_basis_section_count": len(sections),
+        "section_titles": [clean_text(section.get("title")) for section in sections[:20] if isinstance(section, dict)],
+        "line_item_count": len(line_items),
+    }
+
+
 def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
     fallback = default_quote_basis(payload)
     fallback_line_items = normalize_line_items(payload) or default_line_items(payload)
@@ -2214,20 +2269,30 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
             write_local_log("openai_draft_failed", {"errors": safe_error_messages([openai_error])})
         else:
             basis, line_items, project, sections = unpack_ai_draft(ai_basis)
-            project = default_confirmation_dimensions(project, fallback_project)
-            adjusted_basis = quote_basis_with_default_dimension_confirmation({**fallback, **basis}, project)
-            adjusted_sections = quote_basis_sections_with_default_dimension_confirmation(
-                sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
-                project,
-            )
-            return {
-                "status": "drafted",
-                "source": "openai",
-                "quote_basis": adjusted_basis,
-                "quote_basis_sections": adjusted_sections,
-                "line_items": line_items or fallback_line_items,
-                "project": project,
-            }
+            try:
+                require_usable_ai_basis("OpenAI", basis, sections)
+            except OpenAIAnalysisError as exc:
+                openai_error = str(exc)
+                write_local_log("openai_draft_failed", {"errors": safe_error_messages([openai_error])})
+            else:
+                project = default_confirmation_dimensions(project, fallback_project)
+                adjusted_basis = quote_basis_with_default_dimension_confirmation(basis or quote_basis_from_sections(sections), project)
+                adjusted_sections = quote_basis_sections_with_default_dimension_confirmation(
+                    sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
+                    project,
+                )
+                write_local_log(
+                    "openai_draft_completed",
+                    ai_draft_diagnostic_details("openai", adjusted_basis, adjusted_sections, line_items),
+                )
+                return {
+                    "status": "drafted",
+                    "source": "openai",
+                    "quote_basis": adjusted_basis,
+                    "quote_basis_sections": adjusted_sections,
+                    "line_items": line_items or fallback_line_items,
+                    "project": project,
+                }
 
     if gemini_key:
         try:
@@ -2237,22 +2302,32 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
             write_local_log("gemini_draft_failed", {"errors": safe_error_messages([gemini_error])})
         else:
             basis, line_items, project, sections = unpack_ai_draft(ai_basis)
-            project = default_confirmation_dimensions(project, fallback_project)
-            adjusted_basis = quote_basis_with_default_dimension_confirmation({**fallback, **basis}, project)
-            adjusted_sections = quote_basis_sections_with_default_dimension_confirmation(
-                sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
-                project,
-            )
-            warnings = safe_error_messages([f"OpenAI failed; Gemini fallback used. {openai_error}"]) if openai_error else []
-            return {
-                "status": "drafted",
-                "source": "gemini",
-                "quote_basis": adjusted_basis,
-                "quote_basis_sections": adjusted_sections,
-                "line_items": line_items or fallback_line_items,
-                "project": project,
-                "warnings": warnings,
-            }
+            try:
+                require_usable_ai_basis("Gemini fallback", basis, sections)
+            except OpenAIAnalysisError as exc:
+                gemini_error = str(exc)
+                write_local_log("gemini_draft_failed", {"errors": safe_error_messages([gemini_error])})
+            else:
+                project = default_confirmation_dimensions(project, fallback_project)
+                adjusted_basis = quote_basis_with_default_dimension_confirmation(basis or quote_basis_from_sections(sections), project)
+                adjusted_sections = quote_basis_sections_with_default_dimension_confirmation(
+                    sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
+                    project,
+                )
+                warnings = safe_error_messages([f"OpenAI failed; Gemini fallback used. {openai_error}"]) if openai_error else []
+                write_local_log(
+                    "gemini_draft_completed",
+                    ai_draft_diagnostic_details("gemini", adjusted_basis, adjusted_sections, line_items),
+                )
+                return {
+                    "status": "drafted",
+                    "source": "gemini",
+                    "quote_basis": adjusted_basis,
+                    "quote_basis_sections": adjusted_sections,
+                    "line_items": line_items or fallback_line_items,
+                    "project": project,
+                    "warnings": warnings,
+                }
 
     remote_errors = [message for message in (openai_error, gemini_error) if message]
     if remote_errors:
