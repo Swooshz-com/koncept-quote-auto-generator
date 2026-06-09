@@ -234,6 +234,18 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["project"]["booth_width"], 6.0)
         self.assertEqual(brief["project"]["booth_depth"], 6.0)
 
+    def test_default_quote_basis_flags_default_booth_size_as_confirm_line(self):
+        payload = valid_payload()
+        payload["project"].pop("booth_width", None)
+        payload["project"].pop("booth_depth", None)
+        payload["project"]["title"] = "RE: Demo Booth"
+
+        basis = webapp.default_quote_basis(payload)
+
+        joined_basis = "\n".join(basis.values())
+        self.assertIn("Confirm: Booth size defaults to 6m x 6m", joined_basis)
+        self.assertNotIn("Include: Booth size defaults to 6m x 6m", joined_basis)
+
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
         payload["company"]["header_details"] = "Line one<br>Line two<br><br>Line four"
@@ -503,6 +515,34 @@ class WebappServerTest(unittest.TestCase):
         openai.assert_called_once_with(payload, "sk-test-redacted")
         gemini.assert_called_once_with(payload, "gemini-test-redacted")
 
+    def test_draft_quote_basis_rewrites_default_booth_size_as_confirm_line(self):
+        payload = valid_payload()
+        payload["project"].pop("booth_width", None)
+        payload["project"].pop("booth_depth", None)
+        payload["project"]["title"] = "RE: Demo Booth"
+        ai_draft = {
+            "quote_basis": {
+                "platform": "Include: Booth size defaults to 6m x 6m for area-based quantities.",
+            },
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": "36",
+                    "unit": "sqm",
+                    "description": "Needle punch carpet in colour",
+                    "pricing_keyword": "needle punch carpet in colour",
+                }
+            ],
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""):
+            with mock.patch.object(webapp, "request_openai_quote_basis", return_value=ai_draft):
+                result = webapp.draft_quote_basis(payload)
+
+        platform_basis = result["quote_basis"]["platform"]
+        self.assertIn("Confirm: Booth size defaults to 6m x 6m", platform_basis)
+        self.assertNotIn("Include: Booth size defaults to 6m x 6m", platform_basis)
+
     def test_openai_request_body_omits_temperature_for_default_model(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
@@ -594,6 +634,19 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("user_feedback", prompt)
         self.assertIn("change the quoted green carpet line to red", prompt)
         self.assertIn("Apply the revision directly", prompt)
+
+    def test_openai_prompt_requires_default_booth_size_as_confirm_line(self):
+        payload = valid_payload()
+        payload["project"].pop("booth_width", None)
+        payload["project"].pop("booth_depth", None)
+        payload["project"]["title"] = "RE: Demo Booth"
+
+        prompt = webapp.build_quote_draft_prompt(payload)
+
+        self.assertIn('"source": "default"', prompt)
+        self.assertIn("When dimensions use a default booth size", prompt)
+        self.assertIn("must appear as a Confirm: line", prompt)
+        self.assertIn("never as Include:", prompt)
 
     def test_openai_prompt_treats_uploads_as_untrusted_and_protects_secrets(self):
         response = mock.MagicMock()
