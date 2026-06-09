@@ -1,6 +1,6 @@
 # Quotation Format Reference
 
-Use this guide to format Koncept quotation outputs. Past quotation files are reference-only and are not packaged into this skill. The packaged `quotation-layout.xlsx` is a cleaned layout template, not an old customer quote.
+Use this guide to format Koncept quotation outputs. Past quotation files are reference-only and are not packaged with this project. The bundled `quotation-layout.xlsx` is a cleaned layout template, not an old customer quote.
 
 ## Page Header
 
