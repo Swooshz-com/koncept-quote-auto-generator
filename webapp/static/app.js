@@ -101,6 +101,7 @@ const STAGE_LABELS = {
 
 const state = {
   profileId: "",
+  pricingReferenceId: "",
   profiles: [],
   pricingReferences: [],
   images: [],
@@ -159,6 +160,7 @@ const elements = {
   sideDrawerTitle: qs("#sideDrawerTitle"),
   sideDrawerEyebrow: qs("#sideDrawerEyebrow"),
   sideDrawerSubtitle: qs("#sideDrawerSubtitle"),
+  workflowNotice: qs("#workflowNotice"),
   sampleDetailsButton: qs("#sampleDetailsButton"),
   clientName: qs("#clientName"),
   clientAttention: qs("#clientAttention"),
@@ -227,8 +229,41 @@ const elements = {
   richTextToolbar: Array.from(document.querySelectorAll("[data-rich-command]")),
 };
 
+function pricingReferenceProfileId(reference = {}) {
+  return String(reference.profile_id || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
+}
+
+function pricingReferenceSelectValue(reference = {}) {
+  const referenceId = String(reference.id || "").trim();
+  if (!referenceId) return "";
+  return `${pricingReferenceProfileId(reference)}::${referenceId}`;
+}
+
+function pricingReferenceSelectionFromValue(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return { profileId: "", pricingReferenceId: "" };
+  const delimiterIndex = text.indexOf("::");
+  if (delimiterIndex < 0) {
+    return { profileId: "", pricingReferenceId: text };
+  }
+  return {
+    profileId: text.slice(0, delimiterIndex) || DEFAULT_PROFILE_ID,
+    pricingReferenceId: text.slice(delimiterIndex + 2),
+  };
+}
+
+function pricingReferenceForProfile(profileId = "") {
+  const resolvedProfileId = String(profileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
+  return state.pricingReferences.find((reference) => pricingReferenceProfileId(reference) === resolvedProfileId) || null;
+}
+
 function currentProfile() {
-  return state.profiles.find((profile) => profile.id === DEFAULT_PROFILE_ID) || state.profiles[0] || {
+  const selectedReference = currentPricingReference();
+  const resolvedProfileId = pricingReferenceProfileId(selectedReference || { profile_id: state.profileId || DEFAULT_PROFILE_ID });
+  return state.profiles.find((profile) => profile.id === resolvedProfileId)
+    || state.profiles.find((profile) => profile.id === DEFAULT_PROFILE_ID)
+    || state.profiles[0]
+    || {
     id: DEFAULT_PROFILE_ID,
     label: "Quotation Profile",
     description: "",
@@ -237,7 +272,38 @@ function currentProfile() {
 }
 
 function currentPricingReference() {
-  return state.pricingReferences.find((reference) => reference.id === state.profileId) || null;
+  const pricingReferenceId = String(state.pricingReferenceId || "").trim();
+  if (!pricingReferenceId) return null;
+  const selectedProfileId = String(state.profileId || "").trim();
+  return state.pricingReferences.find((reference) => (
+    reference.id === pricingReferenceId
+    && (!selectedProfileId || pricingReferenceProfileId(reference) === selectedProfileId)
+  ))
+    || state.pricingReferences.find((reference) => reference.id === pricingReferenceId)
+    || null;
+}
+
+function resolvedProfileIdForPayload() {
+  const selectedReference = currentPricingReference();
+  return pricingReferenceProfileId(selectedReference || { profile_id: state.profileId || DEFAULT_PROFILE_ID });
+}
+
+function syncSelectedPricingReference() {
+  const selectedReference = currentPricingReference();
+  if (selectedReference) {
+    state.profileId = pricingReferenceProfileId(selectedReference);
+    state.pricingReferenceId = selectedReference.id || "";
+    return;
+  }
+  if (state.profileId) {
+    const fallbackReference = pricingReferenceForProfile(state.profileId);
+    if (fallbackReference) {
+      state.profileId = pricingReferenceProfileId(fallbackReference);
+      state.pricingReferenceId = fallbackReference.id || "";
+      return;
+    }
+  }
+  state.pricingReferenceId = "";
 }
 
 function currentGenerator() {
@@ -358,6 +424,69 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function decodeHtmlEntities(value) {
+  return String(value ?? "").replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity) => {
+    const normalized = entity.toLowerCase();
+    if (normalized === "amp") return "&";
+    if (normalized === "lt") return "<";
+    if (normalized === "gt") return ">";
+    if (normalized === "quot") return '"';
+    if (normalized === "apos") return "'";
+    if (normalized === "nbsp") return " ";
+    if (normalized.startsWith("#x")) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    if (normalized.startsWith("#")) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    return match;
+  });
+}
+
+function sanitizeRichTextHtml(value = "") {
+  const allowedTags = new Set(["div", "p", "br", "strong", "b", "em", "i", "u"]);
+  const droppedContentTags = new Set(["script", "style", "iframe", "object", "embed", "svg", "math"]);
+  const droppedVoidTags = new Set(["img"]);
+  const tokens = String(value || "").match(/<!--[\s\S]*?-->|<![^>]*>|<\/?[A-Za-z][A-Za-z0-9:-]*\b[^>]*>|[^<]+|</g) || [];
+  const droppedStack = [];
+  let output = "";
+
+  tokens.forEach((token) => {
+    const tagMatch = token.match(/^<\/?([A-Za-z][A-Za-z0-9:-]*)\b[^>]*>$/);
+    if (!tagMatch) {
+      if (!droppedStack.length && !token.startsWith("<!")) {
+        output += escapeHtml(decodeHtmlEntities(token));
+      }
+      return;
+    }
+
+    const tag = tagMatch[1].toLowerCase();
+    const isClosing = token.startsWith("</");
+    const isSelfClosing = /\/\s*>$/.test(token) || tag === "br";
+
+    if (droppedVoidTags.has(tag)) return;
+    if (droppedContentTags.has(tag)) {
+      if (!isClosing && !isSelfClosing) droppedStack.push(tag);
+      if (isClosing) {
+        const lastIndex = droppedStack.lastIndexOf(tag);
+        if (lastIndex >= 0) droppedStack.splice(lastIndex, 1);
+      }
+      return;
+    }
+    if (droppedStack.length) return;
+    if (!allowedTags.has(tag)) return;
+    if (tag === "br") {
+      output += "<br>";
+      return;
+    }
+    output += isClosing ? `</${tag}>` : `<${tag}>`;
+  });
+
+  return output;
 }
 
 function normalizeTextNewlines(value) {
@@ -490,7 +619,7 @@ function syncRichTextEditor(input, richHtml = "") {
   const editor = richTextEditorFor(input);
   if (!editor || document.activeElement === editor) return;
   if (richHtml) {
-    editor.innerHTML = richHtml;
+    editor.innerHTML = sanitizeRichTextHtml(richHtml);
     return;
   }
   editor.innerHTML = richTextPlainHtml(input.value ?? "");
@@ -499,7 +628,7 @@ function syncRichTextEditor(input, richHtml = "") {
 function collectRichTextDetails() {
   return RICH_TEXT_SOURCE_IDS.reduce((details, id) => {
     const editor = elements.richTextEditors.find((item) => item.dataset.richTextSource === id);
-    if (editor) details[id] = editor.innerHTML;
+    if (editor) details[id] = sanitizeRichTextHtml(editor.innerHTML);
     return details;
   }, {});
 }
@@ -511,7 +640,7 @@ function restoreRichTextDetails(details = {}, options = {}) {
     const editor = elements.richTextEditors.find((item) => item.dataset.richTextSource === id);
     if (!input || !editor) return;
     if (details[id]) {
-      editor.innerHTML = details[id];
+      editor.innerHTML = sanitizeRichTextHtml(details[id]);
     } else if (!partial) {
       editor.innerHTML = richTextPlainHtml(input.value ?? "");
     } else {
@@ -717,6 +846,7 @@ function saveSessionState() {
       version: 1,
       savedAt: new Date().toISOString(),
       profileId: state.profileId,
+      pricingReferenceId: state.pricingReferenceId,
       images: state.images,
       quoteDetails: collectQuoteDetails(),
       workflowStage: state.workflowStage,
@@ -743,6 +873,8 @@ function restoreSessionState() {
   const saved = safeSessionJson();
   if (!saved || saved.version !== 1) return false;
   state.profileId = saved.profileId || "";
+  state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
+  syncSelectedPricingReference();
   renderProfileOptions();
   applyQuoteDetails(saved.quoteDetails || {}, { includeLogo: true, clearLogo: true });
   state.images = Array.isArray(saved.images) ? saved.images : [];
@@ -936,6 +1068,7 @@ function loadDefaultProfilePreset(options = {}) {
 
 function clearCustomerDetails() {
   state.profileId = "";
+  state.pricingReferenceId = "";
   setInputValue(elements.clientName, "");
   setInputValue(elements.clientAttention, "");
   setInputValue(elements.clientTitle, "");
@@ -983,6 +1116,7 @@ function startNewQuote() {
   if (state.isAnalysisRunning || state.isGenerating) return;
   clearSessionState();
   state.profileId = "";
+  state.pricingReferenceId = "";
   state.images = [];
   state.headerLogo = null;
   state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
@@ -1024,11 +1158,23 @@ function deleteSelectedPreset() {
 function renderProfileOptions() {
   if (!elements.profileSelect) return;
   const references = state.pricingReferences.length ? state.pricingReferences : [];
+  const duplicateReferenceIds = references.reduce((counts, reference) => {
+    const referenceId = String(reference.id || "").trim();
+    if (referenceId) counts.set(referenceId, (counts.get(referenceId) || 0) + 1);
+    return counts;
+  }, new Map());
+  const profileLabels = new Map(state.profiles.map((profile) => [profile.id, profile.label || profile.id]));
   const options = references
-    .map((reference) => `<option value="${escapeHtml(reference.id)}">${escapeHtml(reference.label || reference.id)}</option>`)
+    .map((reference) => {
+      const referenceId = String(reference.id || "").trim();
+      const profileId = pricingReferenceProfileId(reference);
+      const duplicateSuffix = duplicateReferenceIds.get(referenceId) > 1 ? ` (${profileLabels.get(profileId) || profileId})` : "";
+      return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}${escapeHtml(duplicateSuffix)}</option>`;
+    })
     .join("");
   elements.profileSelect.innerHTML = `<option value="">No pricing reference selected</option>${options}`;
-  elements.profileSelect.value = state.profileId || "";
+  const selectedReference = currentPricingReference();
+  elements.profileSelect.value = selectedReference ? pricingReferenceSelectValue(selectedReference) : "";
 }
 
 async function loadProfiles() {
@@ -1036,8 +1182,8 @@ async function loadProfiles() {
   if (ok && Array.isArray(data.profiles)) {
     state.profiles = data.profiles;
     state.pricingReferences = Array.isArray(data.pricing_references) ? data.pricing_references : [];
-    if (state.profileId && !state.pricingReferences.some((reference) => reference.id === state.profileId)) {
-      state.profileId = "";
+    if (state.pricingReferenceId) {
+      syncSelectedPricingReference();
     }
   }
   renderProfileOptions();
@@ -1061,9 +1207,16 @@ function clearGeneratedQuoteState() {
 }
 
 function handleProfileSelectionChange() {
-  const nextProfileId = elements.profileSelect.value || "";
-  if (nextProfileId === state.profileId) return;
-  state.profileId = nextProfileId;
+  const nextSelection = pricingReferenceSelectionFromValue(elements.profileSelect.value || "");
+  if (
+    nextSelection.profileId === state.profileId
+    && nextSelection.pricingReferenceId === state.pricingReferenceId
+  ) {
+    return;
+  }
+  state.profileId = nextSelection.profileId;
+  state.pricingReferenceId = nextSelection.pricingReferenceId;
+  syncSelectedPricingReference();
   renderProfileOptions();
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? (canStartAnalysis() ? "ready_to_analyze" : "details_review") : "needs_images");
@@ -1080,8 +1233,10 @@ async function setSampleDetails() {
       appendChatMessage("assistant", (data.errors || [data.error || "Sample fixture could not be loaded."]).join("\n"), { tone: "error" });
       return;
     }
-    state.profileId = data.profile_id || DEFAULT_PROFILE_ID;
     if (!state.profiles.length) await loadProfiles();
+    state.profileId = data.profile_id || DEFAULT_PROFILE_ID;
+    state.pricingReferenceId = data.pricing_reference_id || pricingReferenceForProfile(state.profileId)?.id || "";
+    syncSelectedPricingReference();
     renderProfileOptions();
     renderPresetOptions();
     loadDefaultProfilePreset({ silent: true });
@@ -1101,6 +1256,8 @@ async function setSampleDetails() {
 function buildPayload(options = {}) {
   syncRichTextSources();
   const generator = currentGenerator();
+  const pricingReference = currentPricingReference();
+  const profileId = resolvedProfileIdForPayload();
   const includeBoothDimensions = options.includeBoothDimensions !== false;
   const project = {
     title: elements.projectTitle.value.trim(),
@@ -1112,7 +1269,8 @@ function buildPayload(options = {}) {
     project.dimension_source = state.boothDimensions.dimension_source;
   }
   return {
-    profile_id: state.profileId || "",
+    profile_id: profileId,
+    pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
     generator_label: generator.label,
     images: state.images,
     confirmed: true,
@@ -1405,6 +1563,9 @@ function appendChatMessage(role, content, options = {}) {
     tone: options.tone || "",
   });
   renderChat();
+  if (!elements.chatTranscript && ["assistant", "system"].includes(role)) {
+    renderWorkflowNotice(content, options);
+  }
 }
 
 function renderChat() {
@@ -1428,6 +1589,25 @@ function renderChat() {
     return;
   }
   elements.chatTranscript.scrollTop = elements.chatTranscript.scrollHeight;
+}
+
+function noticeTextFromMessage(content, options = {}) {
+  const text = options.html
+    ? String(content || "").replace(/<[^>]*>/g, " ")
+    : String(content || "");
+  return normalizeTextNewlines(decodeHtmlEntities(text)).replace(/\s+/g, " ").trim();
+}
+
+function renderWorkflowNotice(content, options = {}) {
+  if (!elements.workflowNotice) return;
+  const text = noticeTextFromMessage(content, options);
+  if (!text) return;
+  const tone = options.tone || "instruction";
+  const title = tone === "error" ? "Action needed" : tone === "warn" ? "Check before continuing" : "Workflow update";
+  elements.workflowNotice.hidden = false;
+  elements.workflowNotice.classList.remove("error", "warn", "instruction");
+  elements.workflowNotice.classList.add(tone);
+  elements.workflowNotice.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span>`;
 }
 
 function renderBasisEmptyState(message = "Load images, complete Customer and Quote Company, then start analysis to review the draft here.") {
@@ -1976,7 +2156,7 @@ function missingCustomerFields() {
   syncRichTextSources();
   const missing = [];
   const hasLines = (value) => splitLines(value).length > 0;
-  if (!String(state.profileId || "").trim()) missing.push("Quote Pricing Reference");
+  if (!String(state.pricingReferenceId || "").trim() || !currentPricingReference()) missing.push("Quote Pricing Reference");
   if (!elements.clientName.value.trim()) missing.push("Client name");
   if (!elements.clientAttention.value.trim()) missing.push("Attention person");
   if (!elements.clientTitle.value.trim()) missing.push("Attention title");

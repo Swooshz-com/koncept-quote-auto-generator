@@ -1286,7 +1286,7 @@ def update_repeating_header_drawing(
     root = ET.fromstring(xml)
     anchors = root.findall(f"{NS_DRAWING}twoCellAnchor")
     text_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None), None)
-    logo_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}pic") is not None), None)
+    logo_anchor = find_header_logo_anchor(root, {})
     if text_anchor is None:
         return xml
 
@@ -1389,18 +1389,71 @@ def drawing_target_part(target: str) -> str:
     return "/".join(parts)
 
 
+def empty_relationships_root() -> ET.Element:
+    return ET.Element(f"{NS_PACKAGE_REL}Relationships")
+
+
+def rel_targets_by_id(parts: dict[str, bytes], rels_name: str = "xl/drawings/_rels/drawing1.xml.rels") -> dict[str, str]:
+    if rels_name not in parts:
+        return {}
+    root = ET.fromstring(parts[rels_name])
+    return {
+        rel.attrib.get("Id", ""): rel.attrib.get("Target", "")
+        for rel in root.findall(f"{NS_PACKAGE_REL}Relationship")
+    }
+
+
+def picture_rel_id(pic: ET.Element | None) -> str:
+    if pic is None:
+        return ""
+    blip = pic.find(f".//{NS_A}blip")
+    return blip.attrib.get(f"{NS_REL}embed", "") if blip is not None else ""
+
+
+def picture_name(pic: ET.Element | None) -> str:
+    if pic is None:
+        return ""
+    node = pic.find(f"{NS_DRAWING}nvPicPr/{NS_DRAWING}cNvPr")
+    return node.attrib.get("name", "") if node is not None else ""
+
+
+def is_header_logo_target(target: str) -> bool:
+    name = Path(drawing_target_part(target)).name.lower()
+    return "logo" in name or name in {"image1.jpeg", "image1.jpg", "image1.png"}
+
+
+def is_header_logo_anchor(anchor: ET.Element, rel_targets: dict[str, str]) -> bool:
+    pic = anchor.find(f"{NS_DRAWING}pic")
+    if pic is None:
+        return False
+    if "logo" in picture_name(pic).lower():
+        return True
+    rel_id = picture_rel_id(pic)
+    return bool(rel_id and is_header_logo_target(rel_targets.get(rel_id, "")))
+
+
+def find_header_logo_anchor(root: ET.Element, rel_targets: dict[str, str]) -> ET.Element | None:
+    return next(
+        (
+            anchor
+            for anchor in root.findall(f"{NS_DRAWING}twoCellAnchor")
+            if is_header_logo_anchor(anchor, rel_targets)
+        ),
+        None,
+    )
+
+
 def remove_header_logo(parts: dict[str, bytes]) -> None:
     drawing_name = "xl/drawings/drawing1.xml"
     rels_name = "xl/drawings/_rels/drawing1.xml.rels"
     removed_rel_ids: set[str] = set()
+    rel_targets = rel_targets_by_id(parts, rels_name)
     if drawing_name in parts:
         drawing_root = ET.fromstring(parts[drawing_name])
         for anchor in list(drawing_root.findall(f"{NS_DRAWING}twoCellAnchor")):
-            pic = anchor.find(f"{NS_DRAWING}pic")
-            if pic is None:
+            if not is_header_logo_anchor(anchor, rel_targets):
                 continue
-            blip = pic.find(f".//{NS_A}blip")
-            rel_id = blip.attrib.get(f"{NS_REL}embed") if blip is not None else ""
+            rel_id = picture_rel_id(anchor.find(f"{NS_DRAWING}pic"))
             if rel_id:
                 removed_rel_ids.add(rel_id)
             drawing_root.remove(anchor)
@@ -1412,7 +1465,7 @@ def remove_header_logo(parts: dict[str, bytes]) -> None:
     removed_targets: list[str] = []
     for rel in list(rels_root.findall(f"{NS_PACKAGE_REL}Relationship")):
         is_removed_rel = bool(removed_rel_ids and rel.attrib.get("Id") in removed_rel_ids)
-        is_lonely_image = not removed_rel_ids and rel.attrib.get("Type", "").endswith("/image")
+        is_lonely_image = not removed_rel_ids and rel.attrib.get("Type", "").endswith("/image") and is_header_logo_target(rel.attrib.get("Target", ""))
         if not (is_removed_rel or is_lonely_image):
             continue
         target = rel.attrib.get("Target", "")
@@ -1478,10 +1531,10 @@ def ensure_header_logo_anchor(parts: dict[str, bytes], rel_id: str) -> None:
     if drawing_name not in parts:
         return
     drawing_root = ET.fromstring(parts[drawing_name])
-    for anchor in drawing_root.findall(f"{NS_DRAWING}twoCellAnchor"):
+    rel_targets = rel_targets_by_id(parts)
+    anchor = find_header_logo_anchor(drawing_root, rel_targets)
+    if anchor is not None:
         pic = anchor.find(f"{NS_DRAWING}pic")
-        if pic is None:
-            continue
         blip = pic.find(f".//{NS_A}blip")
         if blip is not None:
             blip.attrib[f"{NS_REL}embed"] = rel_id
@@ -1516,30 +1569,40 @@ def replace_header_logo(parts: dict[str, bytes], logo_data_url: str) -> None:
 
     rels_name = "xl/drawings/_rels/drawing1.xml.rels"
     logo_rel_id = ""
-    if rels_name in parts:
-        rels_root = ET.fromstring(parts[rels_name])
-        for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
-            if rel.attrib.get("Type", "").endswith("/image"):
-                old_target = drawing_target_part(rel.attrib.get("Target", ""))
-                rel.attrib["Target"] = f"../media/header_logo.{extension}"
-                logo_rel_id = rel.attrib.get("Id", "")
-                if old_target != media_name:
-                    parts.pop(old_target, None)
-                break
-        if not logo_rel_id:
-            logo_rel_id = next_relationship_id(rels_root)
-            ET.SubElement(
-                rels_root,
-                f"{NS_PACKAGE_REL}Relationship",
-                {
-                    "Id": logo_rel_id,
-                    "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-                    "Target": f"../media/header_logo.{extension}",
-                },
-            )
-        parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
-    if logo_rel_id:
-        ensure_header_logo_anchor(parts, logo_rel_id)
+    rels_root = ET.fromstring(parts[rels_name]) if rels_name in parts else empty_relationships_root()
+    header_anchor_rel_ids: set[str] = set()
+    if "xl/drawings/drawing1.xml" in parts:
+        drawing_root = ET.fromstring(parts["xl/drawings/drawing1.xml"])
+        rel_targets = rel_targets_by_id(parts, rels_name)
+        for anchor in drawing_root.findall(f"{NS_DRAWING}twoCellAnchor"):
+            if is_header_logo_anchor(anchor, rel_targets):
+                rel_id = picture_rel_id(anchor.find(f"{NS_DRAWING}pic"))
+                if rel_id:
+                    header_anchor_rel_ids.add(rel_id)
+
+    for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
+        rel_id = rel.attrib.get("Id", "")
+        target = rel.attrib.get("Target", "")
+        if rel.attrib.get("Type", "").endswith("/image") and (rel_id in header_anchor_rel_ids or is_header_logo_target(target)):
+            old_target = drawing_target_part(target)
+            rel.attrib["Target"] = f"../media/header_logo.{extension}"
+            logo_rel_id = rel_id
+            if old_target != media_name:
+                parts.pop(old_target, None)
+            break
+    if not logo_rel_id:
+        logo_rel_id = next_relationship_id(rels_root)
+        ET.SubElement(
+            rels_root,
+            f"{NS_PACKAGE_REL}Relationship",
+            {
+                "Id": logo_rel_id,
+                "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                "Target": f"../media/header_logo.{extension}",
+            },
+        )
+    parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
+    ensure_header_logo_anchor(parts, logo_rel_id)
 
     content_types_name = "[Content_Types].xml"
     if content_types_name not in parts:

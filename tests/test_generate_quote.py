@@ -25,6 +25,8 @@ import build_pricing_catalog as pricing_catalog
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}"
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+NS_PACKAGE_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 NS_CP = "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}"
 NS_DC = "{http://purl.org/dc/elements/1.1/}"
 NS_MC_IGNORABLE = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable"
@@ -106,6 +108,52 @@ def drawing_paragraph_runs(root):
         if runs:
             paragraphs.append(runs)
     return paragraphs
+
+
+def drawing_with_picture_xml(name="Product Screenshot", rel_id="rId5"):
+    root = ET.Element(f"{NS_DRAWING}wsDr")
+    anchor = ET.SubElement(root, f"{NS_DRAWING}twoCellAnchor")
+    from_marker = ET.SubElement(anchor, f"{NS_DRAWING}from")
+    for tag, value in (("col", "0"), ("colOff", "0"), ("row", "0"), ("rowOff", "0")):
+        ET.SubElement(from_marker, f"{NS_DRAWING}{tag}").text = value
+    to_marker = ET.SubElement(anchor, f"{NS_DRAWING}to")
+    for tag, value in (("col", "1"), ("colOff", "0"), ("row", "1"), ("rowOff", "0")):
+        ET.SubElement(to_marker, f"{NS_DRAWING}{tag}").text = value
+    pic = ET.SubElement(anchor, f"{NS_DRAWING}pic")
+    nv_pic_pr = ET.SubElement(pic, f"{NS_DRAWING}nvPicPr")
+    ET.SubElement(nv_pic_pr, f"{NS_DRAWING}cNvPr", {"id": "9", "name": name})
+    ET.SubElement(nv_pic_pr, f"{NS_DRAWING}cNvPicPr")
+    blip_fill = ET.SubElement(pic, f"{NS_DRAWING}blipFill")
+    ET.SubElement(blip_fill, f"{NS_A}blip", {f"{NS_REL}embed": rel_id})
+    ET.SubElement(pic, f"{NS_DRAWING}spPr")
+    ET.SubElement(anchor, f"{NS_DRAWING}clientData")
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def empty_drawing_xml():
+    return ET.tostring(ET.Element(f"{NS_DRAWING}wsDr"), encoding="utf-8", xml_declaration=True)
+
+
+def drawing_rels_xml(*relationships):
+    root = ET.Element(f"{NS_PACKAGE_REL}Relationships")
+    for rel_id, target in relationships:
+        ET.SubElement(
+            root,
+            f"{NS_PACKAGE_REL}Relationship",
+            {
+                "Id": rel_id,
+                "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                "Target": target,
+            },
+        )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def empty_content_types_xml():
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types" />'
+    )
 
 
 def cell_style(root, ref):
@@ -1277,6 +1325,61 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertFalse(any(anchor.find(f"{NS_DRAWING}pic") is not None for anchor in drawing.findall(f"{NS_DRAWING}twoCellAnchor")))
         self.assertNotIn("/image", drawing_rels)
         self.assertNotIn("xl/media/image1.jpeg", media_names)
+
+    def test_header_logo_replacement_does_not_hijack_unrelated_picture(self):
+        parts = {
+            "xl/drawings/drawing1.xml": drawing_with_picture_xml("Product Screenshot", "rId5"),
+            "xl/drawings/_rels/drawing1.xml.rels": drawing_rels_xml(("rId5", "../media/product.png")),
+            "xl/media/product.png": b"product image",
+            "[Content_Types].xml": empty_content_types_xml(),
+        }
+
+        quote.replace_header_logo(parts, "data:image/png;base64,iVBORw0KGgo=")
+
+        drawing = ET.fromstring(parts["xl/drawings/drawing1.xml"])
+        rels = ET.fromstring(parts["xl/drawings/_rels/drawing1.xml.rels"])
+        pics = drawing.findall(f".//{NS_DRAWING}pic")
+        names = [
+            pic.find(f"{NS_DRAWING}nvPicPr/{NS_DRAWING}cNvPr").attrib.get("name")
+            for pic in pics
+        ]
+        targets = {
+            rel.attrib.get("Id"): rel.attrib.get("Target")
+            for rel in rels.findall(f"{NS_PACKAGE_REL}Relationship")
+        }
+
+        self.assertIn("Product Screenshot", names)
+        self.assertIn("Header Logo", names)
+        self.assertEqual(targets["rId5"], "../media/product.png")
+        self.assertIn("../media/header_logo.png", targets.values())
+        self.assertEqual(parts["xl/media/product.png"], b"product image")
+        self.assertIn("xl/media/header_logo.png", parts)
+
+    def test_header_logo_replacement_creates_missing_drawing_rels_file(self):
+        parts = {
+            "xl/drawings/drawing1.xml": empty_drawing_xml(),
+            "[Content_Types].xml": empty_content_types_xml(),
+        }
+
+        quote.replace_header_logo(parts, "data:image/png;base64,iVBORw0KGgo=")
+
+        self.assertIn("xl/drawings/_rels/drawing1.xml.rels", parts)
+        drawing = ET.fromstring(parts["xl/drawings/drawing1.xml"])
+        rels = ET.fromstring(parts["xl/drawings/_rels/drawing1.xml.rels"])
+        header_pic = next(
+            pic
+            for pic in drawing.findall(f".//{NS_DRAWING}pic")
+            if pic.find(f"{NS_DRAWING}nvPicPr/{NS_DRAWING}cNvPr").attrib.get("name") == "Header Logo"
+        )
+        header_rel_id = header_pic.find(f".//{NS_A}blip").attrib[f"{NS_REL}embed"]
+        header_rel = next(
+            rel
+            for rel in rels.findall(f"{NS_PACKAGE_REL}Relationship")
+            if rel.attrib.get("Id") == header_rel_id
+        )
+
+        self.assertEqual(header_rel.attrib["Target"], "../media/header_logo.png")
+        self.assertIn("xl/media/header_logo.png", parts)
 
     def test_excel_pdf_export_script_repairs_and_saves_workbook_before_export(self):
         script = quote.powershell_export_script(Path("quotation.xlsx"), Path("quotation.pdf"))
