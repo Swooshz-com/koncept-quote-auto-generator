@@ -408,8 +408,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         declared = declared_xml_prefixes(workbook_xml, "workbook")
         ignorable = workbook.attrib.get(NS_MC_IGNORABLE, "").split()
 
-        self.assertEqual(creator.text, "Koncept Quote Auto-Generator")
-        self.assertEqual(last_modified_by.text, "Koncept Quote Auto-Generator")
+        self.assertEqual(creator.text, "Swooshz Quote Generator")
+        self.assertEqual(last_modified_by.text, "Swooshz Quote Generator")
         self.assertNotIn("absPath", workbook_xml)
         self.assertNotIn("/Users/", workbook_xml)
         self.assertNotIn("Dropbox", workbook_xml)

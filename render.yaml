@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: koncept-quote-auto-generator
+    env: python
+    plan: starter
+    buildCommand: ""
+    startCommand: python webapp/server.py
+    disk:
+      name: quote-runner-data
+      mountPath: /var/data/koncept-quote-runner
+      sizeGB: 1
+    envVars:
+      - key: APP_MODE
+        value: deploy
+      - key: AUTH_REQUIRED
+        value: "true"
+      - key: QUOTE_OUTPUT_ROOT
+        value: /var/data/koncept-quote-runner/output
+      - key: QUOTE_TMP_ROOT
+        value: /var/data/koncept-quote-runner/tmp
+      - key: QUOTE_LOG_ROOT
+        value: /var/data/koncept-quote-runner/logs
+      - key: SESSION_SECRET
+        sync: false
+      - key: OIDC_ISSUER_URL
+        sync: false
+      - key: OIDC_CLIENT_ID
+        sync: false
+      - key: OIDC_CLIENT_SECRET
+        sync: false
+      - key: OIDC_REDIRECT_URI
+        sync: false
+      - key: OIDC_LOGOUT_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

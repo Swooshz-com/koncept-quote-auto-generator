@@ -126,6 +126,8 @@ class QuoteLine:
     amount: float | None
     match_status: str
     match_candidates: list[PriceRow]
+    price_mode: str = "Priced"
+    unit_price_override: float | None = None
 
 
 @dataclass
@@ -409,12 +411,26 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
     prepared: list[QuoteLine] = []
     for item in brief.get("line_items", []):
         display_price = str(item.get("display_price") or "")
+        price_mode = clean_text(item.get("price_mode")).title()
+        if price_mode not in {"Priced", "Included"}:
+            price_mode = "Included" if display_price.lower() == "included" else "Priced"
+        unit_price_override = item.get("unit_price_override")
+        unit_price_override_num = as_float(unit_price_override, 0.0) if unit_price_override not in (None, "") else None
         query = clean_text(item.get("pricing_keyword") or item.get("description") or "")
         status, match, candidates = find_price_match(query, price_rows)
         quantity = item.get("quantity")
         quantity_num = as_float(quantity, 0.0) if quantity not in (None, "") else None
         amount: float | None = None
-        if display_price:
+        if price_mode == "Included":
+            status = "included"
+            amount = 0.0
+            display_price = "Included"
+            match = None
+        elif unit_price_override_num is not None:
+            status = "manual-price"
+            amount = round((quantity_num or 0.0) * unit_price_override_num, 2)
+            match = None
+        elif display_price:
             status = "manual-display"
         elif status == "matched" or (status == "ambiguous" and allow_ambiguous):
             amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0))
@@ -428,6 +444,8 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
                 description=clean_text(item.get("description")),
                 pricing_keyword=query,
                 display_price=display_price,
+                price_mode=price_mode,
+                unit_price_override=unit_price_override_num,
                 matched_price=match if amount is not None else None,
                 amount=amount,
                 match_status=status,
@@ -1063,7 +1081,7 @@ def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int
 
 def sanitize_core_properties(parts: dict[str, bytes]) -> None:
     core = ET.Element(f"{{{XMLNS_CP}}}coreProperties")
-    tool_name = "Koncept Quote Auto-Generator"
+    tool_name = "Swooshz Quote Generator"
     ET.SubElement(core, f"{{{XMLNS_DC}}}creator").text = tool_name
     ET.SubElement(core, f"{{{XMLNS_CP}}}lastModifiedBy").text = tool_name
     parts["docProps/core.xml"] = ET.tostring(core, encoding="utf-8", xml_declaration=True)
@@ -1685,12 +1703,16 @@ def wrapped_description(description: str, width: int = 58) -> list[str]:
 
 
 def amount_value(line: QuoteLine) -> str | float | None:
+    if line.price_mode == "Included":
+        return 0.0
     if line.display_price:
         return line.display_price
     return line.amount
 
 
 def line_amount_value(line: QuoteLine) -> float | None:
+    if line.price_mode == "Included":
+        return 0.0
     if line.amount is not None:
         return line.amount
     if line.display_price:
@@ -2500,7 +2522,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
                 match.pricing_id if match else "",
                 match.description if match else "",
                 quantity_text(line),
-                f"{match.sale_unit_price:.2f}" if match else "",
+                f"{line.unit_price_override:.2f}" if line.unit_price_override is not None else (f"{match.sale_unit_price:.2f}" if match else ""),
                 money(amount_value(line)),
             ]])
 

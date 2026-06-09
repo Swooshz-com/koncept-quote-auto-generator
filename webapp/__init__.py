@@ -1,1 +1,1 @@
-"""Local webapp package for the Koncept quote runner."""
+"""Local webapp package for Swooshz Quote Generator."""
