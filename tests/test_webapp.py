@@ -1737,6 +1737,14 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("showAiFailureBanner", js)
         self.assertIn("state.aiFailed", js)
         self.assertIn("quote-basis-card-failed", css)
+        self.assertIn("renderBasisFailureState", js)
+        self.assertIn("showAiFailedDraftState", js)
+        self.assertIn("clearAiFailedDraftState", js)
+        self.assertIn("AI analysis did not complete", js)
+        self.assertIn("I cleared the local fallback draft", js)
+        self.assertIn('state.draftSource === "local"', js)
+        self.assertIn("if (state.aiFailed) return false", js)
+        self.assertIn(".basis-empty-state-error", css)
         self.assertIn("z-index: 12", css)
         self.assertIn("[hidden]", css)
         self.assertIn("sidePanelBlockReason", js)
@@ -2594,6 +2602,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-chat-panel",
             "place-items: center",
             "width: min(760px",
+            "height: min(820px",
+            "min-height: 260px",
+            "min-height: 112px",
             ".basis-review-surface",
             ".basis-line-icon::before",
             ".basis-line-include .basis-line-text",

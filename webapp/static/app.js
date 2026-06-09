@@ -1203,8 +1203,8 @@ function restoreSessionState() {
   state.boothDimensions = normalizeBoothDimensions(saved.boothDimensions || saved.quoteDetails?.project || {});
   state.originalAnalysisSnapshot = saved.originalAnalysisSnapshot || null;
   state.basisConfirmed = Boolean(saved.basisConfirmed);
-  state.aiFailed = Boolean(saved.aiFailed);
   state.draftSource = saved.draftSource || "";
+  state.aiFailed = Boolean(saved.aiFailed || state.draftSource === "local");
   state.downloadFile = saved.downloadFile || null;
   state.pricingMatches = Array.isArray(saved.pricingMatches) ? saved.pricingMatches : [];
   state.pricingIssues = Array.isArray(saved.pricingIssues) ? saved.pricingIssues : [];

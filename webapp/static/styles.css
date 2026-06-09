@@ -1484,6 +1484,16 @@ select:focus {
   line-height: 1.45;
 }
 
+.basis-empty-state-error {
+  border-color: var(--red-border);
+  background: #fff8f7;
+  color: #8f2e27;
+}
+
+.basis-empty-state-error strong {
+  color: #8f2e27;
+}
+
 /* Quote basis card */
 .quote-basis-card {
   padding: 0;
