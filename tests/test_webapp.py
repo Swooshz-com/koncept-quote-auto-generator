@@ -155,11 +155,17 @@ class WebappServerTest(unittest.TestCase):
     def test_quote_details_do_not_require_visible_cheque_payee_field(self):
         payload = valid_payload()
         payload["quote_text"].pop("cheque_payee")
+        payload["project"].pop("booth_width")
+        payload["project"].pop("booth_depth")
 
         errors = webapp.validate_generation_payload(payload)
         brief = webapp.payload_to_brief(payload)
+        missing = webapp.quote_detail_missing_fields(payload)
 
         self.assertFalse(any("Cheque" in error for error in errors))
+        self.assertNotIn("Cheque payee", missing)
+        self.assertNotIn("Width", missing)
+        self.assertNotIn("Depth", missing)
         self.assertFalse(any("Header details" in error for error in errors))
         self.assertEqual(brief["company"]["name"], "Sample Quotation Co Pte Ltd")
         self.assertEqual(brief["cheque_payee"], "")
@@ -1719,6 +1725,64 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
 
         self.assertLess(status_index, panel_index)
         self.assertLess(panel_index, job_index)
+
+    def test_static_basis_status_card_keeps_blocked_errors_compact(self):
+        static_dir = ROOT / "webapp" / "static"
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("showAiBlockedBanner", js)
+        self.assertIn("AI analysis blocked.", js)
+        self.assertIn("basisStatusParts", js)
+        self.assertIn(".basis-status-card strong", css)
+        self.assertNotIn(".basis-empty-state strong,\n.basis-status-card strong", css)
+        status_strong_body = css.split(".basis-status-card strong", 1)[1].split("}", 1)[0]
+        self.assertIn("font-size: 15px", status_strong_body)
+        status_card_body = css.split(".basis-status-card {", 1)[1].split("}", 1)[0]
+        self.assertNotIn("min-height: 360px", status_card_body)
+        self.assertIn("text-align: left", status_card_body)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval(["normalizeTextNewlines", "basisStatusParts"].map(extractFunction).join("\n"));
+const parts = basisStatusParts("Fill quote details before AI analysis: Cheque payee, Width, Depth.", "warn");
+assert.strictEqual(parts.title, "Fill quote details before AI analysis");
+assert.strictEqual(parts.detail, "Cheque payee, Width, Depth.");
+const generic = basisStatusParts("Draft failed.", "error");
+assert.strictEqual(generic.title, "Action needed");
+assert.strictEqual(generic.detail, "Draft failed.");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_static_webapp_uses_menu_quote_basis_workflow_without_raw_line_item_editor(self):
         static_dir = ROOT / "webapp" / "static"

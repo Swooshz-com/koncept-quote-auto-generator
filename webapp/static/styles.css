@@ -1421,8 +1421,7 @@ select:focus {
   overflow: visible;
 }
 
-.basis-empty-state,
-.basis-status-card {
+.basis-empty-state {
   display: grid;
   align-content: center;
   min-height: 360px;
@@ -1435,8 +1434,7 @@ select:focus {
   box-shadow: var(--shadow-sm);
 }
 
-.basis-empty-state strong,
-.basis-status-card strong {
+.basis-empty-state strong {
   color: #10223b;
   font-size: clamp(22px, 3vw, 38px);
   line-height: 1.1;
@@ -1449,13 +1447,43 @@ select:focus {
   line-height: 1.55;
 }
 
+.basis-status-card {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #c8d5e3;
+  border-left: 5px solid #64748b;
+  border-radius: var(--radius-md);
+  background: #f8fafc;
+  color: var(--ink-secondary);
+  text-align: left;
+  box-shadow: var(--shadow-xs);
+}
+
+.basis-status-card strong {
+  color: #10223b;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.basis-status-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .basis-status-card.warn {
   border-color: var(--amber-border);
+  border-left-color: var(--amber);
   background: #fffaf0;
 }
 
 .basis-status-card.error {
   border-color: var(--red-border);
+  border-left-color: var(--red);
   background: var(--red-soft);
 }
 

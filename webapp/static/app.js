@@ -350,6 +350,11 @@ function showAiFailureBanner(message = "AI analysis failed. Try again later.") {
   setAiStatusBanner("failure", "AI analysis failed.", detail);
 }
 
+function showAiBlockedBanner(message = "Complete the required details, then retry analysis.") {
+  const detail = String(message || "").replace(/^AI analysis blocked\.?\s*/i, "").trim() || "Complete the required details, then retry analysis.";
+  setAiStatusBanner("failure", "AI analysis blocked.", detail);
+}
+
 function clearAiFailureBanner() {
   elements.aiFailureBanner.hidden = true;
   elements.aiFailureBanner.classList.remove("is-running", "is-failure");
@@ -1619,10 +1624,32 @@ function renderBasisEmptyState(message = "Load images, complete Customer and Quo
   `;
 }
 
+function basisStatusParts(message, tone = "") {
+  const text = normalizeTextNewlines(message).replace(/\s+/g, " ").trim();
+  if (!text) {
+    return {
+      title: tone === "error" ? "Action needed" : "Quote basis status",
+      detail: "",
+    };
+  }
+  const separator = text.indexOf(":");
+  if (separator > 0 && separator <= 80) {
+    return {
+      title: text.slice(0, separator).replace(/[.]+$/g, ""),
+      detail: text.slice(separator + 1).trim(),
+    };
+  }
+  if (tone === "error") return { title: "Action needed", detail: text };
+  if (tone === "warn") return { title: "Quote basis status", detail: text };
+  return { title: "Quote basis status", detail: text };
+}
+
 function setBasisReviewStatus(message, tone = "") {
+  const status = basisStatusParts(message, tone);
   elements.basisReviewSurface.innerHTML = `
     <div class="basis-status-card ${escapeHtml(tone)}">
-      <strong>${escapeHtml(message)}</strong>
+      <strong>${escapeHtml(status.title)}</strong>
+      ${status.detail ? `<p>${escapeHtml(status.detail)}</p>` : ""}
     </div>
   `;
 }
@@ -2427,10 +2454,17 @@ async function handleDraftBasis() {
     state.isAnalysisRunning = false;
     setBusyText("");
     setAnalysisButtons(false);
-    setWorkflowStage("ready_to_analyze");
-    showAiFailureBanner("Try again later.");
-    setBasisReviewStatus((started.data.errors || ["Draft failed."]).join("\n"), "error");
-    appendChatMessage("assistant", (started.data.errors || ["Draft failed."]).join("\n"), { tone: "error" });
+    const errors = started.data.errors || ["Draft failed."];
+    const wasBlocked = started.data.status === "blocked";
+    setWorkflowStage(wasBlocked ? "details_review" : "ready_to_analyze");
+    if (wasBlocked) {
+      showAiBlockedBanner(errors.join(" "));
+      setBasisReviewStatus(errors.join("\n"), "warn");
+    } else {
+      showAiFailureBanner("Try again later.");
+      setBasisReviewStatus(errors.join("\n"), "error");
+    }
+    appendChatMessage("assistant", errors.join("\n"), { tone: wasBlocked ? "warn" : "error" });
     syncControlStates();
     return;
   }
@@ -2446,10 +2480,17 @@ async function handleDraftBasis() {
   setAnalysisButtons(false);
 
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
-    setWorkflowStage("ready_to_analyze");
-    showAiFailureBanner("Try again later.");
-    setBasisReviewStatus((polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), "error");
-    appendChatMessage("assistant", (polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), { tone: "error" });
+    const errors = polled.data.errors || polled.data.result?.errors || ["Draft failed."];
+    const wasBlocked = polled.data.status === "blocked";
+    setWorkflowStage(wasBlocked ? "details_review" : "ready_to_analyze");
+    if (wasBlocked) {
+      showAiBlockedBanner(errors.join(" "));
+      setBasisReviewStatus(errors.join("\n"), "warn");
+    } else {
+      showAiFailureBanner("Try again later.");
+      setBasisReviewStatus(errors.join("\n"), "error");
+    }
+    appendChatMessage("assistant", errors.join("\n"), { tone: wasBlocked ? "warn" : "error" });
     syncControlStates();
     return;
   }
