@@ -313,6 +313,13 @@ function safeId(value = "", fallback = "item") {
   return slug || fallback;
 }
 
+function basisDisplayTitle(value = "") {
+  return String(value || "")
+    .replace(/\u2013|\u2014/g, "-")
+    .replace(/\s*-\s*quote\s+basis\s+to\s+confirm\s*$/i, "")
+    .trim();
+}
+
 function normalizeUnit(value = "") {
   const text = String(value || "").trim();
   const lower = text.toLowerCase();
@@ -1684,7 +1691,7 @@ function normalizeQuoteBasisSections(value = {}) {
   if (rawSections) {
     return rawSections
       .map((section, index) => {
-        const title = String(section?.title || "Section").trim() || "Section";
+        const title = basisDisplayTitle(section?.title || "Section") || "Section";
         const id = safeId(section?.id && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(section.id)) ? section.id : title, `section-${index + 1}`);
         const rawLines = Array.isArray(section?.lines) ? section.lines : splitLines(section?.text || "");
         const lines = rawLines
@@ -2577,7 +2584,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
 }
 
 function basisFieldLabel(field) {
-  return state.quoteBasisSections.find((section) => section.id === field)?.title
+  return basisDisplayTitle(state.quoteBasisSections.find((section) => section.id === field)?.title)
     || BASIS_FIELDS.find(([key]) => key === field)?.[1]
     || "Quote basis";
 }
@@ -2806,204 +2813,6 @@ function closeBasisChatOverlay() {
   resetBasisChatProposal();
 }
 
-function basisChatRevisionText(text) {
-  if (state.basisChat.line) {
-    return `> ${state.basisChat.line}\n\n${text}`;
-  }
-  return text;
-}
-
-function wantsBasisRevision(normalizedText) {
-  return /\b(add|change|delete|exclude|include|make|omit|remove|replace|revise|switch|turn|update|use)\b/.test(normalizedText);
-}
-
-function wantsBasisExplanation(normalizedText) {
-  return /\b(what|why|explain|meaning|mean|clarify|question)\b/.test(normalizedText);
-}
-
-function basisExplanationText() {
-  if (state.basisChat.scope === "line") {
-    return `This line sits under ${basisFieldLabel(state.basisChat.sectionId || state.basisChat.field)}. It is part of the quotation basis that must be confirmed before Excel generation. If the wording is wrong, describe the change and I will draft a replacement for you to apply.`;
-  }
-  return "The quotation basis is the customer-facing checklist of what the draft quote includes, excludes, or still needs confirmed. Changes here should be reviewed before generating the Excel quotation.";
-}
-
-function extractLineReplacementText(text) {
-  const match = String(text || "").match(/\b(?:change|replace|make|update|revise|switch)(?:\s+(?:this|it|line|item))?\s+(?:to|into|as)\s+([\s\S]+)$/i);
-  const fallback = String(text || "").match(/^\s*(?:to|as)\s+([\s\S]+)$/i);
-  const value = (match?.[1] || fallback?.[1] || "").trim().replace(/^["']|["']$/g, "");
-  return value;
-}
-
-function directLineRevisionTarget(text, normalizedText) {
-  const compact = String(text || "").trim().replace(/^["']|["']$/g, "");
-  if (!compact || wantsBasisExplanation(normalizedText) || /\?$/.test(compact)) return "";
-  const extracted = extractLineReplacementText(compact);
-  if (extracted) return extracted;
-  if (wantsBasisRevision(normalizedText)) return "";
-  const wordCount = compact.split(/\s+/).filter(Boolean).length;
-  if (wordCount > 6 || compact.length > 80) return "";
-  return compact;
-}
-
-function sentenceCaseLine(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const punctuated = /[.!?]$/.test(text) ? text : `${text}.`;
-  return `${punctuated[0].toUpperCase()}${punctuated.slice(1)}`;
-}
-
-function replaceMeasurementToken(currentLine, target) {
-  const compact = String(target || "").trim();
-  const targetMatch = compact.match(/^\d+(?:\.\d+)?\s*(mm|cm|m|sqm)$/i);
-  if (!targetMatch) return "";
-  const meta = basisLineMeta(currentLine);
-  const tag = meta.tag === "Detail" ? "" : meta.tag;
-  const body = meta.tag === "Detail" ? String(currentLine || "") : meta.text;
-  const unit = targetMatch[1].toLowerCase();
-  const sameUnitPattern = new RegExp(`\\b\\d+(?:\\.\\d+)?\\s*${unit}\\b`, "i");
-  if (!sameUnitPattern.test(body)) return "";
-  const nextBody = body.replace(sameUnitPattern, compact);
-  return tag ? `${tag}: ${nextBody}` : nextBody;
-}
-
-function contextualLineReplacementText(target, currentLine = "") {
-  const compact = String(target || "").trim();
-  const meta = basisLineMeta(currentLine);
-  const tag = meta.tag === "Detail" ? "" : meta.tag;
-  const body = meta.tag === "Detail" ? String(currentLine || "") : meta.text;
-  const targetColors = colorWordsInText(compact);
-  const currentColors = [...new Set(colorWordsInText(body))];
-  if (targetColors.length && currentColors.length) {
-    const targetColor = targetColors[0];
-    let nextBody = body;
-    currentColors.forEach((sourceColor) => {
-      if (sourceColor !== targetColor) {
-        nextBody = replaceColorWord(nextBody, sourceColor, targetColor);
-      }
-    });
-    if (nextBody !== body) return tag ? `${tag}: ${nextBody}` : nextBody;
-  }
-  return "";
-}
-
-function lineReplacementText(target, field, tag, currentLine = "") {
-  const legacyConfirmTag = "assump" + "tion";
-  if (new RegExp(`^(Include|Confirm|Exclude|${legacyConfirmTag}|Note):`, "i").test(target)) {
-    return target.replace(new RegExp(`^(${legacyConfirmTag}|Note):`, "i"), "Confirm:");
-  }
-  const compact = target.trim();
-  const measurementReplacement = replaceMeasurementToken(currentLine, compact);
-  if (measurementReplacement) return measurementReplacement;
-  const contextualReplacement = contextualLineReplacementText(compact, currentLine);
-  if (contextualReplacement) return contextualReplacement;
-  const isShortToken = /^[A-Za-z0-9+./-]{2,12}$/.test(compact);
-  if (tag === "Confirm" && isShortToken) {
-    const fieldText = basisFieldLabel(field).toLowerCase().replace(/\s*\/\s*/g, " ");
-    return `Confirm: Please confirm ${compact} ${fieldText} requirement.`;
-  }
-  return `${tag}: ${sentenceCaseLine(compact)}`;
-}
-
-function draftLineTextRevision(text, normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
-  if (state.basisChat.scope !== "line" || !state.basisChat.line) return null;
-  const target = directLineRevisionTarget(text, normalizedText);
-  if (!target) return null;
-
-  if (state.basisChat.sectionId) {
-    const nextSections = cloneQuoteBasisSections(state.quoteBasisSections);
-    const section = nextSections.find((item) => item.id === state.basisChat.sectionId);
-    const selectedLine = section?.lines?.[state.basisChat.lineIndex];
-    if (section && selectedLine) {
-      const currentLine = `${normalizeBasisTag(selectedLine.tag)}: ${selectedLine.text}`;
-      const tag = normalizeBasisTag(selectedLine.tag);
-      const nextLine = parseBasisLine(lineReplacementText(target, state.basisChat.sectionId, tag, currentLine));
-      const confidence = normalizeConfidence(nextLine.confidence ?? selectedLine.confidence);
-      section.lines[state.basisChat.lineIndex] = {
-        tag: normalizeBasisTag(nextLine.tag),
-        text: nextLine.text,
-        ...(confidence !== null ? { confidence } : {}),
-      };
-      return {
-        message: "Drafted a visible replacement for this basis line.",
-        quoteBasisSections: nextSections,
-        quoteBasis: quoteBasisFromSections(nextSections),
-        lineItems: lineItems.map(normalizeLineItem),
-      };
-    }
-  }
-
-  if (!state.basisChat.field) return null;
-  const currentLines = splitLines(basis[state.basisChat.field]);
-  const currentIndex = currentLines.findIndex((line) => line === state.basisChat.line);
-  const meta = basisLineMeta(state.basisChat.line);
-  const tag = meta.tag === "Detail" ? "Confirm" : meta.tag;
-  const nextLine = lineReplacementText(target, state.basisChat.field, tag, state.basisChat.line);
-  const nextLines = currentLines.length ? [...currentLines] : [state.basisChat.line];
-  if (currentIndex >= 0) {
-    nextLines[currentIndex] = nextLine;
-  } else {
-    nextLines.push(nextLine);
-  }
-  const nextBasis = cloneQuoteBasis(basis);
-  nextBasis[state.basisChat.field] = nextLines.join("\n");
-  return {
-    message: "Drafted a visible replacement for this basis line.",
-    quoteBasis: nextBasis,
-    lineItems: lineItems.map(normalizeLineItem),
-  };
-}
-
-function buildRevisionProposal(text, normalizedText) {
-  const contextualText = basisChatRevisionText(text);
-  const contextualNormalized = contextualText.toLowerCase();
-  return draftColorRevision(contextualText, contextualNormalized)
-    || draftFlooringRevision(normalizedText)
-    || draftLineTextRevision(text, normalizedText);
-}
-
-async function buildAiRevisionProposal(text) {
-  if (!canStartAnalysis() || state.aiFailed) return null;
-  const previousFeedback = state.pendingFeedback;
-  const previousRunning = state.isAnalysisRunning;
-  state.pendingFeedback = basisChatRevisionText(text);
-  state.isAnalysisRunning = true;
-  setBasisChatBusy(true);
-  syncControlStates();
-  const typingMessage = appendBasisChatTyping();
-  try {
-    const started = await startJob("draft", buildPayload());
-    if (!started.ok) {
-      removeBasisChatTyping(typingMessage);
-      appendBasisChatMessage("assistant", (started.data.errors || ["I could not draft that proposed change yet."]).join("\n"));
-      return null;
-    }
-    const polled = await pollJob(started.data.job_id, (job) => {
-      setBusyText(job.status === "running" ? "Drafting proposal..." : "Queued...");
-    });
-    const data = polled.data.result || {};
-    if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.ai_failed) {
-      removeBasisChatTyping(typingMessage);
-      appendBasisChatMessage("assistant", (data.errors || polled.data.errors || ["I could not draft that proposed change yet."]).join("\n"));
-      return null;
-    }
-    const nextSections = normalizeQuoteBasisSections(data.quote_basis_sections || data.quote_basis || state.quoteBasisSections);
-    return {
-      message: "AI drafted an updated quote basis from your request.",
-      quoteBasis: { ...cloneQuoteBasis(data.quote_basis || state.quoteBasis), ...quoteBasisFromSections(nextSections) },
-      quoteBasisSections: nextSections,
-      lineItems: Array.isArray(data.line_items) ? data.line_items.map(normalizeLineItem) : state.lineItems.map(normalizeLineItem),
-    };
-  } finally {
-    removeBasisChatTyping(typingMessage);
-    state.pendingFeedback = previousFeedback;
-    state.isAnalysisRunning = previousRunning;
-    setBusyText("");
-    setBasisChatBusy(false);
-    syncControlStates();
-  }
-}
-
 function basisChatPayload(text) {
   return {
     ...buildPayload(),
@@ -3011,12 +2820,26 @@ function basisChatPayload(text) {
       question: text,
       scope: state.basisChat.scope,
       field: state.basisChat.sectionId || state.basisChat.field,
+      line_index: state.basisChat.lineIndex,
       line: state.basisChat.line,
     },
   };
 }
 
-async function buildAiBasisChatAnswer(text) {
+function normalizeServerBasisChatProposal(proposal = {}) {
+  const quoteBasis = proposal.quoteBasis || proposal.quote_basis || {};
+  const sections = normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quote_basis_sections || quoteBasis);
+  return {
+    message: String(proposal.message || "AI drafted a proposed quote basis update.").trim(),
+    quoteBasis: { ...cloneQuoteBasis(quoteBasis), ...quoteBasisFromSections(sections) },
+    quoteBasisSections: sections,
+    lineItems: Array.isArray(proposal.lineItems || proposal.line_items)
+      ? (proposal.lineItems || proposal.line_items).map(normalizeLineItem)
+      : state.lineItems.map(normalizeLineItem),
+  };
+}
+
+async function buildAiBasisChatResponse(text) {
   if (!canStartAnalysis()) return null;
   const previousRunning = state.isAnalysisRunning;
   state.isAnalysisRunning = true;
@@ -3039,7 +2862,10 @@ async function buildAiBasisChatAnswer(text) {
       appendBasisChatMessage("assistant", (data.errors || polled.data.errors || ["I could not answer that yet."]).join("\n"));
       return null;
     }
-    return data.answer || null;
+    if (data.proposal) {
+      return { proposal: normalizeServerBasisChatProposal(data.proposal) };
+    }
+    return { answer: data.answer || null };
   } finally {
     removeBasisChatTyping(typingMessage);
     state.isAnalysisRunning = previousRunning;
@@ -3063,27 +2889,17 @@ async function handleBasisChatSubmit(event) {
     return;
   }
 
-  if (wantsBasisRevision(normalized)) {
-    const localProposal = buildRevisionProposal(text, normalized);
-    if (localProposal) {
-      setBasisChatProposal(localProposal);
-      return;
-    }
-
-    const aiProposal = await buildAiRevisionProposal(text);
-    if (aiProposal) {
-      setBasisChatProposal(aiProposal);
-      return;
-    }
+  const aiResult = await buildAiBasisChatResponse(text);
+  if (aiResult?.proposal) {
+    setBasisChatProposal(aiResult.proposal);
+    return;
   }
-
-  if (wantsBasisExplanation(normalized) || !wantsBasisRevision(normalized)) {
-    const aiAnswer = await buildAiBasisChatAnswer(text);
-    appendBasisChatMessage("assistant", aiAnswer || basisExplanationText());
+  if (aiResult?.answer) {
+    appendBasisChatMessage("assistant", aiResult.answer);
     return;
   }
 
-  appendBasisChatMessage("assistant", "I can answer questions about the basis or draft a proposed change. For edits, try a specific request like \"change floor finish to laminate\" or \"exclude this item\".");
+  appendBasisChatMessage("assistant", "AI basis chat did not return a usable response. Try rephrasing the change.");
 }
 
 function applyBasisChatProposal() {
@@ -3876,235 +3692,6 @@ function isSensitiveChatRequest(normalizedText) {
     "developer message",
     "internal prompt",
   ].some((term) => normalizedText.includes(term));
-}
-
-function estimatedAreaQuantity() {
-  const dimensions = normalizeBoothDimensions(state.boothDimensions);
-  const width = Number(dimensions.booth_width);
-  const depth = Number(dimensions.booth_depth);
-  if (!Number.isFinite(width) || !Number.isFinite(depth) || width <= 0 || depth <= 0) return "";
-  return Math.round(width * depth * 100) / 100;
-}
-
-function findFloorFinishLineIndex(lineItems = state.lineItems) {
-  const finishPattern = /(carpet|flooring|laminate|pvc)/i;
-  const floorPattern = /(floor|platform)/i;
-  const finishIndex = lineItems.findIndex((item) => finishPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
-  if (finishIndex >= 0) return finishIndex;
-  return lineItems.findIndex((item) => floorPattern.test(`${item.section} ${item.description} ${item.pricing_keyword}`));
-}
-
-function revisedBasisText(value, line) {
-  const lines = splitLines(value);
-  const targetIndex = lines.findIndex((item) => /(floor|platform|carpet|laminate|pvc)/i.test(item));
-  if (targetIndex >= 0) {
-    lines[targetIndex] = line;
-  } else {
-    lines.unshift(line);
-  }
-  return lines.join("\n");
-}
-
-const COLOR_WORDS = [
-  "black",
-  "blue",
-  "brown",
-  "cream",
-  "gold",
-  "gray",
-  "green",
-  "grey",
-  "orange",
-  "pink",
-  "purple",
-  "red",
-  "silver",
-  "white",
-  "yellow",
-];
-const COLOR_WORD_PATTERN = "(black|blue|brown|cream|gold|gr[ae]y|green|orange|pink|purple|red|silver|white|yellow)";
-
-function colorRegex(color) {
-  return new RegExp(`\\b${color}\\b`, "gi");
-}
-
-function replaceColorWord(value, fromColor, toColor) {
-  return String(value || "").replace(colorRegex(fromColor), (match) => {
-    if (match === match.toUpperCase()) return toColor.toUpperCase();
-    if (match[0] === match[0].toUpperCase()) return `${toColor[0].toUpperCase()}${toColor.slice(1)}`;
-    return toColor;
-  });
-}
-
-function normalizeColorWord(color) {
-  return color === "grey" ? "gray" : color;
-}
-
-function quotedRevisionLines(text) {
-  return normalizeTextNewlines(text)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith(">"))
-    .map((line) => line.replace(/^>\s?/, "").trim())
-    .filter(Boolean);
-}
-
-function colorWordsInText(text) {
-  return Array.from(String(text || "").toLowerCase().matchAll(new RegExp(`\\b${COLOR_WORD_PATTERN}\\b`, "g")))
-    .map((match) => normalizeColorWord(match[1]));
-}
-
-function findColorRevision(text, normalizedText) {
-  const explicitMatch = normalizedText.match(new RegExp(`\\b(?:change|replace|switch|revise|update|make|turn)\\s+(?:the\\s+)?${COLOR_WORD_PATTERN}\\b[\\s\\S]{0,80}?\\b(?:to|into)\\s+${COLOR_WORD_PATTERN}\\b`));
-  if (explicitMatch) {
-    return {
-      sourceColor: normalizeColorWord(explicitMatch[1]),
-      targetColor: normalizeColorWord(explicitMatch[2]),
-      quotedLines: quotedRevisionLines(text),
-    };
-  }
-
-  const targetMatch = normalizedText.match(new RegExp(`\\b(?:change|replace|switch|revise|update|make|turn)\\b[\\s\\S]{0,80}?\\b(?:to|into)\\s+${COLOR_WORD_PATTERN}\\b`));
-  if (!targetMatch) return null;
-
-  const targetColor = normalizeColorWord(targetMatch[1]);
-  const quotedLines = quotedRevisionLines(text);
-  const quotedColors = colorWordsInText(quotedLines.join("\n")).filter((color) => color !== targetColor);
-  if (/\bthis\b/.test(normalizedText) && quotedColors.length) {
-    return { sourceColor: quotedColors[0], targetColor, quotedLines };
-  }
-
-  const beforeTarget = normalizedText.slice(0, targetMatch.index);
-  const previousColors = colorWordsInText(beforeTarget)
-    .filter((color) => color !== targetColor);
-  const sourceColor = previousColors.at(-1);
-  if (!sourceColor) return null;
-  return { sourceColor, targetColor, quotedLines };
-}
-
-function draftColorRevision(text, normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
-  const revision = findColorRevision(text, normalizedText);
-  if (!revision) return null;
-
-  let changedCount = 0;
-  const nextBasis = cloneQuoteBasis(basis);
-  const quotedLines = revision.quotedLines || [];
-  const quoteLineFound = quotedLines.length
-    ? Object.keys(nextBasis).some((key) => {
-        let changedField = false;
-        const nextLines = normalizeTextNewlines(nextBasis[key]).split("\n").map((line) => {
-          const shouldEdit = quotedLines.some((quotedLine) => line.trim() === quotedLine || line.includes(quotedLine) || quotedLine.includes(line.trim()));
-          if (!shouldEdit) return line;
-          const nextLine = replaceColorWord(line, revision.sourceColor, revision.targetColor);
-          if (nextLine !== line) {
-            changedCount += 1;
-            changedField = true;
-          }
-          return nextLine;
-        });
-        if (changedField) nextBasis[key] = nextLines.join("\n");
-        return changedField;
-      })
-    : false;
-
-  if (!quoteLineFound) {
-    Object.keys(nextBasis).forEach((key) => {
-      const nextValue = replaceColorWord(nextBasis[key], revision.sourceColor, revision.targetColor);
-      if (nextValue !== nextBasis[key]) changedCount += 1;
-      nextBasis[key] = nextValue;
-    });
-  }
-
-  const nextLineItems = lineItems.map((item) => {
-    const nextDescription = replaceColorWord(item.description, revision.sourceColor, revision.targetColor);
-    if (nextDescription !== item.description) changedCount += 1;
-    return { ...item, description: nextDescription };
-  });
-
-  if (!changedCount) return null;
-  return {
-    message: `Updated ${changedCount} draft field${changedCount === 1 ? "" : "s"} from ${revision.sourceColor} to ${revision.targetColor}.`,
-    quoteBasis: nextBasis,
-    lineItems: nextLineItems,
-  };
-}
-
-function applyColorRevision(text, normalizedText) {
-  const proposal = draftColorRevision(text, normalizedText);
-  if (!proposal) return null;
-  state.basisConfirmed = false;
-  state.quoteBasis = proposal.quoteBasis;
-  state.lineItems = proposal.lineItems;
-  return proposal.message;
-}
-
-function draftFlooringRevision(normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
-  if (!/laminat|carpet|floor|flooring|platform/.test(normalizedText)) return null;
-  if (!/(change|replace|switch|revise|update|make|use|laminat)/.test(normalizedText)) return null;
-
-  const woodGrain = /wood|timber|grain/.test(normalizedText);
-  const description = woodGrain
-    ? "Wood grain laminated flooring on raised platform"
-    : "White laminated flooring on raised platform";
-  const pricingKeyword = woodGrain
-    ? "floor-design.wood-grain-laminated-flooring-on-raised-platform"
-    : "floor-design.white-laminated-flooring-on-raised-platform";
-  const nextItem = {
-    section: "Floor Design",
-    quantity: estimatedAreaQuantity(),
-    unit: "sqm",
-    description,
-    pricing_keyword: pricingKeyword,
-    display_price: "",
-  };
-
-  const nextBasis = cloneQuoteBasis(basis);
-  const nextLineItems = lineItems.map((item) => ({ ...item }));
-  const index = findFloorFinishLineIndex(nextLineItems);
-  if (index >= 0) {
-    nextLineItems[index] = { ...nextLineItems[index], ...nextItem };
-  } else {
-    nextLineItems.unshift(nextItem);
-  }
-  nextBasis.platform = revisedBasisText(
-    nextBasis.platform,
-    `Confirm: Platform flooring revised to ${description.toLowerCase()}.`
-  );
-  return {
-    message: `Updated the floor finish to ${description.toLowerCase()} using catalog item ${pricingKeyword}.`,
-    quoteBasis: nextBasis,
-    lineItems: nextLineItems,
-  };
-}
-
-function applyFlooringRevision(normalizedText) {
-  const proposal = draftFlooringRevision(normalizedText);
-  if (!proposal) return null;
-  state.basisConfirmed = false;
-  state.quoteBasis = proposal.quoteBasis;
-  state.lineItems = proposal.lineItems;
-  return proposal.message;
-}
-
-async function applyRevisionRequest(text, normalizedText) {
-  const applied = applyColorRevision(text, normalizedText) || applyFlooringRevision(normalizedText);
-  if (!applied) return false;
-
-  if (state.workflowStage === "basis_review") {
-    noteWorkflowEvent("assistant", `${applied} Review the updated basis below, then confirm when it looks right.`);
-    updateQuoteBasisCard("edited");
-    syncControlStates();
-    return true;
-  }
-
-  noteWorkflowEvent("assistant", `${applied} I am regenerating the Excel quotation now.`);
-  setResultStatus("Revision running", "is-warn");
-  renderMessages(["Revision applied. Regenerating quotation."]);
-  setDownloadFiles([]);
-  renderMatchSummary({});
-  renderPricingMatches([]);
-  await handleGenerate();
-  return true;
 }
 
 function sidePanelBlockReason(panelName) {

@@ -1,13 +1,13 @@
 services:
   - type: web
-    name: koncept-quote-auto-generator
+    name: swooshz-quote-generator
     env: python
     plan: starter
     buildCommand: ""
     startCommand: python webapp/server.py
     disk:
-      name: quote-runner-data
-      mountPath: /var/data/koncept-quote-runner
+      name: swooshz-quote-runner-data
+      mountPath: /var/data/swooshz-quote-runner
       sizeGB: 1
     envVars:
       - key: APP_MODE
@@ -15,11 +15,11 @@ services:
       - key: AUTH_REQUIRED
         value: "true"
       - key: QUOTE_OUTPUT_ROOT
-        value: /var/data/koncept-quote-runner/output
+        value: /var/data/swooshz-quote-runner/output
       - key: QUOTE_TMP_ROOT
-        value: /var/data/koncept-quote-runner/tmp
+        value: /var/data/swooshz-quote-runner/tmp
       - key: QUOTE_LOG_ROOT
-        value: /var/data/koncept-quote-runner/logs
+        value: /var/data/swooshz-quote-runner/logs
       - key: SESSION_SECRET
         sync: false
       - key: OIDC_ISSUER_URL
@@ -34,5 +34,13 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_DRAFT_MODEL
+        value: gpt-5.4-mini
+      - key: OPENAI_BASIS_LINE_MODEL
+        value: gpt-5.4-nano
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_DRAFT_MODEL
+        value: gemini-flash-latest
+      - key: GEMINI_BASIS_LINE_MODEL
+        value: gemini-3.1-flash-lite

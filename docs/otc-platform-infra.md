@@ -69,7 +69,11 @@ Render environment variables:
 ```text
 QUOTE_API_SECRET=<same-shared-secret>
 OPENAI_API_KEY=<openai-key>
+OPENAI_DRAFT_MODEL=gpt-5.4-mini
+OPENAI_BASIS_LINE_MODEL=gpt-5.4-nano
 GEMINI_API_KEY=<gemini-key-if-used>
+GEMINI_DRAFT_MODEL=gemini-flash-latest
+GEMINI_BASIS_LINE_MODEL=gemini-3.1-flash-lite
 ```
 
 Vercel calls Render with:

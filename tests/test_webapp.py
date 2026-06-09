@@ -478,6 +478,8 @@ class WebappServerTest(unittest.TestCase):
             "OIDC_REDIRECT_URI": "https://quote.example/callback",
         }
         with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(webapp.SESSION_COOKIE_NAME, "swooshz_quote_session")
+            self.assertEqual(webapp.OIDC_STATE_COOKIE_NAME, "swooshz_quote_oidc_state")
             self.assertTrue(webapp.oidc_config_complete())
             self.assertFalse(webapp.deploy_requires_auth_guard())
             cookie = webapp.signed_cookie_value({
@@ -534,6 +536,11 @@ class WebappServerTest(unittest.TestCase):
     def test_render_deploy_config_uses_guarded_server_start_path(self):
         render_yaml = (ROOT / "render.yaml").read_text(encoding="utf-8")
 
+        self.assertIn("name: swooshz-quote-generator", render_yaml)
+        self.assertIn("name: swooshz-quote-runner-data", render_yaml)
+        self.assertIn("/var/data/swooshz-quote-runner/output", render_yaml)
+        self.assertNotIn("koncept-quote-auto-generator", render_yaml)
+        self.assertNotIn("/var/data/koncept-quote-runner", render_yaml)
         self.assertIn("startCommand: python webapp/server.py", render_yaml)
         self.assertIn("APP_MODE", render_yaml)
         self.assertIn("deploy", render_yaml)
@@ -1241,22 +1248,133 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(parts[1]["inline_data"]["data"], "ZmFrZS1pbWFnZQ==")
         self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces")
 
-    def test_basis_chat_prompt_requires_concise_markdown(self):
+    def test_basis_chat_prompt_requires_structured_ai_response(self):
         payload = valid_payload()
         payload["basis_chat"] = {
-            "question": "what does this mean?",
+            "question": "200",
             "field": "surfaces",
+            "line_index": 0,
             "line": "Confirm: Please confirm wall finish.",
         }
 
         prompt = webapp.build_basis_chat_prompt(payload)
 
+        self.assertIn("Return only one JSON object", prompt)
+        self.assertIn('"intent":"answer|proposal"', prompt)
+        self.assertIn("replacement_line", prompt)
+        self.assertIn("numeric fragment like 200", prompt)
         self.assertIn("clean Markdown", prompt)
         self.assertIn("**bold keys**", prompt)
         self.assertIn("No text walls", prompt)
-        self.assertIn("Answer naturally", prompt)
         self.assertIn("short fragment", prompt)
         self.assertIn("under 70 words", prompt)
+
+    def test_basis_chat_result_replaces_selected_line_and_cleans_title(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Flooring & Platform - Quote Basis To Confirm",
+                "lines": [
+                    {
+                        "tag": "Confirm",
+                        "text": "Full 100mm raised platform visible across entire 6.0m x 6.0m footprint.",
+                        "confidence_pct": 90,
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "200",
+            "field": "flooring-platform",
+            "line_index": 0,
+            "line": "Confirm: Full 100mm raised platform visible across entire 6.0m x 6.0m footprint.",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "message": "Update the selected platform height.",
+                "replacement_line": {
+                    "text": "Full 200mm raised platform visible across entire 6.0m x 6.0m footprint.",
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        proposal = result["proposal"]
+        section = proposal["quote_basis_sections"][0]
+        line = section["lines"][0]
+        self.assertEqual(result["type"], "proposal")
+        self.assertEqual(section["title"], "Flooring & Platform")
+        self.assertEqual(line["tag"], "Confirm")
+        self.assertEqual(line["confidence"], 90)
+        self.assertEqual(line["text"], "Full 200mm raised platform visible across entire 6.0m x 6.0m footprint.")
+        self.assertIn("Confirm: Full 200mm raised platform", proposal["quote_basis"]["flooring-platform"])
+
+    def test_openai_basis_chat_uses_basis_line_model_env(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "what does this mean?",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform.",
+        }
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"intent": "answer", "answer": "- **Meaning:** Platform height."})
+        }).encode("utf-8")
+
+        def dotenv(name):
+            if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
+                return "gpt-basis-line-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["model"], "gpt-basis-line-test")
+        self.assertEqual(body["max_output_tokens"], 1200)
+        self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
+
+    def test_gemini_basis_chat_uses_basis_line_model_env(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "what does this mean?",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform.",
+        }
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "candidates": [
+                {"content": {"parts": [{"text": json.dumps({"intent": "answer", "answer": "- **Meaning:** Platform height."})}]}}
+            ]
+        }).encode("utf-8")
+
+        def dotenv(name):
+            if name == webapp.GEMINI_BASIS_LINE_MODEL_ENV_NAME:
+                return "gemini-basis-line-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_gemini_basis_chat(payload, "gemini-test-redacted")
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertIn("/gemini-basis-line-test:generateContent", request.full_url)
+        self.assertEqual(body["generationConfig"]["responseMimeType"], "application/json")
+        self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
+
+    def test_basis_chat_without_provider_does_not_use_local_fallback(self):
+        with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
+            with self.assertRaises(webapp.OpenAIAnalysisError) as context:
+                webapp.answer_basis_chat(valid_payload())
+
+        self.assertIn("AI basis chat is not configured", str(context.exception))
 
     def test_gemini_request_uses_model_from_env(self):
         response = mock.MagicMock()
@@ -1879,7 +1997,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("justify-self: center", css)
         self.assertIn(".secondary-button:disabled", css)
         self.assertIn("normalizeTextNewlines", js)
-        self.assertIn("applyColorRevision", js)
+        self.assertIn("buildAiBasisChatResponse", js)
         self.assertIn("CSRF_HEADER_NAME", js)
         self.assertIn("/api/session", js)
         self.assertIn("initializeSession", js)
@@ -2719,11 +2837,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "openBasisChatOverlay",
             "closeBasisChatOverlay",
             "appendBasisChatMessage",
-            "buildAiRevisionProposal",
+            "buildAiBasisChatResponse",
             "applyBasisChatProposal",
             "keepCurrentBasis",
             "Confirm Quotation Basis",
-            "applyRevisionRequest",
             "data-revise-section",
             "data-revise-line-index",
             "data-basis-section",
@@ -2736,12 +2853,13 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "renderMarkdownTable",
             "appendBasisChatTyping",
             "removeBasisChatTyping",
-            "AI drafted an updated quote basis from your request.",
+            "normalizeServerBasisChatProposal",
+            "basisDisplayTitle",
+            "line_index",
             "Describe the replacement. I will show a proposed update before applying anything.",
-            "I can answer questions about the basis or draft a proposed change.",
+            "Ask a question or describe changes to the quotation basis.",
             "basisLinePillLabel",
             "normalizeConfidence",
-            "buildRevisionProposal(text, normalized)",
             "renderBasisChatProposalCard",
         ):
             self.assertIn(expected, js)
@@ -2779,6 +2897,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-line-exclude .basis-line-icon::before",
             ".basis-line-actions",
             ".basis-line-tag-button",
+            "grid-template-columns: 26px max-content minmax(0, 1fr) auto;",
             'content: "\\2713"',
             'content: "X"',
             ".basis-chat-context",
@@ -2795,7 +2914,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("text-decoration-line: line-through", css)
         self.assertNotIn('body[data-workflow-stage="basis_review"] .chat-main .chat-form', css)
 
-        self.assertIn("> ${state.basisChat.line}", js)
+        self.assertIn("line_index: state.basisChat.lineIndex", js)
+        self.assertIn("line: state.basisChat.line", js)
         self.assertIn("elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage", js)
         self.assertNotIn("setBasisReviewStatus", js)
         self.assertNotIn("Analyzing reference images now. I will list the basis for confirmation before generating anything.", js)
@@ -2821,6 +2941,12 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("basis-line-quote", js)
         self.assertNotIn("focus_chat", js)
         self.assertNotIn("insertQuotedLine", js)
+        self.assertNotIn("buildAiRevisionProposal", js)
+        self.assertNotIn("buildRevisionProposal", js)
+        self.assertNotIn("basisExplanationText", js)
+        self.assertNotIn("wantsBasisRevision", js)
+        self.assertNotIn("applyRevisionRequest", js)
+        self.assertNotIn("applyColorRevision", js)
 
         self.assertNotIn("I am keeping this guarded for now", js)
 
@@ -2931,6 +3057,7 @@ eval([
   "normalizeTextNewlines",
   "splitLines",
   "safeId",
+  "basisDisplayTitle",
   "normalizeBasisTag",
   "normalizeConfidence",
   "parseBasisLine",
@@ -2985,25 +3112,16 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const line = "Include: Raised platform at 100mm with aluminium edging across the full 6m x 6m booth.";
-const state = {
-  basisChat: { scope: "line", sectionId: "platform", line, proposal: null },
-};
-
 const helperNames = [
-  "wantsBasisRevision",
-  "wantsBasisExplanation",
-  "basisChatRevisionText",
+  "basisDisplayTitle",
 ];
 eval(helperNames.map(extractFunction).join("\n"));
 
-const contextual = basisChatRevisionText("change to 200mm");
-assert.ok(contextual.startsWith("> Include: Raised platform at 100mm"), contextual);
-assert.ok(contextual.includes("change to 200mm"), contextual);
-assert.strictEqual(wantsBasisRevision("change to 200mm"), true);
-assert.strictEqual(wantsBasisExplanation("why 100mm?"), true);
-state.basisChat.line = "";
-assert.strictEqual(basisChatRevisionText("revise all dimensions"), "revise all dimensions");
+assert.strictEqual(basisDisplayTitle("Flooring & Platform - Quote Basis To Confirm"), "Flooring & Platform");
+assert.strictEqual(basisDisplayTitle("Graphics / Signage"), "Graphics / Signage");
+assert.ok(source.includes("line_index: state.basisChat.lineIndex"));
+assert.ok(source.includes('startJob("basis_chat", basisChatPayload(text))'));
+assert.ok(!source.includes('startJob("draft", buildPayload())'));
 """
         completed = subprocess.run(
             [node, "-e", script],
