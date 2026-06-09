@@ -130,6 +130,8 @@ OPENAI_DRAFT_MODEL_ENV_NAME = "OPENAI_DRAFT_MODEL"
 OPENAI_REQUEST_TIMEOUT_ENV_NAME = "OPENAI_REQUEST_TIMEOUT_SECONDS"
 DEFAULT_BOOTH_WIDTH_METRES = 6.0
 DEFAULT_BOOTH_DEPTH_METRES = 6.0
+QUOTE_BASIS_KEYS = ("surfaces", "counters", "platform", "graphics", "furniture", "electrical")
+DEFAULT_DIMENSION_BASIS_FIELD = "platform"
 GEMINI_GENERATE_CONTENT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 GEMINI_DRAFT_MODEL = "gemini-2.5-flash"
 GEMINI_API_KEY_ENV_NAME = "GEMINI_API_KEY"
@@ -445,6 +447,62 @@ def booth_dimensions_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "booth_size": f"{format_dimension(width)}m x {format_dimension(depth)}m",
         "dimension_source": source,
     }
+
+
+def default_booth_dimension_confirmation_line(dimensions: dict[str, Any]) -> str:
+    booth_size = clean_text(dimensions.get("booth_size")) or (
+        f"{format_dimension(DEFAULT_BOOTH_WIDTH_METRES)}m x {format_dimension(DEFAULT_BOOTH_DEPTH_METRES)}m"
+    )
+    return f"Confirm: Booth size defaults to {booth_size} because no clear dimensions were found; confirm before generating."
+
+
+def line_references_default_booth_dimensions(line: str, dimensions: dict[str, Any]) -> bool:
+    text = clean_text(line).lower()
+    if not text:
+        return False
+    booth_size = clean_text(dimensions.get("booth_size")).lower()
+    compact_text = re.sub(r"\s+", "", text)
+    compact_size = re.sub(r"\s+", "", booth_size)
+    explicit_default_phrase = "default booth size" in text or "booth size defaults" in text
+    size_reference = bool(compact_size and compact_size in compact_text)
+    dimension_context = "booth size" in text or "booth dimensions" in text or "area-based" in text
+    return explicit_default_phrase or (size_reference and "default" in text and dimension_context)
+
+
+def quote_basis_with_default_dimension_confirmation(
+    basis: dict[str, Any],
+    dimensions: dict[str, Any],
+) -> dict[str, str]:
+    cleaned = {
+        key: clean_multiline(basis.get(key))
+        for key in QUOTE_BASIS_KEYS
+        if clean_multiline(basis.get(key))
+    }
+    if clean_text(dimensions.get("dimension_source")) != "default":
+        return cleaned
+
+    confirmation_line = default_booth_dimension_confirmation_line(dimensions)
+    found_default_line = False
+    for key in QUOTE_BASIS_KEYS:
+        lines = multiline_list(cleaned.get(key))
+        next_lines: list[str] = []
+        for line in lines:
+            if line_references_default_booth_dimensions(line, dimensions):
+                if not found_default_line:
+                    next_lines.append(confirmation_line)
+                    found_default_line = True
+                continue
+            next_lines.append(line)
+        if next_lines:
+            cleaned[key] = "\n".join(next_lines)
+        elif key in cleaned:
+            cleaned.pop(key, None)
+
+    if not found_default_line:
+        target_lines = multiline_list(cleaned.get(DEFAULT_DIMENSION_BASIS_FIELD))
+        target_lines.append(confirmation_line)
+        cleaned[DEFAULT_DIMENSION_BASIS_FIELD] = "\n".join(target_lines)
+    return cleaned
 
 
 def nested_value(payload: dict[str, Any], group: str, key: str, flat_key: str) -> Any:
@@ -1007,7 +1065,7 @@ def default_quote_basis(payload: dict[str, Any]) -> dict[str, str]:
     basis = payload.get("quote_basis") if isinstance(payload.get("quote_basis"), dict) else {}
     profile = load_profile_pack(profile_id_from_payload(payload))
     profile_basis = profile.default_quote_basis
-    return {
+    defaults = {
         "surfaces": clean_multiline(basis.get("surfaces")) or clean_multiline(profile_basis.get("surfaces")) or "Confirm: Please confirm visible walls, fascia, arches, beams, columns, and painted finishes.",
         "counters": clean_multiline(basis.get("counters")) or clean_multiline(profile_basis.get("counters")) or "Confirm: Please confirm counter, cabinet, and countertop material/finish.",
         "platform": clean_multiline(basis.get("platform")) or clean_multiline(profile_basis.get("platform")) or "Confirm: Please confirm platform height, platform coverage, and flooring finish.",
@@ -1015,6 +1073,7 @@ def default_quote_basis(payload: dict[str, Any]) -> dict[str, str]:
         "furniture": clean_multiline(basis.get("furniture")) or clean_multiline(profile_basis.get("furniture")) or "Confirm: Please confirm furniture, plants, green walls, AV, and rental items.",
         "electrical": clean_multiline(basis.get("electrical")) or clean_multiline(profile_basis.get("electrical")) or "Confirm: Please confirm lights, 13A sockets, special power, and organiser connection fees.",
     }
+    return quote_basis_with_default_dimension_confirmation(defaults, booth_dimensions_from_payload(payload))
 
 
 def default_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1213,6 +1272,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "First extract booth dimensions from the quotation title when it clearly states a size such as 6m x 6m. "
         "If the title does not clearly state dimensions, infer booth_width and booth_depth from the uploaded images. "
         "If dimensions are still unclear, use a reasonable default booth size instead of leaving dimensions empty. "
+        "When dimensions use a default booth size, that default must appear as a Confirm: line in one quote_basis value, never as Include:. "
         "Use those dimensions for area-based quantities and quote-basis wording. "
         "Each quote_basis value must be point-form text with 2 to 4 short lines. "
         "Start each line with Include:, Confirm:, Exclude:, or Assumption:. "
@@ -1551,12 +1611,13 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
             write_local_log("openai_draft_failed", {"errors": safe_error_messages([openai_error])})
         else:
             basis, line_items, project = unpack_ai_draft(ai_basis)
+            project = project or fallback_project
             return {
                 "status": "drafted",
                 "source": "openai",
-                "quote_basis": {**fallback, **basis},
+                "quote_basis": quote_basis_with_default_dimension_confirmation({**fallback, **basis}, project),
                 "line_items": line_items or fallback_line_items,
-                "project": project or fallback_project,
+                "project": project,
             }
 
     if gemini_key:
@@ -1567,13 +1628,14 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
             write_local_log("gemini_draft_failed", {"errors": safe_error_messages([gemini_error])})
         else:
             basis, line_items, project = unpack_ai_draft(ai_basis)
+            project = project or fallback_project
             warnings = safe_error_messages([f"OpenAI failed; Gemini fallback used. {openai_error}"]) if openai_error else []
             return {
                 "status": "drafted",
                 "source": "gemini",
-                "quote_basis": {**fallback, **basis},
+                "quote_basis": quote_basis_with_default_dimension_confirmation({**fallback, **basis}, project),
                 "line_items": line_items or fallback_line_items,
-                "project": project or fallback_project,
+                "project": project,
                 "warnings": warnings,
             }
 
