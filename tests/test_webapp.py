@@ -3,6 +3,7 @@ import threading
 import unittest
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -22,6 +23,19 @@ KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
 sys.path.insert(0, str(ROOT))
 
 from webapp import server as webapp
+
+
+def require_node(test_case: unittest.TestCase) -> str:
+    node = shutil.which("node")
+    if node:
+        return node
+    bundled = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "node" / "bin" / "node.exe"
+    if bundled.exists():
+        return str(bundled)
+    message = "Node.js is required to execute static app helper behavior."
+    if os.environ.get("CI"):
+        test_case.fail(message)
+    test_case.skipTest(message)
 
 
 def valid_payload():
@@ -876,6 +890,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertFalse(log_record["is_test"])
         self.assertIn("The generated quote has more line items than the preserved Excel layout can fit", log_record["meaning"])
 
+    def test_basis_chat_failure_events_are_loggable(self):
+        for event in (
+            "openai_basis_chat_failed",
+            "gemini_basis_chat_failed",
+            "basis_chat_failed",
+            "basis_chat_worker_failed",
+        ):
+            self.assertTrue(webapp.is_loggable_event(event), event)
+
     def test_local_api_security_helpers_restrict_hosts_origins_and_content_type(self):
         self.assertTrue(webapp.is_allowed_host_header("127.0.0.1:8765"))
         self.assertTrue(webapp.is_allowed_host_header("localhost:8765"))
@@ -1463,9 +1486,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('isAnalysisStep ? startAnalysisBlockReason()', js)
         self.assertNotIn("sidePanelBlockReason(nextPanel))", js)
 
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("Node.js is required to execute static app helper behavior.")
+        node = require_node(self)
 
         script = r"""
 const fs = require("fs");
@@ -1499,8 +1520,12 @@ function syncRichTextSources() {
   syncCalls += 1;
 }
 
+const DEFAULT_PROFILE_ID = "koncept";
 const state = {
   profileId: "koncept",
+  pricingReferenceId: "koncept",
+  profiles: [{ id: "koncept", label: "Koncept" }],
+  pricingReferences: [{ id: "koncept", label: "Koncept", profile_id: "koncept" }],
   images: [],
   headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
   isAnalysisRunning: false,
@@ -1531,6 +1556,9 @@ const elements = {
 eval([
   "normalizeTextNewlines",
   "splitLines",
+  "pricingReferenceProfileId",
+  "pricingReferenceForProfile",
+  "currentPricingReference",
   "missingCustomerFields",
   "missingQuoteCompanyFields",
   "missingDetailFields",
@@ -1626,9 +1654,7 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("Needs review", summary_body)
         self.assertIn("pricingStatusLabel(row.status)", table_body)
 
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("Node.js is required to execute static app helper behavior.")
+        node = require_node(self)
 
         script = r"""
 const fs = require("fs");
@@ -1745,6 +1771,230 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
         self.assertNotIn("assistant-card-actions", html)
         self.assertNotIn('data-chat-action="confirm_basis"', js)
 
+    def test_static_pricing_reference_selection_is_separate_from_profile_id(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        for expected in (
+            "pricingReferenceId",
+            "pricing_reference_id",
+            "pricingReferenceSelectValue",
+            "pricingReferenceSelectionFromValue",
+            "resolvedProfileIdForPayload",
+        ):
+            self.assertIn(expected, js)
+        self.assertNotIn("profile_id: state.profileId || \"\"", js)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "koncept";
+const state = {
+  profileId: "",
+  pricingReferenceId: "",
+  profiles: [
+    { id: "koncept", label: "Koncept" },
+    { id: "other", label: "Other Profile" },
+  ],
+  pricingReferences: [
+    { id: "shared", label: "Shared A", profile_id: "koncept" },
+    { id: "shared", label: "Shared B", profile_id: "other" },
+    { id: "unique", label: "Unique", profile_id: "other" },
+  ],
+};
+eval([
+  "pricingReferenceProfileId",
+  "pricingReferenceSelectValue",
+  "pricingReferenceSelectionFromValue",
+  "pricingReferenceForProfile",
+  "currentPricingReference",
+  "currentProfile",
+  "resolvedProfileIdForPayload",
+  "syncSelectedPricingReference",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(pricingReferenceSelectValue(state.pricingReferences[1]), "other::shared");
+const selection = pricingReferenceSelectionFromValue("other::shared");
+state.profileId = selection.profileId;
+state.pricingReferenceId = selection.pricingReferenceId;
+syncSelectedPricingReference();
+assert.strictEqual(state.profileId, "other");
+assert.strictEqual(state.pricingReferenceId, "shared");
+assert.strictEqual(currentPricingReference().label, "Shared B");
+assert.strictEqual(currentProfile().id, "other");
+assert.strictEqual(resolvedProfileIdForPayload(), "other");
+
+state.profileId = "koncept";
+state.pricingReferenceId = "shared";
+assert.strictEqual(currentPricingReference().label, "Shared A");
+assert.strictEqual(resolvedProfileIdForPayload(), "koncept");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_append_chat_message_falls_back_to_visible_workflow_notice(self):
+        static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="workflowNotice"', html)
+        self.assertIn("renderWorkflowNotice", js)
+        self.assertIn(".workflow-notice", css)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = { chatMessages: [] };
+const classes = new Set();
+const elements = {
+  chatTranscript: null,
+  workflowNotice: {
+    hidden: true,
+    innerHTML: "",
+    classList: {
+      add: (...names) => names.forEach((name) => classes.add(name)),
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+    },
+  },
+};
+eval([
+  "escapeHtml",
+  "decodeHtmlEntities",
+  "normalizeTextNewlines",
+  "renderPlainText",
+  "noticeTextFromMessage",
+  "renderWorkflowNotice",
+  "appendChatMessage",
+  "renderChat",
+].map(extractFunction).join("\n"));
+
+appendChatMessage("assistant", "Complete Customer details before opening Pricing.", { tone: "warn" });
+assert.strictEqual(elements.workflowNotice.hidden, false);
+assert.ok(classes.has("warn"));
+assert.ok(elements.workflowNotice.innerHTML.includes("Check before continuing"));
+assert.ok(elements.workflowNotice.innerHTML.includes("Complete Customer details before opening Pricing."));
+const previous = elements.workflowNotice.innerHTML;
+appendChatMessage("user", "hello");
+assert.strictEqual(elements.workflowNotice.innerHTML, previous);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_rich_text_sanitizer_strips_unsafe_tags_and_attributes(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        for expected in (
+            "sanitizeRichTextHtml",
+            "script",
+            "iframe",
+            "editor.innerHTML = sanitizeRichTextHtml",
+            "details[id] = sanitizeRichTextHtml",
+        ):
+            self.assertIn(expected, js)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval(["escapeHtml", "decodeHtmlEntities", "sanitizeRichTextHtml"].map(extractFunction).join("\n"));
+const unsafe = '<div onclick="evil()">Hello <strong data-x="1">World</strong><script>alert(1)</script><a href="javascript:evil()">Link</a><img src=x onerror=evil()><svg><text>bad</text></svg><p><u style="color:red">Safe &amp; sound</u></p></div>';
+const cleaned = sanitizeRichTextHtml(unsafe);
+assert.strictEqual(cleaned, "<div>Hello <strong>World</strong>Link<p><u>Safe &amp; sound</u></p></div>");
+assert.ok(!cleaned.includes("onclick"));
+assert.ok(!cleaned.includes("script"));
+assert.ok(!cleaned.includes("href"));
+assert.ok(!cleaned.includes("img"));
+assert.ok(!cleaned.includes("svg"));
+assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Plain <em>x</em>");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_chat_supports_post_generation_revisions(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
@@ -1858,9 +2108,7 @@ assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price")
         self.assertIn('confirmBasis();', js)
         self.assertIn("Next: Output", js)
 
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("Node.js is required to execute static app helper behavior.")
+        node = require_node(self)
 
         script = r"""
 const fs = require("fs");
@@ -1921,9 +2169,7 @@ assert.strictEqual(basisConfirmBlockReason(state.quoteBasis), "");
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("Node.js is required to execute static app helper behavior.")
+        node = require_node(self)
 
         script = r"""
 const fs = require("fs");
@@ -2035,9 +2281,7 @@ assert.strictEqual(draftLineTextRevision("why 100mm?", "why 100mm?"), null);
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("Node.js is required to execute static app helper behavior.")
+        node = require_node(self)
 
         script = r"""
 const fs = require("fs");

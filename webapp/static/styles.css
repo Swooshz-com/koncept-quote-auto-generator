@@ -609,6 +609,44 @@ h3 {
   gap: 10px;
 }
 
+.workflow-notice {
+  display: grid;
+  gap: 4px;
+  margin: 14px 28px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 5px solid #64748b;
+  border-radius: var(--radius-md);
+  background: #f8fafc;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.workflow-notice[hidden] {
+  display: none;
+}
+
+.workflow-notice strong {
+  color: #0f172a;
+  font-weight: 850;
+}
+
+.workflow-notice.warn {
+  border-color: var(--amber-border);
+  border-left-color: var(--amber);
+  background: var(--amber-soft);
+  color: #7c3f00;
+}
+
+.workflow-notice.error {
+  border-color: var(--red-border);
+  border-left-color: var(--red);
+  background: var(--red-soft);
+  color: var(--red);
+}
+
 .workspace-pane-scroll {
   min-height: 0;
   overflow-y: auto;

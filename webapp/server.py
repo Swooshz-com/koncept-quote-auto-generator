@@ -64,13 +64,17 @@ ALLOWED_LOG_EVENTS = {
     "abuse_signal",
     "ai_draft_fallback_used",
     "ai_draft_remote_unconfigured",
+    "basis_chat_failed",
+    "basis_chat_worker_failed",
     "client_error",
     "draft_blocked",
     "draft_failed",
     "draft_worker_failed",
     "generate_failed",
     "generate_needs_review",
+    "gemini_basis_chat_failed",
     "gemini_draft_failed",
+    "openai_basis_chat_failed",
     "openai_draft_failed",
     "security_event",
     "server_error",
@@ -279,8 +283,17 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         meaning = "Quote generation stopped for pricing review. Check details.errors for unmatched or ambiguous catalog pricing that needs operator confirmation."
     elif event == "draft_blocked":
         meaning = "AI draft analysis was blocked before provider calls, usually because images or required quote details were missing."
-    elif event in {"draft_failed", "draft_worker_failed", "openai_draft_failed", "gemini_draft_failed"}:
-        meaning = "AI quote-basis drafting failed. Check details.errors or provider_errors; retry after fixing provider/network/configuration issues."
+    elif event in {
+        "draft_failed",
+        "draft_worker_failed",
+        "openai_draft_failed",
+        "gemini_draft_failed",
+        "basis_chat_failed",
+        "basis_chat_worker_failed",
+        "openai_basis_chat_failed",
+        "gemini_basis_chat_failed",
+    }:
+        meaning = "AI quote-basis drafting or revision chat failed. Check details.errors or provider_errors; retry after fixing provider/network/configuration issues."
     elif event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
         meaning = "Remote AI analysis was unavailable or unconfigured, so the app used or offered a local fallback path."
     elif event == "abuse_signal":
