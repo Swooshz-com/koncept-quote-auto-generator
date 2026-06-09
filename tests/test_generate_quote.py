@@ -1250,6 +1250,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "header_lines": ["Other Company Pte Ltd", "Dynamic address line"],
             },
             "rich_text": {
+                "quoteDate": "<div><strong><em><u>04 June 2026</u></em></strong></div>",
                 "clientAddress": "<div><strong>10 Sample</strong> <em>Street</em></div><div><u>Singapore 000010</u></div>",
                 "headerDetails": "<div><strong>Other Company Pte Ltd</strong></div><div><em><u>Dynamic address line</u></em></div>",
                 "termsHeading": "<div><strong>Commercial Terms</strong></div>",
@@ -1275,6 +1276,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             ],
         )
         self.assertEqual(cell_inline_runs(sheet, "A8"), [("Singapore 000010", False, False, True)])
+        self.assertEqual(cell_inline_runs(sheet, "A16"), [("04 June 2026", True, True, True)])
         self.assertEqual(cell_inline_runs(sheet, find_cell_ref(sheet, "Commercial Terms")), [("Commercial Terms", True, False, False)])
         self.assertEqual(
             cell_inline_runs(sheet, "B33"),

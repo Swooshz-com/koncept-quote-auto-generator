@@ -103,6 +103,7 @@ const STAGE_LABELS = {
 const state = {
   profileId: "",
   pricingReferenceId: "",
+  selectedPresetValue: "",
   profiles: [],
   pricingReferences: [],
   images: [],
@@ -121,6 +122,7 @@ const state = {
   aiFailed: false,
   draftSource: "",
   isBooting: true,
+  isPageUnloading: false,
   csrfHeaderName: CSRF_HEADER_NAME,
   csrfToken: "",
   pendingFeedback: "",
@@ -130,6 +132,11 @@ const state = {
   pricingIssues: [],
   activeJob: null,
   pendingPricingReference: null,
+  quoteDateFormat: {
+    bold: false,
+    italic: false,
+    underline: false,
+  },
   basisChat: {
     scope: "quote",
     field: "",
@@ -175,6 +182,7 @@ const elements = {
   clientAddress: qs("#clientAddress"),
   projectTitle: qs("#projectTitle"),
   quoteDate: qs("#quoteDate"),
+  quoteDateFormatButtons: Array.from(document.querySelectorAll("[data-date-format-command]")),
   projectNumber: qs("#projectNumber"),
   headerDetails: qs("#headerDetails"),
   headerLogoInput: qs("#headerLogoInput"),
@@ -762,6 +770,44 @@ function todayDateInputValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function quoteDateDisplayText(value = "") {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return String(value || "");
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function quoteDateHasFormat() {
+  return Boolean(state.quoteDateFormat.bold || state.quoteDateFormat.italic || state.quoteDateFormat.underline);
+}
+
+function quoteDateRichTextHtml() {
+  const displayText = quoteDateDisplayText(elements.quoteDate.value);
+  if (!displayText || !quoteDateHasFormat()) return "";
+  let formatted = escapeHtml(displayText);
+  if (state.quoteDateFormat.underline) formatted = `<u>${formatted}</u>`;
+  if (state.quoteDateFormat.italic) formatted = `<em>${formatted}</em>`;
+  if (state.quoteDateFormat.bold) formatted = `<strong>${formatted}</strong>`;
+  return `<div>${formatted}</div>`;
+}
+
+function applyQuoteDateFormatFromHtml(richHtml = "") {
+  const value = String(richHtml || "").toLowerCase();
+  state.quoteDateFormat = {
+    bold: /<(strong|b)\b/.test(value),
+    italic: /<(em|i)\b/.test(value),
+    underline: /<u\b/.test(value),
+  };
+  updateQuoteDateFormatButtons();
+}
+
+function updateQuoteDateFormatButtons() {
+  elements.quoteDateFormatButtons.forEach((button) => {
+    const command = button.dataset.dateFormatCommand || "";
+    button.classList.toggle("is-selected", Boolean(state.quoteDateFormat[command]));
+    button.setAttribute("aria-pressed", String(Boolean(state.quoteDateFormat[command])));
+  });
+}
+
 function applyDefaultQuoteDate() {
   if (!elements.quoteDate.value.trim()) {
     setInputValue(elements.quoteDate, todayDateInputValue());
@@ -875,11 +921,14 @@ function syncRichTextEditor(input, richHtml = "") {
 }
 
 function collectRichTextDetails() {
-  return RICH_TEXT_SOURCE_IDS.reduce((details, id) => {
+  const details = RICH_TEXT_SOURCE_IDS.reduce((collected, id) => {
     const editor = elements.richTextEditors.find((item) => item.dataset.richTextSource === id);
-    if (editor) details[id] = sanitizeRichTextHtml(editor.innerHTML);
-    return details;
+    if (editor) collected[id] = sanitizeRichTextHtml(editor.innerHTML);
+    return collected;
   }, {});
+  const quoteDateHtml = quoteDateRichTextHtml();
+  if (quoteDateHtml) details.quoteDate = sanitizeRichTextHtml(quoteDateHtml);
+  return details;
 }
 
 function restoreRichTextDetails(details = {}, options = {}) {
@@ -897,6 +946,9 @@ function restoreRichTextDetails(details = {}, options = {}) {
     }
     syncRichTextSource(editor);
   });
+  if (!partial || hasOwnValue(details, "quoteDate")) {
+    applyQuoteDateFormatFromHtml(details.quoteDate || "");
+  }
 }
 
 function hasEditableSelection(editor) {
@@ -947,6 +999,16 @@ function wireRichTextEditors() {
       if (editor) runRichTextCommand(editor, button.dataset.richCommand || "bold");
     });
   });
+  elements.quoteDateFormatButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const command = button.dataset.dateFormatCommand || "";
+      if (!Object.prototype.hasOwnProperty.call(state.quoteDateFormat, command)) return;
+      state.quoteDateFormat[command] = !state.quoteDateFormat[command];
+      updateQuoteDateFormatButtons();
+      syncControlStates();
+    });
+  });
+  updateQuoteDateFormatButtons();
 }
 
 function setInputValue(input, value) {
@@ -1096,6 +1158,7 @@ function saveSessionState() {
       savedAt: new Date().toISOString(),
       profileId: state.profileId,
       pricingReferenceId: state.pricingReferenceId,
+      selectedPresetValue: state.selectedPresetValue,
       images: state.images.slice(0, MAX_REFERENCE_IMAGES),
       quoteDetails: collectQuoteDetails(),
       workflowStage: state.workflowStage,
@@ -1126,8 +1189,10 @@ function restoreSessionState() {
   if (!saved || saved.version !== 1) return false;
   state.profileId = saved.profileId || "";
   state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
+  state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {});
   syncSelectedPricingReference();
   renderProfileOptions();
+  renderPresetOptions();
   applyQuoteDetails(saved.quoteDetails || {}, { includeLogo: true, clearLogo: true });
   state.images = Array.isArray(saved.images) ? saved.images.slice(0, MAX_REFERENCE_IMAGES) : [];
   state.quoteBasis = cloneQuoteBasis(saved.quoteBasis || {});
@@ -1152,13 +1217,16 @@ function restoreSessionState() {
   } else {
     clearPricingReviewMessages();
   }
-  if (state.lineItems.length || state.quoteBasisSections.length || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0)) {
+  if (state.aiFailed) {
+    clearAiFailedDraftState();
+    renderBasisFailureState("AI analysis failed before a usable quote basis was produced. Start analysis again after checking the local runner connection.");
+  } else if (state.lineItems.length || state.quoteBasisSections.length || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0)) {
     updateQuoteBasisCard(saved.draftSource || "restored");
   } else {
     renderBasisEmptyState();
   }
   updateDownloadButton();
-  setResultStatus(state.downloadFile ? "Completed" : "No job yet", state.downloadFile ? "is-ok" : "");
+  setResultStatus(state.aiFailed ? "No usable AI draft" : state.downloadFile ? "Completed" : "No job yet", state.aiFailed ? "is-bad" : state.downloadFile ? "is-ok" : "");
   setWorkflowStage(saved.workflowStage || (state.images.length ? "ready_to_analyze" : "needs_images"));
   if (state.aiFailed) {
     showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
@@ -1184,7 +1252,7 @@ function savePresets(presets) {
 }
 
 function selectedPresetId() {
-  return elements.presetSelect.value || "";
+  return state.selectedPresetValue || elements.presetSelect.value || "";
 }
 
 function profilePresets() {
@@ -1215,6 +1283,12 @@ function localPresetOptionValue(presetId) {
   return `${LOCAL_PRESET_PREFIX}${presetId}`;
 }
 
+function presetOptionValue(preset = {}) {
+  const presetId = String(preset.id || "").trim();
+  if (!presetId) return "";
+  return preset.source === "local" ? localPresetOptionValue(presetId) : profilePresetOptionValue(presetId);
+}
+
 function defaultPresetOptionValue() {
   const profileDefault = defaultProfilePresetId();
   if (profileDefault) return profilePresetOptionValue(profileDefault);
@@ -1241,6 +1315,34 @@ function selectedPreset() {
   return preset ? { ...preset, source: "local" } : null;
 }
 
+function normalizePresetComparisonValue(value) {
+  if (Array.isArray(value)) return value.map(normalizePresetComparisonValue).join("\n");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function quoteDetailsMatchPreset(savedDetails = {}, presetDetails = {}) {
+  const savedCompany = savedDetails.company || {};
+  const presetCompany = presetDetails.company || {};
+  const savedRichText = savedDetails.rich_text || {};
+  const presetRichText = presetDetails.rich_text || {};
+  const companyNameMatches = presetCompany.name
+    && normalizePresetComparisonValue(savedCompany.name) === normalizePresetComparisonValue(presetCompany.name);
+  const headerDetailsMatch = presetCompany.header_details
+    && normalizePresetComparisonValue(savedCompany.header_details) === normalizePresetComparisonValue(presetCompany.header_details);
+  const richHeaderMatches = presetRichText.headerDetails
+    && normalizePresetComparisonValue(savedRichText.headerDetails) === normalizePresetComparisonValue(presetRichText.headerDetails);
+  return Boolean(companyNameMatches && (headerDetailsMatch || richHeaderMatches));
+}
+
+function presetValueFromQuoteDetails(savedDetails = {}) {
+  const matchesDetails = (preset) => quoteDetailsMatchPreset(savedDetails, preset.details || {});
+  const profilePreset = profilePresets().find(matchesDetails);
+  if (profilePreset) return profilePresetOptionValue(profilePreset.id);
+  const localPreset = safeStorageJson().find(matchesDetails);
+  return localPreset ? localPresetOptionValue(localPreset.id) : "";
+}
+
 function renderPresetStatus(message = "") {
   if (!elements.presetStatus) return;
   elements.presetStatus.textContent = message || "Presets are stored locally in this browser and can include the uploaded header logo.";
@@ -1260,7 +1362,7 @@ function renderHeaderLogoPreview() {
 function renderPresetOptions() {
   const builtInPresets = profilePresets();
   const presets = safeStorageJson();
-  const selectedValue = selectedPresetId();
+  const selectedValue = state.selectedPresetValue || elements.presetSelect.value || "";
   const defaultPreset = builtInPresets.find((preset) => preset.id === "default");
   const defaultOption = defaultPreset
     ? `<option value="${escapeHtml(profilePresetOptionValue(defaultPreset.id))}">${escapeHtml(defaultPreset.name)}</option>`
@@ -1274,14 +1376,15 @@ function renderPresetOptions() {
     .join("");
   elements.presetSelect.innerHTML = [
     defaultOption,
-    builtInOptions ? `<optgroup label="Company presets">${builtInOptions}</optgroup>` : "",
-    localOptions ? `<optgroup label="Saved locally">${localOptions}</optgroup>` : "",
+    builtInOptions ? `<optgroup label="Profile Presets">${builtInOptions}</optgroup>` : "",
+    localOptions ? `<optgroup label="Saved Company Presets">${localOptions}</optgroup>` : "",
   ].join("");
   const availableValues = new Set([
     ...builtInPresets.map((preset) => profilePresetOptionValue(preset.id)),
     ...presets.map((preset) => localPresetOptionValue(preset.id)),
   ]);
-  elements.presetSelect.value = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
+  state.selectedPresetValue = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
+  elements.presetSelect.value = state.selectedPresetValue;
   updatePresetButtons();
 }
 
@@ -1314,8 +1417,10 @@ function saveCurrentPreset() {
   }
   savePresets(presets);
   renderPresetOptions();
-  elements.presetSelect.value = localPresetOptionValue(preset.id);
+  state.selectedPresetValue = localPresetOptionValue(preset.id);
+  elements.presetSelect.value = state.selectedPresetValue;
   updatePresetButtons();
+  syncControlStates();
   renderPresetStatus(`Saved "${name}" as a local company preset.`);
 }
 
@@ -1325,6 +1430,7 @@ function loadSelectedPreset(options = {}) {
     renderPresetStatus("Choose a preset to load.");
     return;
   }
+  state.selectedPresetValue = elements.presetSelect.value || presetOptionValue(preset);
   const details = preset.details || {};
   const clearsLogo = Boolean(details.company && typeof details.company === "object");
   applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
@@ -1340,7 +1446,8 @@ function loadSelectedPreset(options = {}) {
 function loadDefaultProfilePreset(options = {}) {
   const defaultPreset = defaultPresetOptionValue();
   if (!defaultPreset) return;
-  elements.presetSelect.value = defaultPreset;
+  state.selectedPresetValue = defaultPreset;
+  elements.presetSelect.value = state.selectedPresetValue;
   loadSelectedPreset(options);
 }
 
@@ -1350,7 +1457,8 @@ function loadConfiguredProfilePreset(options = {}) {
     loadDefaultProfilePreset(options);
     return;
   }
-  elements.presetSelect.value = profilePresetOptionValue(configuredPreset);
+  state.selectedPresetValue = profilePresetOptionValue(configuredPreset);
+  elements.presetSelect.value = state.selectedPresetValue;
   loadSelectedPreset(options);
 }
 
@@ -1362,6 +1470,7 @@ function clearCustomerDetails() {
   setInputValue(elements.projectTitle, "");
   state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
   setInputValue(elements.quoteDate, todayDateInputValue());
+  applyQuoteDateFormatFromHtml("");
   setInputValue(elements.projectNumber, "");
   clearGeneratedQuoteState();
   renderProfileOptions();
@@ -1388,6 +1497,7 @@ function clearQuoteCompanyDetails() {
   applyDefaultQuoteCompanyFields();
   state.headerLogo = null;
   elements.headerLogoInput.value = "";
+  state.selectedPresetValue = "";
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   updatePresetButtons();
@@ -1411,6 +1521,7 @@ function startNewQuote() {
   state.downloadFile = null;
   elements.imageInput.value = "";
   elements.headerLogoInput.value = "";
+  state.selectedPresetValue = "";
   elements.presetSelect.value = "";
   elements.presetNameInput.value = "";
   applyQuoteDetails({}, { clearLogo: true });
@@ -1439,6 +1550,7 @@ function deleteSelectedPreset() {
   savePresets(presets.filter((item) => item.id !== presetId));
   renderPresetOptions();
   updatePresetButtons();
+  syncControlStates();
   renderPresetStatus(`Deleted "${preset.name}".`);
 }
 
@@ -1452,15 +1564,24 @@ function renderProfileOptions() {
     return counts;
   }, new Map());
   const profileLabels = new Map(state.profiles.map((profile) => [profile.id, profile.label || profile.id]));
-  const options = references
-    .map((reference) => {
-      const referenceId = String(reference.id || "").trim();
-      const profileId = pricingReferenceProfileId(reference);
-      const duplicateSuffix = duplicateReferenceIds.get(referenceId) > 1 ? ` (${profileLabels.get(profileId) || profileId})` : "";
-      return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}${escapeHtml(duplicateSuffix)}</option>`;
-    })
+  const referenceOption = (reference) => {
+    const referenceId = String(reference.id || "").trim();
+    const profileId = pricingReferenceProfileId(reference);
+    const duplicateSuffix = duplicateReferenceIds.get(referenceId) > 1 ? ` (${profileLabels.get(profileId) || profileId})` : "";
+    return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}${escapeHtml(duplicateSuffix)}</option>`;
+  };
+  const profileOptions = references
+    .filter((reference) => reference.source !== "local")
+    .map(referenceOption)
     .join("");
-  elements.profileSelect.innerHTML = options;
+  const localOptions = references
+    .filter((reference) => reference.source === "local")
+    .map(referenceOption)
+    .join("");
+  elements.profileSelect.innerHTML = [
+    profileOptions ? `<optgroup label="Profile Pricing References">${profileOptions}</optgroup>` : "",
+    localOptions ? `<optgroup label="Saved Pricing References">${localOptions}</optgroup>` : "",
+  ].join("");
   const fallbackReference = currentPricingReference() || pricingReferenceForProfile(state.profileId || DEFAULT_PROFILE_ID) || references[0] || null;
   if (fallbackReference) {
     state.profileId = pricingReferenceProfileId(fallbackReference);
@@ -2318,6 +2439,15 @@ function renderBasisEmptyState(message = "Load images, complete Customer and Quo
   `;
 }
 
+function renderBasisFailureState(message = "AI analysis failed before a usable quote basis was produced. Check the local runner connection, then start analysis again.") {
+  elements.basisReviewSurface.innerHTML = `
+    <div class="basis-empty-state basis-empty-state-error">
+      <strong>AI analysis did not complete</strong>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
 function clearBasisReviewSurface() {
   elements.basisReviewSurface.innerHTML = "";
 }
@@ -2379,6 +2509,14 @@ function renderBasisTagLegend() {
 
 function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
   const aiFailed = source === "local" && state.aiFailed;
+  if (aiFailed) {
+    return `
+      <div class="basis-empty-state basis-empty-state-error">
+        <strong>AI analysis did not complete</strong>
+        <p>Remote AI did not return a usable quote basis. Start analysis again after checking the local runner connection.</p>
+      </div>
+    `;
+  }
   const statusText = aiFailed ? "AI failed" : source === "edited" ? "Edited draft" : "Needs your confirmation";
   const summaryText = state.lineItems.length
     ? `${state.lineItems.length} priced line${state.lineItems.length === 1 ? "" : "s"}`
@@ -2903,6 +3041,7 @@ function canStartAnalysis() {
 }
 
 function hasSubmittedQuoteBasis() {
+  if (state.aiFailed) return false;
   return ["basis_review", "generating", "pricing_review", "completed"].includes(state.workflowStage)
     && (state.lineItems.length > 0 || state.quoteBasisSections.some((section) => (section.lines || []).length > 0) || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0));
 }
@@ -2938,6 +3077,35 @@ function captureOriginalAnalysisSnapshot(data = {}) {
   };
 }
 
+function clearAiFailedDraftState() {
+  state.quoteBasis = { ...EMPTY_BASIS };
+  state.quoteBasisSections = [];
+  state.lineItems = [];
+  state.outputRows = [];
+  state.outputErrors = [];
+  state.originalAnalysisSnapshot = null;
+  state.basisConfirmed = false;
+  setDownloadFiles([]);
+  renderMatchSummary({});
+  renderPricingMatches([]);
+  clearPricingReviewMessages();
+  setResultStatus("No usable AI draft", "is-bad");
+}
+
+function showAiFailedDraftState(data = {}) {
+  clearAiFailedDraftState();
+  state.aiFailed = true;
+  state.draftSource = data.source || "local";
+  const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
+  const message = warningText || "Remote AI did not return a usable quote basis. Start analysis again after checking the local runner connection.";
+  setWorkflowStage("basis_review");
+  showAiFailureBanner(message);
+  renderBasisFailureState(message);
+  setSidePanel("basis", { force: true });
+  noteWorkflowEvent("assistant", "AI analysis failed before a usable quote basis was produced. I cleared the local fallback draft so it is not mistaken for AI output.", { tone: "error" });
+  syncControlStates();
+}
+
 function resetQuoteBasisToOriginal() {
   const snapshot = state.originalAnalysisSnapshot;
   if (!snapshot) return;
@@ -2967,11 +3135,16 @@ async function postJson(url, payload) {
       body: JSON.stringify(payload),
     });
   } catch (error) {
-    logClientEvent("client_error", { url, message: error.message || String(error) });
+    if (!state.isPageUnloading) {
+      logClientEvent("client_error", { url, message: error.message || String(error) });
+    }
     return {
       ok: false,
       data: {
         status: "failed",
+        fetch_failed: true,
+        page_unloading: state.isPageUnloading,
+        message: error.message || String(error),
         errors: ["Local server connection failed. Make sure the local runner is still open, then retry."],
       },
     };
@@ -2992,16 +3165,22 @@ async function postJson(url, payload) {
   return { ok: response.ok, data };
 }
 
-async function getJson(url) {
+async function getJson(url, options = {}) {
   let response;
   try {
     response = await fetch(url);
   } catch (error) {
-    logClientEvent("client_error", { url, message: error.message || String(error) });
+    const message = error.message || String(error);
+    if (!state.isPageUnloading && options.logFetchFailure !== false) {
+      logClientEvent("client_error", { url, message });
+    }
     return {
       ok: false,
       data: {
         status: "failed",
+        fetch_failed: true,
+        page_unloading: state.isPageUnloading,
+        message,
         errors: ["Local server connection failed. Make sure the local runner is still open, then retry."],
       },
     };
@@ -3033,14 +3212,52 @@ async function startJob(type, payload) {
 }
 
 async function pollJob(jobId, onStatus) {
+  const maxFetchFailures = 4;
+  let fetchFailures = 0;
   while (jobId) {
-    const { ok, data } = await getJson(`/api/jobs/${encodeURIComponent(jobId)}`);
-    if (!ok) return { ok, data };
+    const url = `/api/jobs/${encodeURIComponent(jobId)}`;
+    const { ok, data } = await getJson(url, { logFetchFailure: false });
+    if (!ok) {
+      if (data?.page_unloading) return { ok, data, aborted: true };
+      if (data?.fetch_failed && fetchFailures < maxFetchFailures) {
+        fetchFailures += 1;
+        if (typeof onStatus === "function") onStatus({ status: "retrying", fetch_failures: fetchFailures });
+        await delay(Math.min(1000 * fetchFailures, 4000));
+        continue;
+      }
+      if (data?.fetch_failed) {
+        logClientEvent("client_error", {
+          url,
+          message: data.message || "Failed to fetch",
+          attempts: fetchFailures + 1,
+        });
+      }
+      return { ok, data };
+    }
+    fetchFailures = 0;
     if (typeof onStatus === "function") onStatus(data);
     if (FINAL_JOB_STATUSES.has(data.status)) return { ok: true, data };
     await delay(900);
   }
   return { ok: false, data: { status: "failed", errors: ["Job was not created."] } };
+}
+
+function isInterruptedJobPoll(polled) {
+  return Boolean(polled?.aborted || polled?.data?.fetch_failed);
+}
+
+function handleInterruptedJobPoll(jobType = "draft") {
+  setBusyText("");
+  if (jobType === "draft") {
+    state.isAnalysisRunning = false;
+    showAiFailureBanner("Local server connection was interrupted. Refresh this app to resume the active AI analysis job.");
+    setWorkflowStage("analyzing");
+  } else {
+    state.isGenerating = false;
+    setResultStatus("Connection interrupted", "is-warn");
+    renderMessages(["Local server connection was interrupted. Refresh this app to resume the active Excel job."], "error");
+  }
+  syncControlStates();
 }
 
 function setBusyText(message = "") {
@@ -3146,6 +3363,11 @@ async function handleDraftBasis() {
   const polled = await pollJob(started.data.job_id, (job) => {
     setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
   });
+  if (polled.aborted) return;
+  if (isInterruptedJobPoll(polled)) {
+    handleInterruptedJobPoll("draft");
+    return;
+  }
   state.isAnalysisRunning = false;
   state.activeJob = null;
   setBusyText("");
@@ -3166,20 +3388,20 @@ async function handleDraftBasis() {
   }
 
   const data = polled.data.result || {};
+  const aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
+  if (aiFailed) {
+    showAiFailedDraftState(data);
+    return;
+  }
   applyDraftBasis(data);
   applyDraftLineItems(data.line_items || []);
   state.boothDimensions = normalizeBoothDimensions(data.project || state.boothDimensions);
   state.draftSource = data.source || "";
   captureOriginalAnalysisSnapshot(data);
-  state.aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
+  state.aiFailed = false;
   setWorkflowStage("basis_review");
   const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
-  if (state.aiFailed) {
-    showAiFailureBanner(warningText || "Try again later. A local fallback draft is shown for reference only.");
-    noteWorkflowEvent("assistant", "AI analysis failed. Try again later. I showed a local fallback draft, but it is blocked from quotation generation until remote AI analysis succeeds.", { tone: "error" });
-  } else {
-    clearAiFailureBanner();
-  }
+  clearAiFailureBanner();
   if (Array.isArray(data.warnings) && data.warnings.length) {
     noteWorkflowEvent("assistant", data.warnings.join("\n"), { tone: "warn" });
   }
@@ -3302,6 +3524,11 @@ async function handleGenerate() {
   const polled = await pollJob(started.data.job_id, (job) => {
     setBusyText(job.status === "running" ? "Generating Excel..." : "Queued...");
   });
+  if (polled.aborted) return;
+  if (isInterruptedJobPoll(polled)) {
+    handleInterruptedJobPoll("generate");
+    return;
+  }
   state.isGenerating = false;
   state.activeJob = null;
   setBusyText("");
@@ -3364,6 +3591,11 @@ async function resumeSavedJob() {
       }
       setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
     });
+    if (polled.aborted) return;
+    if (isInterruptedJobPoll(polled)) {
+      handleInterruptedJobPoll("draft");
+      return;
+    }
     state.isAnalysisRunning = false;
     state.activeJob = null;
     setBusyText("");
@@ -3378,20 +3610,19 @@ async function resumeSavedJob() {
     }
 
     const data = polled.data.result || {};
+    const aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
+    if (aiFailed) {
+      showAiFailedDraftState(data);
+      return;
+    }
     applyDraftBasis(data);
     applyDraftLineItems(data.line_items || []);
     state.boothDimensions = normalizeBoothDimensions(data.project || state.boothDimensions);
     state.draftSource = data.source || "";
     captureOriginalAnalysisSnapshot(data);
-    state.aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
+    state.aiFailed = false;
     setWorkflowStage("basis_review");
-    if (state.aiFailed) {
-      const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
-      showAiFailureBanner(warningText || "Try again later. A local fallback draft is shown for reference only.");
-      noteWorkflowEvent("assistant", "AI analysis failed. Try again later. I showed a local fallback draft, but it is blocked from quotation generation until remote AI analysis succeeds.", { tone: "error" });
-    } else {
-      clearAiFailureBanner();
-    }
+    clearAiFailureBanner();
     if (Array.isArray(data.warnings) && data.warnings.length) {
       noteWorkflowEvent("assistant", data.warnings.join("\n"), { tone: "warn" });
     }
@@ -3416,6 +3647,11 @@ async function resumeSavedJob() {
     const polled = await pollJob(activeJob.id, (job) => {
       setBusyText(job.status === "running" ? "Checking Excel..." : "Queued...");
     });
+    if (polled.aborted) return;
+    if (isInterruptedJobPoll(polled)) {
+      handleInterruptedJobPoll("generate");
+      return;
+    }
     state.isGenerating = false;
     state.activeJob = null;
     setBusyText("");
@@ -3914,8 +4150,14 @@ function handleQuoteBasisClick(event) {
   }
 }
 
+function markPageUnloading() {
+  state.isPageUnloading = true;
+}
+
 function wireEvents() {
   wireRichTextEditors();
+  window.addEventListener("pagehide", markPageUnloading);
+  window.addEventListener("beforeunload", markPageUnloading);
   elements.imageInput.addEventListener("change", async (event) => {
     await addImagesFromFiles(event.target.files || []);
     elements.imageInput.value = "";
@@ -4027,8 +4269,10 @@ function wireEvents() {
   elements.discussQuoteButton.addEventListener("click", () => openBasisChatOverlay("quote"));
   elements.resetQuoteBasisButton.addEventListener("click", resetQuoteBasisToOriginal);
   elements.presetSelect.addEventListener("change", () => {
+    state.selectedPresetValue = elements.presetSelect.value || "";
     updatePresetButtons();
     renderPresetStatus();
+    syncControlStates();
   });
   elements.savePresetButton.addEventListener("click", saveCurrentPreset);
   elements.loadPresetButton.addEventListener("click", loadSelectedPreset);

@@ -145,6 +145,7 @@ RICH_TEXT_DETAIL_KEYS = {
     "personLabel",
     "projectNumber",
     "projectTitle",
+    "quoteDate",
     "quoteCompanyName",
     "stampLabel",
     "standardNotes",

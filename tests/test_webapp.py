@@ -103,6 +103,7 @@ def valid_payload():
             "koncept_date_label": "Date:",
         },
         "rich_text": {
+            "quoteDate": "<div><strong>06/06/2026</strong></div>",
             "clientAddress": "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>",
             "headerDetails": "<div><strong>Sample Quotation Co Pte Ltd</strong></div><div>Dynamic header address</div>",
             "paymentTerms": "<div><strong>70% payment upon confirmation.</strong></div>",
@@ -229,6 +230,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(brief["company_identity"], "Sample Quotation Co Pte Ltd")
         self.assertEqual(brief["quote_date"], "2026-06-06")
+        self.assertEqual(brief["rich_text"]["quoteDate"], "<div><strong>06/06/2026</strong></div>")
         self.assertEqual(brief["project_number"], "KI-WEB-001")
         self.assertEqual(brief["client"]["name"], "Sample Client Pte Ltd")
         self.assertEqual(brief["client"]["attention"], "Alex Tan")
@@ -513,7 +515,7 @@ class WebappServerTest(unittest.TestCase):
             preset_quote_text["payment_terms"][-1],
             "All cheques should be crossed and made payable to Koncept Image Pte Ltd",
         )
-        self.assertIn("<strong>Koncept Image Pte Limited</strong>", preset_rich_text["headerDetails"])
+        self.assertIn("<strong>Koncept Image Pte. Ltd.</strong>", preset_rich_text["headerDetails"])
         self.assertEqual(preset_rich_text["quoteCompanyName"], "<div>Koncept Image Pte Ltd</div>")
         self.assertIn("<strong>Terms &amp; Conditions:</strong>", preset_rich_text["termsHeading"])
         self.assertIn("<strong>70% payment", preset_rich_text["paymentTerms"])
@@ -1570,14 +1572,22 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("defaultPresetOptionValue", js)
         self.assertIn("configuredProfilePresetId", js)
         self.assertIn("loadConfiguredProfilePreset", js)
+        self.assertIn("selectedPresetValue", js)
+        self.assertIn("presetValueFromQuoteDetails", js)
+        self.assertIn("selectedPresetValue: state.selectedPresetValue", js)
         self.assertIn('defaultPreset = builtInPresets.find((preset) => preset.id === "default")', js)
         self.assertIn("defaultOption", js)
         self.assertIn('.filter((preset) => preset.id !== "default")', js)
-        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Company presets">'))
+        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Presets">'))
+        self.assertIn('`<optgroup label="Saved Company Presets">', js)
+        self.assertIn('`<optgroup label="Profile Pricing References">', js)
+        self.assertIn('`<optgroup label="Saved Pricing References">', js)
         self.assertNotIn("Clear Customer", html)
         self.assertNotIn("Reset Quote Company", html)
         self.assertIn("clearCustomerDetails", js)
         self.assertIn("clearQuoteCompanyDetails", js)
+        self.assertIn(">Reset Draft</button>", html)
+        self.assertNotIn(">Reset</button>", html)
         self.assertIn("Customer details cleared.", js)
         self.assertIn("Quote-company defaults reset.", js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
@@ -1592,6 +1602,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertLess(html.index('id="clientName"'), html.index('id="clientAddress"'))
         self.assertLess(html.index('id="clientAddress"'), html.index('id="clientAttention"'))
         self.assertLess(html.index('id="quoteDate"'), html.index('id="projectTitle"'))
+        self.assertLess(html.index('data-date-format-command="bold"'), html.index('id="quoteDate"'))
+        self.assertIn('aria-label="Quote date formatting"', html)
+        self.assertIn("quoteDateRichTextHtml", js)
+        self.assertIn("details.quoteDate", js)
+        self.assertIn(".date-format-control", css)
+        self.assertIn(".rich-text-tool.is-selected", css)
         self.assertLess(html.index('id="projectTitle"'), html.index('id="projectNumber"'))
         self.assertIn("Company header", html)
         self.assertIn("Quotation Company", html)
@@ -1645,6 +1661,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn(".panel-clear-button", css)
         self.assertIn(".pricing-reference-panel", css)
         self.assertIn(".pricing-reference-controls", css)
+        self.assertIn(".pricing-reference-controls .settings-button-row", css)
         self.assertIn(".company-preset-panel", css)
         self.assertIn(".company-preset-controls", css)
         self.assertNotIn(".quote-company-toolbar", css)
@@ -2058,6 +2075,15 @@ assert.strictEqual(canStartAnalysis(), true);
 
         self.assertIn("Local server connection failed", js)
         self.assertIn("Local server returned a non-JSON response", js)
+        self.assertIn("isPageUnloading", js)
+        self.assertIn("page_unloading", js)
+        self.assertIn("maxFetchFailures = 4", js)
+        self.assertIn('getJson(url, { logFetchFailure: false })', js)
+        self.assertIn("return { ok, data, aborted: true }", js)
+        self.assertIn("isInterruptedJobPoll", js)
+        self.assertIn("handleInterruptedJobPoll", js)
+        self.assertIn("Refresh this app to resume the active AI analysis job.", js)
+        self.assertIn('window.addEventListener("pagehide", markPageUnloading)', js)
 
     def test_match_summary_counts_only_exact_catalog_matches_as_confident(self):
         static_dir = ROOT / "webapp" / "static"
@@ -2460,7 +2486,7 @@ assert.strictEqual(result.unique[0].name, "b.jpg");
             "script",
             "iframe",
             "editor.innerHTML = sanitizeRichTextHtml",
-            "details[id] = sanitizeRichTextHtml",
+            "collected[id] = sanitizeRichTextHtml",
         ):
             self.assertIn(expected, js)
 
@@ -2654,6 +2680,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Included", js)
         self.assertIn("Download Excel", js)
         self.assertIn("New Pricing Reference", html)
+        self.assertIn('id="newPricingReferenceButton">New</button>', html)
+        self.assertIn('id="deletePricingReferenceButton">Delete</button>', html)
         self.assertIn("pricingReferenceModal", html)
         self.assertIn('/api/pricing-reference/validate', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)

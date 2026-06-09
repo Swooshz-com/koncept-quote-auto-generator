@@ -1698,6 +1698,29 @@ def excel_date_serial(value: str) -> float | str:
     return float((parsed - epoch).days)
 
 
+def quote_date_display_text(value: str) -> str:
+    try:
+        parsed = dt.date.fromisoformat(value)
+    except ValueError:
+        return value
+    return parsed.strftime("%d %B %Y")
+
+
+def brief_quote_date_rich_text_runs(brief: dict[str, Any]) -> list[RichTextRun]:
+    rich_text = brief.get("rich_text") if isinstance(brief.get("rich_text"), dict) else {}
+    parsed = parse_rich_text_html(rich_text.get("quoteDate")) if isinstance(rich_text, dict) else []
+    source_runs = [run for line in parsed for run in line if clean_text(run.text)]
+    if not source_runs:
+        return []
+    bold = any(run.bold for run in source_runs)
+    italic = any(run.italic for run in source_runs)
+    underline = any(run.underline for run in source_runs)
+    if not (bold or italic or underline):
+        return []
+    text = quote_date_display_text(str(brief.get("quote_date", "")))
+    return [RichTextRun(text, bold=bold, italic=italic, underline=underline)]
+
+
 def wrapped_description(description: str, width: int = 58) -> list[str]:
     return textwrap.wrap(description, width=width) or [description]
 
@@ -2033,7 +2056,11 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, 11, 1, [RichTextRun("Attention:", bold=True)], "26")
     set_ooxml_rich_text_cell(root, 12, 2, brief_rich_text_cell_runs(brief, "clientAttention", client.get("attention", ""), fallback_bold=True), "26")
     set_ooxml_rich_text_cell(root, 13, 2, brief_rich_text_cell_runs(brief, "clientTitle", client.get("title", "")), "24")
-    set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), layout_styles["quote_date"])
+    quote_date_runs = brief_quote_date_rich_text_runs(brief)
+    if quote_date_runs:
+        set_ooxml_rich_text_cell(root, 16, 1, quote_date_runs, layout_styles["quote_date"])
+    else:
+        set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), layout_styles["quote_date"])
     set_ooxml_rich_text_cell(root, 18, 1, brief_rich_text_cell_runs(brief, "projectTitle", project.get("title", "")), "26")
 
     write_table_header(root, 20, 21, layout_styles)

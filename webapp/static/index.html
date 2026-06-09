@@ -103,10 +103,10 @@
                 </div>
                 <div class="workspace-pane-header-actions">
                   <button class="secondary-button sample-button" type="button" id="sampleDetailsButton" disabled>Load Sample</button>
-                  <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Reset</button>
-                  <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Reset Draft</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset Draft</button>
                   <button class="secondary-button ask-changes-button" type="button" id="discussQuoteButton" hidden>Ask For Changes</button>
-                  <button class="secondary-button panel-clear-button" type="button" id="resetQuoteBasisButton" hidden>Reset</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="resetQuoteBasisButton" hidden>Reset Draft</button>
                 </div>
               </div>
               <div class="workspace-pane-scroll">
@@ -137,8 +137,8 @@
                       <select id="profileSelect"></select>
                     </label>
                     <div class="settings-button-row">
-                      <button class="secondary-button" type="button" id="newPricingReferenceButton">New Pricing Reference</button>
-                      <button class="secondary-button danger-button" type="button" id="deletePricingReferenceButton">Delete Reference</button>
+                      <button class="secondary-button" type="button" id="newPricingReferenceButton">New</button>
+                      <button class="secondary-button danger-button" type="button" id="deletePricingReferenceButton">Delete</button>
                     </div>
                     <p class="settings-note">Required before moving to Quote Company.</p>
                   </div>
@@ -201,10 +201,17 @@
                 <div class="section-band quote-form-section">
                   <h3>Quote reference</h3>
                    <div class="form-grid">
-                     <label>
-                       Quote date
-                       <input id="quoteDate" type="date">
-                     </label>
+                     <div class="field-control date-format-field">
+                       <span>Quote date</span>
+                       <div class="date-format-control">
+                         <div class="rich-text-toolbar date-format-toolbar" aria-label="Quote date formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-date-format-command="bold" title="Bold date in Excel output" aria-label="Bold date">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-date-format-command="italic" title="Italic date in Excel output" aria-label="Italic date">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-date-format-command="underline" title="Underline date in Excel output" aria-label="Underline date">U</button>
+                         </div>
+                         <input id="quoteDate" type="date">
+                       </div>
+                     </div>
                      <div class="field-control">
                        <span>Quotation Title</span>
                        <div class="rich-text-field">
