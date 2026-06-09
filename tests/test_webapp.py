@@ -551,7 +551,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(webapp.OPENAI_REQUEST_TIMEOUT_SECONDS, 90)
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 123)
 
-    def test_openai_prompt_requests_skill_style_takeoff_depth(self):
+    def test_openai_prompt_requests_quote_takeoff_depth(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({"quote_basis": {}, "line_items": []})
