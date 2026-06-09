@@ -1,17 +1,39 @@
 {
   "id": "koncept",
-  "label": "Koncept Exhibition Quotations",
-  "description": "Koncept pricing catalog, RAG view, and customer quotation layout.",
+  "label": "Koncept Exhibition Quotation",
+  "description": "Koncept pricing catalog, analysis reference, and customer quotation layout.",
   "pricing_catalog": "pricing-catalog.json",
-  "pricing_rag": "pricing-catalog.rag.md",
+  "pricing_reference": "pricing-catalog.ai-reference.md",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json",
-  "default_signature": {
-    "koncept_signatory": "Francies Cheng",
-    "koncept_title": "Director"
-  },
   "default_quote_detail_preset": "koncept-image-default",
   "quote_detail_presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "details": {
+        "quote_text": {
+          "terms_heading": "Terms & Conditions:",
+          "notes_heading": "Note:",
+          "acceptance_text": "We accept the quotation amount and the terms",
+          "person_label": "Person in charge",
+          "stamp_label": "Company name & stamp",
+          "date_label": "Date:"
+        },
+        "signature": {
+          "koncept_date_label": "Date:"
+        },
+        "rich_text": {
+          "termsHeading": "<div>Terms &amp; Conditions:</div>",
+          "notesHeading": "<div>Note:</div>",
+          "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
+          "konceptDateLabel": "<div>Date:</div>",
+          "personLabel": "<div>Person in charge</div>",
+          "stampLabel": "<div>Company name &amp; stamp</div>",
+          "dateLabel": "<div>Date:</div>"
+        }
+      }
+    },
     {
       "id": "koncept-image-default",
       "name": "Koncept Images Pte. Ltd.",
@@ -24,13 +46,14 @@
           "logo_type": "image/jpeg"
         },
         "quote_text": {
-          "terms_heading": "Terms & Conditions :",
+          "terms_heading": "Terms & Conditions:",
           "payment_terms": [
             "70% payment upon confirmation and signing of contract.",
-            "30% balance upon handover before show starts"
+            "30% balance upon handover before show starts",
+            "All cheques should be crossed and made payable to Koncept Image Pte Ltd"
           ],
           "cheque_payee": "Koncept Image Pte Ltd",
-          "notes_heading": "Note : ",
+          "notes_heading": "Note:",
           "standard_notes": [
             "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
             "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
@@ -47,9 +70,25 @@
           "stamp_label": "Company name & stamp",
           "date_label": "Date:"
         },
+        "rich_text": {
+          "quoteCompanyName": "<div>Koncept Image Pte Ltd</div>",
+          "headerDetails": "<div><strong>Koncept Image Pte Limited</strong></div><div>61 Kaki Bukit Ave 1, #02-26,</div><div>Shunli Industrial Park</div><div>Singapore 417943</div><div>Telephone: +6568177477</div><div><br></div><div><strong>Bank Detail:</strong></div><div>United Overseas Bank Limited, 80</div><div>Raffles Place</div><div>Singapore 048624</div><div>Account: 335-3020-445</div><div>Swift Code: UOVBSGSG</div>",
+          "termsHeading": "<div><strong>Terms &amp; Conditions:</strong></div>",
+          "paymentTerms": "<div><strong>70% payment upon confirmation and signing of contract.</strong></div><div><strong>30% balance upon handover before show starts</strong></div><div>All cheques should be crossed and made payable to <strong>Koncept Image Pte Ltd</strong></div>",
+          "notesHeading": "<div><strong>Note:</strong></div>",
+          "standardNotes": "<div>The above contract does not include application fees to any relevant authorities and electrical connection fees.</div><div>Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.</div><div>Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.</div><div>All designs and dimensions are subject to final site verification.</div><div>For production purpose, quotation must be confirmed minimum 20 working days before date of event</div><div>20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.</div><div>Design and Artwork of the graphics are not included in this contract.</div><div>Cancellation of agreement is subject to 75% of the agreement amount.</div><div>All deposit are non-refundable upon of cancellation of agreement.</div>",
+          "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
+          "konceptSignatory": "<div>Francies Cheng</div>",
+          "konceptTitle": "<div>Director</div>",
+          "konceptDateLabel": "<div>Date:</div>",
+          "personLabel": "<div>Person in charge</div>",
+          "stampLabel": "<div>Company name &amp; stamp</div>",
+          "dateLabel": "<div>Date:</div>"
+        },
         "signature": {
           "koncept_signatory": "Francies Cheng",
-          "koncept_title": "Director"
+          "koncept_title": "Director",
+          "koncept_date_label": "Date:"
         }
       }
     }

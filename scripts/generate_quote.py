@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import copy
 import csv
 import datetime as dt
@@ -26,16 +27,17 @@ import subprocess
 import textwrap
 import zipfile
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable
 from xml.etree import ElementTree as ET
 
 
-SKILL_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_PROFILE_DIR = SKILL_DIR / "profiles" / "koncept"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PROFILE_DIR = PROJECT_ROOT / "profiles" / "koncept"
 DEFAULT_TEMPLATE = DEFAULT_PROFILE_DIR / "pricing-catalog.json"
 DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
-DEFAULT_OUTPUT_ROOT = SKILL_DIR / "_output"
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 NS_CONTENT_TYPES = "{http://schemas.openxmlformats.org/package/2006/content-types}"
@@ -54,31 +56,6 @@ XMLNS_XR = "http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
 XMLNS_XR2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"
 XMLNS_XR3 = "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3"
 EXPORT_STATUS_CUSTOMER_READY = {"libreoffice_exported", "excel_exported"}
-DEFAULT_HEADER_LINES = [
-    "Koncept Image Pte Limited",
-    "61 Kaki Bukit Ave 1, #02-26,",
-    "Shunli Industrial Park",
-    "Singapore 417943",
-    "Telephone: +6568177477",
-    "",
-    "Bank Detail:",
-    "United Overseas Bank Limited, 80",
-    "Raffles Place",
-    "Singapore 048624",
-    "Account: 335-3020-445",
-    "Swift Code: UOVBSGSG",
-]
-DEFAULT_STANDARD_NOTES = [
-    "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
-    "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
-    "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
-    "All designs and dimensions are subject to final site verification.",
-    "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
-    "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
-    "Design and Artwork of the graphics are not included in this contract.",
-    "Cancellation of agreement is subject to 75% of the agreement amount.",
-    "All deposit are non-refundable upon of cancellation of agreement.",
-]
 FIRST_PRINT_PAGE_END_ROW = 61
 CONTINUATION_PAGE_START_ROW = 62
 CONTINUATION_PAGE_HEIGHT = 61
@@ -151,6 +128,14 @@ class QuoteLine:
     match_candidates: list[PriceRow]
 
 
+@dataclass
+class RichTextRun:
+    text: str
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
+
+
 def col_to_index(cell_ref: str) -> int:
     letters = "".join(ch for ch in cell_ref if ch.isalpha())
     total = 0
@@ -190,7 +175,7 @@ def cell_value(cell: ET.Element, shared_strings: list[str]) -> Any:
     try:
         number = float(raw)
         return int(number) if number.is_integer() else number
-    except ValueError:
+    except (ValueError, binascii.Error):
         return raw
 
 
@@ -457,6 +442,13 @@ def confirmation_issues(missing: list[str], lines: list[QuoteLine]) -> list[str]
     for line in lines:
         if line.match_status == "unmatched":
             issues.append(f"Unmatched pricing: {line.description} / keyword `{line.pricing_keyword}`")
+        display_price = clean_text(line.display_price)
+        unresolved_display_price = not display_price or display_price.lower() == "manual display price"
+        if line.match_status == "manual-display" and unresolved_display_price and line.amount is None:
+            issues.append(
+                f"Manual display pricing required: {line.description} / "
+                "enter a display price, choose a catalog keyword, or remove this line"
+            )
         if line.match_status == "ambiguous":
             options = "; ".join(
                 f"{row.pricing_id}: {row.section} - {row.description} ({row.sale_unit_price:.2f})"
@@ -588,6 +580,130 @@ def spreadsheet_safe_text(value: Any) -> Any:
     return value
 
 
+class QuoteRichTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.lines: list[list[RichTextRun]] = [[]]
+        self.bold_depth = 0
+        self.italic_depth = 0
+        self.underline_depth = 0
+        self.skip_depth = 0
+
+    def _append_line(self) -> None:
+        self.lines.append([])
+
+    def _append_text(self, text: str) -> None:
+        if not text:
+            return
+        run = RichTextRun(
+            text,
+            bold=self.bold_depth > 0,
+            italic=self.italic_depth > 0,
+            underline=self.underline_depth > 0,
+        )
+        current = self.lines[-1]
+        if current and (
+            current[-1].bold,
+            current[-1].italic,
+            current[-1].underline,
+        ) == (run.bold, run.italic, run.underline):
+            current[-1].text += run.text
+        else:
+            current.append(run)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style"}:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
+        if tag in {"div", "p"}:
+            if self.lines[-1]:
+                self._append_line()
+            return
+        if tag == "br":
+            self._append_line()
+            return
+        if tag in {"b", "strong"}:
+            self.bold_depth += 1
+        elif tag in {"i", "em"}:
+            self.italic_depth += 1
+        elif tag == "u":
+            self.underline_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style"}:
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+        if self.skip_depth:
+            return
+        if tag in {"div", "p"}:
+            if self.lines[-1]:
+                self._append_line()
+            return
+        if tag in {"b", "strong"}:
+            self.bold_depth = max(0, self.bold_depth - 1)
+        elif tag in {"i", "em"}:
+            self.italic_depth = max(0, self.italic_depth - 1)
+        elif tag == "u":
+            self.underline_depth = max(0, self.underline_depth - 1)
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
+        parts = data.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        for index, part in enumerate(parts):
+            if index:
+                self._append_line()
+            self._append_text(part)
+
+    def parsed_lines(self) -> list[list[RichTextRun]]:
+        while len(self.lines) > 1 and not self.lines[-1]:
+            self.lines.pop()
+        return self.lines
+
+
+def parse_rich_text_html(value: Any) -> list[list[RichTextRun]]:
+    raw = str(value or "")
+    if not raw:
+        return []
+    parser = QuoteRichTextParser()
+    parser.feed(raw)
+    parser.close()
+    return parser.parsed_lines()
+
+
+def plain_rich_text_lines(lines: list[Any], *, bold: bool = False) -> list[list[RichTextRun]]:
+    return [[RichTextRun(str(line), bold=bold)] for line in lines]
+
+
+def brief_rich_text_lines(
+    brief: dict[str, Any],
+    key: str,
+    fallback_lines: list[Any],
+    *,
+    fallback_bold: bool = False,
+) -> list[list[RichTextRun]]:
+    rich_text = brief.get("rich_text") if isinstance(brief.get("rich_text"), dict) else {}
+    parsed = parse_rich_text_html(rich_text.get(key)) if isinstance(rich_text, dict) else []
+    return parsed if parsed else plain_rich_text_lines(fallback_lines, bold=fallback_bold)
+
+
+def brief_rich_text_cell_runs(
+    brief: dict[str, Any],
+    key: str,
+    fallback: Any,
+    *,
+    prefix: str = "",
+    fallback_bold: bool = False,
+) -> list[RichTextRun]:
+    lines = brief_rich_text_lines(brief, key, [fallback], fallback_bold=fallback_bold)
+    runs = lines[0] if lines else [RichTextRun(str(fallback or ""), bold=fallback_bold)]
+    return ([RichTextRun(prefix)] if prefix else []) + runs
+
+
 def is_draft_or_placeholder_note(note: str) -> bool:
     lowered = clean_text(note).lower()
     return any(word in lowered for word in ("draft", "placeholder"))
@@ -651,10 +767,13 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
         ["", "", "", "", "ESTIMATE"],
         [client.get("name", "")],
         *[[line] for line in client.get("address", [])],
-        [f"Attention: {client.get('attention', '')}"],
-        [client.get("title", "")],
+        ["Attention:"],
+        ["", client.get("attention", "")],
+        ["", client.get("title", "")],
+        [],
+        [],
         [brief.get("quote_date", "")],
-        [f"RE: {project.get('title', '')}"],
+        [project.get("title", "")],
         [],
         ["Pos.", "Quantity", "Service", "Estimate"],
         ["", "", "", currency],
@@ -677,24 +796,32 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
     if gst_amount:
         rows.append(["", "", gst_label(lines), money(gst_amount), currency])
     rows.append(["", "", "Total including GST", money(final_total), currency])
-    rows.extend([[], ["Terms & Conditions :"]])
+    terms_heading = clean_text(brief.get("terms_heading"))
     payment_terms = brief.get("payment_terms") or []
+    if terms_heading or payment_terms:
+        rows.append([])
+        if terms_heading:
+            rows.append([terms_heading])
     for idx, term in enumerate(payment_terms, start=1):
         rows.append([idx, term])
+    notes_heading = clean_text(brief.get("notes_heading"))
+    standard_notes = brief.get("standard_notes") or []
+    if notes_heading or standard_notes:
+        rows.append([])
+        if notes_heading:
+            rows.append([notes_heading])
+    for idx, note in enumerate(standard_notes, start=1):
+        rows.append([idx, note])
+    acceptance = brief.get("acceptance") if isinstance(brief.get("acceptance"), dict) else {}
+    signature = brief.get("signature") if isinstance(brief.get("signature"), dict) else {}
     rows.extend([
-        ["Note :"],
-        [1, "The above contract does not include application fees to any relevant authorities and electrical connection fees unless stated otherwise."],
-        [2, "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client."],
-        [3, "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders."],
-        [4, "All designs and dimensions are subject to final site verification."],
-        [5, "For production purpose, quotation must be confirmed minimum 20 working days before date of event."],
         [],
         [brief.get("company_identity", "")],
         [],
         ["_____________________________", "", "_____________________________________"],
-        [brief.get("signature", {}).get("koncept_signatory", "Francies Cheng"), "", "Person in charge"],
-        [brief.get("signature", {}).get("koncept_title", ""), "", "Company name & stamp"],
-        ["", "", "Date:"],
+        [signature.get("koncept_signatory", ""), "", acceptance.get("person_label", "")],
+        [signature.get("koncept_title", ""), "", acceptance.get("stamp_label", "")],
+        [signature.get("koncept_date_label", ""), "", acceptance.get("date_label", "")],
     ])
     return rows
 
@@ -794,22 +921,53 @@ def set_ooxml_cell(root: ET.Element, row_number: int, col_number: int, value: An
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
 
 
-def append_ooxml_text_run(inline: ET.Element, text_value: str, *, bold: bool = False) -> None:
+def append_ooxml_text_run(
+    inline: ET.Element,
+    text_value: str,
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+) -> None:
     run = ET.SubElement(inline, f"{NS_MAIN}r")
-    if bold:
-        run_props = ET.SubElement(run, f"{NS_MAIN}rPr")
-        ET.SubElement(run_props, f"{NS_MAIN}b")
+    run_props = ET.SubElement(run, f"{NS_MAIN}rPr")
+    ET.SubElement(run_props, f"{NS_MAIN}b").attrib["val"] = "1" if bold else "0"
+    if italic:
+        ET.SubElement(run_props, f"{NS_MAIN}i")
+    if underline:
+        ET.SubElement(run_props, f"{NS_MAIN}u")
     text = ET.SubElement(run, f"{NS_MAIN}t")
     text.text = text_value
     if text_value != text_value.strip():
         text.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
 
 
+def normalize_ooxml_text_run(value: Any) -> RichTextRun:
+    if isinstance(value, RichTextRun):
+        return value
+    if isinstance(value, dict):
+        return RichTextRun(
+            str(value.get("text") or ""),
+            bold=bool(value.get("bold")),
+            italic=bool(value.get("italic")),
+            underline=bool(value.get("underline")),
+        )
+    if isinstance(value, tuple):
+        text = str(value[0]) if value else ""
+        return RichTextRun(
+            text,
+            bold=bool(value[1]) if len(value) > 1 else False,
+            italic=bool(value[2]) if len(value) > 2 else False,
+            underline=bool(value[3]) if len(value) > 3 else False,
+        )
+    return RichTextRun(str(value or ""))
+
+
 def set_ooxml_rich_text_cell(
     root: ET.Element,
     row_number: int,
     col_number: int,
-    runs: list[tuple[Any, bool]],
+    runs: list[Any],
     style: str | None = None,
 ) -> None:
     sheet_data = root.find(f"{NS_MAIN}sheetData")
@@ -818,13 +976,20 @@ def set_ooxml_rich_text_cell(
     row = get_or_create_row(sheet_data, row_number)
     cell = get_or_create_cell(row, row_number, col_number, style)
     clear_cell(cell)
-    cleaned_runs = [(str(text), bold) for text, bold in runs if str(text)]
+    cleaned_runs = [normalize_ooxml_text_run(run) for run in runs]
+    cleaned_runs = [run for run in cleaned_runs if run.text]
     if not cleaned_runs:
         return
     cell.attrib["t"] = "inlineStr"
     inline = ET.SubElement(cell, f"{NS_MAIN}is")
-    for text, bold in cleaned_runs:
-        append_ooxml_text_run(inline, text, bold=bold)
+    for run in cleaned_runs:
+        append_ooxml_text_run(
+            inline,
+            run.text,
+            bold=run.bold,
+            italic=run.italic,
+            underline=run.underline,
+        )
 
 
 def cached_number_text(value: float | int) -> str:
@@ -1053,6 +1218,7 @@ def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     regular_amount_font = ensure_regular_font_for_style(styles_root, "5")
     bold_amount_font = ensure_regular_font_for_style(styles_root, "5", bold=True)
     style_ids = {
+        "quote_date": "98",
         "header_pos": clone_cell_style(styles_root, "23", font_id=ensure_bold_font_for_style(styles_root, "23")),
         "header_quantity": clone_cell_style(styles_root, "24", font_id=ensure_bold_font_for_style(styles_root, "24"), horizontal="center", vertical="center"),
         "header_service": clone_cell_style(styles_root, "21", font_id=ensure_bold_font_for_style(styles_root, "21"), horizontal="left", vertical="center"),
@@ -1090,11 +1256,37 @@ def update_drawing_project_number(xml: bytes, project_number: str) -> bytes:
     return updated.encode("utf-8") if count else xml
 
 
-def update_repeating_header_drawing(xml: bytes, project_number: str, header_lines: list[str] | None = None) -> bytes:
+def append_drawing_text_run(paragraph: ET.Element, run: RichTextRun) -> None:
+    drawing_run = ET.SubElement(paragraph, f"{NS_A}r")
+    run_props = ET.SubElement(drawing_run, f"{NS_A}rPr")
+    run_props.attrib.update(
+        {
+            "lang": "en-US",
+            "sz": "900",
+            "b": "1" if run.bold else "0",
+            "i": "1" if run.italic else "0",
+            "baseline": "0",
+        }
+    )
+    if run.underline:
+        run_props.attrib["u"] = "sng"
+    ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
+    ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
+    ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
+    text = ET.SubElement(drawing_run, f"{NS_A}t")
+    text.text = run.text
+
+
+def update_repeating_header_drawing(
+    xml: bytes,
+    project_number: str,
+    header_lines: list[str] | None = None,
+    header_runs: list[list[RichTextRun]] | None = None,
+) -> bytes:
     root = ET.fromstring(xml)
     anchors = root.findall(f"{NS_DRAWING}twoCellAnchor")
     text_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}sp") is not None), None)
-    logo_anchor = next((anchor for anchor in anchors if anchor.find(f"{NS_DRAWING}pic") is not None), None)
+    logo_anchor = find_header_logo_anchor(root, {})
     if text_anchor is None:
         return xml
 
@@ -1153,22 +1345,20 @@ def update_repeating_header_drawing(xml: bytes, project_number: str, header_line
         if child.tag == f"{NS_A}p":
             tx_body.remove(child)
 
-    lines = [clean_text(line) if line is not None else "" for line in (header_lines or DEFAULT_HEADER_LINES)]
+    source_runs = header_runs or plain_rich_text_lines([clean_text(line) if line is not None else "" for line in (header_lines or [])])
+    line_runs = [list(runs) for runs in source_runs]
     if project_number:
-        lines.extend(["", f"Project No: {project_number}"])
+        line_runs.extend([[], [RichTextRun(f"Project No: {project_number}")]])
 
-    for line in lines:
+    for runs in line_runs:
         paragraph = ET.SubElement(tx_body, f"{NS_A}p")
         paragraph_props = ET.SubElement(paragraph, f"{NS_A}pPr")
         paragraph_props.attrib["algn"] = "l"
-        run = ET.SubElement(paragraph, f"{NS_A}r")
-        run_props = ET.SubElement(run, f"{NS_A}rPr")
-        run_props.attrib.update({"lang": "en-US", "sz": "900", "b": "0", "i": "0", "baseline": "0"})
-        ET.SubElement(run_props, f"{NS_A}latin").attrib["typeface"] = "+mn-lt"
-        ET.SubElement(run_props, f"{NS_A}ea").attrib["typeface"] = "+mn-ea"
-        ET.SubElement(run_props, f"{NS_A}cs").attrib["typeface"] = "+mn-cs"
-        text = ET.SubElement(run, f"{NS_A}t")
-        text.text = line
+        if not runs:
+            append_drawing_text_run(paragraph, RichTextRun(""))
+            continue
+        for run in runs:
+            append_drawing_text_run(paragraph, run)
 
     sp_pr = sp.find(f"{NS_DRAWING}spPr") if sp is not None else None
     xfrm = sp_pr.find(f"{NS_A}xfrm") if sp_pr is not None else None
@@ -1199,18 +1389,71 @@ def drawing_target_part(target: str) -> str:
     return "/".join(parts)
 
 
+def empty_relationships_root() -> ET.Element:
+    return ET.Element(f"{NS_PACKAGE_REL}Relationships")
+
+
+def rel_targets_by_id(parts: dict[str, bytes], rels_name: str = "xl/drawings/_rels/drawing1.xml.rels") -> dict[str, str]:
+    if rels_name not in parts:
+        return {}
+    root = ET.fromstring(parts[rels_name])
+    return {
+        rel.attrib.get("Id", ""): rel.attrib.get("Target", "")
+        for rel in root.findall(f"{NS_PACKAGE_REL}Relationship")
+    }
+
+
+def picture_rel_id(pic: ET.Element | None) -> str:
+    if pic is None:
+        return ""
+    blip = pic.find(f".//{NS_A}blip")
+    return blip.attrib.get(f"{NS_REL}embed", "") if blip is not None else ""
+
+
+def picture_name(pic: ET.Element | None) -> str:
+    if pic is None:
+        return ""
+    node = pic.find(f"{NS_DRAWING}nvPicPr/{NS_DRAWING}cNvPr")
+    return node.attrib.get("name", "") if node is not None else ""
+
+
+def is_header_logo_target(target: str) -> bool:
+    name = Path(drawing_target_part(target)).name.lower()
+    return "logo" in name or name in {"image1.jpeg", "image1.jpg", "image1.png"}
+
+
+def is_header_logo_anchor(anchor: ET.Element, rel_targets: dict[str, str]) -> bool:
+    pic = anchor.find(f"{NS_DRAWING}pic")
+    if pic is None:
+        return False
+    if "logo" in picture_name(pic).lower():
+        return True
+    rel_id = picture_rel_id(pic)
+    return bool(rel_id and is_header_logo_target(rel_targets.get(rel_id, "")))
+
+
+def find_header_logo_anchor(root: ET.Element, rel_targets: dict[str, str]) -> ET.Element | None:
+    return next(
+        (
+            anchor
+            for anchor in root.findall(f"{NS_DRAWING}twoCellAnchor")
+            if is_header_logo_anchor(anchor, rel_targets)
+        ),
+        None,
+    )
+
+
 def remove_header_logo(parts: dict[str, bytes]) -> None:
     drawing_name = "xl/drawings/drawing1.xml"
     rels_name = "xl/drawings/_rels/drawing1.xml.rels"
     removed_rel_ids: set[str] = set()
+    rel_targets = rel_targets_by_id(parts, rels_name)
     if drawing_name in parts:
         drawing_root = ET.fromstring(parts[drawing_name])
         for anchor in list(drawing_root.findall(f"{NS_DRAWING}twoCellAnchor")):
-            pic = anchor.find(f"{NS_DRAWING}pic")
-            if pic is None:
+            if not is_header_logo_anchor(anchor, rel_targets):
                 continue
-            blip = pic.find(f".//{NS_A}blip")
-            rel_id = blip.attrib.get(f"{NS_REL}embed") if blip is not None else ""
+            rel_id = picture_rel_id(anchor.find(f"{NS_DRAWING}pic"))
             if rel_id:
                 removed_rel_ids.add(rel_id)
             drawing_root.remove(anchor)
@@ -1222,7 +1465,7 @@ def remove_header_logo(parts: dict[str, bytes]) -> None:
     removed_targets: list[str] = []
     for rel in list(rels_root.findall(f"{NS_PACKAGE_REL}Relationship")):
         is_removed_rel = bool(removed_rel_ids and rel.attrib.get("Id") in removed_rel_ids)
-        is_lonely_image = not removed_rel_ids and rel.attrib.get("Type", "").endswith("/image")
+        is_lonely_image = not removed_rel_ids and rel.attrib.get("Type", "").endswith("/image") and is_header_logo_target(rel.attrib.get("Target", ""))
         if not (is_removed_rel or is_lonely_image):
             continue
         target = rel.attrib.get("Target", "")
@@ -1232,6 +1475,73 @@ def remove_header_logo(parts: dict[str, bytes]) -> None:
     parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
     for target in removed_targets:
         parts.pop(target, None)
+
+
+def next_relationship_id(root: ET.Element) -> str:
+    existing: set[int] = set()
+    for rel in root.findall(f"{NS_PACKAGE_REL}Relationship"):
+        match = re.fullmatch(r"rId([0-9]+)", rel.attrib.get("Id", ""))
+        if match:
+            existing.add(int(match.group(1)))
+    next_id = 1
+    while next_id in existing:
+        next_id += 1
+    return f"rId{next_id}"
+
+
+def create_header_logo_anchor(rel_id: str) -> ET.Element:
+    anchor = ET.Element(f"{NS_DRAWING}twoCellAnchor")
+    from_marker = ET.SubElement(anchor, f"{NS_DRAWING}from")
+    for tag, value in (("col", "7"), ("colOff", "0"), ("row", "1"), ("rowOff", "0")):
+        ET.SubElement(from_marker, f"{NS_DRAWING}{tag}").text = value
+    to_marker = ET.SubElement(anchor, f"{NS_DRAWING}to")
+    for tag, value in (("col", "8"), ("colOff", "1720000"), ("row", "2"), ("rowOff", "415000")):
+        ET.SubElement(to_marker, f"{NS_DRAWING}{tag}").text = value
+
+    pic = ET.SubElement(anchor, f"{NS_DRAWING}pic")
+    nv_pic_pr = ET.SubElement(pic, f"{NS_DRAWING}nvPicPr")
+    ET.SubElement(nv_pic_pr, f"{NS_DRAWING}cNvPr", {"id": "6833", "name": "Header Logo"})
+    c_nv_pic_pr = ET.SubElement(nv_pic_pr, f"{NS_DRAWING}cNvPicPr")
+    ET.SubElement(c_nv_pic_pr, f"{NS_A}picLocks", {"noChangeAspect": "1"})
+
+    blip_fill = ET.SubElement(pic, f"{NS_DRAWING}blipFill")
+    ET.SubElement(blip_fill, f"{NS_A}blip", {f"{NS_REL}embed": rel_id, "cstate": "print"})
+    ET.SubElement(blip_fill, f"{NS_A}srcRect")
+    stretch = ET.SubElement(blip_fill, f"{NS_A}stretch")
+    ET.SubElement(stretch, f"{NS_A}fillRect")
+
+    sp_pr = ET.SubElement(pic, f"{NS_DRAWING}spPr", {"bwMode": "auto"})
+    xfrm = ET.SubElement(sp_pr, f"{NS_A}xfrm")
+    ET.SubElement(xfrm, f"{NS_A}off", {"x": "4550000", "y": "260000"})
+    ET.SubElement(xfrm, f"{NS_A}ext", {"cx": "2970000", "cy": "635000"})
+    prst_geom = ET.SubElement(sp_pr, f"{NS_A}prstGeom", {"prst": "rect"})
+    ET.SubElement(prst_geom, f"{NS_A}avLst")
+    ET.SubElement(sp_pr, f"{NS_A}noFill")
+    line = ET.SubElement(sp_pr, f"{NS_A}ln", {"w": "9525"})
+    ET.SubElement(line, f"{NS_A}noFill")
+    ET.SubElement(line, f"{NS_A}miter", {"lim": "800000"})
+    ET.SubElement(line, f"{NS_A}headEnd")
+    ET.SubElement(line, f"{NS_A}tailEnd")
+    ET.SubElement(anchor, f"{NS_DRAWING}clientData")
+    return anchor
+
+
+def ensure_header_logo_anchor(parts: dict[str, bytes], rel_id: str) -> None:
+    drawing_name = "xl/drawings/drawing1.xml"
+    if drawing_name not in parts:
+        return
+    drawing_root = ET.fromstring(parts[drawing_name])
+    rel_targets = rel_targets_by_id(parts)
+    anchor = find_header_logo_anchor(drawing_root, rel_targets)
+    if anchor is not None:
+        pic = anchor.find(f"{NS_DRAWING}pic")
+        blip = pic.find(f".//{NS_A}blip")
+        if blip is not None:
+            blip.attrib[f"{NS_REL}embed"] = rel_id
+        parts[drawing_name] = ET.tostring(drawing_root, encoding="utf-8", xml_declaration=True)
+        return
+    drawing_root.insert(0, create_header_logo_anchor(rel_id))
+    parts[drawing_name] = ET.tostring(drawing_root, encoding="utf-8", xml_declaration=True)
 
 
 def replace_header_logo(parts: dict[str, bytes], logo_data_url: str) -> None:
@@ -1258,16 +1568,41 @@ def replace_header_logo(parts: dict[str, bytes], logo_data_url: str) -> None:
     parts[media_name] = logo_bytes
 
     rels_name = "xl/drawings/_rels/drawing1.xml.rels"
-    if rels_name in parts:
-        rels_root = ET.fromstring(parts[rels_name])
-        for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
-            if rel.attrib.get("Type", "").endswith("/image"):
-                old_target = drawing_target_part(rel.attrib.get("Target", ""))
-                rel.attrib["Target"] = f"../media/header_logo.{extension}"
-                if old_target != media_name:
-                    parts.pop(old_target, None)
-                break
-        parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
+    logo_rel_id = ""
+    rels_root = ET.fromstring(parts[rels_name]) if rels_name in parts else empty_relationships_root()
+    header_anchor_rel_ids: set[str] = set()
+    if "xl/drawings/drawing1.xml" in parts:
+        drawing_root = ET.fromstring(parts["xl/drawings/drawing1.xml"])
+        rel_targets = rel_targets_by_id(parts, rels_name)
+        for anchor in drawing_root.findall(f"{NS_DRAWING}twoCellAnchor"):
+            if is_header_logo_anchor(anchor, rel_targets):
+                rel_id = picture_rel_id(anchor.find(f"{NS_DRAWING}pic"))
+                if rel_id:
+                    header_anchor_rel_ids.add(rel_id)
+
+    for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
+        rel_id = rel.attrib.get("Id", "")
+        target = rel.attrib.get("Target", "")
+        if rel.attrib.get("Type", "").endswith("/image") and (rel_id in header_anchor_rel_ids or is_header_logo_target(target)):
+            old_target = drawing_target_part(target)
+            rel.attrib["Target"] = f"../media/header_logo.{extension}"
+            logo_rel_id = rel_id
+            if old_target != media_name:
+                parts.pop(old_target, None)
+            break
+    if not logo_rel_id:
+        logo_rel_id = next_relationship_id(rels_root)
+        ET.SubElement(
+            rels_root,
+            f"{NS_PACKAGE_REL}Relationship",
+            {
+                "Id": logo_rel_id,
+                "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                "Target": f"../media/header_logo.{extension}",
+            },
+        )
+    parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
+    ensure_header_logo_anchor(parts, logo_rel_id)
 
     content_types_name = "[Content_Types].xml"
     if content_types_name not in parts:
@@ -1666,15 +2001,18 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     project = brief["project"]
     currency = brief.get("currency", "SGD")
     company = brief.get("company") if isinstance(brief.get("company"), dict) else {}
-    company_name = clean_text(company.get("name")) or f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd"
+    company_name = clean_text(company.get("name"))
+    client_address_runs = brief_rich_text_lines(brief, "clientAddress", client.get("address") or [])
+    header_line_runs = brief_rich_text_lines(brief, "headerDetails", company.get("header_lines") or [])
 
-    set_ooxml_cell(root, 6, 1, client.get("name", ""), "12")
-    for offset, line in enumerate((client.get("address") or [])[:4], start=7):
-        set_ooxml_cell(root, offset, 1, line, layout_styles["client_address"])
-    set_ooxml_cell(root, 12, 1, f"Attention: {client.get('attention', '')}".strip(), "26")
-    set_ooxml_cell(root, 13, 2, client.get("title", ""), "24")
-    set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), "101")
-    set_ooxml_cell(root, 18, 1, f"RE: {project.get('title', '')}", "26")
+    set_ooxml_rich_text_cell(root, 6, 1, brief_rich_text_cell_runs(brief, "clientName", client.get("name", "")), "12")
+    for offset, runs in enumerate(client_address_runs[:4], start=7):
+        set_ooxml_rich_text_cell(root, offset, 1, runs, layout_styles["client_address"])
+    set_ooxml_rich_text_cell(root, 11, 1, [RichTextRun("Attention:", bold=True)], "26")
+    set_ooxml_rich_text_cell(root, 12, 2, brief_rich_text_cell_runs(brief, "clientAttention", client.get("attention", ""), fallback_bold=True), "26")
+    set_ooxml_rich_text_cell(root, 13, 2, brief_rich_text_cell_runs(brief, "clientTitle", client.get("title", "")), "24")
+    set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), layout_styles["quote_date"])
+    set_ooxml_rich_text_cell(root, 18, 1, brief_rich_text_cell_runs(brief, "projectTitle", project.get("title", "")), "26")
 
     write_table_header(root, 20, 21, layout_styles)
     set_ooxml_cell(root, 21, 5, currency, layout_styles["header_currency"])
@@ -1759,44 +2097,51 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     )
     set_ooxml_cell(root, grand_row, 6, currency, layout_styles["grand_currency"])
 
-    payment_terms = brief.get("payment_terms") or []
-    terms_row = grand_row + 3
-    set_ooxml_cell(root, terms_row, 1, clean_text(brief.get("terms_heading")) or "Terms & Conditions :", "37")
-    for index, term in enumerate(payment_terms, start=1):
-        set_ooxml_cell(root, terms_row + index, 1, f"{index:.2f}", "40")
-        set_ooxml_rich_text_cell(root, terms_row + index, 2, [(term, True)], "41")
-    cheque_row = terms_row + len(payment_terms) + 1
-    set_ooxml_rich_text_cell(
-        root,
-        cheque_row,
-        2,
-        [
-            ("All cheques should be crossed and made payable to ", False),
-            (clean_text(brief.get("cheque_payee")) or company_name, True),
-        ],
-        "41",
-    )
-
-    standard_notes = brief.get("standard_notes") or DEFAULT_STANDARD_NOTES
-    notes_row = cheque_row + 2
-    set_ooxml_cell(root, notes_row, 1, clean_text(brief.get("notes_heading")) or "Note : ", "37")
-    for index, note in enumerate(standard_notes, start=1):
-        target_row = notes_row + index
-        set_ooxml_cell(root, target_row, 1, f"{index:.2f}", "40")
-        set_ooxml_cell(root, target_row, 2, note, "41")
-
     acceptance = brief.get("acceptance") if isinstance(brief.get("acceptance"), dict) else {}
     signature = brief.get("signature") if isinstance(brief.get("signature"), dict) else {}
-    acceptance_row = notes_row + len(standard_notes) + 3
-    set_ooxml_cell(root, acceptance_row, 2, clean_text(acceptance.get("company_name")) or company_name, "2")
-    set_ooxml_cell(root, acceptance_row, 5, clean_text(acceptance.get("text")) or "We accept the quotation amount and the terms", "2")
+    next_text_row = grand_row + 3
+    last_optional_row = 0
+
+    terms_heading = clean_text(brief.get("terms_heading"))
+    payment_terms = brief.get("payment_terms") or []
+    payment_term_runs = brief_rich_text_lines(brief, "paymentTerms", payment_terms)
+    if terms_heading or payment_terms:
+        if terms_heading:
+            set_ooxml_rich_text_cell(root, next_text_row, 1, brief_rich_text_cell_runs(brief, "termsHeading", terms_heading), "37")
+            next_text_row += 1
+        for index, term in enumerate(payment_terms, start=1):
+            set_ooxml_cell(root, next_text_row, 1, f"{index:.2f}", "40")
+            runs = payment_term_runs[index - 1] if index - 1 < len(payment_term_runs) else [RichTextRun(term)]
+            set_ooxml_rich_text_cell(root, next_text_row, 2, runs, "41")
+            next_text_row += 1
+        last_optional_row = next_text_row - 1
+        next_text_row = last_optional_row + 2
+
+    notes_heading = clean_text(brief.get("notes_heading"))
+    standard_notes = brief.get("standard_notes") or []
+    standard_note_runs = brief_rich_text_lines(brief, "standardNotes", standard_notes)
+    if notes_heading or standard_notes:
+        if notes_heading:
+            set_ooxml_rich_text_cell(root, next_text_row, 1, brief_rich_text_cell_runs(brief, "notesHeading", notes_heading), "37")
+            next_text_row += 1
+        for index, note in enumerate(standard_notes, start=1):
+            set_ooxml_cell(root, next_text_row, 1, f"{index:.2f}", "40")
+            runs = standard_note_runs[index - 1] if index - 1 < len(standard_note_runs) else [RichTextRun(note)]
+            set_ooxml_rich_text_cell(root, next_text_row, 2, runs, "41")
+            next_text_row += 1
+        last_optional_row = next_text_row - 1
+
+    acceptance_row = last_optional_row + 3 if last_optional_row else next_text_row
+    set_ooxml_rich_text_cell(root, acceptance_row, 2, brief_rich_text_cell_runs(brief, "quoteCompanyName", clean_text(acceptance.get("company_name")) or company_name), "2")
+    set_ooxml_rich_text_cell(root, acceptance_row, 5, brief_rich_text_cell_runs(brief, "acceptanceText", clean_text(acceptance.get("text"))), "2")
     set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", "33")
     set_ooxml_cell(root, acceptance_row + 4, 5, "_____________________________________", "33")
-    set_ooxml_cell(root, acceptance_row + 5, 2, signature.get("koncept_signatory", "Francies Cheng"), "33")
-    set_ooxml_cell(root, acceptance_row + 5, 5, clean_text(acceptance.get("person_label")) or "Person in charge", "33")
-    set_ooxml_cell(root, acceptance_row + 6, 2, signature.get("koncept_title", ""), "33")
-    set_ooxml_cell(root, acceptance_row + 6, 5, clean_text(acceptance.get("stamp_label")) or "Company name & stamp", "33")
-    set_ooxml_cell(root, acceptance_row + 7, 5, clean_text(acceptance.get("date_label")) or "Date:", "33")
+    set_ooxml_rich_text_cell(root, acceptance_row + 5, 2, brief_rich_text_cell_runs(brief, "konceptSignatory", clean_text(signature.get("koncept_signatory"))), "33")
+    set_ooxml_rich_text_cell(root, acceptance_row + 5, 5, brief_rich_text_cell_runs(brief, "personLabel", clean_text(acceptance.get("person_label"))), "33")
+    set_ooxml_rich_text_cell(root, acceptance_row + 6, 2, brief_rich_text_cell_runs(brief, "konceptTitle", clean_text(signature.get("koncept_title"))), "33")
+    set_ooxml_rich_text_cell(root, acceptance_row + 6, 5, brief_rich_text_cell_runs(brief, "stampLabel", clean_text(acceptance.get("stamp_label"))), "33")
+    set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "konceptDateLabel", clean_text(signature.get("koncept_date_label"))), "33")
+    set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), "33")
 
     last_print_row = acceptance_row + 8
     trim_layout_worksheet(root, last_print_row)
@@ -1806,7 +2151,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         project_number = clean_text(brief.get("project_number") or project.get("number") or "")
         drawing_xml = update_drawing_project_number(parts["xl/drawings/drawing1.xml"], project_number)
         header_lines = company.get("header_lines") if isinstance(company.get("header_lines"), list) else None
-        parts["xl/drawings/drawing1.xml"] = update_repeating_header_drawing(drawing_xml, project_number, header_lines)
+        parts["xl/drawings/drawing1.xml"] = update_repeating_header_drawing(drawing_xml, project_number, header_lines, header_line_runs)
     replace_header_logo(parts, clean_text(company.get("logo_data_url")))
     if "xl/workbook.xml" in parts:
         workbook_xml = update_print_titles(parts["xl/workbook.xml"])
@@ -1946,12 +2291,17 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
     client = brief["client"]
     project = brief["project"]
     currency = brief.get("currency", "SGD")
+    company = brief.get("company") if isinstance(brief.get("company"), dict) else {}
+    acceptance = brief.get("acceptance") if isinstance(brief.get("acceptance"), dict) else {}
+    signature = brief.get("signature") if isinstance(brief.get("signature"), dict) else {}
+    company_name = clean_text(acceptance.get("company_name")) or clean_text(company.get("name"))
     cells: dict[tuple[int, int], Any] = {
         (6, 1): client.get("name", ""),
-        (12, 1): f"Attention: {client.get('attention', '')}".strip(),
+        (11, 1): "Attention:",
+        (12, 2): client.get("attention", ""),
         (13, 2): client.get("title", ""),
         (16, 1): pdf_date_text(str(brief.get("quote_date", ""))),
-        (18, 1): f"RE: {project.get('title', '')}",
+        (18, 1): project.get("title", ""),
         (20, 1): "Pos.",
         (20, 2): "Quantity",
         (20, 3): "Service",
@@ -1966,17 +2316,16 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         (93, 4): gst_label(lines) if quote_gst_rate(lines) else "",
         (94, 4): "Total including GST",
         (94, 6): currency,
-        (99, 1): "Terms & Conditions :",
-        (102, 2): "All cheques should be crossed and made payable to Koncept Image Pte Ltd",
-        (103, 1): "Note : ",
-        (106, 5): "We accept the quotation amount and the terms",
-        (117, 2): f"{brief.get('company_identity', 'Koncept Image')} Pte Ltd",
+        (106, 5): clean_text(acceptance.get("text")),
+        (117, 2): company_name,
         (121, 2): "_____________________________",
         (121, 5): "_____________________________________",
-        (122, 2): brief.get("signature", {}).get("koncept_signatory", "Francies Cheng"),
-        (122, 5): "Person in charge",
-        (123, 5): "Company name & stamp",
-        (124, 5): "Date:",
+        (122, 2): clean_text(signature.get("koncept_signatory")),
+        (122, 5): clean_text(acceptance.get("person_label")),
+        (123, 2): clean_text(signature.get("koncept_title")),
+        (123, 5): clean_text(acceptance.get("stamp_label")),
+        (124, 2): clean_text(signature.get("koncept_date_label")),
+        (124, 5): clean_text(acceptance.get("date_label")),
     }
     for offset, address_line in enumerate((client.get("address") or [])[:4], start=7):
         cells[(offset, 1)] = address_line
@@ -2020,45 +2369,45 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         cells[(93, 5)] = gst_amount
         cells[(93, 6)] = currency
     cells[(94, 5)] = subtotal + gst_amount
+    text_row = 99
+    terms_heading = clean_text(brief.get("terms_heading"))
     payment_terms = brief.get("payment_terms") or []
-    for index, term in enumerate(payment_terms[:2], start=1):
-        cells[(99 + index, 1)] = f"{index:.2f}"
-        cells[(99 + index, 2)] = term
+    if terms_heading:
+        cells[(text_row, 1)] = terms_heading
+        text_row += 1
+    for index, term in enumerate(payment_terms, start=1):
+        cells[(text_row, 1)] = f"{index:.2f}"
+        cells[(text_row, 2)] = term
+        text_row += 1
+    if terms_heading or payment_terms:
+        text_row += 1
 
-    standard_notes = DEFAULT_STANDARD_NOTES
+    notes_heading = clean_text(brief.get("notes_heading"))
+    standard_notes = brief.get("standard_notes") or []
+    if notes_heading:
+        cells[(text_row, 1)] = notes_heading
+        text_row += 1
     for index, note in enumerate(standard_notes, start=1):
-        target_row = 103 + index
-        if target_row == 114:
-            cells[(target_row, 1)] = "11.00"
-            cells[(target_row, 2)] = note
-        elif target_row == 115:
-            cells[(target_row, 2)] = note
-        else:
-            cells[(target_row, 1)] = f"{index:.2f}"
-            cells[(target_row, 2)] = note
+        cells[(text_row, 1)] = f"{index:.2f}"
+        cells[(text_row, 2)] = note
+        text_row += 1
     return cells
 
 
-def extract_layout_logo(layout_template: Path) -> io.BytesIO | None:
+def image_data_url_stream(data_url: Any) -> io.BytesIO | None:
+    match = re.match(r"data:image/(?:jpeg|jpg|png);base64,(.+)", clean_text(data_url), flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
     try:
-        with zipfile.ZipFile(layout_template) as zf:
-            media_name = next((name for name in zf.namelist() if name.startswith("xl/media/")), None)
-            if media_name is None:
-                return None
-            return io.BytesIO(zf.read(media_name))
-    except (OSError, KeyError, zipfile.BadZipFile):
+        return io.BytesIO(base64.b64decode(match.group(1), validate=True))
+    except (ValueError, binascii.Error):
         return None
 
 
-def company_header_lines() -> list[str]:
-    return [
-        "Koncept Image Pte Limited",
-        "61 Kaki Bukit Ave 1, #02-26, Shunli Industrial Park",
-        "Singapore 417943  Tel: +65 6817 7477",
-        "",
-        "Bank Details: United Overseas Bank Limited",
-        "Account: 335-3020-445  Swift Code: UOVBSGSG",
-    ]
+def company_header_lines(brief: dict[str, Any]) -> list[str]:
+    company = brief.get("company") if isinstance(brief.get("company"), dict) else {}
+    header_lines = company.get("header_lines") if isinstance(company.get("header_lines"), list) else []
+    return [clean_text(line) if line is not None else "" for line in header_lines]
 
 
 def write_styled_pdf_fallback(path: Path, brief: dict[str, Any], lines: list[QuoteLine], layout_template: Path) -> bool:
@@ -2075,7 +2424,8 @@ def write_styled_pdf_fallback(path: Path, brief: dict[str, Any], lines: list[Quo
     page_ranges = [(1, 52), (53, 95), (96, 124)]
     x_positions = {1: 58, 2: 104, 3: 162, 4: 398, 5: 506, 6: 548}
     row_height = 13.0
-    logo = extract_layout_logo(layout_template)
+    company = brief.get("company") if isinstance(brief.get("company"), dict) else {}
+    logo = image_data_url_stream(company.get("logo_data_url"))
 
     for page_number, (start_row, end_row) in enumerate(page_ranges, start=1):
         top_y = height - (135 if page_number > 1 else 58)
@@ -2084,7 +2434,7 @@ def write_styled_pdf_fallback(path: Path, brief: dict[str, Any], lines: list[Quo
             c.drawImage(ImageReader(logo), width - 152, height - 54, width=124, height=25, preserveAspectRatio=True, mask="auto")
             c.setFont("Helvetica", 5.5)
             detail_y = height - 80
-            for text in company_header_lines():
+            for text in company_header_lines(brief):
                 c.drawRightString(width - 28, detail_y, text)
                 detail_y -= 7
 
@@ -2151,7 +2501,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
                 match.description if match else "",
                 quantity_text(line),
                 f"{match.sale_unit_price:.2f}" if match else "",
-                money(line.amount),
+                money(amount_value(line)),
             ]])
 
 
