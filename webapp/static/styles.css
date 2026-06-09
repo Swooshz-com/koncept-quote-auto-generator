@@ -1597,18 +1597,23 @@ select:focus {
    BASIS REVIEW GRID & TAG PILLS
    ============================================================ */
 .basis-review-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  display: block;
+  column-count: 2;
+  column-gap: 10px;
   margin: 0;
   padding: 0 17px 17px;
 }
 
 .basis-review-item {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 10px;
   padding: 14px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: #ffffff;
+  break-inside: avoid;
+  page-break-inside: avoid;
   overflow-wrap: anywhere;
   transition: background var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
 }
@@ -2050,8 +2055,9 @@ td input {
   inset: 0;
   z-index: 30;
   display: grid;
-  place-items: center;
-  padding: 24px;
+  align-items: start;
+  justify-items: center;
+  padding: clamp(72px, 8vh, 96px) 24px 24px;
   background: rgba(15, 23, 42, 0.24);
 }
 
@@ -2070,8 +2076,8 @@ td input {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   width: min(760px, calc(100vw - 48px));
-  height: min(820px, calc(100vh - 48px));
-  max-height: calc(100vh - 48px);
+  height: min(760px, calc(100vh - 112px));
+  max-height: calc(100vh - 112px);
   margin: 0;
   overflow: hidden;
   border: 1px solid rgba(210, 220, 232, 0.92);
@@ -2140,14 +2146,27 @@ td input {
   box-shadow: var(--shadow-xs);
 }
 
-.basis-chat-selected-line strong {
+.basis-chat-selected-tag {
   width: max-content;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
-  background: #dcf5e8;
-  color: #0d6944;
   font-size: 11px;
   line-height: 1.2;
+}
+
+.basis-chat-selected-tag-include {
+  background: #dcf5e8;
+  color: #0d6944;
+}
+
+.basis-chat-selected-tag-confirm {
+  background: #fff3e0;
+  color: #b45309;
+}
+
+.basis-chat-selected-tag-exclude {
+  background: #fde8e5;
+  color: #a1382f;
 }
 
 .basis-chat-selected-line span {
@@ -2292,51 +2311,128 @@ td input {
 
 .basis-chat-proposal {
   margin: 12px 16px 0;
-  padding: 12px;
-  border: 1px solid #b7d9ce;
+  padding: 14px;
+  border: 1px solid #a7d5ca;
   border-radius: var(--radius-md);
-  background: #f0faf8;
+  background: linear-gradient(180deg, #f3fffc 0%, #ffffff 100%);
+  box-shadow: var(--shadow-xs);
 }
 
-.basis-chat-proposal strong {
+.basis-chat-proposal-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.basis-chat-proposal-header span {
   display: block;
-  margin-bottom: 6px;
-  color: var(--green-dark);
-  font-size: 13px;
+  color: #50677e;
+  font-size: 10px;
+  font-weight: 850;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
+}
+
+.basis-chat-proposal-header strong {
+  display: block;
+  margin-top: 2px;
+  color: #0d283f;
+  font-size: 16px;
+  line-height: 1.2;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.basis-chat-proposal-status {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border: 1px solid #bce2d7;
+  border-radius: 999px;
+  background: #e8faf5;
+  color: var(--green-dark) !important;
 }
 
 .basis-chat-proposal p {
   margin: 0;
-  color: #1f3a33;
+  color: #213247;
   font-size: 14px;
   line-height: 1.45;
 }
 
-.basis-chat-proposal p + p {
-  margin-top: 8px;
+.basis-chat-proposal-summary {
+  margin-bottom: 12px !important;
 }
 
-.basis-chat-proposed-line {
-  margin: 10px 0;
-  padding: 10px;
-  border: 1px solid #c8e6dc;
+.basis-chat-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.basis-chat-compare-card {
+  padding: 10px 11px;
+  border: 1px solid #d4e0eb;
   border-radius: var(--radius-sm);
-  background: #ffffff;
+  background: #f8fbff;
 }
 
-.basis-chat-proposed-line span {
+.basis-chat-compare-card.is-proposed {
+  border-color: #9fd4c7;
+  background: #f0fbf8;
+}
+
+.basis-chat-compare-card span {
   display: block;
-  margin-bottom: 5px;
-  color: #536577;
+  margin-bottom: 6px;
+  color: #597086;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.basis-chat-proposed-line span:not(:first-child) {
-  margin-top: 10px;
+.basis-chat-compare-card p strong {
+  display: inline-block;
+  margin: 0 6px 0 0;
+  color: #0d5e52;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.basis-chat-proposal-meta {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #dce9ef;
+}
+
+.basis-chat-proposal-meta > span {
+  color: #53687e;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.basis-chat-proposal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.basis-chat-proposal-chips i {
+  padding: 4px 8px;
+  border: 1px solid #d5e4ee;
+  border-radius: 999px;
+  background: #f7fafc;
+  color: #314861;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 750;
 }
 
 .basis-chat-proposal-actions {
@@ -2823,9 +2919,12 @@ td input {
   }
 
   .form-grid,
-  .basis-review-grid,
   .quote-basis-header {
     grid-template-columns: 1fr;
+  }
+
+  .basis-review-grid {
+    column-count: 1;
   }
 
   .basis-line-row {
@@ -2865,14 +2964,15 @@ td input {
   }
 
   .basis-chat-overlay {
-    place-items: center;
-    padding: 12px;
+    align-items: start;
+    justify-items: center;
+    padding: 32px 12px 12px;
   }
 
   .basis-chat-panel {
     width: min(100%, calc(100vw - 24px));
-    height: min(88vh, 720px);
-    max-height: calc(100vh - 24px);
+    height: min(84vh, 720px);
+    max-height: calc(100vh - 44px);
     margin: 0;
     border-radius: var(--radius-lg);
   }

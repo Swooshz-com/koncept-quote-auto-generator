@@ -4,6 +4,7 @@ const DEFAULT_SAMPLE_ID = "brazil-pavilion";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
 const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
+const QUOTE_SESSION_STATE_VERSION = 3;
 const LOCAL_PRICING_REFERENCES_STORAGE_KEY = "swooshz_pricing_references_v1";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
@@ -84,9 +85,9 @@ const BASIS_FIELDS = [
 ];
 
 const BASIS_TAGS = [
-  ["Include", "Include", "Quoted in the draft"],
-  ["Confirm", "Confirm", "Needs your decision"],
+  ["Include", "Include", "Confirmed in the draft"],
   ["Exclude", "Exclude", "Not included unless requested"],
+  ["Confirm", "Confidence", "AI confidence before your decision"],
 ];
 
 const STAGE_LABELS = {
@@ -1154,7 +1155,7 @@ function saveSessionState() {
   if (state.isBooting) return;
   try {
     const snapshot = {
-      version: 1,
+      version: QUOTE_SESSION_STATE_VERSION,
       savedAt: new Date().toISOString(),
       profileId: state.profileId,
       pricingReferenceId: state.pricingReferenceId,
@@ -1186,7 +1187,10 @@ function saveSessionState() {
 
 function restoreSessionState() {
   const saved = safeSessionJson();
-  if (!saved || saved.version !== 1) return false;
+  if (!saved || saved.version !== QUOTE_SESSION_STATE_VERSION) {
+    clearSessionState();
+    return false;
+  }
   state.profileId = saved.profileId || "";
   state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
   state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {});
@@ -1653,6 +1657,13 @@ function normalizeBasisTag(tag = "") {
   return "Confirm";
 }
 
+function normalizeConfidence(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(String(value).replace("%", "").trim());
+  if (!Number.isFinite(number)) return null;
+  return Math.min(100, Math.max(0, Math.round(number)));
+}
+
 function parseBasisLine(line = "") {
   const legacyConfirmTag = "assump" + "tion";
   const match = new RegExp(`^(Include|Confirm|Exclude|matched|${legacyConfirmTag}|Note):\\s*(.*)$`, "i").exec(String(line || ""));
@@ -1680,7 +1691,11 @@ function normalizeQuoteBasisSections(value = {}) {
           .map((line) => {
             if (line && typeof line === "object") {
               const text = String(line.text || line.line || line.description || "").trim();
-              return text ? { tag: normalizeBasisTag(line.tag), text } : null;
+              if (!text) return null;
+              const parsed = { tag: normalizeBasisTag(line.tag), text };
+              const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
+              if (confidence !== null) parsed.confidence = confidence;
+              return parsed;
             }
             const parsed = parseBasisLine(line);
             return parsed.text ? parsed : null;
@@ -2471,7 +2486,7 @@ function unresolvedConfirmLines(sections = state.quoteBasisSections) {
 
 function basisConfirmBlockReason(sections = state.quoteBasisSections) {
   return unresolvedConfirmLines(sections).length
-    ? "Resolve all Confirm lines before confirming quotation basis."
+    ? "Resolve all review lines before confirming quotation basis."
     : "";
 }
 
@@ -2479,12 +2494,20 @@ function basisTagLabel(tag = "") {
   return normalizeBasisTag(tag);
 }
 
+function basisLinePillLabel(line = {}) {
+  const tag = normalizeBasisTag(line.tag);
+  const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
+  if (tag === "Confirm" && confidence !== null) return `${confidence}%`;
+  if (tag === "Confirm") return "Review";
+  return basisTagLabel(tag);
+}
+
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
   return `
     <li class="basis-line-row basis-line-${escapeHtml(tag.toLowerCase())}">
       <span class="basis-line-icon" aria-hidden="true"></span>
-      <span class="basis-line-pill">${escapeHtml(basisTagLabel(tag))}</span>
+      <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
       <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Include" aria-label="Mark this line as included" title="Mark included">&#x2713;</button>
@@ -2518,7 +2541,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
       </div>
     `;
   }
-  const statusText = aiFailed ? "AI failed" : source === "edited" ? "Edited draft" : "Needs your confirmation";
+  const statusText = aiFailed ? "AI failed" : source === "edited" ? "Edited draft" : "Needs review";
   const summaryText = state.lineItems.length
     ? `${state.lineItems.length} priced line${state.lineItems.length === 1 ? "" : "s"}`
     : "Pricing draft pending";
@@ -2531,7 +2554,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
             <h3>Quote Basis</h3>
             <span>${escapeHtml(statusText)}</span>
           </div>
-          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and confirm, revise a line, or request changes."}</p>
+          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff, revise a line, or request changes."}</p>
         </div>
         <div class="quote-basis-source">
           <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog"}</span>
@@ -2585,7 +2608,7 @@ function retagBasisLine(sectionId, lineIndex, nextTag) {
 
 function basisChatIntroMessage() {
   if (state.basisChat.scope === "line") {
-    return "Describe the change you want. I will ask AI for a proposed update before applying anything.";
+    return "Describe the replacement. I will show a proposed update before applying anything.";
   }
   return "Ask a question or describe changes to the quotation basis. I will show a proposed update before applying anything.";
 }
@@ -2658,25 +2681,77 @@ function proposalLinePreview(proposal) {
   return `${normalizeBasisTag(nextLine.tag)}: ${nextLine.text}`;
 }
 
+function proposalLineDelta(proposal) {
+  if (state.basisChat.scope !== "line" || !state.basisChat.sectionId) return null;
+  const nextSections = normalizeQuoteBasisSections(proposal?.quoteBasisSections || proposal?.quoteBasis || {});
+  const section = nextSections.find((item) => item.id === state.basisChat.sectionId);
+  const nextLine = section?.lines?.[state.basisChat.lineIndex];
+  const currentLine = selectedBasisLine() || parseBasisLine(state.basisChat.line);
+  if (!nextLine || !currentLine || nextLine.text === currentLine.text && nextLine.tag === currentLine.tag) return null;
+  return {
+    currentTag: normalizeBasisTag(currentLine.tag),
+    currentConfidence: normalizeConfidence(currentLine.confidence ?? currentLine.confidence_pct),
+    currentText: currentLine.text,
+    nextTag: normalizeBasisTag(nextLine.tag),
+    nextConfidence: normalizeConfidence(nextLine.confidence ?? nextLine.confidence_pct),
+    nextText: nextLine.text,
+  };
+}
+
+function renderProposalSectionChips(changedFields = []) {
+  if (!changedFields.length) return "";
+  const visible = changedFields.slice(0, 6);
+  const remaining = changedFields.length - visible.length;
+  return `
+    <div class="basis-chat-proposal-meta">
+      <span>Affected</span>
+      <div class="basis-chat-proposal-chips">
+        ${visible.map((field) => `<i>${escapeHtml(field)}</i>`).join("")}
+        ${remaining > 0 ? `<i>+${remaining} more</i>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderBasisChatProposalCard(proposal, changedFields = []) {
+  const delta = proposalLineDelta(proposal);
+  const message = proposal?.message || "Review this proposed quote basis change before applying it.";
+  return `
+    <div class="basis-chat-proposal-header">
+      <div>
+        <span>Proposed change</span>
+        <strong>${escapeHtml(state.basisChat.scope === "line" ? "Basis line update" : "Quote basis update")}</strong>
+      </div>
+      <span class="basis-chat-proposal-status">Review</span>
+    </div>
+    <p class="basis-chat-proposal-summary">${escapeHtml(message)}</p>
+    ${delta ? `
+      <div class="basis-chat-compare">
+        <div class="basis-chat-compare-card">
+          <span>Current</span>
+          <p><strong>${escapeHtml(basisLinePillLabel({ tag: delta.currentTag, confidence: delta.currentConfidence }))}</strong> ${escapeHtml(delta.currentText)}</p>
+        </div>
+        <div class="basis-chat-compare-card is-proposed">
+          <span>Proposed</span>
+          <p><strong>${escapeHtml(basisLinePillLabel({ tag: delta.nextTag, confidence: delta.nextConfidence }))}</strong> ${escapeHtml(delta.nextText)}</p>
+        </div>
+      </div>
+    ` : `
+      <p class="basis-chat-proposal-summary">This proposal updates the quotation basis and keeps existing line items available for review.</p>
+    `}
+    ${renderProposalSectionChips(changedFields)}
+  `;
+}
+
 function setBasisChatProposal(proposal) {
   state.basisChat.proposal = proposal;
   const changedFields = proposalChangedFields(proposal);
-  const linePreview = proposalLinePreview(proposal);
-  elements.basisChatProposal.hidden = true;
-  elements.basisChatProposal.innerHTML = "";
-  elements.basisChatProposalActions.hidden = true;
+  elements.basisChatProposal.hidden = false;
+  elements.basisChatProposal.innerHTML = renderBasisChatProposalCard(proposal, changedFields);
+  elements.basisChatProposalActions.hidden = false;
   elements.basisChatApplyButton.disabled = false;
   elements.basisChatKeepButton.disabled = false;
-  appendBasisChatMessage(
-    "assistant",
-    [
-      proposal.message || "Review this proposed quote basis change before applying it.",
-      state.basisChat.scope === "line" && state.basisChat.line ? `Current line: ${state.basisChat.line}` : "",
-      linePreview ? `Proposed replacement: ${linePreview}` : "",
-      changedFields.length ? `Affected sections: ${changedFields.join(", ")}` : "This updates quotation rows without changing visible basis text.",
-    ].filter(Boolean).join("\n"),
-    { proposalActions: true }
-  );
+  appendBasisChatMessage("assistant", "I drafted a proposed update below. Review it, then apply or discard.");
 }
 
 function setBasisChatBusy(isBusy) {
@@ -2701,11 +2776,12 @@ function openBasisChatOverlay(scope = "quote", options = {}) {
   if (scope === "line") {
     const line = selectedBasisLine() || parseBasisLine(state.basisChat.line);
     const tag = normalizeBasisTag(line.tag);
+    const tagClass = `basis-chat-selected-tag-${tag.toLowerCase()}`;
     state.basisChat.line = `${tag}: ${line.text}`;
     elements.basisChatContext.innerHTML = `
       <span class="basis-chat-context-label">${escapeHtml(basisFieldLabel(state.basisChat.sectionId))}</span>
       <span class="basis-chat-selected-line">
-        <strong>${escapeHtml(basisTagLabel(tag))}</strong>
+        <strong class="basis-chat-selected-tag ${escapeHtml(tagClass)}" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</strong>
         <span>${escapeHtml(line.text || state.basisChat.line)}</span>
       </span>
     `;
@@ -2791,6 +2867,26 @@ function replaceMeasurementToken(currentLine, target) {
   return tag ? `${tag}: ${nextBody}` : nextBody;
 }
 
+function contextualLineReplacementText(target, currentLine = "") {
+  const compact = String(target || "").trim();
+  const meta = basisLineMeta(currentLine);
+  const tag = meta.tag === "Detail" ? "" : meta.tag;
+  const body = meta.tag === "Detail" ? String(currentLine || "") : meta.text;
+  const targetColors = colorWordsInText(compact);
+  const currentColors = [...new Set(colorWordsInText(body))];
+  if (targetColors.length && currentColors.length) {
+    const targetColor = targetColors[0];
+    let nextBody = body;
+    currentColors.forEach((sourceColor) => {
+      if (sourceColor !== targetColor) {
+        nextBody = replaceColorWord(nextBody, sourceColor, targetColor);
+      }
+    });
+    if (nextBody !== body) return tag ? `${tag}: ${nextBody}` : nextBody;
+  }
+  return "";
+}
+
 function lineReplacementText(target, field, tag, currentLine = "") {
   const legacyConfirmTag = "assump" + "tion";
   if (new RegExp(`^(Include|Confirm|Exclude|${legacyConfirmTag}|Note):`, "i").test(target)) {
@@ -2799,6 +2895,8 @@ function lineReplacementText(target, field, tag, currentLine = "") {
   const compact = target.trim();
   const measurementReplacement = replaceMeasurementToken(currentLine, compact);
   if (measurementReplacement) return measurementReplacement;
+  const contextualReplacement = contextualLineReplacementText(compact, currentLine);
+  if (contextualReplacement) return contextualReplacement;
   const isShortToken = /^[A-Za-z0-9+./-]{2,12}$/.test(compact);
   if (tag === "Confirm" && isShortToken) {
     const fieldText = basisFieldLabel(field).toLowerCase().replace(/\s*\/\s*/g, " ");
@@ -2808,10 +2906,34 @@ function lineReplacementText(target, field, tag, currentLine = "") {
 }
 
 function draftLineTextRevision(text, normalizedText, basis = state.quoteBasis, lineItems = state.lineItems) {
-  if (state.basisChat.scope !== "line" || !state.basisChat.field || !state.basisChat.line) return null;
+  if (state.basisChat.scope !== "line" || !state.basisChat.line) return null;
   const target = directLineRevisionTarget(text, normalizedText);
   if (!target) return null;
 
+  if (state.basisChat.sectionId) {
+    const nextSections = cloneQuoteBasisSections(state.quoteBasisSections);
+    const section = nextSections.find((item) => item.id === state.basisChat.sectionId);
+    const selectedLine = section?.lines?.[state.basisChat.lineIndex];
+    if (section && selectedLine) {
+      const currentLine = `${normalizeBasisTag(selectedLine.tag)}: ${selectedLine.text}`;
+      const tag = normalizeBasisTag(selectedLine.tag);
+      const nextLine = parseBasisLine(lineReplacementText(target, state.basisChat.sectionId, tag, currentLine));
+      const confidence = normalizeConfidence(nextLine.confidence ?? selectedLine.confidence);
+      section.lines[state.basisChat.lineIndex] = {
+        tag: normalizeBasisTag(nextLine.tag),
+        text: nextLine.text,
+        ...(confidence !== null ? { confidence } : {}),
+      };
+      return {
+        message: "Drafted a visible replacement for this basis line.",
+        quoteBasisSections: nextSections,
+        quoteBasis: quoteBasisFromSections(nextSections),
+        lineItems: lineItems.map(normalizeLineItem),
+      };
+    }
+  }
+
+  if (!state.basisChat.field) return null;
   const currentLines = splitLines(basis[state.basisChat.field]);
   const currentIndex = currentLines.findIndex((line) => line === state.basisChat.line);
   const meta = basisLineMeta(state.basisChat.line);
@@ -2942,6 +3064,12 @@ async function handleBasisChatSubmit(event) {
   }
 
   if (wantsBasisRevision(normalized)) {
+    const localProposal = buildRevisionProposal(text, normalized);
+    if (localProposal) {
+      setBasisChatProposal(localProposal);
+      return;
+    }
+
     const aiProposal = await buildAiRevisionProposal(text);
     if (aiProposal) {
       setBasisChatProposal(aiProposal);
@@ -4026,7 +4154,7 @@ function setSidePanel(panelName, options = {}) {
   elements.sideDrawerTitle.textContent = title;
   elements.sideDrawerEyebrow.textContent = eyebrow;
   elements.sideDrawerSubtitle.textContent = subtitle || "";
-  document.querySelectorAll("[data-side-panel]").forEach((button) => {
+  document.querySelectorAll("button[data-side-panel]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.sidePanel === state.activeSidePanel);
   });
   document.querySelectorAll(".side-panel-section[data-side-panel-content]").forEach((section) => {
@@ -4059,7 +4187,7 @@ function updateSidePanelNav() {
   elements.clearQuoteCompanyButton.disabled = busy;
   elements.discussQuoteButton.disabled = busy || !hasSubmittedQuoteBasis();
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
-  document.querySelectorAll("[data-side-panel]").forEach((button) => {
+  document.querySelectorAll("button[data-side-panel]").forEach((button) => {
     const panelName = button.dataset.sidePanel || "images";
     const blockReason = sidePanelBlockReason(panelName);
     const locked = Boolean(blockReason);
@@ -4217,7 +4345,7 @@ function wireEvents() {
     removeImageAt(Number(button.dataset.removeImage));
   });
 
-  document.querySelectorAll("[data-side-panel]").forEach((button) => {
+  document.querySelectorAll("button[data-side-panel]").forEach((button) => {
     button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images", { notify: true }));
   });
   elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);

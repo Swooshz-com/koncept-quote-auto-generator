@@ -361,7 +361,15 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
         parsed = {
-            "quote_basis": {"surfaces": "Include: Custom booth wall."},
+            "quote_basis_sections": [
+                {
+                    "id": "surfaces",
+                    "title": "Surfaces / Structures",
+                    "lines": [
+                        {"tag": "Include", "text": "Custom booth wall.", "confidence_pct": 91}
+                    ],
+                }
+            ],
             "line_items": [
                 {
                     "section": "Section",
@@ -379,6 +387,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(len(draft["line_items"]), 20)
         self.assertEqual(draft["line_items"][-1]["description"], "AI row 19")
+        self.assertEqual(draft["quote_basis_sections"][0]["lines"][0]["tag"], "Confirm")
+        self.assertEqual(draft["quote_basis_sections"][0]["lines"][0]["confidence"], 91)
 
     def test_payload_to_brief_uses_dynamic_quote_basis_sections_for_notes(self):
         payload = valid_payload()
@@ -405,7 +415,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn("quote_basis_sections", prompt)
         self.assertIn("Dynamic section count", prompt)
-        self.assertIn("Include, Confirm, or Exclude", prompt)
+        self.assertIn("confidence_pct", prompt)
+        self.assertIn("Set every quote_basis_sections line tag to Confirm", prompt)
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
         self.assertNotIn("2 to 4 short lines", prompt)
         self.assertNotIn("Assumption:", prompt)
@@ -732,8 +743,8 @@ class WebappServerTest(unittest.TestCase):
                     result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "openai")
-        self.assertEqual(result["quote_basis"]["surfaces"], "AI surfaces")
-        self.assertEqual(result["quote_basis"]["graphics"], "AI graphics")
+        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: AI surfaces")
+        self.assertEqual(result["quote_basis"]["graphics"], "Confirm: AI graphics")
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["description"], "AI vinyl graphics")
         self.assertEqual(result["line_items"][0]["quantity"], 12.0)
@@ -817,7 +828,7 @@ class WebappServerTest(unittest.TestCase):
                         result = webapp.draft_quote_basis(valid_payload())
 
         self.assertEqual(result["source"], "gemini")
-        self.assertEqual(result["quote_basis"]["surfaces"], "Gemini surfaces")
+        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces")
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["description"], "Gemini vinyl graphics")
         self.assertIn("OpenAI failed", result["warnings"][0])
@@ -992,7 +1003,7 @@ class WebappServerTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], webapp.OPENAI_DRAFT_MODEL)
         self.assertNotIn("temperature", body)
-        self.assertEqual(result["quote_basis"]["surfaces"], "AI surfaces")
+        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: AI surfaces")
 
     def test_openai_request_ignores_client_model_override(self):
         payload = valid_payload()
@@ -1059,14 +1070,15 @@ class WebappServerTest(unittest.TestCase):
         prompt = body["input"][0]["content"][0]["text"]
         self.assertIn("quote_basis_sections", prompt)
         self.assertIn("dynamic sections", prompt)
-        self.assertIn("Tags must be Include, Confirm, or Exclude only", prompt)
+        self.assertIn("confidence_pct", prompt)
+        self.assertIn("Set every quote_basis_sections line tag to Confirm", prompt)
         self.assertIn("all relevant itemized line_items", prompt)
         self.assertIn("any other customer-facing scope", prompt)
         self.assertIn("individual customer-facing rows", prompt)
         self.assertIn("flooring, structures, counters, graphics, furniture, electrical", prompt)
-        self.assertIn("do not turn visible items", prompt)
+        self.assertIn("Do not turn visible items", prompt)
         self.assertIn("generic 'please confirm' placeholders", prompt)
-        self.assertIn("Every Include line must name the observed", prompt)
+        self.assertIn("Every basis line must name the observed", prompt)
         self.assertIn("user_feedback", prompt)
         self.assertIn("change the quoted green carpet line to red", prompt)
         self.assertIn("Apply the revision directly", prompt)
@@ -1177,7 +1189,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(urlopen.call_count, 2)
         sleep.assert_called_once()
-        self.assertEqual(result["quote_basis"]["surfaces"], "AI surfaces after retry")
+        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: AI surfaces after retry")
 
     def test_openai_transient_http_error_message_explains_retry(self):
         http_error = webapp.urllib.error.HTTPError(
@@ -1227,7 +1239,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["generationConfig"]["responseMimeType"], "application/json")
         self.assertEqual(parts[1]["inline_data"]["mime_type"], "image/jpeg")
         self.assertEqual(parts[1]["inline_data"]["data"], "ZmFrZS1pbWFnZQ==")
-        self.assertEqual(result["quote_basis"]["surfaces"], "Gemini surfaces")
+        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces")
 
     def test_basis_chat_prompt_requires_concise_markdown(self):
         payload = valid_payload()
@@ -1242,7 +1254,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("clean Markdown", prompt)
         self.assertIn("**bold keys**", prompt)
         self.assertIn("No text walls", prompt)
-        self.assertIn("under 90 words", prompt)
+        self.assertIn("Answer naturally", prompt)
+        self.assertIn("short fragment", prompt)
+        self.assertIn("under 70 words", prompt)
 
     def test_gemini_request_uses_model_from_env(self):
         response = mock.MagicMock()
@@ -1291,7 +1305,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(urlopen.call_count, 2)
         sleep.assert_called_once()
-        self.assertEqual(result["quote_basis"]["surfaces"], "Gemini surfaces after retry")
+        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces after retry")
 
     def test_gemini_transient_http_error_message_explains_retry(self):
         http_error = webapp.urllib.error.HTTPError(
@@ -1890,7 +1904,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn('pricingBlockReason.replace("opening Pricing", "opening Output")', js)
         self.assertIn("Click Start Analysis from Quote Company before opening Quote Basis.", js)
         self.assertIn("Confirm Quotation Basis before opening Output.", js)
-        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
+        self.assertIn("Resolve all review lines before confirming quotation basis.", js)
+        self.assertIn('querySelectorAll("button[data-side-panel]")', js)
+        self.assertNotIn('querySelectorAll("[data-side-panel]")', js)
         self.assertIn("state.basisConfirmed", js)
         self.assertIn("hasSubmittedQuoteBasis", js)
         self.assertIn("hasCompletedQuoteBasis", js)
@@ -2721,8 +2737,12 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "appendBasisChatTyping",
             "removeBasisChatTyping",
             "AI drafted an updated quote basis from your request.",
-            "Describe the change you want. I will ask AI for a proposed update before applying anything.",
+            "Describe the replacement. I will show a proposed update before applying anything.",
             "I can answer questions about the basis or draft a proposed change.",
+            "basisLinePillLabel",
+            "normalizeConfidence",
+            "buildRevisionProposal(text, normalized)",
+            "renderBasisChatProposalCard",
         ):
             self.assertIn(expected, js)
 
@@ -2743,12 +2763,15 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         for expected in (
             ".basis-chat-overlay",
             ".basis-chat-panel",
-            "place-items: center",
+            "align-items: start",
+            "justify-items: center",
             "width: min(760px",
-            "height: min(820px",
+            "height: min(760px",
             "min-height: 260px",
             "min-height: 112px",
             ".basis-review-surface",
+            "column-count: 2",
+            "break-inside: avoid",
             ".basis-line-icon::before",
             ".basis-line-include .basis-line-text",
             ".basis-line-include .basis-line-icon::before",
@@ -2763,6 +2786,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-chat-typing-dots",
             ".basis-chat-message table",
             ".basis-chat-message ul",
+            ".basis-chat-proposal-header",
+            ".basis-chat-compare-card",
             ".basis-chat-proposal-actions[hidden]",
             "@media (max-width: 880px)",
         ):
@@ -2785,6 +2810,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('aria-label="Mark this line as included"', js)
         self.assertIn('aria-label="Mark this line as excluded"', js)
         self.assertIn('basisTagLabel(tag)', js)
+        self.assertLess(js.index('["Include", "Include"'), js.index('["Exclude", "Exclude"'))
+        self.assertLess(js.index('["Exclude", "Exclude"'), js.index('["Confirm", "Confidence"'))
         self.assertNotIn("Matched", js)
         self.assertNotIn("Assumption", js)
         self.assertIn(">Re<", js)
@@ -2812,7 +2839,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("quote_basis_sections", js)
         self.assertNotIn("Matched", js)
         self.assertNotIn("Assumption", js)
-        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
+        self.assertIn("Resolve all review lines before confirming quotation basis.", js)
         self.assertIn("Ask For Changes", html)
         self.assertNotIn("Discuss Quote", html)
         self.assertEqual(html.count('class="secondary-button panel-clear-button" type="button"'), 3)
@@ -2854,7 +2881,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
 
         self.assertIn('basis: "Confirm Quotation Basis"', js)
         self.assertIn("basisConfirmBlockReason", js)
-        self.assertIn("Resolve all Confirm lines before confirming quotation basis.", js)
+        self.assertIn("Resolve all review lines before confirming quotation basis.", js)
         self.assertIn('confirmBasis();', js)
         self.assertNotIn("Next: Output", js)
 
@@ -2905,6 +2932,7 @@ eval([
   "splitLines",
   "safeId",
   "normalizeBasisTag",
+  "normalizeConfidence",
   "parseBasisLine",
   "normalizeQuoteBasisSections",
   "basisSections",
@@ -2913,7 +2941,7 @@ eval([
 ].map(extractFunction).join("\n"));
 
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Platform / Flooring: Finish colour."]);
-assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all Confirm lines before confirming quotation basis.");
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
 state.quoteBasisSections[0].lines[1].tag = "Include";
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), []);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
