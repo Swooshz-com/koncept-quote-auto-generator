@@ -35,7 +35,8 @@ from xml.etree import ElementTree as ET
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE_DIR = PROJECT_ROOT / "profiles" / "koncept"
-DEFAULT_TEMPLATE = DEFAULT_PROFILE_DIR / "pricing-catalog.json"
+DEFAULT_PRICING_REFERENCE_DIR = PROJECT_ROOT / "pricing-references" / "koncept"
+DEFAULT_TEMPLATE = DEFAULT_PRICING_REFERENCE_DIR / "pricing-catalog.json"
 DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"

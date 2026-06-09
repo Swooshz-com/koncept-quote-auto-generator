@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=34">
+    <link rel="stylesheet" href="/static/styles.css?v=35">
   </head>
   <body>
     <div class="app-shell">
@@ -242,24 +242,28 @@
 
               <section class="side-panel-card side-panel-section quote-details-panel" id="quoteCompanyPanel" data-side-panel-content="quote_company">
                 <div class="company-preset-panel">
-                  <div>
+                  <div class="company-preset-copy">
                     <h3>Company preset</h3>
                     <p>Load reusable company defaults, then adjust the quotation fields below.</p>
                   </div>
                   <div class="company-preset-controls">
-                    <label class="compact-control">
-                      Company preset
-                      <select id="presetSelect"></select>
-                    </label>
-                    <div class="settings-button-row">
-                      <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                      <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                    <div class="company-preset-control-group">
+                      <label class="compact-control">
+                        Company preset
+                        <select id="presetSelect"></select>
+                      </label>
+                      <div class="settings-button-row">
+                        <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
+                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                      </div>
                     </div>
-                    <label class="compact-control preset-save-name">
-                      Save as
-                      <input id="presetNameInput" type="text" placeholder="Example: Standard company header">
-                    </label>
-                    <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                    <div class="company-preset-control-group">
+                      <label class="compact-control preset-save-name">
+                        Save as
+                        <input id="presetNameInput" type="text" placeholder="Example: Standard company header">
+                      </label>
+                      <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                    </div>
                   </div>
                   <p class="settings-note" id="presetStatus">Presets are stored locally in this browser and can include the uploaded header logo.</p>
                 </div>
@@ -473,9 +477,7 @@
 
               <section class="side-panel-card side-panel-section" id="outputSidePanel" data-side-panel-content="output">
                 <div class="assistant-output" id="assistantOutput">
-                  <div class="output-download-heading output-status-heading">
-                    <span class="result-pill" id="resultStatus">No job yet</span>
-                  </div>
+                  <span class="result-pill sr-only" id="resultStatus" aria-live="polite">No job yet</span>
                   <div class="message-list" id="messageList"></div>
                   <div class="side-empty-state" id="pricingEmptyState">
                     <strong>No output rows yet</strong>
@@ -484,6 +486,7 @@
                   <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
                   <div class="match-summary" id="matchSummary"></div>
                   <div class="table-wrap output-table-wrap" id="pricingTableWrap">
+                    <p class="output-edit-hint">Double click a row value to amend it.</p>
                     <table class="match-table output-match-table">
                       <thead>
                         <tr>
@@ -491,7 +494,6 @@
                           <th>Description</th>
                           <th>Quantity</th>
                           <th>Unit</th>
-                          <th>Price mode</th>
                           <th>Unit price</th>
                           <th>Amount</th>
                         </tr>
@@ -553,13 +555,24 @@
             <button class="icon-button" type="button" id="pricingReferenceCloseButton" aria-label="Close pricing reference modal">x</button>
           </header>
           <form class="modal-form" id="pricingReferenceForm">
+            <div class="pricing-template-callout">
+              <div>
+                <strong>Use the import template for reliable packages.</strong>
+                <span>Fill the normalized columns, then upload the completed workbook or CSV here.</span>
+              </div>
+              <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx" download>Download Template</a>
+            </div>
             <label>
               Pricing reference name
               <input id="pricingReferenceName" type="text" autocomplete="off">
             </label>
             <label>
               Workbook/catalog upload
-              <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.json,application/json,text/csv">
+              <span class="file-picker-control">
+                <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv">
+                <span class="secondary-button file-picker-button">Choose File</span>
+                <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
+              </span>
             </label>
             <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
             <div class="modal-actions">
@@ -586,6 +599,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=44"></script>
+    <script src="/static/app.js?v=45"></script>
   </body>
 </html>

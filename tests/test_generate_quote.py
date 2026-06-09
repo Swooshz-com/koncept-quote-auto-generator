@@ -13,7 +13,7 @@ from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
-KONCEPT_CATALOG = KONCEPT_PROFILE / "pricing-catalog.json"
+KONCEPT_CATALOG = ROOT / "pricing-references" / "koncept" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LOGO = KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg"
 sys.path.insert(0, str(ROOT / "scripts"))

@@ -1,5 +1,6 @@
 const EMPTY_LINE_ITEMS_MESSAGE = "AI analysis will populate line items here.";
 const DEFAULT_PROFILE_ID = "koncept";
+const DEFAULT_PRICING_REFERENCE_ID = "koncept";
 const DEFAULT_SAMPLE_ID = "brazil-pavilion";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
@@ -9,6 +10,7 @@ const LOCAL_PRICING_REFERENCES_STORAGE_KEY = "swooshz_pricing_references_v1";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const LOCAL_PRESET_PREFIX = "local:";
+const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv";
 const MAX_REFERENCE_IMAGES = 8;
 const DEFAULT_DATE_LABEL = "Date:";
 const DEFAULT_TERMS_HEADING = "Terms & Conditions:";
@@ -87,6 +89,7 @@ const BASIS_FIELDS = [
 const BASIS_TAGS = [
   ["Include", "Include", "Confirmed in the draft"],
   ["Exclude", "Exclude", "Not included unless requested"],
+  ["Custom", "Custom", "Not found in pricing reference"],
   ["Confirm", "Confidence", "AI confidence before your decision"],
 ];
 
@@ -107,6 +110,7 @@ const state = {
   selectedPresetValue: "",
   profiles: [],
   pricingReferences: [],
+  defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   images: [],
   headerLogo: null,
   workflowStage: "needs_images",
@@ -244,6 +248,7 @@ const elements = {
   pricingReferenceForm: qs("#pricingReferenceForm"),
   pricingReferenceName: qs("#pricingReferenceName"),
   pricingReferenceFile: qs("#pricingReferenceFile"),
+  pricingReferenceFileName: qs("#pricingReferenceFileName"),
   pricingReferencePreview: qs("#pricingReferencePreview"),
   pricingReferenceSaveButton: qs("#pricingReferenceSaveButton"),
   pricingReferenceCancelButton: qs("#pricingReferenceCancelButton"),
@@ -255,25 +260,22 @@ const elements = {
   richTextToolbar: Array.from(document.querySelectorAll("[data-rich-command]")),
 };
 
-function pricingReferenceProfileId(reference = {}) {
-  return String(reference.profile_id || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
-}
-
 function pricingReferenceSelectValue(reference = {}) {
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "";
-  return `${pricingReferenceProfileId(reference)}::${referenceId}`;
+  const source = reference.source === "local" ? "local" : "bundled";
+  return `${source}::${referenceId}`;
 }
 
 function pricingReferenceSelectionFromValue(value = "") {
   const text = String(value || "").trim();
-  if (!text) return { profileId: "", pricingReferenceId: "" };
+  if (!text) return { pricingReferenceId: "", source: "" };
   const delimiterIndex = text.indexOf("::");
   if (delimiterIndex < 0) {
-    return { profileId: "", pricingReferenceId: text };
+    return { pricingReferenceId: text, source: "" };
   }
   return {
-    profileId: text.slice(0, delimiterIndex) || DEFAULT_PROFILE_ID,
+    source: text.slice(0, delimiterIndex) || "bundled",
     pricingReferenceId: text.slice(delimiterIndex + 2),
   };
 }
@@ -329,14 +331,8 @@ function normalizeUnit(value = "") {
   return text;
 }
 
-function pricingReferenceForProfile(profileId = "") {
-  const resolvedProfileId = String(profileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
-  return state.pricingReferences.find((reference) => pricingReferenceProfileId(reference) === resolvedProfileId) || null;
-}
-
 function currentProfile() {
-  const selectedReference = currentPricingReference();
-  const resolvedProfileId = pricingReferenceProfileId(selectedReference || { profile_id: state.profileId || DEFAULT_PROFILE_ID });
+  const resolvedProfileId = String(state.profileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
   return state.profiles.find((profile) => profile.id === resolvedProfileId)
     || state.profiles.find((profile) => profile.id === DEFAULT_PROFILE_ID)
     || state.profiles[0]
@@ -348,37 +344,36 @@ function currentProfile() {
   };
 }
 
+function defaultPricingReference() {
+  const profile = currentProfile();
+  const defaultReferenceId = String(profile?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID).trim();
+  return state.pricingReferences.find((reference) => reference.id === defaultReferenceId)
+    || state.pricingReferences.find((reference) => reference.id === DEFAULT_PRICING_REFERENCE_ID)
+    || state.pricingReferences[0]
+    || null;
+}
+
 function currentPricingReference() {
   const pricingReferenceId = String(state.pricingReferenceId || "").trim();
   if (!pricingReferenceId) return null;
-  const selectedProfileId = String(state.profileId || "").trim();
-  return state.pricingReferences.find((reference) => (
-    reference.id === pricingReferenceId
-    && (!selectedProfileId || pricingReferenceProfileId(reference) === selectedProfileId)
-  ))
-    || state.pricingReferences.find((reference) => reference.id === pricingReferenceId)
+  return state.pricingReferences.find((reference) => reference.id === pricingReferenceId)
     || null;
 }
 
 function resolvedProfileIdForPayload() {
-  const selectedReference = currentPricingReference();
-  return pricingReferenceProfileId(selectedReference || { profile_id: state.profileId || DEFAULT_PROFILE_ID });
+  return String(state.profileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
 }
 
 function syncSelectedPricingReference() {
   const selectedReference = currentPricingReference();
   if (selectedReference) {
-    state.profileId = pricingReferenceProfileId(selectedReference);
     state.pricingReferenceId = selectedReference.id || "";
     return;
   }
-  if (state.profileId) {
-    const fallbackReference = pricingReferenceForProfile(state.profileId);
-    if (fallbackReference) {
-      state.profileId = pricingReferenceProfileId(fallbackReference);
-      state.pricingReferenceId = fallbackReference.id || "";
-      return;
-    }
+  const fallbackReference = defaultPricingReference();
+  if (fallbackReference) {
+    state.pricingReferenceId = fallbackReference.id || "";
+    return;
   }
   state.pricingReferenceId = "";
 }
@@ -857,6 +852,7 @@ function normalizeLineItem(item = {}) {
     display_price: item.display_price || "",
     price_mode: priceMode,
     unit_price_override: item.unit_price_override ?? "",
+    catalog_unit_price: item.catalog_unit_price ?? "",
   };
 }
 
@@ -1569,17 +1565,9 @@ function renderProfileOptions() {
   if (!elements.profileSelect) return;
   const references = state.pricingReferences.length ? state.pricingReferences : [];
   const selectedValue = currentPricingReference() ? pricingReferenceSelectValue(currentPricingReference()) : "";
-  const duplicateReferenceIds = references.reduce((counts, reference) => {
-    const referenceId = String(reference.id || "").trim();
-    if (referenceId) counts.set(referenceId, (counts.get(referenceId) || 0) + 1);
-    return counts;
-  }, new Map());
-  const profileLabels = new Map(state.profiles.map((profile) => [profile.id, profile.label || profile.id]));
   const referenceOption = (reference) => {
     const referenceId = String(reference.id || "").trim();
-    const profileId = pricingReferenceProfileId(reference);
-    const duplicateSuffix = duplicateReferenceIds.get(referenceId) > 1 ? ` (${profileLabels.get(profileId) || profileId})` : "";
-    return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}${escapeHtml(duplicateSuffix)}</option>`;
+    return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}</option>`;
   };
   const profileOptions = references
     .filter((reference) => reference.source !== "local")
@@ -1590,12 +1578,11 @@ function renderProfileOptions() {
     .map(referenceOption)
     .join("");
   elements.profileSelect.innerHTML = [
-    profileOptions ? `<optgroup label="Profile Pricing References">${profileOptions}</optgroup>` : "",
+    profileOptions,
     localOptions ? `<optgroup label="Saved Pricing References">${localOptions}</optgroup>` : "",
   ].join("");
-  const fallbackReference = currentPricingReference() || pricingReferenceForProfile(state.profileId || DEFAULT_PROFILE_ID) || references[0] || null;
+  const fallbackReference = currentPricingReference() || defaultPricingReference() || references[0] || null;
   if (fallbackReference) {
-    state.profileId = pricingReferenceProfileId(fallbackReference);
     state.pricingReferenceId = fallbackReference.id || "";
   }
   const selectedReference = currentPricingReference();
@@ -1609,57 +1596,10 @@ function pricingReferenceRequiredColumns() {
   return ["id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier"];
 }
 
-function splitCsvLine(line = "") {
-  const cells = [];
-  let current = "";
-  let quoted = false;
-  String(line).split("").forEach((char, index, chars) => {
-    if (char === "\"" && chars[index + 1] === "\"") {
-      current += "\"";
-      chars[index + 1] = "";
-      return;
-    }
-    if (char === "\"") {
-      quoted = !quoted;
-      return;
-    }
-    if (char === "," && !quoted) {
-      cells.push(current.trim());
-      current = "";
-      return;
-    }
-    current += char;
-  });
-  cells.push(current.trim());
-  return cells;
-}
-
-function sanitizePricingReferenceItem(raw = {}, index = 0) {
-  const id = safeId(raw.id || `${raw.section || "item"}-${raw.description || index}`, `item-${index + 1}`);
-  const description = String(raw.description || "").trim();
-  const section = String(raw.section || "General").trim() || "General";
-  const internalCost = Number(String(raw.internal_cost || raw.cost || "").replaceAll(",", ""));
-  const markup = Number(String(raw.markup_multiplier || raw.markup || "").replaceAll(",", ""));
-  if (!description || !Number.isFinite(internalCost) || internalCost <= 0 || !Number.isFinite(markup) || markup <= 0) {
-    return null;
-  }
-  const aliases = Array.isArray(raw.aliases)
-    ? raw.aliases.map((alias) => String(alias || "").trim()).filter(Boolean).slice(0, 8)
-    : String(raw.aliases || "").split(/[|;]/).map((alias) => alias.trim()).filter(Boolean).slice(0, 8);
-  return {
-    id,
-    section,
-    description,
-    unit_hint: normalizeUnit(raw.unit_hint || raw.unit || ""),
-    internal_cost: internalCost,
-    markup_multiplier: markup,
-    aliases,
-  };
-}
-
 function normalizeBasisTag(tag = "") {
   const normalized = String(tag || "").trim().toLowerCase();
   if (normalized === "include" || normalized === "matched") return "Include";
+  if (["custom", "manual", "extra", "non-catalog", "non catalog", "needs-pricing", "needs pricing"].includes(normalized)) return "Custom";
   if (normalized === "exclude") return "Exclude";
   return "Confirm";
 }
@@ -1673,7 +1613,7 @@ function normalizeConfidence(value) {
 
 function parseBasisLine(line = "") {
   const legacyConfirmTag = "assump" + "tion";
-  const match = new RegExp(`^(Include|Confirm|Exclude|matched|${legacyConfirmTag}|Note):\\s*(.*)$`, "i").exec(String(line || ""));
+  const match = new RegExp(`^(Include|Confirm|Custom|Manual|Extra|Needs Pricing|Exclude|matched|${legacyConfirmTag}|Note):\\s*(.*)$`, "i").exec(String(line || ""));
   if (!match) return { tag: "Confirm", text: String(line || "").trim() };
   return { tag: normalizeBasisTag(match[1]), text: String(match[2] || "").trim() };
 }
@@ -1748,42 +1688,11 @@ function normalizeOutputRow(row = {}) {
     quantity: row.quantity ?? "",
     unit: normalizeUnit(row.unit || ""),
     price_mode: priceMode,
-    unit_price_override: row.unit_price_override ?? row.unit_price ?? "",
+    unit_price_override: row.unit_price_override ?? "",
+    catalog_unit_price: row.catalog_unit_price ?? "",
     pricing_keyword: row.pricing_keyword || row.keyword || "",
     status: row.status || "",
   });
-}
-
-function parsePricingReferenceCsv(text = "") {
-  const lines = String(text || "").split(/\r?\n/).filter((line) => line.trim());
-  if (!lines.length) return { items: [], headers: [], skipped: 0 };
-  const headers = splitCsvLine(lines[0]).map((header) => header.trim());
-  const items = [];
-  let skipped = 0;
-  lines.slice(1).forEach((line, index) => {
-    const cells = splitCsvLine(line);
-    const raw = headers.reduce((row, header, cellIndex) => {
-      row[header] = cells[cellIndex] || "";
-      return row;
-    }, {});
-    const item = sanitizePricingReferenceItem(raw, index);
-    if (item) items.push(item);
-    else skipped += 1;
-  });
-  return { items, headers, skipped };
-}
-
-function validatePricingReferencePayload(payload = {}, sourceName = "") {
-  const rawItems = Array.isArray(payload.items) ? payload.items : [];
-  const items = [];
-  let skipped = 0;
-  rawItems.forEach((raw, index) => {
-    const item = sanitizePricingReferenceItem(raw, index);
-    if (item) items.push(item);
-    else skipped += 1;
-  });
-  const headers = rawItems.length ? Object.keys(rawItems[0] || {}) : [];
-  return pricingReferenceValidationResult(items, headers, skipped, sourceName);
 }
 
 function pricingReferenceValidationResult(items, headers, skipped, sourceName = "") {
@@ -1802,6 +1711,7 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
     headers,
     missing,
     skipped,
+    layout: "normalized-pricing-reference",
     errors,
     warnings,
   };
@@ -1821,6 +1731,7 @@ function renderPricingReferencePreview(result = null) {
   elements.pricingReferencePreview.innerHTML = `
     <strong>${result.errors.length ? "Validation failed" : "Validation preview"}</strong>
     <ul>
+      <li>Layout: ${escapeHtml(result.layout || "normalized pricing reference")}</li>
       <li>Detected row count: ${result.rowCount}</li>
       <li>Required columns found: ${escapeHtml(found.join(", ") || "None")}</li>
       <li>Required columns missing: ${escapeHtml(result.missing.join(", ") || "None")}</li>
@@ -1837,36 +1748,25 @@ async function validatePricingReferenceFile(file) {
     return { ...pricingReferenceValidationResult([], [], 0, file.name), errors: ["Pricing reference file is larger than 2 MB."] };
   }
   const extension = file.name.split(".").pop().toLowerCase();
-  if (!["json", "csv", "xlsx"].includes(extension)) {
-    return { ...pricingReferenceValidationResult([], [], 0, file.name), errors: ["Upload a .xlsx, .csv, or .json pricing source."] };
+  if (!["csv", "xlsx"].includes(extension)) {
+    return { ...pricingReferenceValidationResult([], [], 0, file.name), errors: ["Upload a .xlsx or .csv pricing reference template."] };
   }
-  if (extension === "xlsx") {
-    const { ok, data } = await postJson("/api/pricing-reference/validate", {
-      filename: file.name,
-      data_url: await fileToDataUrl(file),
-    });
-    if (ok) return data;
-    return {
-      ...pricingReferenceValidationResult([], [], 0, file.name),
-      errors: data.errors || ["XLSX pricing-reference validation failed."],
-    };
-  }
-  const text = await file.text();
-  if (extension === "json") {
-    try {
-      return validatePricingReferencePayload(JSON.parse(text), file.name);
-    } catch {
-      return { ...pricingReferenceValidationResult([], [], 0, file.name), errors: ["JSON pricing source is invalid."] };
-    }
-  }
-  const parsed = parsePricingReferenceCsv(text);
-  return pricingReferenceValidationResult(parsed.items, parsed.headers, parsed.skipped, file.name);
+  const { ok, data } = await postJson("/api/pricing-reference/validate", {
+    filename: file.name,
+    data_url: await fileToDataUrl(file),
+  });
+  if (ok) return data;
+  return {
+    ...pricingReferenceValidationResult([], [], 0, file.name),
+    errors: data.errors || ["Pricing-reference validation failed."],
+  };
 }
 
 function openPricingReferenceModal() {
   state.pendingPricingReference = null;
   if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
   if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
+  if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
   renderPricingReferencePreview(null);
   elements.pricingReferenceModal.hidden = false;
   elements.pricingReferenceModal.classList.add("is-open");
@@ -1890,7 +1790,6 @@ function savePricingReferenceFromModal(event) {
   const reference = {
     id: `local-ref-${Date.now().toString(36)}`,
     label: name,
-    profile_id: "local",
     source: "local",
     schema_version: 1,
     items: result.items,
@@ -1900,7 +1799,6 @@ function savePricingReferenceFromModal(event) {
   localReferences.push(reference);
   saveLocalPricingReferences(localReferences);
   state.pricingReferences = mergePricingReferences(state.pricingReferences.filter((item) => item.source !== "local"));
-  state.profileId = "local";
   state.pricingReferenceId = reference.id;
   syncSelectedPricingReference();
   renderProfileOptions();
@@ -1928,6 +1826,7 @@ async function loadProfiles() {
   const { ok, data } = await getJson("/api/profiles");
   if (ok && Array.isArray(data.profiles)) {
     state.profiles = data.profiles;
+    state.defaultPricingReferenceId = data.default_pricing_reference_id || DEFAULT_PRICING_REFERENCE_ID;
     state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : []);
     if (state.pricingReferenceId) {
       syncSelectedPricingReference();
@@ -1959,18 +1858,12 @@ function clearGeneratedQuoteState() {
 
 function handleProfileSelectionChange() {
   const nextSelection = pricingReferenceSelectionFromValue(elements.profileSelect.value || "");
-  if (
-    nextSelection.profileId === state.profileId
-    && nextSelection.pricingReferenceId === state.pricingReferenceId
-  ) {
+  if (nextSelection.pricingReferenceId === state.pricingReferenceId) {
     return;
   }
-  state.profileId = nextSelection.profileId;
   state.pricingReferenceId = nextSelection.pricingReferenceId;
   syncSelectedPricingReference();
   renderProfileOptions();
-  renderPresetOptions();
-  loadDefaultProfilePreset({ silent: true });
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? (canStartAnalysis() ? "ready_to_analyze" : "details_review") : "needs_images");
   noteWorkflowEvent("assistant", "Pricing reference changed. I cleared the previous draft so the next analysis uses the selected pricing context. Customer and quote-company details were left unchanged.");
@@ -1988,7 +1881,7 @@ async function setSampleDetails() {
     }
     if (!state.profiles.length) await loadProfiles();
     state.profileId = data.profile_id || DEFAULT_PROFILE_ID;
-    state.pricingReferenceId = data.pricing_reference_id || pricingReferenceForProfile(state.profileId)?.id || "";
+    state.pricingReferenceId = data.pricing_reference_id || currentProfile()?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID;
     syncSelectedPricingReference();
     renderProfileOptions();
     renderPresetOptions();
@@ -2108,7 +2001,7 @@ function pricingMatchStatus(row = {}) {
 function pricingRowNeedsReview(row = {}) {
   const status = pricingMatchStatus(row);
   const amount = String(row.amount || "").trim();
-  if (["unmatched", "ambiguous", "matched-from-ambiguous"].includes(status)) return true;
+  if (["unmatched", "ambiguous", "matched-from-ambiguous", "custom", "needs-pricing"].includes(status)) return true;
   return status === "manual-display" && (!amount || amount.toLowerCase() === "manual display price");
 }
 
@@ -2117,6 +2010,7 @@ function pricingIssueForRow(row = {}) {
   const description = row.description || "Pricing row";
   const status = pricingMatchStatus(row);
   if (status === "manual-display") return `Manual display pricing required: ${description} / enter a display price, choose a catalog keyword, or remove this line.`;
+  if (status === "custom" || status === "needs-pricing") return `Manual pricing required: ${description} / enter a unit price, choose a catalog keyword, or remove this line.`;
   if (status === "matched-from-ambiguous") return `Ambiguous pricing: ${description} / confirm selected catalog match.`;
   if (status === "ambiguous") return `Ambiguous pricing: ${description} / choose a catalog match.`;
   return `Unmatched pricing: ${description} / choose a catalog match or remove from quote.`;
@@ -2139,6 +2033,8 @@ function pricingStatusLabel(status = "") {
     "matched-from-ambiguous": "Ambiguous match selected",
     ambiguous: "Ambiguous match",
     "manual-display": "Manual display price",
+    custom: "Custom manual price",
+    "needs-pricing": "Needs pricing",
     unmatched: "Unmatched",
   };
   const normalized = pricingMatchStatus(status);
@@ -2146,8 +2042,23 @@ function pricingStatusLabel(status = "") {
 }
 
 function numberOrNull(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  if (String(value).trim().toLowerCase() === "included") return null;
   const numeric = Number(String(value ?? "").replaceAll(",", "").trim());
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function unitPriceEditKind(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "blank";
+  if (text.toLowerCase() === "included") return "included";
+  return numberOrNull(text) === null ? "invalid" : "number";
+}
+
+function effectiveOutputUnitPrice(row = {}) {
+  const manual = numberOrNull(row.unit_price_override);
+  if (manual !== null) return manual;
+  return numberOrNull(row.catalog_unit_price);
 }
 
 function formatAmount(value) {
@@ -2159,13 +2070,60 @@ function formatAmount(value) {
 
 function recalculateOutputRow(row = {}) {
   const quantity = numberOrNull(row.quantity);
-  const unitPrice = numberOrNull(row.unit_price_override);
   const priceMode = row.price_mode === "Included" ? "Included" : "Priced";
+  const unitPrice = effectiveOutputUnitPrice({ ...row, price_mode: priceMode });
+  const hasUsablePrice = unitPrice !== null && unitPrice > 0;
   return {
     ...row,
     price_mode: priceMode,
-    amount: priceMode === "Included" ? 0 : (quantity !== null && unitPrice !== null ? Math.round(quantity * unitPrice * 100) / 100 : ""),
+    amount: priceMode === "Included" ? 0 : (quantity !== null && hasUsablePrice ? Math.round(quantity * unitPrice * 100) / 100 : ""),
   };
+}
+
+function outputComparableText(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function outputRowCoversBasisLine(row = {}, lineText = "") {
+  const rowText = outputComparableText(row.description);
+  const basisText = outputComparableText(lineText);
+  if (!rowText || !basisText) return false;
+  if (rowText.includes(basisText) || basisText.includes(rowText)) return true;
+  const basisWords = basisText.split(" ").filter((word) => word.length > 3);
+  if (basisWords.length < 4) return false;
+  const rowWords = new Set(rowText.split(" "));
+  const overlap = basisWords.filter((word) => rowWords.has(word)).length;
+  return overlap / Math.min(basisWords.length, 10) >= 0.6;
+}
+
+function includedBasisOutputRows(existingRows = []) {
+  const rows = [];
+  basisSections(state.quoteBasisSections).forEach((section) => {
+    (section.lines || []).forEach((line) => {
+      const basisTag = normalizeBasisTag(line.tag);
+      if (!["Include", "Custom"].includes(basisTag)) return;
+      const text = String(line.text || "").trim();
+      if (!text) return;
+      const duplicate = existingRows.some((row) => outputRowCoversBasisLine(row, text))
+        || rows.some((row) => outputRowCoversBasisLine(row, text));
+      if (duplicate) return;
+      rows.push(normalizeOutputRow({
+        section: basisDisplayTitle(section.title || section.id || "Quote Basis"),
+        description: text,
+        quantity: "",
+        unit: "",
+        price_mode: "Priced",
+        unit_price_override: "",
+        pricing_keyword: "",
+        status: basisTag === "Custom" ? "custom" : "needs-pricing",
+      }));
+    });
+  });
+  return rows;
 }
 
 function outputRowFromLineItem(item = {}) {
@@ -2177,28 +2135,88 @@ function outputRowFromLineItem(item = {}) {
     unit: normalized.unit,
     price_mode: normalized.price_mode,
     unit_price_override: normalized.unit_price_override || "",
+    catalog_unit_price: normalized.catalog_unit_price || "",
     pricing_keyword: normalized.pricing_keyword,
   });
 }
 
 function outputRowFromPricingMatch(row = {}) {
+  const status = pricingMatchStatus(row);
   const unitPrice = row.unit_price || row.unit_price_override || "";
   const amount = String(row.amount || "").trim();
   return normalizeOutputRow({
     section: row.section,
-    description: row.description,
+    description: row.catalog_description || row.description,
     quantity: String(row.quantity || "").replace(/\s+[A-Za-z]+$/, ""),
     unit: row.unit || String(row.quantity || "").match(/\s+([A-Za-z]+)$/)?.[1] || "",
-    price_mode: pricingMatchStatus(row) === "included" || amount === "0.00" && !unitPrice ? "Included" : "Priced",
-    unit_price_override: unitPrice,
+    price_mode: status === "included" ? "Included" : "Priced",
+    unit_price_override: status === "manual-price" ? unitPrice : "",
+    catalog_unit_price: status === "manual-price" ? "" : unitPrice,
     pricing_keyword: row.keyword || row.pricing_keyword || "",
     status: row.status,
   });
 }
 
+function outputCellDisplayValue(row = {}, field = "") {
+  if (field === "price_mode") return row.price_mode === "Included" ? "Included" : "Priced";
+  if (field === "unit_price_override") {
+    if (row.price_mode === "Included") return "Included";
+    if (numberOrNull(row.unit_price_override) !== null) return formatAmount(row.unit_price_override);
+    if (numberOrNull(row.catalog_unit_price) !== null) return formatAmount(row.catalog_unit_price);
+    if (String(row.pricing_keyword || "").trim()) return "Catalog";
+    return "Pending";
+  }
+  if (field === "amount") {
+    if (row.price_mode === "Included") return "0.00";
+    return formatAmount(row.amount) || "Pending";
+  }
+  return String(row[field] ?? "").trim() || "Pending";
+}
+
+function outputEditorHtml(row = {}, index = 0, field = "") {
+  const value = field === "unit_price_override"
+    ? row.price_mode === "Included"
+      ? "Included"
+      : String(row.unit_price_override || row.catalog_unit_price || "")
+    : String(row[field] ?? "");
+  if (field === "description") {
+    return `<textarea class="output-cell-input output-description-input is-editing" data-output-editor-field="${field}" data-output-row="${index}" rows="3">${escapeHtml(value)}</textarea>`;
+  }
+  if (field === "price_mode") {
+    return `
+      <select class="output-cell-input is-editing" data-output-editor-field="${field}" data-output-row="${index}">
+        <option value="Priced" ${row.price_mode === "Included" ? "" : "selected"}>Priced</option>
+        <option value="Included" ${row.price_mode === "Included" ? "selected" : ""}>Included</option>
+      </select>
+    `;
+  }
+  if (field === "unit_price_override") {
+    const listId = `unitPriceOptions-${index}`;
+    return `
+      <input class="output-cell-input is-editing" data-output-editor-field="${field}" data-output-row="${index}" value="${escapeHtml(value)}" inputmode="decimal" list="${listId}">
+      <datalist id="${listId}">
+        <option value="Included"></option>
+      </datalist>
+    `;
+  }
+  const inputMode = field === "quantity" ? "decimal" : "text";
+  return `<input class="output-cell-input is-editing" data-output-editor-field="${field}" data-output-row="${index}" value="${escapeHtml(value)}" inputmode="${inputMode}">`;
+}
+
+function renderOutputEditCell(row = {}, index = 0, field = "", extraClass = "") {
+  const display = outputCellDisplayValue(row, field);
+  const pending = display === "Pending" || display === "Catalog";
+  return `
+    <td class="output-edit-cell ${extraClass} ${pending ? "is-pending" : ""}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Double click to amend">
+      <span class="output-cell-text">${escapeHtml(display)}</span>
+    </td>
+  `;
+}
+
 function ensureOutputRowsFromLineItems() {
   if (state.outputRows.length) return;
-  state.outputRows = state.lineItems.map(outputRowFromLineItem);
+  const generatedRows = state.lineItems.map(outputRowFromLineItem);
+  state.outputRows = [...generatedRows, ...includedBasisOutputRows(generatedRows)];
 }
 
 function outputRowsToLineItems(rows = state.outputRows) {
@@ -2232,7 +2250,16 @@ function outputRowsValid(rows = state.outputRows) {
     }
     if (row.price_mode !== "Included") {
       const unitPrice = numberOrNull(row.unit_price_override);
-      if (unitPrice === null || unitPrice < 0) errors.push(`${label}: Unit price is required.`);
+      const catalogUnitPrice = numberOrNull(row.catalog_unit_price);
+      const unitPriceKind = unitPriceEditKind(row.unit_price_override);
+      const hasPricingKeyword = Boolean(String(row.pricing_keyword || "").trim());
+      if (unitPriceKind === "invalid") {
+        errors.push(`${label}: Unit price must be a number or Included.`);
+      } else if (unitPrice !== null && unitPrice <= 0) {
+        errors.push(`${label}: Unit price must be greater than 0.`);
+      } else if (!hasPricingKeyword && unitPrice === null && catalogUnitPrice === null) {
+        errors.push(`${label}: Unit price or pricing keyword is required.`);
+      }
     }
   });
   return { valid: errors.length === 0 && rows.length > 0, errors };
@@ -2241,25 +2268,29 @@ function outputRowsValid(rows = state.outputRows) {
 function renderOutputValidationMessages(errors = state.outputErrors) {
   if (!elements.pricingReviewMessages) return;
   state.outputErrors = errors;
-  if (!errors.length) {
-    elements.pricingReviewMessages.innerHTML = "";
-    return;
-  }
-  elements.pricingReviewMessages.innerHTML = errors
-    .map((error) => `<div class="message warn">${escapeHtml(error)}</div>`)
-    .join("");
+  elements.pricingReviewMessages.innerHTML = "";
 }
 
 function matchSummaryStats(rows = []) {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const hasResolvedStatuses = safeRows.some((row) => pricingMatchStatus(row));
   const total = safeRows.reduce((sum, row) => {
     const amount = Number(String(row.amount || "").replaceAll(",", ""));
     return Number.isFinite(amount) ? sum + amount : sum;
   }, 0);
   const confident = safeRows.filter((row) => pricingMatchStatus(row) === "matched").length;
-  const needsReview = safeRows.filter((row) => pricingMatchStatus(row) !== "matched").length;
-  const confidence = safeRows.length > 0 ? Math.round((confident / safeRows.length) * 100) : 0;
-  return { total, confident, needsReview, confidence };
+  const needsReview = safeRows.filter((row) => {
+    const status = pricingMatchStatus(row);
+    if (status) return status !== "matched" && status !== "included" && status !== "manual-price";
+    if (row.price_mode === "Included") return false;
+    const quantity = numberOrNull(row.quantity);
+    const unitPrice = effectiveOutputUnitPrice(row);
+    return !String(row.pricing_keyword || "").trim() && (quantity === null || quantity <= 0 || unitPrice === null || unitPrice <= 0);
+  }).length;
+  const pending = safeRows.filter((row) => !pricingMatchStatus(row) && row.price_mode !== "Included").length;
+  const totalPending = safeRows.some((row) => row.price_mode !== "Included" && (row.amount === "" || row.amount === null || row.amount === undefined));
+  const confidence = hasResolvedStatuses && safeRows.length > 0 ? Math.round((confident / safeRows.length) * 100) : null;
+  return { total, confident, needsReview, confidence, pending, totalPending };
 }
 
 function renderMatchSummary(result = {}) {
@@ -2269,6 +2300,10 @@ function renderMatchSummary(result = {}) {
     return;
   }
   const stats = matchSummaryStats(rows);
+  const confidenceValue = stats.confidence === null ? "Pending" : `${stats.confidence}%`;
+  const totalValue = stats.totalPending
+    ? "Pending"
+    : `SGD ${stats.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   elements.matchSummary.innerHTML = `
     <div class="stat-card-row">
       <div class="stat-card">
@@ -2278,7 +2313,7 @@ function renderMatchSummary(result = {}) {
       </div>
       <div class="stat-card">
         <span class="stat-card-icon amber" aria-hidden="true">&#x1F3AF;</span>
-        <span class="stat-card-value">${stats.confidence}%</span>
+        <span class="stat-card-value">${confidenceValue}</span>
         <span class="stat-card-label">Catalog confidence</span>
       </div>
       <div class="stat-card">
@@ -2288,7 +2323,7 @@ function renderMatchSummary(result = {}) {
       </div>
       <div class="stat-card">
         <span class="stat-card-icon blue" aria-hidden="true">&#x1F4B0;</span>
-        <span class="stat-card-value">SGD ${stats.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <span class="stat-card-value">${totalValue}</span>
         <span class="stat-card-label">Total (excl. GST)</span>
       </div>
     </div>
@@ -2306,25 +2341,19 @@ function renderPricingMatches(rows = [], options = {}) {
   elements.pricingTableWrap.hidden = !outputRows.length;
   elements.pricingEmptyState.hidden = Boolean(outputRows.length) || Boolean(elements.pricingReviewMessages.innerHTML.trim());
   if (!outputRows.length) {
-    elements.pricingMatchesBody.innerHTML = `<tr><td colspan="7">No output rows yet.</td></tr>`;
+    elements.pricingMatchesBody.innerHTML = `<tr><td colspan="6">No output rows yet.</td></tr>`;
     updateDownloadButton();
     return;
   }
   elements.pricingMatchesBody.innerHTML = outputRows
     .map((row, index) => `
       <tr data-output-row="${index}">
-        <td><input class="output-cell-input" data-output-field="section" data-output-row="${index}" value="${escapeHtml(row.section)}"></td>
-        <td><textarea class="output-cell-input output-description-input" data-output-field="description" data-output-row="${index}" rows="2">${escapeHtml(row.description)}</textarea></td>
-        <td><input class="output-cell-input" data-output-field="quantity" data-output-row="${index}" value="${escapeHtml(row.quantity)}" inputmode="decimal"></td>
-        <td><input class="output-cell-input" data-output-field="unit" data-output-row="${index}" value="${escapeHtml(row.unit)}"></td>
-        <td>
-          <select class="output-cell-input" data-output-field="price_mode" data-output-row="${index}">
-            <option value="Priced" ${row.price_mode === "Included" ? "" : "selected"}>Priced</option>
-            <option value="Included" ${row.price_mode === "Included" ? "selected" : ""}>Included</option>
-          </select>
-        </td>
-        <td><input class="output-cell-input" data-output-field="unit_price_override" data-output-row="${index}" value="${escapeHtml(row.price_mode === "Included" ? "" : row.unit_price_override)}" inputmode="decimal" ${row.price_mode === "Included" ? "disabled" : ""}></td>
-        <td class="amount-cell">${formatAmount(row.amount)}</td>
+        ${renderOutputEditCell(row, index, "section")}
+        ${renderOutputEditCell(row, index, "description", "output-description-cell")}
+        ${renderOutputEditCell(row, index, "quantity")}
+        ${renderOutputEditCell(row, index, "unit")}
+        ${renderOutputEditCell(row, index, "unit_price_override")}
+        <td class="amount-cell ${outputCellDisplayValue(row, "amount") === "Pending" ? "is-pending" : ""}">${escapeHtml(outputCellDisplayValue(row, "amount"))}</td>
       </tr>
     `)
     .join("");
@@ -2451,6 +2480,77 @@ function handleOutputRowEdit(event) {
   syncControlStates();
 }
 
+function commitOutputEditor(editor) {
+  if (!editor || !editor.dataset.outputEditorField) return;
+  const index = Number(editor.dataset.outputRow);
+  const field = editor.dataset.outputEditorField;
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index] || !field) return;
+  const currentRow = state.outputRows[index];
+  let nextRow = { ...currentRow, [field]: editor.value };
+  if (field === "unit_price_override") {
+    const value = String(editor.value || "").trim();
+    if (value.toLowerCase() === "included") {
+      nextRow = { ...currentRow, price_mode: "Included", unit_price_override: "", display_price: "Included" };
+    } else {
+      nextRow = { ...currentRow, price_mode: "Priced", display_price: "", unit_price_override: value };
+    }
+  }
+  state.outputRows[index] = recalculateOutputRow(nextRow);
+  state.lineItems = outputRowsToLineItems();
+  state.downloadFile = null;
+  const validation = outputRowsValid();
+  renderOutputValidationMessages(validation.valid ? [] : validation.errors);
+  renderPricingMatches(state.outputRows);
+  renderMatchSummary({ pricing_matches: state.outputRows });
+  syncControlStates();
+}
+
+function openOutputCellEditor(cell) {
+  if (!cell || cell.querySelector("[data-output-editor-field]")) return;
+  const index = Number(cell.dataset.outputRow);
+  const field = cell.dataset.outputEditField;
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index] || !field) return;
+  cell.innerHTML = outputEditorHtml(state.outputRows[index], index, field);
+  const editor = cell.querySelector("[data-output-editor-field]");
+  if (!editor) return;
+  editor.focus();
+  if (typeof editor.select === "function") editor.select();
+}
+
+function handleOutputCellOpen(event) {
+  const cell = event.target.closest(".output-edit-cell");
+  if (!cell) return;
+  openOutputCellEditor(cell);
+}
+
+function handleOutputCellKeydown(event) {
+  const editor = event.target.closest("[data-output-editor-field]");
+  if (editor) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      renderPricingMatches(state.outputRows);
+      return;
+    }
+    if (event.key === "Enter" && editor.tagName !== "TEXTAREA") {
+      event.preventDefault();
+      commitOutputEditor(editor);
+    }
+    return;
+  }
+  const cell = event.target.closest(".output-edit-cell");
+  if (!cell) return;
+  if (event.key === "Enter" || event.key === "F2") {
+    event.preventDefault();
+    openOutputCellEditor(cell);
+  }
+}
+
+function handleOutputEditorCommit(event) {
+  const editor = event.target.closest("[data-output-editor-field]");
+  if (!editor) return;
+  commitOutputEditor(editor);
+}
+
 function noteWorkflowEvent() {}
 
 function renderBasisEmptyState(message = "Load images, complete Customer and Quote Company, then start analysis to review the draft here.") {
@@ -2511,13 +2611,16 @@ function basisLinePillLabel(line = {}) {
 
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
+  const primaryAction = tag === "Custom"
+    ? `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Custom" aria-label="Keep this line as custom manual pricing" title="Custom manual pricing">$</button>`
+    : `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Include" aria-label="Mark this line as included" title="Mark included">&#x2713;</button>`;
   return `
     <li class="basis-line-row basis-line-${escapeHtml(tag.toLowerCase())}">
       <span class="basis-line-icon" aria-hidden="true"></span>
       <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
       <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
-        <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Include" aria-label="Mark this line as included" title="Mark included">&#x2713;</button>
+        ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
         <button class="basis-line-tool" type="button" data-revise-section="${escapeHtml(section.id)}" data-revise-line-index="${index}" aria-label="Revise this line" title="Revise this line">Re</button>
       </span>
@@ -2572,7 +2675,14 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
       <div class="basis-review-grid">
         ${sections.map((section) => `
           <div class="basis-review-item">
-            <h4>${escapeHtml(section.title)}</h4>
+            <div class="basis-section-heading">
+              <h4>${escapeHtml(section.title)}</h4>
+              <span class="basis-section-actions">
+                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Include" aria-label="Mark all review lines in ${escapeHtml(section.title)} as included" title="Mark all Confidence lines included">&#x2713;</button>
+                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Exclude" aria-label="Mark all review lines in ${escapeHtml(section.title)} as excluded" title="Mark all Confidence lines excluded">X</button>
+                <span class="basis-section-action-spacer" aria-hidden="true"></span>
+              </span>
+            </div>
             <ul class="basis-line-list">
               ${(section.lines || []).map((line, index) => renderBasisLine(section, line, index)).join("")}
             </ul>
@@ -2599,7 +2709,7 @@ function updateQuoteBasisCard(source = "edited") {
 }
 
 function retagBasisLine(sectionId, lineIndex, nextTag) {
-  if (!sectionId || !["Include", "Exclude"].includes(nextTag)) return;
+  if (!sectionId || !["Include", "Custom", "Exclude"].includes(nextTag)) return;
   const sections = cloneQuoteBasisSections(state.quoteBasisSections);
   const section = sections.find((item) => item.id === sectionId);
   const index = Number(lineIndex);
@@ -2613,9 +2723,30 @@ function retagBasisLine(sectionId, lineIndex, nextTag) {
   syncControlStates();
 }
 
+function retagBasisSectionConfirmLines(sectionId, nextTag) {
+  if (!sectionId || !["Include", "Exclude"].includes(nextTag)) return;
+  const sections = cloneQuoteBasisSections(state.quoteBasisSections);
+  const section = sections.find((item) => item.id === sectionId);
+  if (!section) return;
+  let changed = false;
+  section.lines = (section.lines || []).map((line) => {
+    const currentTag = normalizeBasisTag(line.tag);
+    if (currentTag === "Custom" || currentTag === nextTag) return line;
+    changed = true;
+    return { ...line, tag: nextTag };
+  });
+  if (!changed) return;
+  state.quoteBasisSections = sections;
+  state.quoteBasis = quoteBasisFromSections(sections);
+  state.basisConfirmed = false;
+  state.downloadFile = null;
+  updateQuoteBasisCard("edited");
+  syncControlStates();
+}
+
 function basisChatIntroMessage() {
   if (state.basisChat.scope === "line") {
-    return "Describe the replacement. I will show a proposed update before applying anything.";
+    return "Tell me what to change. I will draft the full replacement sentence for approval before applying it.";
   }
   return "Ask a question or describe changes to the quotation basis. I will show a proposed update before applying anything.";
 }
@@ -3484,7 +3615,7 @@ async function handleGenerate() {
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
     setResultStatus(data.status || "Failed", "is-bad");
     renderMessages(data.errors || ["Generation failed."], "error");
-    if (data.pricing_matches?.length && !state.outputRows.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+    if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
     renderMatchSummary(data);
     noteWorkflowEvent("assistant", (data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
     syncControlStates();
@@ -3510,7 +3641,7 @@ async function handleGenerate() {
     noteWorkflowEvent("assistant", "Excel quotation is ready. Use Download Excel in the Output footer.", { tone: "instruction" });
     setDownloadFiles(data.files || []);
   }
-  if (data.pricing_matches?.length && !state.outputRows.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+  if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
   renderMatchSummary(data);
   syncControlStates();
 }
@@ -3607,7 +3738,7 @@ async function resumeSavedJob() {
       setWorkflowStage("details_review");
       setResultStatus(data.status || "Failed", "is-bad");
       renderMessages(data.errors || ["Generation failed."], "error");
-      if (data.pricing_matches?.length && !state.outputRows.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+      if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
       renderMatchSummary(data);
       noteWorkflowEvent("assistant", (data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
       syncControlStates();
@@ -3633,7 +3764,7 @@ async function resumeSavedJob() {
       noteWorkflowEvent("assistant", "Excel quotation is ready. Use Download Excel in the Output footer.", { tone: "instruction" });
       setDownloadFiles(data.files || []);
     }
-    if (data.pricing_matches?.length && !state.outputRows.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+    if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
     renderMatchSummary(data);
     syncControlStates();
     return;
@@ -3843,6 +3974,14 @@ function goToNextSidePanel() {
 }
 
 function handleQuoteBasisClick(event) {
+  const sectionAction = event.target.closest("[data-basis-section-action]");
+  if (sectionAction) {
+    retagBasisSectionConfirmLines(
+      sectionAction.dataset.basisSection || "",
+      sectionAction.dataset.basisSectionAction || ""
+    );
+    return;
+  }
   const tagButton = event.target.closest("[data-basis-tag]");
   if (tagButton) {
     retagBasisLine(
@@ -3873,6 +4012,9 @@ function markPageUnloading() {
 
 function wireEvents() {
   wireRichTextEditors();
+  if (elements.pricingReferenceFile) {
+    elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;
+  }
   window.addEventListener("pagehide", markPageUnloading);
   window.addEventListener("beforeunload", markPageUnloading);
   elements.imageInput.addEventListener("change", async (event) => {
@@ -3969,6 +4111,9 @@ function wireEvents() {
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
   elements.pricingReferenceFile.addEventListener("change", async () => {
     const file = elements.pricingReferenceFile.files?.[0];
+    if (elements.pricingReferenceFileName) {
+      elements.pricingReferenceFileName.textContent = file?.name || "No file chosen";
+    }
     const result = await validatePricingReferenceFile(file);
     state.pendingPricingReference = result;
     renderPricingReferencePreview(result);
@@ -3983,6 +4128,10 @@ function wireEvents() {
   elements.analysisConfirmModal.addEventListener("click", (event) => {
     if (event.target.closest("[data-analysis-confirm-close]")) closeAnalysisConfirmModal();
   });
+  elements.pricingMatchesBody.addEventListener("dblclick", handleOutputCellOpen);
+  elements.pricingMatchesBody.addEventListener("keydown", handleOutputCellKeydown);
+  elements.pricingMatchesBody.addEventListener("focusout", handleOutputEditorCommit);
+  elements.pricingMatchesBody.addEventListener("change", handleOutputEditorCommit);
   elements.discussQuoteButton.addEventListener("click", () => openBasisChatOverlay("quote"));
   elements.resetQuoteBasisButton.addEventListener("click", resetQuoteBasisToOriginal);
   elements.presetSelect.addEventListener("change", () => {

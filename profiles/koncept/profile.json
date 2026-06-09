@@ -1,9 +1,8 @@
 {
   "id": "koncept",
   "label": "Koncept Exhibition Quotation",
-  "description": "Koncept pricing catalog, analysis reference, and customer quotation layout.",
-  "pricing_catalog": "pricing-catalog.json",
-  "pricing_reference": "pricing-catalog.ai-reference.md",
+  "description": "Koncept customer quotation layout and reusable company presets.",
+  "default_pricing_reference": "koncept",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json",
   "default_quote_detail_preset": "koncept-image-default",
