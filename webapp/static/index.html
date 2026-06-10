@@ -591,7 +591,7 @@
             <button class="icon-button" type="button" id="settingsCloseButton" aria-label="Close settings modal">x</button>
           </header>
           <div class="settings-tabs">
-            <section><h4>Pricing References</h4><p>Pricing catalogue, matching aliases, and GST/VAT configuration.</p><div id="settingsPricingReferencesList"></div></section>
+            <section><h4>Pricing References</h4><p>Pricing catalogue, matching aliases, and GST/VAT configuration.</p><div class="settings-section-actions"><button class="secondary-button" type="button" id="settingsNewPricingReferenceButton">New / Import</button></div><div id="settingsPricingReferencesList"></div></section>
             <section><h4>Profiles</h4><p>Quote layout, company defaults, and reusable presets.</p></section>
             <section><h4>Import</h4><p>Upload .xlsx, .csv, or .md references for preview before saving.</p></section>
             <section><h4>Permissions / Role info</h4><p>Admin and management can manage settings. Operators and viewers cannot save, delete, edit, or import references.</p></section>
@@ -620,6 +620,19 @@
               Pricing reference name
               <input id="pricingReferenceName" type="text" autocomplete="off">
             </label>
+            <div class="form-grid compact tax-settings-grid">
+              <label class="field-control">
+                <span>Tax label</span>
+                <select id="pricingReferenceTaxLabel" required>
+                  <option value="GST">GST</option>
+                  <option value="VAT">VAT</option>
+                </select>
+              </label>
+              <label class="field-control">
+                <span>Tax rate (%)</span>
+                <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
+              </label>
+            </div>
             <label>
               Workbook/catalog upload
               <span class="file-picker-control">

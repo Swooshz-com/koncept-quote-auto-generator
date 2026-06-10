@@ -109,6 +109,7 @@ const STAGE_LABELS = {
 const state = {
   profileId: "",
   pricingReferenceId: "",
+  pricingReferenceSource: "",
   selectedPresetValue: "",
   profiles: [],
   pricingReferences: [],
@@ -265,6 +266,9 @@ const elements = {
   settingsModal: qs("#settingsModal"),
   settingsCloseButton: qs("#settingsCloseButton"),
   settingsPricingReferencesList: qs("#settingsPricingReferencesList"),
+  settingsNewPricingReferenceButton: qs("#settingsNewPricingReferenceButton"),
+  pricingReferenceTaxLabel: qs("#pricingReferenceTaxLabel"),
+  pricingReferenceTaxRate: qs("#pricingReferenceTaxRate"),
   selectedPricingReferenceSummary: qs("#selectedPricingReferenceSummary"),
   selectedPricingReferenceTax: qs("#selectedPricingReferenceTax"),
   outputSortMode: qs("#outputSortMode"),
@@ -364,8 +368,10 @@ function defaultPricingReference() {
 
 function currentPricingReference() {
   const pricingReferenceId = String(state.pricingReferenceId || "").trim();
+  const source = String(state.pricingReferenceSource || "").trim();
   if (!pricingReferenceId) return null;
-  return state.pricingReferences.find((reference) => reference.id === pricingReferenceId)
+  return state.pricingReferences.find((reference) => reference.id === pricingReferenceId && (!source || pricingReferenceSelectValue(reference).startsWith(`${source}::`)))
+    || state.pricingReferences.find((reference) => reference.id === pricingReferenceId && !source)
     || null;
 }
 
@@ -377,14 +383,17 @@ function syncSelectedPricingReference() {
   const selectedReference = currentPricingReference();
   if (selectedReference) {
     state.pricingReferenceId = selectedReference.id || "";
+    state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(selectedReference)).source;
     return;
   }
   const fallbackReference = defaultPricingReference();
   if (fallbackReference) {
     state.pricingReferenceId = fallbackReference.id || "";
+    state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallbackReference)).source;
     return;
   }
   state.pricingReferenceId = "";
+  state.pricingReferenceSource = "";
 }
 
 function currentGenerator() {
@@ -1230,6 +1239,7 @@ function saveSessionState() {
       savedAt: new Date().toISOString(),
       profileId: state.profileId,
       pricingReferenceId: state.pricingReferenceId,
+      pricingReferenceSource: state.pricingReferenceSource,
       selectedPresetValue: state.selectedPresetValue,
       images: state.images.slice(0, MAX_REFERENCE_IMAGES),
       quoteDetails: collectQuoteDetails(),
@@ -1268,6 +1278,7 @@ function restoreSessionState() {
   }
   state.profileId = saved.profileId || "";
   state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
+  state.pricingReferenceSource = saved.pricingReferenceSource || "";
   state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {});
   syncSelectedPricingReference();
   renderProfileOptions();
@@ -1608,6 +1619,7 @@ function startNewQuote() {
   clearSessionState();
   state.profileId = "";
   state.pricingReferenceId = "";
+  state.pricingReferenceSource = "";
   state.images = [];
   setImageUploadStatus("");
   state.headerLogo = null;
@@ -1672,6 +1684,7 @@ function renderProfileOptions() {
   const fallbackReference = currentPricingReference() || defaultPricingReference() || references[0] || null;
   if (fallbackReference) {
     state.pricingReferenceId = fallbackReference.id || "";
+    state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallbackReference)).source;
   }
   const selectedReference = currentPricingReference();
   elements.profileSelect.value = selectedReference ? pricingReferenceSelectValue(selectedReference) : selectedValue;
@@ -1684,7 +1697,8 @@ function renderSettingsSummary() {
   elements.settingsPricingReferencesList.innerHTML = state.pricingReferences.length
     ? state.pricingReferences.map((reference) => {
       const tax = reference.tax || {};
-      return `<div class="settings-list-row"><strong>${escapeHtml(reference.label || reference.id)}</strong><span>${escapeHtml(reference.source || "bundled")}</span><span>${escapeHtml(normalizeTaxLabel(tax.label))} ${escapeHtml(taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE))}%</span></div>`;
+      const canDelete = reference.source === "company";
+      return `<div class="settings-list-row"><strong>${escapeHtml(reference.label || reference.id)}</strong><span>${escapeHtml(reference.source || "bundled")}</span><span>${escapeHtml(normalizeTaxLabel(tax.label))} ${escapeHtml(taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE))}%</span><span>${canDelete ? `<button class="secondary-button danger-button" type="button" data-settings-delete-pricing-reference="${escapeHtml(reference.id)}">Delete</button>` : "Bundled"}</span></div>`;
     }).join("")
     : "<p>No pricing references loaded.</p>";
 }
@@ -1840,6 +1854,7 @@ function normalizeOutputRow(row = {}) {
     unit_price_override: row.unit_price_override ?? "",
     catalog_unit_price: row.catalog_unit_price ?? row.unit_price ?? row.sale_unit_price ?? "",
     pricing_keyword: row.pricing_keyword || row.keyword || "",
+    source_basis_line_id: row.source_basis_line_id || "",
     status: row.status || "",
   });
 }
@@ -1896,6 +1911,18 @@ function renderPricingReferencePreview(result = null) {
   if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = !canSave;
 }
 
+function pricingReferenceModalTax() {
+  return {
+    label: normalizeTaxLabel(elements.pricingReferenceTaxLabel?.value),
+    rate: taxRateFromPercentInput(elements.pricingReferenceTaxRate?.value, DEFAULT_TAX_RATE),
+  };
+}
+
+function resetPricingReferenceTaxInputs() {
+  if (elements.pricingReferenceTaxLabel) elements.pricingReferenceTaxLabel.value = "GST";
+  if (elements.pricingReferenceTaxRate) elements.pricingReferenceTaxRate.value = "9";
+}
+
 async function validatePricingReferenceFile(file) {
   if (!file) return pricingReferenceValidationResult([], [], 0, "");
   if (file.size > 2 * 1024 * 1024) {
@@ -1950,6 +1977,7 @@ function openPricingReferenceModal() {
   if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
   if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
   if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
+  resetPricingReferenceTaxInputs();
   renderPricingReferencePreview(null);
   elements.pricingReferenceModal.hidden = false;
   elements.pricingReferenceModal.classList.add("is-open");
@@ -1965,6 +1993,7 @@ function closePricingReferenceModal() {
 async function savePricingReferenceFromModal(event) {
   event.preventDefault();
   const name = elements.pricingReferenceName.value.trim();
+  const tax = pricingReferenceModalTax();
   const result = state.pendingPricingReference;
   const canSave = result?.canSave ?? Boolean(result && !result.errors.length && result.items.length);
   if (!name || !result || !canSave) {
@@ -1975,7 +2004,7 @@ async function savePricingReferenceFromModal(event) {
     id: safeId(name, `company-ref-${Date.now().toString(36)}`),
     label: name,
     description: `Imported from ${result.sourceName || "settings upload"}`,
-    tax: selectedPricingReferenceTax(),
+    tax,
     items: result.items,
   });
   if (!ok) {
@@ -1984,6 +2013,7 @@ async function savePricingReferenceFromModal(event) {
   }
   await loadProfiles();
   state.pricingReferenceId = data.pricing_reference?.id || state.pricingReferenceId;
+  state.pricingReferenceSource = data.pricing_reference?.source || "company";
   syncSelectedPricingReference();
   renderProfileOptions();
   clearGeneratedQuoteState();
@@ -1992,12 +2022,12 @@ async function savePricingReferenceFromModal(event) {
   syncControlStates();
 }
 
-async function deleteSelectedPricingReference() {
-  const selected = currentPricingReference();
-  if (!selected || selected.source !== "company") return;
-  const confirmed = window.confirm(`Delete company pricing reference "${selected.label || selected.id}"?`);
+async function deleteCompanyPricingReference(referenceId) {
+  const reference = state.pricingReferences.find((item) => item.id === referenceId && item.source === "company");
+  if (!reference) return;
+  const confirmed = window.confirm(`Delete company pricing reference "${reference.label || reference.id}"?`);
   if (!confirmed) return;
-  const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(selected.id)}`, {
+  const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
     method: "DELETE",
     headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
   }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
@@ -2006,12 +2036,21 @@ async function deleteSelectedPricingReference() {
     return;
   }
   await loadProfiles();
-  state.pricingReferenceId = "";
-  syncSelectedPricingReference();
+  if (state.pricingReferenceId === reference.id && state.pricingReferenceSource === "company") {
+    state.pricingReferenceId = "";
+    state.pricingReferenceSource = "";
+    syncSelectedPricingReference();
+  }
   renderProfileOptions();
   clearGeneratedQuoteState();
-  noteWorkflowEvent("assistant", `Deleted company pricing reference "${selected.label || selected.id}".`);
+  noteWorkflowEvent("assistant", `Deleted company pricing reference "${reference.label || reference.id}".`);
   syncControlStates();
+}
+
+async function deleteSelectedPricingReference() {
+  const selected = currentPricingReference();
+  if (!selected || selected.source !== "company") return;
+  await deleteCompanyPricingReference(selected.id);
 }
 
 async function loadProfiles() {
@@ -2053,10 +2092,11 @@ function clearGeneratedQuoteState() {
 
 function handleProfileSelectionChange() {
   const nextSelection = pricingReferenceSelectionFromValue(elements.profileSelect.value || "");
-  if (nextSelection.pricingReferenceId === state.pricingReferenceId) {
+  if (nextSelection.pricingReferenceId === state.pricingReferenceId && nextSelection.source === state.pricingReferenceSource) {
     return;
   }
   state.pricingReferenceId = nextSelection.pricingReferenceId;
+  state.pricingReferenceSource = nextSelection.source;
   syncSelectedPricingReference();
   renderProfileOptions();
   clearGeneratedQuoteState();
@@ -2337,6 +2377,7 @@ function outputRowFromLineItem(item = {}) {
     unit_price_override: normalized.unit_price_override || "",
     catalog_unit_price: normalized.catalog_unit_price || "",
     pricing_keyword: normalized.pricing_keyword,
+    source_basis_line_id: normalized.source_basis_line_id,
   });
 }
 
@@ -2353,6 +2394,7 @@ function outputRowFromPricingMatch(row = {}) {
     unit_price_override: status === "manual-price" ? unitPrice : "",
     catalog_unit_price: status === "manual-price" ? "" : unitPrice,
     pricing_keyword: row.keyword || row.pricing_keyword || "",
+    source_basis_line_id: row.source_basis_line_id || "",
     status: row.status,
   });
 }
@@ -2445,7 +2487,9 @@ function outputRowsToLineItems(rows = state.outputRows) {
       unit: normalizeUnit(row.unit || ""),
       pricing_keyword: row.pricing_keyword || "",
       price_mode: row.price_mode === "Included" ? "Included" : "Priced",
+      source_basis_line_id: row.source_basis_line_id || "",
     };
+    if (!next.source_basis_line_id) delete next.source_basis_line_id;
     if (next.price_mode === "Included") {
       next.display_price = "Included";
     } else {
@@ -2494,6 +2538,20 @@ function deleteOutputRow(index) {
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
+  syncControlStates();
+}
+
+function moveOutputRow(index, direction) {
+  if (!Number.isInteger(index) || index < 0 || index >= state.outputRows.length) return;
+  const nextIndex = direction === "up" ? index - 1 : direction === "down" ? index + 1 : index;
+  if (nextIndex < 0 || nextIndex >= state.outputRows.length || nextIndex === index) return;
+  const [row] = state.outputRows.splice(index, 1);
+  state.outputRows.splice(nextIndex, 0, row);
+  state.outputSortMode = "manual";
+  state.lineItems = outputRowsToLineItems();
+  state.downloadFile = null;
+  renderPricingMatches(state.outputRows);
+  renderMatchSummary({ pricing_matches: state.outputRows });
   syncControlStates();
 }
 
@@ -2591,7 +2649,10 @@ function renderPricingMatches(rows = [], options = {}) {
         ${renderOutputEditCell(row, index, "unit")}
         ${renderOutputEditCell(row, index, "unit_price_override")}
         <td class="amount-cell ${outputCellDisplayValue(row, "amount") === "???" ? "is-pending" : ""}">${escapeHtml(outputCellDisplayValue(row, "amount"))}</td>
-        <td class="output-row-actions"><button class="output-delete-button" type="button" data-output-delete-row="${index}" aria-label="Delete row">Trash</button></td>
+        <td class="output-row-actions">
+          ${state.outputSortMode === "manual" ? `<button class="output-move-button" type="button" data-output-move-row="${index}" data-output-move-direction="up" ${index === 0 ? "disabled" : ""}>Up</button><button class="output-move-button" type="button" data-output-move-row="${index}" data-output-move-direction="down" ${index === outputRows.length - 1 ? "disabled" : ""}>Down</button>` : ""}
+          <button class="output-delete-button" type="button" data-output-delete-row="${index}" aria-label="Delete row">Trash</button>
+        </td>
       </tr>
     `)
     .join("");
@@ -2774,6 +2835,12 @@ function openOutputCellEditor(cell) {
 }
 
 function handleOutputCellClick(event) {
+  const moveButton = event.target.closest("[data-output-move-row]");
+  if (moveButton) {
+    event.preventDefault();
+    moveOutputRow(Number(moveButton.dataset.outputMoveRow), moveButton.dataset.outputMoveDirection);
+    return;
+  }
   const deleteButton = event.target.closest("[data-output-delete-row]");
   if (deleteButton) {
     event.preventDefault();
@@ -3377,7 +3444,7 @@ async function buildAiBasisChatResponse(text) {
     if (!started.ok) {
       removeBasisChatTyping(typingMessage);
       appendBasisChatMessage("assistant", (started.data.errors || ["I could not answer that yet."]).join("\n"));
-      return null;
+      return { errorDisplayed: true };
     }
     const polled = await pollJob(started.data.job_id, (job) => {
       setBusyText(job.status === "running" ? "Answering basis question..." : "Queued...");
@@ -3386,7 +3453,7 @@ async function buildAiBasisChatResponse(text) {
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       removeBasisChatTyping(typingMessage);
       appendBasisChatMessage("assistant", (data.errors || polled.data.errors || ["I could not answer that yet."]).join("\n"));
-      return null;
+      return { errorDisplayed: true };
     }
     if (data.proposal) {
       return { proposal: normalizeServerBasisChatProposal(data.proposal) };
@@ -3435,6 +3502,7 @@ async function handleBasisChatSubmit(event) {
     appendBasisChatMessage("assistant", aiResult.answer);
     return;
   }
+  if (aiResult?.errorDisplayed) return;
 
   appendBasisChatMessage("assistant", "AI basis chat did not return a usable response. Try rephrasing the change.");
 }
@@ -3962,10 +4030,19 @@ async function handleDraftBasis(options = {}) {
   }
 
   const data = polled.data.result || {};
-  if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length && !options.finalAfterClarifications) {
+  if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length) {
     clearAiFailureBanner();
-    openBlockingClarifications(data.blocking_clarification_questions, data.analysis_findings || [], data.project || {});
-    noteWorkflowEvent("assistant", "Please answer the clarification questions before I generate the final Quote Basis.", { tone: "warn" });
+    openBlockingClarifications(data.blocking_clarification_questions, data.analysis_findings || state.analysisFindings || [], data.project || state.boothDimensions || {});
+    const message = options.finalAfterClarifications
+      ? "More clarification is required before the final Quote Basis can be generated. Please answer the open questions."
+      : "Please answer the clarification questions before I generate the final Quote Basis.";
+    noteWorkflowEvent("assistant", message, { tone: "warn" });
+    return;
+  }
+  const hasFinalBasis = Array.isArray(data.quote_basis_sections) && data.quote_basis_sections.length && Array.isArray(data.line_items) && data.line_items.length;
+  if (options.finalAfterClarifications && !hasFinalBasis) {
+    renderClarificationQuestions();
+    noteWorkflowEvent("assistant", "Final Quote Basis was not generated yet. Please review the clarification answers and try again.", { tone: "warn" });
     return;
   }
   state.blockingClarificationQuestions = [];
@@ -4620,7 +4697,12 @@ function wireEvents() {
   elements.newQuoteButton.addEventListener("click", startNewQuote);
   elements.settingsButton?.addEventListener("click", openSettingsModal);
   elements.settingsCloseButton?.addEventListener("click", closeSettingsModal);
-  elements.settingsModal?.addEventListener("click", (event) => { if (event.target.matches("[data-settings-close]")) closeSettingsModal(); });
+  elements.settingsModal?.addEventListener("click", (event) => {
+    if (event.target.matches("[data-settings-close]")) closeSettingsModal();
+    const deleteButton = event.target.closest("[data-settings-delete-pricing-reference]");
+    if (deleteButton) deleteCompanyPricingReference(deleteButton.dataset.settingsDeletePricingReference);
+  });
+  elements.settingsNewPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.newPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
   elements.deletePricingReferenceButton?.addEventListener("click", deleteSelectedPricingReference);

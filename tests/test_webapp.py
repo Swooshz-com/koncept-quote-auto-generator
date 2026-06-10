@@ -3198,6 +3198,7 @@ const DEFAULT_PRICING_REFERENCE_ID = "koncept";
 const state = {
   profileId: "other",
   pricingReferenceId: "",
+  pricingReferenceSource: "",
   defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   profiles: [
     { id: "koncept", label: "Koncept", default_pricing_reference: "shared" },
@@ -3207,6 +3208,8 @@ const state = {
     { id: "shared", label: "Shared A", source: "bundled" },
     { id: "unique", label: "Unique", source: "bundled" },
     { id: "local-one", label: "Local One", source: "local" },
+    { id: "koncept", label: "Bundled Koncept", source: "bundled" },
+    { id: "koncept", label: "Company Koncept", source: "company" },
   ],
 };
 eval([
@@ -3222,6 +3225,7 @@ eval([
 assert.strictEqual(pricingReferenceSelectValue(state.pricingReferences[2]), "local::local-one");
 const selection = pricingReferenceSelectionFromValue("local::local-one");
 state.pricingReferenceId = selection.pricingReferenceId;
+state.pricingReferenceSource = selection.source;
 syncSelectedPricingReference();
 assert.strictEqual(state.profileId, "other");
 assert.strictEqual(state.pricingReferenceId, "local-one");
@@ -3229,8 +3233,18 @@ assert.strictEqual(currentPricingReference().label, "Local One");
 assert.strictEqual(currentProfile().id, "other");
 assert.strictEqual(resolvedProfileIdForPayload(), "other");
 
+const bundledKoncept = pricingReferenceSelectionFromValue("bundled::koncept");
+state.pricingReferenceId = bundledKoncept.pricingReferenceId;
+state.pricingReferenceSource = bundledKoncept.source;
+assert.strictEqual(currentPricingReference().label, "Bundled Koncept");
+const companyKoncept = pricingReferenceSelectionFromValue("company::koncept");
+state.pricingReferenceId = companyKoncept.pricingReferenceId;
+state.pricingReferenceSource = companyKoncept.source;
+assert.strictEqual(currentPricingReference().label, "Company Koncept");
+
 state.profileId = "koncept";
 state.pricingReferenceId = "";
+state.pricingReferenceSource = "";
 syncSelectedPricingReference();
 assert.strictEqual(currentPricingReference().label, "Shared A");
 assert.strictEqual(resolvedProfileIdForPayload(), "koncept");
@@ -3601,6 +3615,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('data-output-included-action="true"', js)
         self.assertIn("handleOutputCellClick", js)
         self.assertIn("resetOutputDraft", js)
+        self.assertIn("moveOutputRow", js)
+        self.assertIn('data-output-move-direction="up"', js)
+        self.assertIn("source_basis_line_id", js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
         customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('id="quoteCompanyPanel"', 1)[0]
@@ -3608,6 +3625,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn('id="deletePricingReferenceButton"', customer_panel)
         self.assertIn("Settings", html)
         self.assertIn("settingsModal", html)
+        self.assertIn("settingsNewPricingReferenceButton", html)
+        self.assertIn("pricingReferenceTaxLabel", html)
+        self.assertIn("pricingReferenceTaxRate", html)
+        self.assertIn("data-settings-delete-pricing-reference", js)
         self.assertIn('accept=".xlsx,.csv,.md"', html)
         self.assertNotIn('accept=".xlsx,.csv,.json"', html)
         self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";', js)
@@ -3958,6 +3979,37 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         self.assertEqual(draft["quote_basis_sections"], [])
         self.assertEqual(draft["line_items"], [])
         self.assertEqual(draft["blocking_clarification_questions"][0]["status"], "open")
+
+    def test_pricing_reference_payload_normalizes_tax_on_save(self):
+        base = {
+            "id": "tax-ref",
+            "label": "Tax Ref",
+            "items": [{
+                "id": "row-1",
+                "section": "Graphics",
+                "description": "Printed graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 10,
+                "markup_multiplier": 2,
+            }],
+        }
+        vat = webapp.normalize_pricing_reference_payload({**base, "tax": {"label": "VAT", "rate": "20"}})
+        gst = webapp.normalize_pricing_reference_payload({**base, "id": "gst-ref", "tax": {"label": "GST", "rate": "9"}})
+        self.assertEqual(vat["tax"], {"label": "VAT", "rate": 0.2})
+        self.assertEqual(gst["tax"], {"label": "GST", "rate": 0.09})
+
+    def test_static_basis_chat_failure_displays_one_error(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("errorDisplayed: true", js)
+        self.assertIn("if (aiResult?.errorDisplayed) return;", js)
+
+    def test_static_repeated_clarification_blockers_keep_clarification_ui(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("More clarification is required before the final Quote Basis can be generated", js)
+        self.assertIn("if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length)", js)
+        self.assertIn("const hasFinalBasis", js)
+        self.assertIn("Final Quote Basis was not generated yet", js)
+
 
     def test_static_literal_replacement_and_clarification_contracts_exist(self):
         static_dir = ROOT / "webapp" / "static"

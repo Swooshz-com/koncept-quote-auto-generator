@@ -3461,3 +3461,25 @@ td input {
   color: #17345c;
   font-size: 12px;
 }
+
+.output-move-button {
+  min-height: 30px;
+  margin-right: 4px;
+  padding: 0 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  color: #17345c;
+  font-size: 12px;
+  font-weight: 820;
+  cursor: pointer;
+}
+
+.output-move-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.settings-section-actions {
+  margin: 10px 0;
+}
