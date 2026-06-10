@@ -25,7 +25,7 @@ COL_REMARKS = 11
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert a Koncept pricing workbook into a profile pricing-catalog.json.")
+    parser = argparse.ArgumentParser(description="Convert a Koncept pricing workbook into a root-level pricing reference catalog.")
     parser.add_argument("--source", required=True, type=Path, help="Pricing source .xlsx file.")
     parser.add_argument("--source-label", help=argparse.SUPPRESS)
     parser.add_argument("--out", required=True, type=Path, help="Output pricing catalog JSON path.")
