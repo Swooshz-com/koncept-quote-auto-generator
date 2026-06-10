@@ -1,3 +1,7 @@
+
+# Optional Render example for non-default managed-hosting experiments.
+# Hostinger VPS + Coolify remains the documented default deployment target.
+# Do not use this example for public production until OIDC token exchange and claims validation are implemented.
 services:
   - type: web
     name: swooshz-quote-generator

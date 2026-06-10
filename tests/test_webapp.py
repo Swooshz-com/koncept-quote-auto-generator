@@ -272,13 +272,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("<strong>Sample Quotation Co Pte Ltd</strong>", brief["rich_text"]["headerDetails"])
         self.assertIn("Quote basis confirmed from webapp", brief["notes"][0])
 
-    def test_payload_to_brief_normalizes_quote_level_vat(self):
+    def test_payload_to_brief_uses_pricing_reference_tax_over_quote_level_tax(self):
         payload = valid_payload()
         payload["tax"] = {"label": "VAT", "rate": "20%"}
 
         brief = webapp.payload_to_brief(payload)
 
-        self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
+        self.assertEqual(brief["tax"], {"label": "GST", "rate": 0.09})
 
     def test_payload_to_brief_derives_booth_size_from_title_without_manual_fields(self):
         payload = valid_payload()
@@ -686,9 +686,14 @@ class WebappServerTest(unittest.TestCase):
                 self.assertTrue(login_redirect.exception.headers["Location"].startswith("https://issuer.example/authorize?"))
                 self.assertIn(webapp.OIDC_STATE_COOKIE_NAME, login_redirect.exception.headers["Set-Cookie"])
 
-    def test_render_deploy_config_uses_guarded_server_start_path(self):
-        render_yaml = (ROOT / "render.yaml").read_text(encoding="utf-8")
+    def test_render_deploy_config_is_optional_non_default_example(self):
+        self.assertFalse((ROOT / "render.yaml").exists())
+        render_yaml = (ROOT / "docs" / "examples" / "render.yaml").read_text(encoding="utf-8")
+        infra = (ROOT / "docs" / "otc-platform-infra.md").read_text(encoding="utf-8")
 
+        self.assertIn("Optional Render example", render_yaml)
+        self.assertIn("docs/examples/render.yaml", infra)
+        self.assertIn("complete OIDC callback", infra)
         self.assertIn("name: swooshz-quote-generator", render_yaml)
         self.assertIn("name: swooshz-quote-runner-data", render_yaml)
         self.assertIn("/var/data/swooshz-quote-runner/output", render_yaml)
@@ -2417,7 +2422,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Presets">'))
         self.assertIn('`<optgroup label="Saved Company Presets">', js)
         self.assertNotIn("Profile Pricing References", js)
-        self.assertIn('`<optgroup label="Saved Pricing References">', js)
+        self.assertIn('`<optgroup label="Company Pricing References">', js)
         self.assertNotIn("Clear Customer", html)
         self.assertNotIn("Reset Quote Company", html)
         self.assertIn("clearCustomerDetails", js)
@@ -2938,11 +2943,9 @@ assert.strictEqual(canStartAnalysis(), true);
         summary_body = js.split("function renderMatchSummary", 1)[1].split("function renderPricingMatches", 1)[0]
         table_body = js.split("function renderPricingMatches", 1)[1].split("function clearPricingReviewMessages", 1)[0]
         self.assertNotIn('!== "unmatched"', summary_body)
-        self.assertIn('pricingMatchStatus(row) === "matched"', js)
-        self.assertIn('status !== "matched"', js)
+        self.assertIn("rowNeedsManualInput", js)
         self.assertIn("Priced rows", summary_body)
-        self.assertIn("Included rows", summary_body)
-        self.assertIn("Needs price", summary_body)
+        self.assertIn("Needs manual input", summary_body)
         self.assertIn("Subtotal", summary_body)
         self.assertIn('data-output-edit-field="${field}"', js)
         self.assertIn('renderOutputEditCell(row, index, "unit_price_override")', table_body)
@@ -2980,30 +2983,34 @@ function extractFunction(name) {
 eval(extractFunction("pricingMatchStatus"));
 eval(extractFunction("pricingStatusLabel"));
 eval(extractFunction("numberOrNull"));
+function outputCellDisplayValue(row, field) {
+  if (field === "amount") return row.amount === "" || row.amount === undefined || row.amount === null ? "???" : String(row.amount);
+  return String(row[field] || "");
+}
 eval(extractFunction("effectiveOutputUnitPrice"));
+eval(extractFunction("rowNeedsManualInput"));
 eval(extractFunction("matchSummaryStats"));
 
 const rows = [
-  { status: "matched", amount: "1,200" },
-  { status: "matched-from-ambiguous", amount: "500" },
-  { status: "manual-display", amount: "" },
-  { status: "unmatched", amount: "" },
+  { status: "matched", price_mode: "Priced", description: "A", quantity: 1, pricing_keyword: "a", catalog_unit_price: 1200, amount: "1,200" },
+  { status: "matched-from-ambiguous", price_mode: "Priced", description: "B", quantity: 1, pricing_keyword: "b", catalog_unit_price: 500, amount: "500" },
+  { status: "manual-display", price_mode: "Priced", description: "C", quantity: "", pricing_keyword: "", amount: "" },
+  { status: "unmatched", price_mode: "Priced", description: "D", quantity: "", pricing_keyword: "", amount: "" },
 ];
 const stats = matchSummaryStats(rows);
 
-assert.strictEqual(stats.confident, 1);
-assert.strictEqual(stats.needsReview, 3);
-assert.strictEqual(stats.confidence, 25);
+assert.strictEqual(stats.pricedRows, 2);
+assert.strictEqual(stats.needsManualInput, 2);
 assert.strictEqual(stats.total, 1700);
 assert.strictEqual(pricingStatusLabel("matched-from-ambiguous"), "Ambiguous match selected");
 assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price");
 
 const pendingStats = matchSummaryStats([
-  { price_mode: "Priced", pricing_keyword: "floor-design.needle-punch-carpet-in-colour", catalog_unit_price: 10.5, amount: 378 },
-  { price_mode: "Priced", pricing_keyword: "", unit_price_override: "", amount: "" },
+  { price_mode: "Priced", description: "Carpet", quantity: 36, pricing_keyword: "floor-design.needle-punch-carpet-in-colour", catalog_unit_price: 10.5, amount: 378 },
+  { price_mode: "Priced", description: "Manual", quantity: "", pricing_keyword: "", unit_price_override: "", amount: "" },
 ]);
 assert.strictEqual(effectiveOutputUnitPrice({ catalog_unit_price: "10.50", unit_price_override: "" }), 10.5);
-assert.strictEqual(pendingStats.needsReview, 1);
+assert.strictEqual(pendingStats.needsManualInput, 1);
 assert.strictEqual(pendingStats.totalPending, true);
 """
         completed = subprocess.run(
@@ -3020,7 +3027,7 @@ assert.strictEqual(pendingStats.totalPending, true);
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
         css = (static_dir / "styles.css").read_text(encoding="utf-8")
-        draft_body = js.split("async function handleDraftBasis()", 1)[1].split("async function confirmBasis()", 1)[0]
+        draft_body = js.split("async function handleDraftBasis", 1)[1].split("async function confirmBasis()", 1)[0]
 
         banner_index = draft_body.index("showAiRunningBanner(")
         clear_index = draft_body.index("clearBasisReviewSurface()")
@@ -3586,22 +3593,24 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Included", js)
         self.assertIn("<th>Unit price</th>", html)
         self.assertNotIn("<th>Price mode</th>", html)
-        self.assertIn("Click any editable value in the table to change it.", html)
+        self.assertIn('Click on any field in the table below to change it.', html)
+        self.assertIn('Unit price accepts a number or "Included".', html)
         self.assertNotIn("Double click a row value to amend it.", html)
-        self.assertIn("<datalist", js)
-        self.assertIn('<option value="Included"></option>', js)
+        self.assertNotIn("<datalist", js)
+        self.assertNotIn('<option value="Included"></option>', js)
         self.assertIn('data-output-included-action="true"', js)
         self.assertIn("handleOutputCellClick", js)
         self.assertIn("resetOutputDraft", js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
-        self.assertIn("New Pricing Reference", html)
-        self.assertIn('id="newPricingReferenceButton">New</button>', html)
-        self.assertIn('id="deletePricingReferenceButton">Delete</button>', html)
-        self.assertIn("pricingReferenceModal", html)
-        self.assertIn('accept=".xlsx,.csv"', html)
+        customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('id="quoteCompanyPanel"', 1)[0]
+        self.assertNotIn('id="newPricingReferenceButton"', customer_panel)
+        self.assertNotIn('id="deletePricingReferenceButton"', customer_panel)
+        self.assertIn("Settings", html)
+        self.assertIn("settingsModal", html)
+        self.assertIn('accept=".xlsx,.csv,.md"', html)
         self.assertNotIn('accept=".xlsx,.csv,.json"', html)
-        self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv";', js)
+        self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";', js)
         self.assertIn('elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;', js)
         self.assertIn('/api/pricing-reference/template.xlsx', html)
         self.assertIn("downloadPricingReferenceTemplate", js)
@@ -3610,7 +3619,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".output-edit-cell:hover", css)
         self.assertIn(".company-preset-panel .settings-note", css)
         self.assertIn("padding: 12px 28px 28px;", css)
-        self.assertIn('/api/pricing-reference/validate', js)
+        self.assertIn('/api/settings/pricing-references/import-preview', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)
         self.assertIn("analysisConfirmModal", html)
@@ -3886,6 +3895,80 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         self.assertIn(str(KONCEPT_LAYOUT), command)
         self.assertNotIn("--pdf-mode", command)
         self.assertNotIn("quotation.pdf", command)
+
+    def test_company_config_store_safely_persists_company_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            reference = store.save_pricing_reference("default", {
+                "id": "company-ref",
+                "label": "Company Ref",
+                "tax": {"label": "VAT", "rate": 0.2},
+                "items": [{
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                }],
+            })
+            self.assertEqual(reference["id"], "company-ref")
+            self.assertTrue((Path(tmp) / "default" / "pricing-references.json").exists())
+            self.assertEqual(store.list_pricing_references("default")[0]["tax"]["rate"], 0.2)
+            with self.assertRaises(ValueError):
+                store.save_pricing_reference("default", {"id": "../bad", "items": []})
+
+    def test_settings_permissions_deny_non_admin_writes(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "operator"}, clear=True):
+            allowed, error = webapp.require_permission("canManagePricingReferences")
+        self.assertFalse(allowed)
+        self.assertEqual(error["status"], "blocked")
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "management"}, clear=True):
+            allowed, _ = webapp.require_permission("canManagePricingReferences")
+        self.assertTrue(allowed)
+        with mock.patch.dict(os.environ, {"APP_MODE": "deploy", "LOCAL_USER_ROLE": "admin"}, clear=True):
+            self.assertFalse(webapp.current_permissions()["canManagePricingReferences"])
+
+    def test_pricing_reference_tax_overrides_quote_company_tax_in_brief(self):
+        payload = valid_payload()
+        payload["tax"] = {"label": "GST", "rate": 0.09}
+        payload["pricing_reference"] = {"id": "company-vat", "source": "company", "tax": {"label": "VAT", "rate": 0.2}}
+        brief = webapp.payload_to_brief(payload)
+        self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
+
+    def test_deploy_generate_response_omits_local_paths_and_raw_process_output(self):
+        payload = valid_payload()
+        completed = webapp.subprocess.CompletedProcess(args=[], returncode=1, stdout="raw out", stderr="raw err")
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"APP_MODE": "deploy"}, clear=False):
+            with mock.patch.object(webapp.subprocess, "run", return_value=completed):
+                result = webapp.run_quote_job(payload, output_root=Path(tmp) / "out", tmp_root=Path(tmp) / "tmp")
+        self.assertEqual(result["status"], "failed")
+        self.assertNotIn("stdout", result)
+        self.assertNotIn("stderr", result)
+        self.assertNotIn("brief_path", result)
+        self.assertNotIn("output_dir", result)
+
+    def test_blocking_clarifications_prevent_final_basis_rows(self):
+        draft = webapp.normalize_ai_draft({
+            "analysis_findings": [{"id": "visible-graphics", "text": "Large front graphics are visible.", "confidence_pct": 90}],
+            "blocking_clarification_questions": [{"id": "confirm-size", "question": "Confirm booth size.", "answer_type": "text"}],
+            "quote_basis_sections": [{"id": "graphics", "title": "Graphics", "lines": [{"tag": "Include", "text": "Graphics"}]}],
+            "line_items": [{"section": "Graphics", "quantity": 1, "unit": "sqm", "description": "Graphics", "pricing_keyword": ""}],
+        })
+        self.assertEqual(draft["quote_basis_sections"], [])
+        self.assertEqual(draft["line_items"], [])
+        self.assertEqual(draft["blocking_clarification_questions"][0]["status"], "open")
+
+    def test_static_literal_replacement_and_clarification_contracts_exist(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+        self.assertIn("parseLiteralReplacementCommand", js)
+        self.assertIn("buildLiteralReplacementProposal", js)
+        self.assertIn('line.tag = "Confirm"', js)
+        self.assertIn("openBlockingClarifications", js)
+        self.assertIn("Generate final Quote Basis", js)
+        self.assertIn('state.basisConfirmed = false', js)
+        self.assertIn('setDownloadFiles([])', js)
 
 
 if __name__ == "__main__":

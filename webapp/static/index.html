@@ -23,6 +23,7 @@
             <span class="status-dot" id="statusDot"></span>
             <span id="healthText" class="health-text">Checking local server</span>
           </div>
+          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M12 5v14"></path>
@@ -138,11 +139,8 @@
                       Quote Pricing Reference
                       <select id="profileSelect"></select>
                     </label>
-                    <div class="settings-button-row">
-                      <button class="secondary-button" type="button" id="newPricingReferenceButton">New</button>
-                      <button class="secondary-button danger-button" type="button" id="deletePricingReferenceButton">Delete</button>
-                    </div>
-                    <p class="settings-note">Required before moving to Quote Company.</p>
+                    <p class="settings-note" id="selectedPricingReferenceSummary">Required before moving to Quote Company. Managed in Settings.</p>
+                    <span class="tax-badge" id="selectedPricingReferenceTax">GST 9%</span>
                   </div>
                 </div>
 
@@ -299,17 +297,18 @@
 
                 <div class="section-band quote-form-section">
                   <h3>Tax</h3>
+                  <p class="settings-note">Tax is owned by the selected Pricing Reference and managed in Settings.</p>
                   <div class="form-grid compact tax-settings-grid">
                     <label class="field-control">
                       <span>Quotation tax label</span>
-                      <select id="taxLabel">
+                      <select id="taxLabel" disabled>
                         <option value="GST">GST</option>
                         <option value="VAT">VAT</option>
                       </select>
                     </label>
                     <label class="field-control">
                       <span>Tax rate (%)</span>
-                      <input id="taxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal">
+                      <input id="taxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" disabled>
                     </label>
                   </div>
                 </div>
@@ -503,9 +502,26 @@
                     <p>Confirm the quotation basis to review pricing rows before Excel download.</p>
                   </div>
                   <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
+                  <div class="output-header-card">
+                    <div>
+                      <h3>Output</h3>
+                      <p>Review editable quotation rows created from the confirmed Quote Basis.</p>
+                      <span class="output-context-line">Source: confirmed Quote Basis and selected Pricing Reference.</span>
+                    </div>
+                  </div>
                   <div class="match-summary" id="matchSummary"></div>
                   <div class="table-wrap output-table-wrap" id="pricingTableWrap">
-                    <p class="output-edit-hint">Click any editable value in the table to change it. Unit price accepts a number or Included.</p>
+                    <div class="output-table-toolbar">
+                      <label>Sort by:
+                        <select id="outputSortMode">
+                          <option value="category">Category A-Z</option>
+                          <option value="name">Name A-Z</option>
+                          <option value="category_name" selected>Category + Name</option>
+                          <option value="manual">Manual</option>
+                        </select>
+                      </label>
+                    </div>
+                    <p class="output-edit-hint">Click on any field in the table below to change it.<br>Unit price accepts a number or "Included".</p>
                     <table class="match-table output-match-table">
                       <thead>
                         <tr>
@@ -515,6 +531,7 @@
                           <th>Unit</th>
                           <th>Unit price</th>
                           <th>Amount</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody id="pricingMatchesBody"></tbody>
@@ -563,6 +580,24 @@
           </form>
         </section>
       </div>
+      <div class="modal-overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle" hidden>
+        <div class="modal-backdrop" data-settings-close></div>
+        <section class="modal-panel settings-modal-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Company Settings</span>
+              <h3 id="settingsModalTitle">Settings</h3>
+            </div>
+            <button class="icon-button" type="button" id="settingsCloseButton" aria-label="Close settings modal">x</button>
+          </header>
+          <div class="settings-tabs">
+            <section><h4>Pricing References</h4><p>Pricing catalogue, matching aliases, and GST/VAT configuration.</p><div id="settingsPricingReferencesList"></div></section>
+            <section><h4>Profiles</h4><p>Quote layout, company defaults, and reusable presets.</p></section>
+            <section><h4>Import</h4><p>Upload .xlsx, .csv, or .md references for preview before saving.</p></section>
+            <section><h4>Permissions / Role info</h4><p>Admin and management can manage settings. Operators and viewers cannot save, delete, edit, or import references.</p></section>
+          </div>
+        </section>
+      </div>
       <div class="modal-overlay" id="pricingReferenceModal" role="dialog" aria-modal="true" aria-labelledby="pricingReferenceModalTitle" hidden>
         <div class="modal-backdrop" data-pricing-reference-close></div>
         <section class="modal-panel pricing-reference-modal-panel">
@@ -588,7 +623,7 @@
             <label>
               Workbook/catalog upload
               <span class="file-picker-control">
-                <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv">
+                <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
                 <span class="secondary-button file-picker-button">Choose File</span>
                 <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
               </span>
@@ -618,6 +653,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=47"></script>
+    <script src="/static/app.js?v=48"></script>
   </body>
 </html>
