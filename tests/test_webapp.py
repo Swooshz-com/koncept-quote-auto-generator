@@ -125,9 +125,9 @@ def wait_for_job(job_id: str, timeout: float = 2.0) -> dict:
     raise AssertionError(f"Timed out waiting for job {job_id}")
 
 
-def minimal_pricing_reference_xlsx() -> bytes:
-    headers = ["id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"]
-    row = ["custom.wall.white-painted", "Structures", "White painted walling", "sqm", "50", "1.7", "painted wall|white wall"]
+def minimal_pricing_reference_xlsx(headers: list[str] | None = None) -> bytes:
+    headers = headers or ["id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"]
+    row = ["custom.wall.white-painted", "Structures", "White painted walling", "sqm", "50", "1.7", "painted wall|white wall"][:len(headers)]
 
     def cell(ref: str, value: str) -> str:
         return f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>'
@@ -360,7 +360,7 @@ class WebappServerTest(unittest.TestCase):
         })
 
         self.assertEqual(items[0]["unit"], "sqm")
-        self.assertEqual(items[0]["description"], "sqm needle-punch carpet and sqm printed floor panel")
+        self.assertEqual(items[0]["description"], "sqm needle punch carpet in colour")
 
     def test_normalize_line_items_uses_exact_catalog_text_and_price_metadata(self):
         items = webapp.normalize_line_items({
@@ -469,7 +469,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("quote_basis_sections", prompt)
         self.assertIn("Dynamic section count", prompt)
         self.assertIn("confidence_pct", prompt)
-        self.assertIn("Set every quote_basis_sections line tag to Confirm", prompt)
+        self.assertIn("Use tag Confirm for catalog-backed lines", prompt)
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
         self.assertNotIn("2 to 4 short lines", prompt)
         self.assertNotIn("Assumption:", prompt)
@@ -566,8 +566,8 @@ class WebappServerTest(unittest.TestCase):
             "OIDC_REDIRECT_URI": "https://quote.example/callback",
             "OIDC_LOGOUT_URL": "https://issuer.example/logout",
         }
-        opener = urllib.request.build_opener(NoRedirect)
         with mock.patch.dict(os.environ, env, clear=True):
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
             with LocalRunnerServer() as runner:
                 with self.assertRaises(urllib.error.HTTPError) as root_error:
                     opener.open(f"{runner.base_url}/", timeout=3)
@@ -575,7 +575,7 @@ class WebappServerTest(unittest.TestCase):
                 self.assertEqual(root_error.exception.headers["Location"], "/login")
 
                 with self.assertRaises(urllib.error.HTTPError) as api_error:
-                    urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3)
+                    opener.open(f"{runner.base_url}/api/session", timeout=3)
                 self.assertEqual(api_error.exception.code, 401)
                 api_body = json.loads(api_error.exception.read().decode("utf-8"))
                 self.assertEqual(api_body["status"], "auth_required")
@@ -664,17 +664,17 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(webapp.rows_from_xlsx_bytes(downloaded)[0], list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
 
     def test_non_template_pricing_reference_upload_is_rejected(self):
-        raw = minimal_pricing_reference_xlsx()
-        broken = raw.replace(b"id", b"old_id", 1)
+        raw = minimal_pricing_reference_xlsx(["old_id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
         result = webapp.validate_pricing_reference_upload({
-            "filename": "_Quotation Cost Template V1.1.xlsx",
+            "filename": "non-template-pricing.xlsx",
             "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
-            + base64.b64encode(broken).decode("ascii"),
+            + base64.b64encode(raw).decode("ascii"),
         })
 
         self.assertTrue(result["errors"])
         self.assertIn("Download the pricing reference template", " ".join(result["errors"]))
         self.assertNotEqual(result.get("layout"), "v1-estimating-workbook")
+        self.assertNotIn("V1.1", " ".join(result["errors"]))
 
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
@@ -864,7 +864,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["source"], "openai")
         self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: AI surfaces")
-        self.assertEqual(result["quote_basis"]["graphics"], "Confirm: AI graphics")
+        self.assertEqual(result["quote_basis"]["graphics"], "Confirm: AI vinyl graphics")
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["description"], "AI vinyl graphics")
         self.assertEqual(result["line_items"][0]["quantity"], 12.0)
@@ -899,7 +899,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("brazil-feature-wall", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
-        self.assertEqual(result["line_items"][0]["description"], "sqm green carpet across pavilion footprint")
+        self.assertEqual(result["line_items"][0]["description"], "sqm needle punch carpet in colour")
 
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):
         payload = valid_payload()
@@ -1191,7 +1191,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("quote_basis_sections", prompt)
         self.assertIn("dynamic sections", prompt)
         self.assertIn("confidence_pct", prompt)
-        self.assertIn("Set every quote_basis_sections line tag to Confirm", prompt)
+        self.assertIn("Use tag Confirm for catalog-backed lines", prompt)
         self.assertIn("all relevant itemized line_items", prompt)
         self.assertIn("any other customer-facing scope", prompt)
         self.assertIn("individual customer-facing rows", prompt)
@@ -2189,7 +2189,9 @@ class WebappServerTest(unittest.TestCase):
         profile_change_body = js.split("function handleProfileSelectionChange()", 1)[1].split("async function setSampleDetails()", 1)[0]
         sample_loader_body = js.split("async function setSampleDetails()", 1)[1].split("function buildPayload()", 1)[0]
         self.assertIn("loadDefaultProfilePreset({ silent: true })", initial_values_body)
-        self.assertIn("loadDefaultProfilePreset({ silent: true })", profile_change_body)
+        self.assertIn("Pricing reference changed", profile_change_body)
+        self.assertIn("quote-company details were left unchanged", profile_change_body)
+        self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
         self.assertIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
 
     def test_static_webapp_uses_simplified_setup_assistant_flow(self):
@@ -2508,10 +2510,11 @@ assert.strictEqual(canStartAnalysis(), true);
         table_body = js.split("function renderPricingMatches", 1)[1].split("function clearPricingReviewMessages", 1)[0]
         self.assertNotIn('!== "unmatched"', summary_body)
         self.assertIn('pricingMatchStatus(row) === "matched"', js)
-        self.assertIn('pricingMatchStatus(row) !== "matched"', js)
+        self.assertIn('status !== "matched"', js)
         self.assertIn("Catalog confidence", summary_body)
         self.assertIn("Needs review", summary_body)
-        self.assertIn('data-output-editor-field="unit_price_override"', table_body)
+        self.assertIn('data-output-edit-field="${field}"', js)
+        self.assertIn('renderOutputEditCell(row, index, "unit_price_override")', table_body)
         self.assertIn("catalog_unit_price", js)
         self.assertIn("effectiveOutputUnitPrice", js)
         self.assertIn("Unit price must be a number or Included.", js)
@@ -3009,7 +3012,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "normalizeServerBasisChatProposal",
             "basisDisplayTitle",
             "line_index",
-            "Describe the replacement. I will show a proposed update before applying anything.",
+            "Tell me what to change. I will draft the full replacement sentence for approval before applying it.",
             "Ask a question or describe changes to the quotation basis.",
             "basisLinePillLabel",
             "normalizeConfidence",
@@ -3155,6 +3158,11 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('id="newPricingReferenceButton">New</button>', html)
         self.assertIn('id="deletePricingReferenceButton">Delete</button>', html)
         self.assertIn("pricingReferenceModal", html)
+        self.assertIn('accept=".xlsx,.csv"', html)
+        self.assertNotIn('accept=".xlsx,.csv,.json"', html)
+        self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv";', js)
+        self.assertIn('elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;', js)
+        self.assertIn('/api/pricing-reference/template.xlsx', html)
         self.assertIn('/api/pricing-reference/validate', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)

@@ -2678,8 +2678,8 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
             <div class="basis-section-heading">
               <h4>${escapeHtml(section.title)}</h4>
               <span class="basis-section-actions">
-                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Include" aria-label="Mark all review lines in ${escapeHtml(section.title)} as included" title="Mark all Confidence lines included">&#x2713;</button>
-                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Exclude" aria-label="Mark all review lines in ${escapeHtml(section.title)} as excluded" title="Mark all Confidence lines excluded">X</button>
+                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Include" aria-label="Mark all non-custom review lines in ${escapeHtml(section.title)} as included" title="Mark all non-custom lines included">&#x2713;</button>
+                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Exclude" aria-label="Mark all non-custom review lines in ${escapeHtml(section.title)} as excluded" title="Mark all non-custom lines excluded">X</button>
                 <span class="basis-section-action-spacer" aria-hidden="true"></span>
               </span>
             </div>
