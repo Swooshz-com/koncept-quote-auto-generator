@@ -1,105 +1,175 @@
 # OTC AI Platform Infrastructure
 
-## Recommended Setup
+## Target Platform
 
-Use Vercel for the Next.js user-facing app, Render for the Python quote generation API, and Supabase later for auth, database, and generated file storage.
+Use **Hostinger VPS + Coolify** for the first hosted deployment.
 
-## Architecture
+Keep Supabase or S3-compatible managed storage available for durable customer files. Keep managed Supabase/Postgres available for customer data until self-hosted backup and restore is tested.
 
-### Vercel Next.js
+## Server
 
-- Hosts the frontend.
-- Hosts the user-facing app and dashboard.
-- Handles UI state, quote-job creation, and polling.
-- Calls the Render Python API for AI image analysis and quote generation.
-- Shows waiting, running, completed, and failed states.
+Minimum staging server:
 
-### Render Python FastAPI
+```text
+2 vCPU
+8 GB RAM
+80 GB NVMe
+Ubuntu LTS
+Docker
+Coolify
+```
 
-- Hosts the Python quote service.
-- Performs AI image analysis.
-- Runs the existing quotation generator.
-- Creates XLSX output.
-- Stores job files temporarily during prototype phase.
-- Later uploads generated files to Supabase Storage.
+Preferred early production server:
 
-### Supabase Later
+```text
+4 vCPU
+8-16 GB RAM
+150 GB+ NVMe
+Ubuntu LTS
+Docker
+Coolify
+```
 
-- Provides user authentication.
-- Stores users, organizations, plans, entitlements, jobs, and usage events.
-- Stores uploaded images and generated quotation files.
-- Enables persistent downloads instead of relying on temporary Render disk.
+## Coolify Apps
+
+### `otc-frontend`
+
+- Hosts the final user-facing frontend.
+- Serves quote workflow pages.
+- Handles upload UI, job creation, job polling, and downloads.
+- Calls `quote-api`.
+
+### `quote-api`
+
+- Hosts the Python HTTP API.
+- Validates inputs and auth.
+- Creates quote jobs.
+- Returns job status.
+- Returns signed download links or file metadata.
+
+### `quote-worker`
+
+- Runs Python background quote work.
+- Performs AI reference-image analysis.
+- Drafts quote basis.
+- Handles quote-basis line edits.
+- Generates XLSX output.
+- Uploads generated files to durable storage.
+
+### `redis`
+
+- Add when jobs need queue durability across API restarts.
+- Used by `quote-api` and `quote-worker`.
+
+### `postgres`
+
+- Use managed Supabase/Postgres first.
+- Self-host only after backup, restore, upgrades, and monitoring are documented and tested.
 
 ## Request Flow
 
 ```text
-User opens Vercel app
-  -> uploads booth images and quote details
-  -> Vercel creates quote job
-  -> Vercel calls Render Python API
-  -> Render drafts quote basis and generates XLSX
-  -> Vercel polls job status
-  -> user downloads generated quotation
+Browser
+  -> otc-frontend
+  -> quote-api creates job
+  -> quote-worker runs AI analysis and XLSX generation
+  -> quote-worker stores generated XLSX
+  -> otc-frontend polls quote-api
+  -> user downloads quotation
 ```
 
-## Render Free Behavior
+## Storage
 
-Render free services may sleep when idle. The first request can take longer while the service wakes up.
-
-Recommended user-facing behavior:
+Temporary files:
 
 ```text
-Starting quote service...
-This may take 30-60 seconds on the free plan.
+/data/swooshz/tmp
 ```
 
-Use polling instead of webhooks for quote generation.
-
-## API Link
-
-Vercel environment variables:
+Generated outputs:
 
 ```text
-QUOTE_API_URL=https://quote-api.onrender.com
-QUOTE_API_SECRET=<shared-secret>
+/data/swooshz/output
 ```
 
-Render environment variables:
+Logs:
 
 ```text
-QUOTE_API_SECRET=<same-shared-secret>
-OPENAI_API_KEY=<openai-key>
+/data/swooshz/logs
+```
+
+Production customer files must be copied to durable object storage. Do not rely on container-local storage for customer files.
+
+## Environment Variables
+
+Frontend:
+
+```text
+QUOTE_API_URL=https://api.example.com
+```
+
+API and worker:
+
+```text
+APP_MODE=deploy
+AUTH_REQUIRED=true
+SESSION_SECRET=<strong-random-secret>
+QUOTE_OUTPUT_ROOT=/data/swooshz/output
+QUOTE_TMP_ROOT=/data/swooshz/tmp
+QUOTE_LOG_ROOT=/data/swooshz/logs
+OPENAI_API_KEY=<openai-key-if-used>
+OPENAI_DRAFT_MODEL=<model-id-or-app-alias>
+OPENAI_BASIS_LINE_MODEL=<model-id-or-app-alias>
 GEMINI_API_KEY=<gemini-key-if-used>
+GEMINI_DRAFT_MODEL=<model-id-or-app-alias>
+GEMINI_BASIS_LINE_MODEL=<model-id-or-app-alias>
 ```
 
-Vercel calls Render with:
+Storage and database variables:
 
 ```text
-Authorization: Bearer <QUOTE_API_SECRET>
+DATABASE_URL=<managed-database-url>
+STORAGE_ENDPOINT=<object-storage-endpoint>
+STORAGE_BUCKET=<bucket-name>
+STORAGE_ACCESS_KEY=<storage-access-key>
+STORAGE_SECRET_KEY=<storage-secret-key>
 ```
 
-## Future Production Flow
+## Deployment Steps
 
-```text
-Vercel Next.js
-  -> starts quote job
+1. Provision Hostinger VPS.
+2. Install Coolify on Ubuntu LTS.
+3. Point DNS to the VPS.
+4. Create Coolify project.
+5. Add `otc-frontend`.
+6. Add `quote-api`.
+7. Add `quote-worker`.
+8. Add Redis if queue durability is needed.
+9. Configure environment variables in Coolify.
+10. Configure HTTPS through Coolify.
+11. Configure persistent mounts for `/data/swooshz`.
+12. Run a full quote from image upload to XLSX download.
+13. Add external uptime monitoring.
+14. Add off-server backup for any persistent VPS data.
 
-Render Python API
-  -> generates XLSX
-  -> uploads output to Supabase Storage
+## Production Gates
 
-Supabase
-  -> stores job metadata and generated files
+Do not treat the deployment as production-ready until these pass:
 
-Vercel Next.js
-  -> polls job status
-  -> shows secure download link
-```
+- Auth is enabled.
+- HTTPS is enabled.
+- AI keys are stored only in Coolify secrets/env.
+- Customer uploads are size/type limited.
+- Generated files are stored in durable storage.
+- Logs do not expose secrets or customer file contents.
+- Health checks pass for frontend and API.
+- Worker restart does not lose queued jobs.
+- Backup and restore procedure is tested.
+- Server patching procedure is documented.
+- Domain and DNS ownership are confirmed.
 
-## Why This Setup
+## Vercel / Render
 
-- Vercel is best for Next.js.
-- Render is better for Python and file generation.
-- Supabase handles persistent auth, database, and storage later.
-- The existing Python quote generator does not need to be rewritten.
-- The architecture can grow into the full OTC AI solutions platform.
+Do not use Vercel + Render as the default deployment target.
+
+Use it only if a later decision explicitly prioritizes managed frontend previews or managed backend hosting over single-server Coolify deployment.

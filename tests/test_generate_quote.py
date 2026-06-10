@@ -13,7 +13,7 @@ from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
-KONCEPT_CATALOG = KONCEPT_PROFILE / "pricing-catalog.json"
+KONCEPT_CATALOG = ROOT / "pricing-references" / "koncept" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LOGO = KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg"
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -408,8 +408,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         declared = declared_xml_prefixes(workbook_xml, "workbook")
         ignorable = workbook.attrib.get(NS_MC_IGNORABLE, "").split()
 
-        self.assertEqual(creator.text, "Koncept Quote Auto-Generator")
-        self.assertEqual(last_modified_by.text, "Koncept Quote Auto-Generator")
+        self.assertEqual(creator.text, "Swooshz Quote Generator")
+        self.assertEqual(last_modified_by.text, "Swooshz Quote Generator")
         self.assertNotIn("absPath", workbook_xml)
         self.assertNotIn("/Users/", workbook_xml)
         self.assertNotIn("Dropbox", workbook_xml)
@@ -699,6 +699,20 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIsNotNone(calc_pr)
         self.assertEqual(calc_pr.attrib.get("fullCalcOnLoad"), "1")
         self.assertEqual(calc_pr.attrib.get("forceFullCalc"), "1")
+
+    def test_layout_totals_can_display_vat_from_quote_tax_config(self):
+        tmp, path = generate_layout_workbook({"tax": {"label": "VAT", "rate": 0.2}})
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        self.assertEqual(find_cell_ref(sheet, "GST 9%"), "")
+        self.assertEqual(find_cell_ref(sheet, "VAT 20%"), "D28")
+        self.assertEqual(find_cell_ref(sheet, "Total including VAT"), "D29")
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.200000,0)", "SUM(E27:E28)"])
+        self.assertAlmostEqual(float(cell_value(sheet, "E28")), 480.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E29")), 2880.0)
 
     def test_layout_uses_dynamic_print_area_without_forced_extra_pages(self):
         tmp, path = generate_layout_workbook()
@@ -1250,6 +1264,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "header_lines": ["Other Company Pte Ltd", "Dynamic address line"],
             },
             "rich_text": {
+                "quoteDate": "<div><strong><em><u>04 June 2026</u></em></strong></div>",
                 "clientAddress": "<div><strong>10 Sample</strong> <em>Street</em></div><div><u>Singapore 000010</u></div>",
                 "headerDetails": "<div><strong>Other Company Pte Ltd</strong></div><div><em><u>Dynamic address line</u></em></div>",
                 "termsHeading": "<div><strong>Commercial Terms</strong></div>",
@@ -1275,6 +1290,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             ],
         )
         self.assertEqual(cell_inline_runs(sheet, "A8"), [("Singapore 000010", False, False, True)])
+        self.assertEqual(cell_inline_runs(sheet, "A16"), [("04 June 2026", True, True, True)])
         self.assertEqual(cell_inline_runs(sheet, find_cell_ref(sheet, "Commercial Terms")), [("Commercial Terms", True, False, False)])
         self.assertEqual(
             cell_inline_runs(sheet, "B33"),
@@ -1423,7 +1439,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
 
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "SUM(E27:E28)"])
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.090000,0)", "SUM(E27:E28)"])
         self.assertEqual(cell_value(sheet, "A6"), brief["client"]["name"])
         self.assertEqual(cell_value(sheet, "A18"), brief["project"]["title"])
         self.assertEqual(cell_value(sheet, "C22"), line.section)

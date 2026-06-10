@@ -35,7 +35,8 @@ from xml.etree import ElementTree as ET
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE_DIR = PROJECT_ROOT / "profiles" / "koncept"
-DEFAULT_TEMPLATE = DEFAULT_PROFILE_DIR / "pricing-catalog.json"
+DEFAULT_PRICING_REFERENCE_DIR = PROJECT_ROOT / "pricing-references" / "koncept"
+DEFAULT_TEMPLATE = DEFAULT_PRICING_REFERENCE_DIR / "pricing-catalog.json"
 DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -126,6 +127,8 @@ class QuoteLine:
     amount: float | None
     match_status: str
     match_candidates: list[PriceRow]
+    price_mode: str = "Priced"
+    unit_price_override: float | None = None
 
 
 @dataclass
@@ -409,12 +412,26 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
     prepared: list[QuoteLine] = []
     for item in brief.get("line_items", []):
         display_price = str(item.get("display_price") or "")
+        price_mode = clean_text(item.get("price_mode")).title()
+        if price_mode not in {"Priced", "Included"}:
+            price_mode = "Included" if display_price.lower() == "included" else "Priced"
+        unit_price_override = item.get("unit_price_override")
+        unit_price_override_num = as_float(unit_price_override, 0.0) if unit_price_override not in (None, "") else None
         query = clean_text(item.get("pricing_keyword") or item.get("description") or "")
         status, match, candidates = find_price_match(query, price_rows)
         quantity = item.get("quantity")
         quantity_num = as_float(quantity, 0.0) if quantity not in (None, "") else None
         amount: float | None = None
-        if display_price:
+        if price_mode == "Included":
+            status = "included"
+            amount = 0.0
+            display_price = "Included"
+            match = None
+        elif unit_price_override_num is not None:
+            status = "manual-price"
+            amount = round((quantity_num or 0.0) * unit_price_override_num, 2)
+            match = None
+        elif display_price:
             status = "manual-display"
         elif status == "matched" or (status == "ambiguous" and allow_ambiguous):
             amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0))
@@ -428,6 +445,8 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
                 description=clean_text(item.get("description")),
                 pricing_keyword=query,
                 display_price=display_price,
+                price_mode=price_mode,
+                unit_price_override=unit_price_override_num,
                 matched_price=match if amount is not None else None,
                 amount=amount,
                 match_status=status,
@@ -717,27 +736,36 @@ def customer_notes(brief: dict[str, Any]) -> list[str]:
     ]
 
 
-def quote_gst_multiplier(lines: list[QuoteLine]) -> float:
-    multipliers = [
-        line.matched_price.gst_multiplier
-        for line in lines
-        if line.matched_price and line.matched_price.gst_multiplier > 1
-    ]
-    return max(set(multipliers), key=multipliers.count) if multipliers else 1.0
+def quote_tax_config(brief: dict[str, Any]) -> tuple[str, float]:
+    tax = brief.get("tax") if isinstance(brief.get("tax"), dict) else {}
+    label = clean_text(tax.get("label")).upper() or "GST"
+    if label not in {"GST", "VAT"}:
+        label = "GST"
+    rate = as_float(tax.get("rate"), 0.09)
+    if rate > 1:
+        rate = rate / 100
+    if rate < 0:
+        rate = 0.0
+    return label, min(rate, 1.0)
 
 
-def quote_gst_rate(lines: list[QuoteLine]) -> float:
-    return max(quote_gst_multiplier(lines) - 1.0, 0.0)
+def quote_tax_rate(brief: dict[str, Any]) -> float:
+    return quote_tax_config(brief)[1]
 
 
-def gst_label(lines: list[QuoteLine]) -> str:
-    rate = quote_gst_rate(lines)
+def quote_tax_label(brief: dict[str, Any]) -> str:
+    label, rate = quote_tax_config(brief)
     percent = rate * 100
     if abs(percent - round(percent)) < 0.001:
         percent_text = str(int(round(percent)))
     else:
         percent_text = f"{percent:.2f}".rstrip("0").rstrip(".")
-    return f"GST {percent_text}%"
+    return f"{label} {percent_text}%"
+
+
+def quote_total_including_tax_label(brief: dict[str, Any]) -> str:
+    label, _rate = quote_tax_config(brief)
+    return f"Total including {label}"
 
 
 def quote_subtotal(entries: list[dict[str, Any]]) -> float:
@@ -788,14 +816,15 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
         rows.append([entry["number"], entry["quantity"], " ".join(entry["description_lines"]), money(entry.get("amount"))])
     discount = as_float(brief.get("discount"), 0.0)
     subtotal = max(quote_subtotal(entries) - discount, 0.0)
-    gst_amount = round(subtotal * quote_gst_rate(lines)) if quote_gst_rate(lines) else 0
-    final_total = subtotal + gst_amount
+    tax_rate = quote_tax_rate(brief)
+    tax_amount = round(subtotal * tax_rate) if tax_rate else 0
+    final_total = subtotal + tax_amount
     rows.extend([[], ["", "", "Total", money(subtotal), currency]])
     if discount:
         rows.insert(-1, ["", "", "Less goodwill discount", money(discount), currency])
-    if gst_amount:
-        rows.append(["", "", gst_label(lines), money(gst_amount), currency])
-    rows.append(["", "", "Total including GST", money(final_total), currency])
+    if tax_amount:
+        rows.append(["", "", quote_tax_label(brief), money(tax_amount), currency])
+    rows.append(["", "", quote_total_including_tax_label(brief), money(final_total), currency])
     terms_heading = clean_text(brief.get("terms_heading"))
     payment_terms = brief.get("payment_terms") or []
     if terms_heading or payment_terms:
@@ -1063,7 +1092,7 @@ def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int
 
 def sanitize_core_properties(parts: dict[str, bytes]) -> None:
     core = ET.Element(f"{{{XMLNS_CP}}}coreProperties")
-    tool_name = "Koncept Quote Auto-Generator"
+    tool_name = "Swooshz Quote Generator"
     ET.SubElement(core, f"{{{XMLNS_DC}}}creator").text = tool_name
     ET.SubElement(core, f"{{{XMLNS_CP}}}lastModifiedBy").text = tool_name
     parts["docProps/core.xml"] = ET.tostring(core, encoding="utf-8", xml_declaration=True)
@@ -1680,17 +1709,44 @@ def excel_date_serial(value: str) -> float | str:
     return float((parsed - epoch).days)
 
 
+def quote_date_display_text(value: str) -> str:
+    try:
+        parsed = dt.date.fromisoformat(value)
+    except ValueError:
+        return value
+    return parsed.strftime("%d %B %Y")
+
+
+def brief_quote_date_rich_text_runs(brief: dict[str, Any]) -> list[RichTextRun]:
+    rich_text = brief.get("rich_text") if isinstance(brief.get("rich_text"), dict) else {}
+    parsed = parse_rich_text_html(rich_text.get("quoteDate")) if isinstance(rich_text, dict) else []
+    source_runs = [run for line in parsed for run in line if clean_text(run.text)]
+    if not source_runs:
+        return []
+    bold = any(run.bold for run in source_runs)
+    italic = any(run.italic for run in source_runs)
+    underline = any(run.underline for run in source_runs)
+    if not (bold or italic or underline):
+        return []
+    text = quote_date_display_text(str(brief.get("quote_date", "")))
+    return [RichTextRun(text, bold=bold, italic=italic, underline=underline)]
+
+
 def wrapped_description(description: str, width: int = 58) -> list[str]:
     return textwrap.wrap(description, width=width) or [description]
 
 
 def amount_value(line: QuoteLine) -> str | float | None:
+    if line.price_mode == "Included":
+        return 0.0
     if line.display_price:
         return line.display_price
     return line.amount
 
 
 def line_amount_value(line: QuoteLine) -> float | None:
+    if line.price_mode == "Included":
+        return 0.0
     if line.amount is not None:
         return line.amount
     if line.display_price:
@@ -2011,7 +2067,11 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, 11, 1, [RichTextRun("Attention:", bold=True)], "26")
     set_ooxml_rich_text_cell(root, 12, 2, brief_rich_text_cell_runs(brief, "clientAttention", client.get("attention", ""), fallback_bold=True), "26")
     set_ooxml_rich_text_cell(root, 13, 2, brief_rich_text_cell_runs(brief, "clientTitle", client.get("title", "")), "24")
-    set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), layout_styles["quote_date"])
+    quote_date_runs = brief_quote_date_rich_text_runs(brief)
+    if quote_date_runs:
+        set_ooxml_rich_text_cell(root, 16, 1, quote_date_runs, layout_styles["quote_date"])
+    else:
+        set_ooxml_cell(root, 16, 1, excel_date_serial(str(brief.get("quote_date", ""))), layout_styles["quote_date"])
     set_ooxml_rich_text_cell(root, 18, 1, brief_rich_text_cell_runs(brief, "projectTitle", project.get("title", "")), "26")
 
     write_table_header(root, 20, 21, layout_styles)
@@ -2061,10 +2121,10 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     manual_pagination_enabled = bool(continuation_pages) or total_row != total_candidate_row
     gst_row = total_row + 1
     grand_row = total_row + 2
-    gst_rate = quote_gst_rate(lines)
+    tax_rate = quote_tax_rate(brief)
     cached_total = sum(formula_cache_amount(entry.get("amount")) for entry in entries)
-    cached_gst = round(cached_total * gst_rate, 0) if gst_rate else 0.0
-    cached_grand = cached_total + cached_gst
+    cached_tax = round(cached_total * tax_rate, 0) if tax_rate else 0.0
+    cached_grand = cached_total + cached_tax
     set_ooxml_cell(root, total_row, 4, "Total", layout_styles["total_label"])
     set_ooxml_formula(
         root,
@@ -2075,18 +2135,18 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         cached_total,
     )
     set_ooxml_cell(root, total_row, 6, currency, layout_styles["total_currency"])
-    if gst_rate:
-        set_ooxml_cell(root, gst_row, 4, gst_label(lines), layout_styles["gst_label"])
+    if tax_rate:
+        set_ooxml_cell(root, gst_row, 4, quote_tax_label(brief), layout_styles["gst_label"])
         set_ooxml_formula(
             root,
             gst_row,
             5,
-            f"ROUND(E{total_row}*{gst_rate:.6f},0)",
+            f"ROUND(E{total_row}*{tax_rate:.6f},0)",
             layout_styles["gst_amount"],
-            cached_gst,
+            cached_tax,
         )
         set_ooxml_cell(root, gst_row, 6, currency, layout_styles["gst_currency"])
-    set_ooxml_cell(root, grand_row, 4, "Total including GST", layout_styles["grand_label"])
+    set_ooxml_cell(root, grand_row, 4, quote_total_including_tax_label(brief), layout_styles["grand_label"])
     set_ooxml_formula(
         root,
         grand_row,
@@ -2313,8 +2373,8 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         (53, 5): "Estimate",
         (92, 4): "Total",
         (92, 6): currency,
-        (93, 4): gst_label(lines) if quote_gst_rate(lines) else "",
-        (94, 4): "Total including GST",
+        (93, 4): quote_tax_label(brief) if quote_tax_rate(brief) else "",
+        (94, 4): quote_total_including_tax_label(brief),
         (94, 6): currency,
         (106, 5): clean_text(acceptance.get("text")),
         (117, 2): company_name,
@@ -2363,12 +2423,13 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         row_number += 2
 
     subtotal = quote_subtotal(entries)
-    gst_amount = round(subtotal * quote_gst_rate(lines)) if quote_gst_rate(lines) else 0
+    tax_rate = quote_tax_rate(brief)
+    tax_amount = round(subtotal * tax_rate) if tax_rate else 0
     cells[(92, 5)] = subtotal
-    if gst_amount:
-        cells[(93, 5)] = gst_amount
+    if tax_amount:
+        cells[(93, 5)] = tax_amount
         cells[(93, 6)] = currency
-    cells[(94, 5)] = subtotal + gst_amount
+    cells[(94, 5)] = subtotal + tax_amount
     text_row = 99
     terms_heading = clean_text(brief.get("terms_heading"))
     payment_terms = brief.get("payment_terms") or []
@@ -2500,7 +2561,7 @@ def write_match_csv(path: Path, lines: list[QuoteLine]) -> None:
                 match.pricing_id if match else "",
                 match.description if match else "",
                 quantity_text(line),
-                f"{match.sale_unit_price:.2f}" if match else "",
+                f"{line.unit_price_override:.2f}" if line.unit_price_override is not None else (f"{match.sale_unit_price:.2f}" if match else ""),
                 money(amount_value(line)),
             ]])
 

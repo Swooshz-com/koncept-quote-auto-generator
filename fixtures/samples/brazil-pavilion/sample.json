@@ -3,6 +3,7 @@
   "label": "Brazil Pavilion Demo",
   "description": "Sample customer, project, and reference images for quick testing.",
   "profile_id": "koncept",
+  "pricing_reference_id": "koncept",
   "images": [
     "images/01.jpg.jpeg",
     "images/02.jpg.jpeg",
