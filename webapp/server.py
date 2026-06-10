@@ -61,6 +61,12 @@ MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
 MAX_PRICING_REFERENCE_BYTES = 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
+MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES = 1 * 1024 * 1024
+MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024
+MAX_PRICING_REFERENCE_XLSX_COLUMNS = 64
+MAX_XLSX_EXCEL_COLUMNS = 16384
+MAX_XLSX_SHARED_STRINGS = 2000
+MAX_XLSX_SHARED_STRING_CHARS = 2000
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
 PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks", "aliases")
 PRICING_REFERENCE_EXAMPLE_ID_PREFIX = "example."
@@ -1278,24 +1284,54 @@ def first_xlsx_worksheet_name(zf: zipfile.ZipFile) -> str:
     return names[0]
 
 
+def validate_xlsx_zip_limits(zf: zipfile.ZipFile) -> None:
+    total_uncompressed = 0
+    for info in zf.infolist():
+        total_uncompressed += info.file_size
+        if info.file_size > MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES:
+            raise ValueError("Pricing reference XLSX XML parts are too large.")
+        if total_uncompressed > MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES:
+            raise ValueError("Pricing reference XLSX expands to too much XML data.")
+
+
+def read_xlsx_xml_entry(zf: zipfile.ZipFile, name: str) -> bytes:
+    try:
+        info = zf.getinfo(name)
+    except KeyError as exc:
+        raise KeyError(name) from exc
+    if info.file_size > MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES:
+        raise ValueError("Pricing reference XLSX XML parts are too large.")
+    return zf.read(info)
+
+
 def xlsx_shared_strings(zf: zipfile.ZipFile) -> list[str]:
     try:
-        xml = zf.read("xl/sharedStrings.xml")
+        xml = read_xlsx_xml_entry(zf, "xl/sharedStrings.xml")
     except KeyError:
         return []
     root = ET.fromstring(xml)
     values: list[str] = []
     for si in root.findall(f"{NS_MAIN}si"):
-        values.append("".join(t.text or "" for t in si.iter(f"{NS_MAIN}t")))
+        if len(values) >= MAX_XLSX_SHARED_STRINGS:
+            raise ValueError("Pricing reference XLSX contains too many shared strings.")
+        values.append(clean_text("".join(t.text or "" for t in si.iter(f"{NS_MAIN}t")))[:MAX_XLSX_SHARED_STRING_CHARS])
     return values
 
 
-def xlsx_col_index(cell_ref: str) -> int:
-    letters = "".join(ch for ch in cell_ref if ch.isalpha())
+def xlsx_col_index(cell_ref: str, max_columns: int = MAX_PRICING_REFERENCE_XLSX_COLUMNS) -> int:
+    match = re.match(r"^\$?([A-Za-z]{1,3})\$?\d*$", clean_text(cell_ref))
+    letters = match.group(1) if match else "A" if not clean_text(cell_ref) else ""
+    if not letters:
+        raise ValueError("Pricing reference XLSX contains an invalid cell reference.")
     index = 0
     for ch in letters.upper():
         index = index * 26 + (ord(ch) - 64)
-    return max(0, index - 1)
+    index -= 1
+    if index < 0 or index >= MAX_XLSX_EXCEL_COLUMNS:
+        raise ValueError("Pricing reference XLSX contains a cell outside Excel column bounds.")
+    if index >= max_columns:
+        raise ValueError(f"Pricing reference XLSX may contain no more than {max_columns} columns.")
+    return index
 
 
 def xlsx_col_name(index: int) -> str:
@@ -1326,19 +1362,23 @@ def xlsx_cell_text(cell: ET.Element, shared_strings: list[str]) -> str:
 
 def xlsx_raw_rows_from_bytes(raw: bytes) -> list[list[str]]:
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        validate_xlsx_zip_limits(zf)
         shared_strings = xlsx_shared_strings(zf)
-        worksheet_xml = zf.read(first_xlsx_worksheet_name(zf))
+        worksheet_xml = read_xlsx_xml_entry(zf, first_xlsx_worksheet_name(zf))
     root = ET.fromstring(worksheet_xml)
     rows: list[list[str]] = []
+    max_raw_rows = MAX_PRICING_REFERENCE_ROWS + 2
     for row_node in root.iter(f"{NS_MAIN}row"):
         values: list[str] = []
         for cell in row_node.findall(f"{NS_MAIN}c"):
             index = xlsx_col_index(cell.attrib.get("r", ""))
-            while len(values) <= index:
-                values.append("")
+            if len(values) <= index:
+                values.extend([""] * (index + 1 - len(values)))
             values[index] = xlsx_cell_text(cell, shared_strings)
         if any(values):
             rows.append(values)
+            if len(rows) >= max_raw_rows:
+                break
     return rows
 
 

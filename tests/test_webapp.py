@@ -129,6 +129,21 @@ def wait_for_job(job_id: str, timeout: float = 2.0) -> dict:
     raise AssertionError(f"Timed out waiting for job {job_id}")
 
 
+
+def xlsx_with_single_cell(cell_ref: str, value: str = "section", *, shared_strings: str = "") -> bytes:
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<sheetData><row r="1"><c r="{cell_ref}" t="inlineStr"><is><t>{value}</t></is></c></row></sheetData>'
+        '</worksheet>'
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("xl/worksheets/sheet1.xml", worksheet)
+        if shared_strings:
+            zf.writestr("xl/sharedStrings.xml", shared_strings)
+    return buffer.getvalue()
+
 def minimal_pricing_reference_xlsx(headers: list[str] | None = None) -> bytes:
     headers = headers or ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "aliases"]
     values = {
@@ -822,6 +837,62 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Download the pricing reference template", " ".join(result["errors"]))
         self.assertNotEqual(result.get("layout"), "v1-estimating-workbook")
         self.assertNotIn("V1.1", " ".join(result["errors"]))
+
+    def test_xlsx_pricing_reference_rejects_unbounded_cell_references(self):
+        self.assertEqual(webapp.xlsx_col_index("XFD1", max_columns=webapp.MAX_XLSX_EXCEL_COLUMNS), webapp.MAX_XLSX_EXCEL_COLUMNS - 1)
+        with self.assertRaises(ValueError):
+            webapp.xlsx_col_index("XFE1", max_columns=webapp.MAX_XLSX_EXCEL_COLUMNS)
+
+        raw = xlsx_with_single_cell("AAAAAA1", "section")
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "malicious-pricing.xlsx",
+            "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+            + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertTrue(result["errors"])
+        self.assertIn("invalid cell reference", " ".join(result["errors"]))
+
+    def test_xlsx_pricing_reference_rejects_large_uncompressed_xml(self):
+        shared_strings = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            f'<si><t>{"A" * (webapp.MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES + 1)}</t></si>'
+            '</sst>'
+        )
+        raw = xlsx_with_single_cell("A1", "0", shared_strings=shared_strings)
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "large-shared-strings.xlsx",
+            "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+            + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertTrue(result["errors"])
+        self.assertIn("too large", " ".join(result["errors"]))
+
+    def test_pricing_reference_validate_endpoint_rejects_malicious_xlsx_safely(self):
+        raw = xlsx_with_single_cell("AAAAAA1", "section")
+        payload = json.dumps({
+            "filename": "malicious-pricing.xlsx",
+            "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+            + base64.b64encode(raw).decode("ascii"),
+        }).encode("utf-8")
+        with LocalRunnerServer() as runner:
+            session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+            request = urllib.request.Request(
+                f"{runner.base_url}/api/pricing-reference/validate",
+                data=payload,
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": runner.base_url,
+                    session["csrf_header"]: session["csrf_token"],
+                },
+            )
+            response = json.loads(urllib.request.urlopen(request, timeout=3).read().decode("utf-8"))
+
+        self.assertTrue(response["errors"])
+        self.assertIn("invalid cell reference", " ".join(response["errors"]))
 
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
