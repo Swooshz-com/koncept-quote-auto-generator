@@ -11,6 +11,10 @@
       "id": "default",
       "name": "Default",
       "details": {
+        "tax": {
+          "label": "GST",
+          "rate": 0.09
+        },
         "quote_text": {
           "terms_heading": "Terms & Conditions:",
           "notes_heading": "Note:",
@@ -37,6 +41,10 @@
       "id": "koncept-image-default",
       "name": "Koncept Images Pte. Ltd.",
       "details": {
+        "tax": {
+          "label": "GST",
+          "rate": 0.09
+        },
         "company": {
           "name": "Koncept Image Pte Ltd",
           "header_details": "Koncept Image Pte. Ltd.\n61 Kaki Bukit Ave 1, #02-26,\nShunli Industrial Park\nSingapore 417943\nTelephone: +6568177477\n\nBank Detail:\nUnited Overseas Bank Limited, 80\nRaffles Place\nSingapore 048624\nAccount: 335-3020-445\nSwift Code: UOVBSGSG",

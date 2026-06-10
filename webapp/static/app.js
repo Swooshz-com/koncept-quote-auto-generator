@@ -18,6 +18,8 @@ const DEFAULT_NOTES_HEADING = "Note:";
 const DEFAULT_ACCEPTANCE_TEXT = "We accept the quotation amount and the terms";
 const DEFAULT_PERSON_LABEL = "Person in charge";
 const DEFAULT_STAMP_LABEL = "Company name & stamp";
+const DEFAULT_TAX_LABEL = "GST";
+const DEFAULT_TAX_RATE = 0.09;
 const DEFAULT_QUOTE_COMPANY_RICH_TEXT = {
   termsHeading: "<div>Terms &amp; Conditions:</div>",
   notesHeading: "<div>Note:</div>",
@@ -205,6 +207,8 @@ const elements = {
   personLabel: qs("#personLabel"),
   stampLabel: qs("#stampLabel"),
   dateLabel: qs("#dateLabel"),
+  taxLabel: qs("#taxLabel"),
+  taxRate: qs("#taxRate"),
   workflowStage: qs("#workflowStage"),
   aiFailureBanner: qs("#aiFailureBanner"),
   basisReviewSurface: qs("#basisReviewSurface"),
@@ -770,6 +774,35 @@ function splitLines(value) {
     .filter(Boolean);
 }
 
+function normalizeTaxLabel(value = "") {
+  return String(value || "").trim().toUpperCase() === "VAT" ? "VAT" : DEFAULT_TAX_LABEL;
+}
+
+function normalizeTaxRate(value, fallback = DEFAULT_TAX_RATE) {
+  const number = Number(String(value ?? "").replace("%", "").trim());
+  if (!Number.isFinite(number)) return fallback;
+  const rate = number > 1 ? number / 100 : number;
+  return Math.min(1, Math.max(0, rate));
+}
+
+function taxRatePercentText(value = DEFAULT_TAX_RATE) {
+  const percent = normalizeTaxRate(value, DEFAULT_TAX_RATE) * 100;
+  return Number.isInteger(percent) ? String(percent) : String(Number(percent.toFixed(2)));
+}
+
+function taxRateFromPercentInput(value, fallback = DEFAULT_TAX_RATE) {
+  const number = Number(String(value ?? "").replace("%", "").trim());
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(1, Math.max(0, number / 100));
+}
+
+function collectTaxDetails() {
+  return {
+    label: normalizeTaxLabel(elements.taxLabel?.value),
+    rate: taxRateFromPercentInput(elements.taxRate?.value, DEFAULT_TAX_RATE),
+  };
+}
+
 function todayDateInputValue(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -1061,6 +1094,7 @@ function collectQuoteDetails() {
       logo_name: state.headerLogo ? state.headerLogo.name : "",
       logo_type: state.headerLogo ? state.headerLogo.type : "",
     },
+    tax: collectTaxDetails(),
     quote_text: {
       terms_heading: elements.termsHeading.value.trim(),
       payment_terms: splitLines(elements.paymentTerms.value),
@@ -1086,6 +1120,7 @@ function applyQuoteDetails(details = {}, options = {}) {
   const company = details.company || {};
   const quoteText = details.quote_text || {};
   const signature = details.signature || {};
+  const tax = details.tax || quoteText.tax || {};
   const partial = Boolean(options.partial);
 
   if (shouldApply(client, "name", partial)) setInputValue(elements.clientName, client.name);
@@ -1100,6 +1135,12 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(details, "project_number", partial)) setInputValue(elements.projectNumber, details.project_number);
   if (shouldApply(company, "name", partial)) setInputValue(elements.quoteCompanyName, company.name);
   if (shouldApply(company, "header_details", partial)) setInputValue(elements.headerDetails, company.header_details);
+  if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_label")) {
+    elements.taxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
+  }
+  if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_rate")) {
+    setInputValue(elements.taxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
+  }
   if (shouldApply(quoteText, "terms_heading", partial)) setInputValue(elements.termsHeading, quoteText.terms_heading);
   if (shouldApply(quoteText, "payment_terms", partial)) setInputValue(elements.paymentTerms, linesValue(quoteText.payment_terms));
   if (shouldApply(quoteText, "notes_heading", partial)) setInputValue(elements.notesHeading, quoteText.notes_heading);
@@ -1131,6 +1172,8 @@ function applyQuoteDetails(details = {}, options = {}) {
 }
 
 function applyDefaultQuoteCompanyFields() {
+  if (elements.taxLabel) elements.taxLabel.value = DEFAULT_TAX_LABEL;
+  setInputValue(elements.taxRate, taxRatePercentText(DEFAULT_TAX_RATE));
   setInputValue(elements.termsHeading, DEFAULT_TERMS_HEADING);
   setInputValue(elements.notesHeading, DEFAULT_NOTES_HEADING);
   setInputValue(elements.acceptanceText, DEFAULT_ACCEPTANCE_TEXT);
@@ -1611,7 +1654,7 @@ function renderProfileOptions() {
 }
 
 function pricingReferenceRequiredColumns() {
-  return ["id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier"];
+  return ["section", "description", "unit_hint", "internal_cost", "markup_multiplier"];
 }
 
 function normalizeBasisTag(tag = "") {
@@ -1825,7 +1868,8 @@ async function validatePricingReferenceFile(file) {
 async function downloadPricingReferenceTemplate(event) {
   event.preventDefault();
   try {
-    const response = await fetch("/api/pricing-reference/template.xlsx", { cache: "no-store" });
+    const templateUrl = `/api/pricing-reference/template.xlsx?template=examples-v3&t=${Date.now()}`;
+    const response = await fetch(templateUrl, { cache: "no-store" });
     if (!response.ok) {
       renderPricingReferencePreview({
         ...pricingReferenceValidationResult([], [], 0, "swooshz-pricing-reference-template.xlsx"),
@@ -2029,6 +2073,7 @@ function buildPayload(options = {}) {
       logo_name: state.headerLogo ? state.headerLogo.name : "",
       logo_type: state.headerLogo ? state.headerLogo.type : "",
     },
+    tax: collectTaxDetails(),
     user_feedback: state.pendingFeedback,
     quote_basis: includeDraftContext ? { ...state.quoteBasis, ...quoteBasisFromSections(state.quoteBasisSections) } : {},
     quote_basis_sections: includeDraftContext ? cloneQuoteBasisSections(state.quoteBasisSections) : [],
@@ -4342,6 +4387,8 @@ function wireEvents() {
     elements.personLabel,
     elements.stampLabel,
     elements.dateLabel,
+    elements.taxLabel,
+    elements.taxRate,
   ].forEach((input) => {
     input.addEventListener("input", syncControlStates);
     input.addEventListener("change", syncControlStates);

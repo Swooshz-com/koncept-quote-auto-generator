@@ -1252,6 +1252,11 @@ h3 {
   gap: 12px;
 }
 
+.side-workspace .quote-details-panel .tax-settings-grid {
+  grid-template-columns: minmax(180px, 240px) minmax(140px, 180px);
+  align-items: end;
+}
+
 .side-workspace .quote-details-panel label,
 .side-workspace .quote-details-panel .field-control {
   font-weight: 780;
@@ -3219,6 +3224,7 @@ td input {
   }
 
   .form-grid,
+  .side-workspace .quote-details-panel .tax-settings-grid,
   .quote-basis-header {
     grid-template-columns: 1fr;
   }

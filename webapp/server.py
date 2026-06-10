@@ -48,46 +48,102 @@ DEFAULT_PRICING_REFERENCE_ID = "koncept"
 PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
 PRICING_REFERENCES_ROOT = PROJECT_ROOT / "pricing-references"
+PRICING_REFERENCE_TEMPLATE_PATH = PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
 DEFAULT_TMP_ROOT = PROJECT_ROOT / "_tmp" / "webapp"
 DEFAULT_LOG_ROOT = DEFAULT_OUTPUT_ROOT / "_logs"
+DEFAULT_TAX_LABEL = "GST"
+DEFAULT_TAX_RATE = 0.09
 MISSING_IMAGES_MESSAGE = "Please upload reference images first so I can analyze the design and prepare the quote."
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
 MAX_PRICING_REFERENCE_BYTES = 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
-PRICING_REFERENCE_REQUIRED_COLUMNS = ("id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier")
-PRICING_REFERENCE_TEMPLATE_COLUMNS = (*PRICING_REFERENCE_REQUIRED_COLUMNS, "aliases")
+PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
+PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks", "aliases")
 PRICING_REFERENCE_EXAMPLE_ID_PREFIX = "example."
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
-        "example.floor.raised-platform",
+        "example.floor-design.needle-punch-carpet-in-colour",
         "Floor Design",
-        "100mm raised platform with aluminium edging",
+        "m2 needle punch carpet in colour",
         "sqm",
-        "85",
-        "1.6",
-        "raised platform|platform",
+        "7",
+        "1.5",
+        "needle punch",
+        "needle punch carpet in colour|needle punch|carpet sqm",
     ],
     [
-        "example.graphics.vinyl-print",
-        "Graphics and Signage",
-        "Vinyl printed graphics to visible wall panels",
+        "example.floor-design.100mm-raised-platfrom-with-aluminum-edging",
+        "Floor Design",
+        "m2 100mm raised platfrom with aluminum edging",
         "sqm",
-        "28",
-        "1.7",
-        "graphics|vinyl print",
+        "40",
+        "1.5",
+        "Platform ONLY",
+        "raised platform|platform|aluminum edging",
     ],
     [
-        "example.lighting.led-spotlight",
-        "Lighting and Electrical",
+        "example.booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+        "Booth Structure",
+        "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
+        "m length",
+        "180",
+        "1.5",
+        "Backwall or any partition; PAINTED",
+        "partition wall|painted backwall|wooden partition",
+    ],
+    [
+        "example.counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+        "COUNTERS AND CABINETS",
+        "m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+        "m length",
+        "800",
+        "1.5",
+        "INFORMATION COUNTER; PAINTED",
+        "information counter|lockable counter|counter laminated top",
+    ],
+    [
+        "example.electrical-fittings-excluding-connection-fees-by-organiser.10w-led-spotlight",
+        "Electrical Fittings ( Excluding connection fees by Organiser)",
         "nos. 10W LED Spotlight",
         "nos",
-        "18",
-        "1.7",
-        "spotlight|LED light",
+        "30",
+        "1.5",
+        "SPOTLIGHT",
+        "spotlight|LED light|10W light",
+    ],
+    [
+        "example.graphics.vinyl-printed-graphics",
+        "Graphics",
+        "m2 of vinyl printed graphics",
+        "sqm",
+        "40",
+        "1.5",
+        "Printed Graphics on wall",
+        "vinyl graphics|printed graphics|wall graphics",
+    ],
+    [
+        "example.furniture-rental.bistro-chairs",
+        "Furniture Rental",
+        "nos. Bistro Chairs",
+        "nos",
+        "30",
+        "1.5",
+        "Bistro Low Chair",
+        "bistro chairs|low chair|chair rental",
+    ],
+    [
+        "example.av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
+        "AV Equipment Rental Items",
+        "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
+        "nos",
+        "300",
+        "1.5",
+        "TV",
+        "LED TV|screen|monitor|42 inch TV",
     ],
 ]
 DOWNLOADABLE_FILES = {"quotation.xlsx"}
@@ -656,9 +712,33 @@ def parse_float_or_none(value: Any) -> float | None:
     if value in (None, ""):
         return None
     try:
-        return float(str(value).replace(",", "").strip())
+        return float(str(value).replace(",", "").replace("%", "").strip())
     except ValueError:
         return None
+
+
+def normalize_tax_label(value: Any) -> str:
+    label = clean_text(value).upper()
+    return label if label in {"GST", "VAT"} else DEFAULT_TAX_LABEL
+
+
+def normalize_tax_rate(value: Any, fallback: float = DEFAULT_TAX_RATE) -> float:
+    rate = parse_float_or_none(value)
+    if rate is None:
+        return fallback
+    if rate > 1:
+        rate /= 100
+    return min(1.0, max(0.0, rate))
+
+
+def quote_tax_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    quote_text = payload.get("quote_text") if isinstance(payload.get("quote_text"), dict) else {}
+    tax = payload.get("tax") if isinstance(payload.get("tax"), dict) else {}
+    if not tax and isinstance(quote_text.get("tax"), dict):
+        tax = quote_text.get("tax")
+    label = normalize_tax_label(tax.get("label") or quote_text.get("tax_label"))
+    rate_source = tax.get("rate") if "rate" in tax else quote_text.get("tax_rate")
+    return {"label": label, "rate": normalize_tax_rate(rate_source)}
 
 
 def format_dimension(value: float) -> str:
@@ -1021,24 +1101,66 @@ def parse_pricing_number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def split_pricing_reference_terms(value: Any) -> list[str]:
+    if isinstance(value, list):
+        source = value
+    else:
+        source = re.split(r"[|;\n]", str(value or ""))
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in source:
+        term = clean_text(raw)
+        key = term.lower()
+        if term and key not in seen:
+            terms.append(term)
+            seen.add(key)
+    return terms
+
+
+def default_pricing_reference_aliases(section: str, description: str, unit_hint: str, remarks: list[str]) -> list[str]:
+    aliases: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: Any) -> None:
+        alias = clean_text(value)
+        key = alias.lower()
+        if alias and key not in seen:
+            aliases.append(alias)
+            seen.add(key)
+
+    add(description)
+    leading_unit_pattern = r"(?i)^(?:m2|sqm|m\s*length|m\s*run|nos?\.?|sets?\s+of|lot\.?)\s+"
+    stripped_description = clean_text(re.sub(leading_unit_pattern, "", description))
+    add(stripped_description)
+    for remark in remarks:
+        add(remark)
+    if section and stripped_description:
+        add(f"{section} {stripped_description}")
+    if unit_hint and stripped_description:
+        add(f"{stripped_description} {unit_hint}")
+    return aliases[:8]
+
+
 def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict[str, Any] | None:
     description = clean_text(raw.get("description"))
+    section = clean_text(raw.get("section")) or "General"
+    unit_hint = normalize_pricing_unit(raw.get("unit_hint") or raw.get("unit"))
     internal_cost = parse_pricing_number(raw.get("internal_cost") or raw.get("cost"))
     markup = parse_pricing_number(raw.get("markup_multiplier") or raw.get("markup"))
     if not description or internal_cost is None or internal_cost <= 0 or markup is None or markup <= 0:
         return None
-    aliases_value = raw.get("aliases")
-    if isinstance(aliases_value, list):
-        aliases = [clean_text(alias) for alias in aliases_value if clean_text(alias)][:8]
-    else:
-        aliases = [clean_text(alias) for alias in re.split(r"[|;]", str(aliases_value or "")) if clean_text(alias)][:8]
+    remarks = split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))
+    aliases = split_pricing_reference_terms(raw.get("aliases"))[:8]
+    if not aliases:
+        aliases = default_pricing_reference_aliases(section, description, unit_hint, remarks)
     return {
-        "id": safe_section_id(raw.get("id") or f"{raw.get('section') or 'item'}-{description}", f"item-{index + 1}"),
-        "section": clean_text(raw.get("section")) or "General",
+        "id": safe_section_id(raw.get("id") or f"{section}-{description}", f"item-{index + 1}"),
+        "section": section,
         "description": description,
-        "unit_hint": normalize_pricing_unit(raw.get("unit_hint") or raw.get("unit")),
+        "unit_hint": unit_hint,
         "internal_cost": internal_cost,
         "markup_multiplier": markup,
+        "remarks": remarks,
         "aliases": aliases,
     }
 
@@ -1097,12 +1219,21 @@ def validate_pricing_reference_rows(
     items: list[dict[str, Any]] = []
     skipped = 0
     example_rows = 0
+    seen_ids: set[str] = set()
     for index, raw in enumerate(rows[:MAX_PRICING_REFERENCE_ROWS]):
         if is_pricing_reference_example_row(raw):
             example_rows += 1
             continue
         item = sanitize_pricing_reference_item(raw, index)
         if item:
+            base_id = safe_section_id(item.get("id"), f"item-{index + 1}")
+            candidate_id = base_id
+            suffix = 2
+            while candidate_id in seen_ids:
+                candidate_id = f"{base_id}-{suffix}"
+                suffix += 1
+            seen_ids.add(candidate_id)
+            item["id"] = candidate_id
             items.append(item)
         else:
             skipped += 1
@@ -1227,7 +1358,7 @@ def rows_from_csv_bytes(raw: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     return headers, rows
 
 
-def pricing_reference_template_sheet_xml(rows: list[list[str]]) -> str:
+def pricing_reference_template_sheet_xml(rows: list[list[str]], *, hide_internal_id: bool = False) -> str:
     row_xml: list[str] = []
     for row_index, row in enumerate(rows, start=1):
         cells = []
@@ -1244,26 +1375,37 @@ def pricing_reference_template_sheet_xml(rows: list[list[str]]) -> str:
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         f'<dimension ref="{dimension}"/>'
         '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
-        '<cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="24" customWidth="1"/>'
-        '<col min="3" max="3" width="58" customWidth="1"/><col min="4" max="4" width="14" customWidth="1"/>'
-        '<col min="5" max="6" width="18" customWidth="1"/><col min="7" max="7" width="42" customWidth="1"/></cols>'
+        '<cols>'
+        + (
+            '<col min="1" max="1" width="0" hidden="1" customWidth="1"/>'
+            '<col min="2" max="2" width="24" customWidth="1"/>'
+            '<col min="3" max="3" width="72" customWidth="1"/>'
+            '<col min="4" max="4" width="14" customWidth="1"/>'
+            '<col min="5" max="6" width="18" customWidth="1"/>'
+            '<col min="7" max="7" width="36" customWidth="1"/>'
+            '<col min="8" max="8" width="56" customWidth="1"/>'
+            if hide_internal_id else
+            '<col min="1" max="1" width="72" customWidth="1"/>'
+            '<col min="2" max="2" width="72" customWidth="1"/>'
+        )
+        + '</cols>'
         f'<sheetData>{"".join(row_xml)}</sheetData>'
         '</worksheet>'
     )
 
 
-def pricing_reference_template_xlsx_bytes() -> bytes:
+def generated_pricing_reference_template_xlsx_bytes() -> bytes:
     pricing_rows = [list(PRICING_REFERENCE_TEMPLATE_COLUMNS), *PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS]
     instruction_rows = [
         ["Swooshz Pricing Reference Import Template"],
         ["Replace the example rows in the Pricing Reference sheet with real pricing rows, then upload this workbook in New Pricing Reference."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
-        ["id", "Stable unique id, for example floor-design.needle-punch-carpet."],
         ["section", "Quotation section, for example Floor Design."],
         ["description", "Customer-facing wording. Catalog-backed quote basis and output rows will use this exactly."],
         ["unit_hint", "Examples: sqm, m length, no, lot, set."],
         ["internal_cost", "Number only. This stays internal."],
         ["markup_multiplier", "Number only, for example 1.5."],
+        ["remarks", "Optional. Internal matching/search notes; separate multiple values with semicolon."],
         ["aliases", "Optional. Separate search aliases with | or ;."],
     ]
     buffer = io.BytesIO()
@@ -1300,9 +1442,42 @@ def pricing_reference_template_xlsx_bytes() -> bytes:
             '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'
             '</Relationships>'
         ))
-        zf.writestr("xl/worksheets/sheet1.xml", pricing_reference_template_sheet_xml(pricing_rows))
+        zf.writestr("xl/worksheets/sheet1.xml", pricing_reference_template_sheet_xml(pricing_rows, hide_internal_id=True))
         zf.writestr("xl/worksheets/sheet2.xml", pricing_reference_template_sheet_xml(instruction_rows))
     return buffer.getvalue()
+
+
+def pricing_reference_template_xlsx_bytes() -> bytes:
+    if PRICING_REFERENCE_TEMPLATE_PATH.exists():
+        return PRICING_REFERENCE_TEMPLATE_PATH.read_bytes()
+    return generated_pricing_reference_template_xlsx_bytes()
+
+
+def static_asset_version(relative_path: str) -> str:
+    path = (STATIC_DIR / relative_path).resolve()
+    try:
+        path.relative_to(STATIC_DIR.resolve())
+    except ValueError:
+        return str(int(time.time()))
+    try:
+        return str(int(path.stat().st_mtime))
+    except OSError:
+        return str(int(time.time()))
+
+
+def versioned_index_html() -> bytes:
+    body = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    body = re.sub(
+        r"/static/styles\.css(?:\?v=\d+)?",
+        f"/static/styles.css?v={static_asset_version('styles.css')}",
+        body,
+    )
+    body = re.sub(
+        r"/static/app\.js(?:\?v=\d+)?",
+        f"/static/app.js?v={static_asset_version('app.js')}",
+        body,
+    )
+    return body.encode("utf-8")
 
 
 def decode_data_url_bytes(data_url: Any, max_bytes: int) -> bytes:
@@ -1948,6 +2123,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "header_lines": multiline_list(header_source, preserve_blank=True, html_breaks=True),
             "logo_data_url": header_logo,
         },
+        "tax": quote_tax_from_payload(payload),
         "line_items": normalize_line_items(payload),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
         "terms_heading": clean_text(quote_text.get("terms_heading")),
@@ -3754,7 +3930,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if self.block_unauthenticated_request(path):
             return
         if path == "/":
-            self.send_static_file(STATIC_DIR / "index.html")
+            self.send_index_file()
             return
         if path.startswith("/static/"):
             relative = unquote(path.removeprefix("/static/"))
@@ -4058,6 +4234,15 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         )
+
+    def send_index_file(self) -> None:
+        body = versioned_index_html()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_static_file(self, path: Path) -> None:
         try:

@@ -298,6 +298,23 @@
                 </div>
 
                 <div class="section-band quote-form-section">
+                  <h3>Tax</h3>
+                  <div class="form-grid compact tax-settings-grid">
+                    <label class="field-control">
+                      <span>Quotation tax label</span>
+                      <select id="taxLabel">
+                        <option value="GST">GST</option>
+                        <option value="VAT">VAT</option>
+                      </select>
+                    </label>
+                    <label class="field-control">
+                      <span>Tax rate (%)</span>
+                      <input id="taxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal">
+                    </label>
+                  </div>
+                </div>
+
+                <div class="section-band quote-form-section">
                   <h3>Terms <span class="section-title-note">(Optional — Leave empty)</span></h3>
                   <div class="form-grid compact">
                      <div class="field-control wide">
@@ -562,7 +579,7 @@
                 <strong>Use the import template for reliable packages.</strong>
                 <span>Fill the normalized columns, then upload the completed workbook or CSV here.</span>
               </div>
-              <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx" download>Download Template</a>
+              <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx?template=examples-v3" download>Download Template</a>
             </div>
             <label>
               Pricing reference name

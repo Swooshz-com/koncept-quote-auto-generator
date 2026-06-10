@@ -43,7 +43,7 @@
     }
   },
   "totals": {
-    "labels": ["Total", "GST 9%", "Total including GST"],
+    "labels": ["Total", "Quote-level tax label and rate", "Total including selected tax label"],
     "keep_rows_together": true,
     "border_scope": ["label", "amount", "currency"],
     "use_top_rule_above_total": true,

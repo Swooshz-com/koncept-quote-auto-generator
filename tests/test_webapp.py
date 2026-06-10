@@ -72,6 +72,10 @@ def valid_payload():
             "header_details": "Sample Quotation Co Pte Ltd\nDynamic header address\nDynamic bank detail",
             "logo_data_url": "data:image/jpeg;base64,ZmFrZS1sb2dv",
         },
+        "tax": {
+            "label": "GST",
+            "rate": 0.09,
+        },
         "quote_text": {
             "terms_heading": "Commercial Terms",
             "cheque_payee": "Sample Quotation Co Pte Ltd",
@@ -126,8 +130,18 @@ def wait_for_job(job_id: str, timeout: float = 2.0) -> dict:
 
 
 def minimal_pricing_reference_xlsx(headers: list[str] | None = None) -> bytes:
-    headers = headers or ["id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"]
-    row = ["custom.wall.white-painted", "Structures", "White painted walling", "sqm", "50", "1.7", "painted wall|white wall"][:len(headers)]
+    headers = headers or ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "aliases"]
+    values = {
+        "id": "custom.wall.white-painted",
+        "section": "Structures",
+        "description": "White painted walling",
+        "unit_hint": "sqm",
+        "internal_cost": "50",
+        "markup_multiplier": "1.7",
+        "remarks": "painted wall",
+        "aliases": "painted wall|white wall",
+    }
+    row = [values.get(header, "") for header in headers]
 
     def cell(ref: str, value: str) -> str:
         return f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>'
@@ -244,6 +258,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["project"]["booth_depth"], 6.0)
         self.assertEqual(brief["company"]["name"], "Sample Quotation Co Pte Ltd")
         self.assertEqual(brief["company"]["header_lines"], ["Sample Quotation Co Pte Ltd", "Dynamic header address", "Dynamic bank detail"])
+        self.assertEqual(brief["tax"], {"label": "GST", "rate": 0.09})
         self.assertEqual(brief["terms_heading"], "Commercial Terms")
         self.assertEqual(brief["cheque_payee"], "Sample Quotation Co Pte Ltd")
         self.assertEqual(brief["notes_heading"], "Editable Notes")
@@ -256,6 +271,14 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["rich_text"]["clientAddress"], "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>")
         self.assertIn("<strong>Sample Quotation Co Pte Ltd</strong>", brief["rich_text"]["headerDetails"])
         self.assertIn("Quote basis confirmed from webapp", brief["notes"][0])
+
+    def test_payload_to_brief_normalizes_quote_level_vat(self):
+        payload = valid_payload()
+        payload["tax"] = {"label": "VAT", "rate": "20%"}
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
 
     def test_payload_to_brief_derives_booth_size_from_title_without_manual_fields(self):
         payload = valid_payload()
@@ -690,10 +713,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
-        self.assertEqual(result["items"][0]["id"], "custom-wall-white-painted")
+        self.assertEqual(result["items"][0]["id"], "structures-white-painted-walling")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
+        self.assertEqual(result["items"][0]["remarks"], ["painted wall"])
         self.assertEqual(result["items"][0]["aliases"], ["painted wall", "white wall"])
         self.assertNotIn("data_url", result)
 
@@ -717,6 +741,24 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
         self.assertEqual(result["items"][0]["aliases"], ["painted wall", "white wall"])
 
+    def test_pricing_reference_upload_generates_ids_when_absent(self):
+        raw = (
+            "section,description,unit_hint,internal_cost,markup_multiplier,remarks\n"
+            "Structures,White painted walling,sqm,50,1.7,painted wall\n"
+            "Structures,White painted walling,sqm,55,1.7,painted wall alternate\n"
+        ).encode("utf-8")
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "custom-pricing.csv",
+            "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertEqual(result["errors"], [])
+        self.assertEqual([item["id"] for item in result["items"]], [
+            "structures-white-painted-walling",
+            "structures-white-painted-walling-2",
+        ])
+        self.assertIn("painted wall", result["items"][0]["aliases"])
+
     def test_json_pricing_reference_upload_is_rejected(self):
         result = webapp.validate_pricing_reference_upload({
             "filename": "custom-pricing.json",
@@ -730,6 +772,7 @@ class WebappServerTest(unittest.TestCase):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
 
+        self.assertTrue(webapp.PRICING_REFERENCE_TEMPLATE_PATH.exists())
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
         self.assertGreaterEqual(len(rows), 2)
         self.assertTrue(rows[0]["id"].startswith("example."))
@@ -740,6 +783,12 @@ class WebappServerTest(unittest.TestCase):
                 self.assertEqual(response.headers["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 self.assertIn("swooshz-pricing-reference-template.xlsx", response.headers["Content-Disposition"])
         self.assertEqual(webapp.rows_from_xlsx_bytes(downloaded)[0], list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
+
+    def test_index_response_versions_static_assets_from_file_mtime(self):
+        html = webapp.versioned_index_html().decode("utf-8")
+
+        self.assertRegex(html, r'/static/styles\.css\?v=\d+')
+        self.assertRegex(html, r'/static/app\.js\?v=\d+')
 
     def test_pricing_reference_template_upload_ignores_example_rows(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
@@ -757,7 +806,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Replace the example rows", " ".join(result["warnings"]))
 
     def test_non_template_pricing_reference_upload_is_rejected(self):
-        raw = minimal_pricing_reference_xlsx(["old_id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
+        raw = minimal_pricing_reference_xlsx(["old_id", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
         result = webapp.validate_pricing_reference_upload({
             "filename": "non-template-pricing.xlsx",
             "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
@@ -2267,6 +2316,8 @@ class WebappServerTest(unittest.TestCase):
             "stampLabel",
             "konceptDateLabel",
             "dateLabel",
+            "taxLabel",
+            "taxRate",
             "customerDetailsButton",
             "quoteCompanyButton",
             "customerDetailsPanel",
@@ -2356,6 +2407,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("selectedPresetValue", js)
         self.assertIn("presetValueFromQuoteDetails", js)
         self.assertIn("selectedPresetValue: state.selectedPresetValue", js)
+        self.assertIn("collectTaxDetails()", js)
+        self.assertIn("tax: collectTaxDetails()", js)
+        self.assertIn('id="taxLabel"', html)
+        self.assertIn('id="taxRate"', html)
         self.assertIn('defaultPreset = builtInPresets.find((preset) => preset.id === "default")', js)
         self.assertIn("defaultOption", js)
         self.assertIn('.filter((preset) => preset.id !== "default")', js)
