@@ -566,8 +566,8 @@ class WebappServerTest(unittest.TestCase):
             "OIDC_REDIRECT_URI": "https://quote.example/callback",
             "OIDC_LOGOUT_URL": "https://issuer.example/logout",
         }
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
         with mock.patch.dict(os.environ, env, clear=True):
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
             with LocalRunnerServer() as runner:
                 with self.assertRaises(urllib.error.HTTPError) as root_error:
                     opener.open(f"{runner.base_url}/", timeout=3)
