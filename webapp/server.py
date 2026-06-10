@@ -801,23 +801,51 @@ def normalize_confidence_percent(value: Any) -> int | None:
     return int(min(100, max(0, round(number))))
 
 
-def normalize_basis_line(value: Any) -> dict[str, Any] | None:
+def split_basis_decision_text(text: Any, default_tag: Any = "Confirm") -> list[dict[str, str]]:
+    raw = clean_text(text)
+    if not raw:
+        return []
+    tag_pattern = r"Include|Confirm|Custom|Manual|Extra|Needs Pricing|Exclude|Matched|Assumption|Note"
+    matches = list(re.finditer(rf"(?:^|[;\n]\s*)({tag_pattern})\s*:\s*", raw, flags=re.IGNORECASE))
+    if not matches:
+        return [{"tag": normalize_basis_tag(default_tag), "text": raw}]
+
+    lines: list[dict[str, str]] = []
+    first_prefix_start = matches[0].start()
+    leading = clean_text(raw[:first_prefix_start].strip(" ;"))
+    if leading:
+        lines.append({"tag": normalize_basis_tag(default_tag), "text": leading})
+
+    for index, match in enumerate(matches):
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+        segment = clean_text(raw[match.end():next_start].strip(" ;"))
+        if segment:
+            lines.append({"tag": normalize_basis_tag(match.group(1)), "text": segment})
+    return lines
+
+
+def normalize_basis_lines(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, dict):
         text = clean_text(value.get("text") or value.get("line") or value.get("description"))
         if not text:
-            return None
-        line = {"tag": normalize_basis_tag(value.get("tag")), "text": text}
+            return []
         confidence = normalize_confidence_percent(value.get("confidence_pct", value.get("confidence")))
-        if confidence is not None:
-            line["confidence"] = confidence
-        return line
+        lines: list[dict[str, Any]] = []
+        for line in split_basis_decision_text(text, value.get("tag")):
+            if confidence is not None:
+                line["confidence"] = confidence
+            lines.append(line)
+        return lines
+
     raw = clean_text(value)
     if not raw:
-        return None
-    match = re.match(r"^(Include|Confirm|Custom|Manual|Extra|Needs Pricing|Exclude|Matched|Assumption|Note)\s*:\s*(.*)$", raw, flags=re.IGNORECASE)
-    if match:
-        return {"tag": normalize_basis_tag(match.group(1)), "text": clean_text(match.group(2))}
-    return {"tag": "Confirm", "text": raw}
+        return []
+    return split_basis_decision_text(raw)
+
+
+def normalize_basis_line(value: Any) -> dict[str, Any] | None:
+    lines = normalize_basis_lines(value)
+    return lines[0] if lines else None
 
 
 def confirm_only_basis_sections(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -829,7 +857,7 @@ def confirm_only_basis_sections(sections: list[dict[str, Any]]) -> list[dict[str
             if not isinstance(line, dict):
                 continue
             current_tag = normalize_basis_tag(line.get("tag"))
-            next_line = {**line, "tag": current_tag if current_tag in {"Custom", "Exclude"} else "Confirm"}
+            next_line = {**line, "tag": current_tag if current_tag == "Custom" else "Confirm"}
             confidence = normalize_confidence_percent(next_line.get("confidence"))
             if confidence is not None:
                 next_line["confidence"] = confidence
@@ -863,7 +891,7 @@ def normalize_quote_basis_sections(payload: dict[str, Any]) -> list[dict[str, An
             raw_lines = raw_section.get("lines")
             if not isinstance(raw_lines, list):
                 raw_lines = multiline_list(raw_section.get("text") or raw_section.get("body"))
-            lines = [line for line in (normalize_basis_line(item) for item in raw_lines) if line]
+            lines = [line for item in raw_lines for line in normalize_basis_lines(item)]
             if lines:
                 sections.append({"id": section_id or f"section-{index}", "title": title, "lines": lines})
         return sections
@@ -876,7 +904,7 @@ def normalize_quote_basis_sections(payload: dict[str, Any]) -> list[dict[str, An
         value = clean_multiline(raw_basis.get(key))
         if not value:
             continue
-        lines = [line for line in (normalize_basis_line(item) for item in multiline_list(value)) if line]
+        lines = [line for item in multiline_list(value) for line in normalize_basis_lines(item)]
         if lines:
             sections.append({
                 "id": section_id,
@@ -2403,6 +2431,16 @@ def quote_basis_sections_with_catalog_exact_lines(
     sections: list[dict[str, Any]],
     line_items: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    def basis_match_words(value: Any) -> set[str]:
+        words: set[str] = set()
+        for word in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+            if len(word) < 3:
+                continue
+            words.add(word)
+            if word.endswith("ing") and len(word) > 5:
+                words.add(word[:-3])
+        return words
+
     catalog_items_by_section: dict[str, list[dict[str, Any]]] = {}
     for item in line_items:
         if not clean_text(item.get("pricing_keyword")) or not clean_text(item.get("description")):
@@ -2433,6 +2471,47 @@ def quote_basis_sections_with_catalog_exact_lines(
                 break
             line["text"] = clean_text(catalog_items[index].get("description"))
             counters[counter_key] = index + 1
+
+    def section_matches_item(section: dict[str, Any], item: dict[str, Any]) -> bool:
+        item_keys = {
+            safe_section_id(item.get("section"), "section"),
+            clean_basis_section_title(item.get("section")).lower(),
+        }
+        section_keys = {
+            safe_section_id(section.get("id") or section.get("title"), "section"),
+            clean_basis_section_title(section.get("title")).lower(),
+        }
+        if item_keys & section_keys:
+            return True
+        item_words = basis_match_words(item.get("section"))
+        section_words = basis_match_words(section.get("title"))
+        return bool(item_words and section_words and item_words & section_words)
+
+    def ensure_item_section(item: dict[str, Any]) -> dict[str, Any]:
+        for section in next_sections:
+            if section_matches_item(section, item):
+                return section
+        title = clean_basis_section_title(item.get("section")) or "Quote Basis"
+        section = {"id": safe_section_id(title, f"section-{len(next_sections) + 1}"), "title": title, "lines": []}
+        next_sections.append(section)
+        return section
+
+    for item in line_items:
+        description = clean_text(item.get("description"))
+        if not description:
+            continue
+        section = ensure_item_section(item)
+        existing_descriptions = {
+            clean_text(line.get("text")).lower()
+            for line in section.get("lines") or []
+            if isinstance(line, dict)
+        }
+        if description.lower() in existing_descriptions:
+            continue
+        section.setdefault("lines", []).append({
+            "tag": "Confirm" if clean_text(item.get("pricing_keyword")) else "Custom",
+            "text": description,
+        })
     return next_sections
 
 

@@ -118,6 +118,7 @@ const state = {
   quoteBasisSections: [],
   lineItems: [],
   outputRows: [],
+  originalOutputRows: [],
   outputErrors: [],
   boothDimensions: { ...DEFAULT_BOOTH_DIMENSIONS },
   originalAnalysisSnapshot: null,
@@ -222,10 +223,12 @@ const elements = {
   savePresetButton: qs("#savePresetButton"),
   loadPresetButton: qs("#loadPresetButton"),
   deletePresetButton: qs("#deletePresetButton"),
+  resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
   clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
   discussQuoteButton: qs("#discussQuoteButton"),
   resetQuoteBasisButton: qs("#resetQuoteBasisButton"),
+  resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
@@ -247,6 +250,7 @@ const elements = {
   pricingReferenceModal: qs("#pricingReferenceModal"),
   pricingReferenceForm: qs("#pricingReferenceForm"),
   pricingReferenceName: qs("#pricingReferenceName"),
+  pricingReferenceTemplateButton: qs("#pricingReferenceTemplateButton"),
   pricingReferenceFile: qs("#pricingReferenceFile"),
   pricingReferenceFileName: qs("#pricingReferenceFileName"),
   pricingReferencePreview: qs("#pricingReferencePreview"),
@@ -852,7 +856,7 @@ function normalizeLineItem(item = {}) {
     display_price: item.display_price || "",
     price_mode: priceMode,
     unit_price_override: item.unit_price_override ?? "",
-    catalog_unit_price: item.catalog_unit_price ?? "",
+    catalog_unit_price: item.catalog_unit_price ?? item.unit_price ?? item.sale_unit_price ?? "",
   };
 }
 
@@ -1170,6 +1174,7 @@ function saveSessionState() {
       quoteBasisSections: state.quoteBasisSections,
       lineItems: state.lineItems,
       outputRows: state.outputRows,
+      originalOutputRows: state.originalOutputRows,
       outputErrors: state.outputErrors,
       boothDimensions: state.boothDimensions,
       originalAnalysisSnapshot: state.originalAnalysisSnapshot,
@@ -1206,6 +1211,7 @@ function restoreSessionState() {
   state.quoteBasisSections = normalizeQuoteBasisSections(saved.quoteBasisSections || saved.quoteBasis || {});
   state.lineItems = Array.isArray(saved.lineItems) ? saved.lineItems.map(normalizeLineItem) : [];
   state.outputRows = Array.isArray(saved.outputRows) ? saved.outputRows.map(normalizeOutputRow) : [];
+  state.originalOutputRows = Array.isArray(saved.originalOutputRows) ? saved.originalOutputRows.map(normalizeOutputRow) : [];
   state.outputErrors = Array.isArray(saved.outputErrors) ? saved.outputErrors : [];
   state.boothDimensions = normalizeBoothDimensions(saved.boothDimensions || saved.quoteDetails?.project || {});
   state.originalAnalysisSnapshot = saved.originalAnalysisSnapshot || null;
@@ -1515,6 +1521,18 @@ function clearQuoteCompanyDetails() {
   noteWorkflowEvent("assistant", "Quote-company defaults reset. Customer details, pricing reference, and images were left unchanged.");
 }
 
+function resetImagesDraft() {
+  if (state.isAnalysisRunning || state.isGenerating) return;
+  state.images = [];
+  if (elements.imageInput) elements.imageInput.value = "";
+  setImageUploadStatus("");
+  clearGeneratedQuoteState();
+  renderFiles();
+  setWorkflowStage("needs_images");
+  syncControlStates();
+  noteWorkflowEvent("assistant", "Image draft reset. Customer, Quote Company, and selected Pricing Reference were kept.");
+}
+
 function startNewQuote() {
   if (state.isAnalysisRunning || state.isGenerating) return;
   clearSessionState();
@@ -1611,11 +1629,43 @@ function normalizeConfidence(value) {
   return Math.min(100, Math.max(0, Math.round(number)));
 }
 
-function parseBasisLine(line = "") {
+function splitBasisDecisionText(text = "", defaultTag = "Confirm") {
   const legacyConfirmTag = "assump" + "tion";
-  const match = new RegExp(`^(Include|Confirm|Custom|Manual|Extra|Needs Pricing|Exclude|matched|${legacyConfirmTag}|Note):\\s*(.*)$`, "i").exec(String(line || ""));
-  if (!match) return { tag: "Confirm", text: String(line || "").trim() };
-  return { tag: normalizeBasisTag(match[1]), text: String(match[2] || "").trim() };
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+  const pattern = `Include|Confirm|Custom|Manual|Extra|Needs Pricing|Exclude|matched|${legacyConfirmTag}|Note`;
+  const expression = new RegExp(`(?:^|[;\\n]\\s*)(${pattern}):\\s*`, "gi");
+  const matches = Array.from(raw.matchAll(expression));
+  if (!matches.length) return [{ tag: normalizeBasisTag(defaultTag), text: raw }];
+
+  const lines = [];
+  const firstStart = matches[0].index || 0;
+  const leading = raw.slice(0, firstStart).replace(/[;\s]+$/g, "").trim();
+  if (leading) lines.push({ tag: normalizeBasisTag(defaultTag), text: leading });
+  matches.forEach((match, index) => {
+    const nextStart = index + 1 < matches.length ? matches[index + 1].index : raw.length;
+    const segment = raw.slice(match.index + match[0].length, nextStart).replace(/^[;\s]+|[;\s]+$/g, "").trim();
+    if (segment) lines.push({ tag: normalizeBasisTag(match[1]), text: segment });
+  });
+  return lines;
+}
+
+function normalizeBasisLines(line = "") {
+  if (line && typeof line === "object") {
+    const text = String(line.text || line.line || line.description || "").trim();
+    if (!text) return [];
+    const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
+    return splitBasisDecisionText(text, line.tag).map((parsed) => {
+      const next = { tag: normalizeBasisTag(parsed.tag), text: parsed.text };
+      if (confidence !== null) next.confidence = confidence;
+      return next;
+    });
+  }
+  return splitBasisDecisionText(line);
+}
+
+function parseBasisLine(line = "") {
+  return normalizeBasisLines(line)[0] || { tag: "Confirm", text: "" };
 }
 
 function basisLineMeta(line = "") {
@@ -1634,20 +1684,7 @@ function normalizeQuoteBasisSections(value = {}) {
         const title = basisDisplayTitle(section?.title || "Section") || "Section";
         const id = safeId(section?.id && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(section.id)) ? section.id : title, `section-${index + 1}`);
         const rawLines = Array.isArray(section?.lines) ? section.lines : splitLines(section?.text || "");
-        const lines = rawLines
-          .map((line) => {
-            if (line && typeof line === "object") {
-              const text = String(line.text || line.line || line.description || "").trim();
-              if (!text) return null;
-              const parsed = { tag: normalizeBasisTag(line.tag), text };
-              const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
-              if (confidence !== null) parsed.confidence = confidence;
-              return parsed;
-            }
-            const parsed = parseBasisLine(line);
-            return parsed.text ? parsed : null;
-          })
-          .filter(Boolean);
+        const lines = rawLines.flatMap(normalizeBasisLines).filter((line) => line.text);
         return lines.length ? { id, title, lines } : null;
       })
       .filter(Boolean);
@@ -1656,11 +1693,21 @@ function normalizeQuoteBasisSections(value = {}) {
   return BASIS_FIELDS
     .map(([key, title]) => {
       const lines = splitLines(basis[key])
-        .map(parseBasisLine)
+        .flatMap(normalizeBasisLines)
         .filter((line) => line.text);
       return lines.length ? { id: key, title, lines } : null;
     })
     .filter(Boolean);
+}
+
+function confirmOnlyQuoteBasisSections(sections = []) {
+  return normalizeQuoteBasisSections(sections).map((section) => ({
+    ...section,
+    lines: (section.lines || []).map((line) => {
+      const tag = normalizeBasisTag(line.tag);
+      return { ...line, tag: tag === "Custom" ? "Custom" : "Confirm" };
+    }),
+  }));
 }
 
 function quoteBasisFromSections(sections = []) {
@@ -1689,7 +1736,7 @@ function normalizeOutputRow(row = {}) {
     unit: normalizeUnit(row.unit || ""),
     price_mode: priceMode,
     unit_price_override: row.unit_price_override ?? "",
-    catalog_unit_price: row.catalog_unit_price ?? "",
+    catalog_unit_price: row.catalog_unit_price ?? row.unit_price ?? row.sale_unit_price ?? "",
     pricing_keyword: row.pricing_keyword || row.keyword || "",
     status: row.status || "",
   });
@@ -1760,6 +1807,34 @@ async function validatePricingReferenceFile(file) {
     ...pricingReferenceValidationResult([], [], 0, file.name),
     errors: data.errors || ["Pricing-reference validation failed."],
   };
+}
+
+async function downloadPricingReferenceTemplate(event) {
+  event.preventDefault();
+  try {
+    const response = await fetch("/api/pricing-reference/template.xlsx", { cache: "no-store" });
+    if (!response.ok) {
+      renderPricingReferencePreview({
+        ...pricingReferenceValidationResult([], [], 0, "swooshz-pricing-reference-template.xlsx"),
+        errors: [`Template download failed with server status ${response.status}.`],
+      });
+      return;
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "swooshz-pricing-reference-template.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    renderPricingReferencePreview({
+      ...pricingReferenceValidationResult([], [], 0, "swooshz-pricing-reference-template.xlsx"),
+      errors: [`Template download failed: ${error.message || String(error)}`],
+    });
+  }
 }
 
 function openPricingReferenceModal() {
@@ -1840,6 +1915,7 @@ function clearGeneratedQuoteState() {
   state.quoteBasisSections = [];
   state.lineItems = [];
   state.outputRows = [];
+  state.originalOutputRows = [];
   state.outputErrors = [];
   state.basisConfirmed = false;
   state.aiFailed = false;
@@ -1988,7 +2064,7 @@ function updateDownloadButton() {
   elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
   elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
   elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
-  elements.sideDownloadButton.href = enabled ? file.url : "#";
+  elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";
   elements.sideDownloadButton.download = file?.url ? file.name || "quotation.xlsx" : "";
   elements.sideDownloadButton.textContent = "Download Excel";
 }
@@ -2163,7 +2239,6 @@ function outputCellDisplayValue(row = {}, field = "") {
     if (row.price_mode === "Included") return "Included";
     if (numberOrNull(row.unit_price_override) !== null) return formatAmount(row.unit_price_override);
     if (numberOrNull(row.catalog_unit_price) !== null) return formatAmount(row.catalog_unit_price);
-    if (String(row.pricing_keyword || "").trim()) return "Catalog";
     return "Pending";
   }
   if (field === "amount") {
@@ -2193,7 +2268,10 @@ function outputEditorHtml(row = {}, index = 0, field = "") {
   if (field === "unit_price_override") {
     const listId = `unitPriceOptions-${index}`;
     return `
-      <input class="output-cell-input is-editing" data-output-editor-field="${field}" data-output-row="${index}" value="${escapeHtml(value)}" inputmode="decimal" list="${listId}">
+      <span class="output-unit-price-editor">
+        <input class="output-cell-input is-editing" data-output-editor-field="${field}" data-output-row="${index}" value="${escapeHtml(value)}" inputmode="decimal" list="${listId}">
+        <button class="output-included-button" type="button" data-output-included-action="true" data-output-row="${index}">Included</button>
+      </span>
       <datalist id="${listId}">
         <option value="Included"></option>
       </datalist>
@@ -2205,9 +2283,9 @@ function outputEditorHtml(row = {}, index = 0, field = "") {
 
 function renderOutputEditCell(row = {}, index = 0, field = "", extraClass = "") {
   const display = outputCellDisplayValue(row, field);
-  const pending = display === "Pending" || display === "Catalog";
+  const pending = display === "Pending";
   return `
-    <td class="output-edit-cell ${extraClass} ${pending ? "is-pending" : ""}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Double click to amend">
+    <td class="output-edit-cell ${extraClass} ${pending ? "is-pending" : ""}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Click to edit">
       <span class="output-cell-text">${escapeHtml(display)}</span>
     </td>
   `;
@@ -2217,6 +2295,10 @@ function ensureOutputRowsFromLineItems() {
   if (state.outputRows.length) return;
   const generatedRows = state.lineItems.map(outputRowFromLineItem);
   state.outputRows = [...generatedRows, ...includedBasisOutputRows(generatedRows)];
+}
+
+function snapshotOutputRows(rows = state.outputRows) {
+  return rows.map((row) => normalizeOutputRow({ ...row }));
 }
 
 function outputRowsToLineItems(rows = state.outputRows) {
@@ -2278,6 +2360,8 @@ function matchSummaryStats(rows = []) {
     const amount = Number(String(row.amount || "").replaceAll(",", ""));
     return Number.isFinite(amount) ? sum + amount : sum;
   }, 0);
+  const includedRows = safeRows.filter((row) => row.price_mode === "Included" || pricingMatchStatus(row) === "included").length;
+  const pricedRows = safeRows.length - includedRows;
   const confident = safeRows.filter((row) => pricingMatchStatus(row) === "matched").length;
   const needsReview = safeRows.filter((row) => {
     const status = pricingMatchStatus(row);
@@ -2290,7 +2374,7 @@ function matchSummaryStats(rows = []) {
   const pending = safeRows.filter((row) => !pricingMatchStatus(row) && row.price_mode !== "Included").length;
   const totalPending = safeRows.some((row) => row.price_mode !== "Included" && (row.amount === "" || row.amount === null || row.amount === undefined));
   const confidence = hasResolvedStatuses && safeRows.length > 0 ? Math.round((confident / safeRows.length) * 100) : null;
-  return { total, confident, needsReview, confidence, pending, totalPending };
+  return { total, confident, needsReview, needsPrice: needsReview, confidence, pending, totalPending, pricedRows, includedRows };
 }
 
 function renderMatchSummary(result = {}) {
@@ -2300,31 +2384,30 @@ function renderMatchSummary(result = {}) {
     return;
   }
   const stats = matchSummaryStats(rows);
-  const confidenceValue = stats.confidence === null ? "Pending" : `${stats.confidence}%`;
   const totalValue = stats.totalPending
     ? "Pending"
     : `SGD ${stats.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   elements.matchSummary.innerHTML = `
     <div class="stat-card-row">
       <div class="stat-card">
-        <span class="stat-card-icon green" aria-hidden="true">&#x1F4CB;</span>
-        <span class="stat-card-value">${rows.length}</span>
-        <span class="stat-card-label">Quote lines</span>
+        <span class="stat-card-icon green" aria-hidden="true">#</span>
+        <span class="stat-card-value">${stats.pricedRows}</span>
+        <span class="stat-card-label">Priced rows</span>
       </div>
       <div class="stat-card">
-        <span class="stat-card-icon amber" aria-hidden="true">&#x1F3AF;</span>
-        <span class="stat-card-value">${confidenceValue}</span>
-        <span class="stat-card-label">Catalog confidence</span>
+        <span class="stat-card-icon blue" aria-hidden="true">In</span>
+        <span class="stat-card-value">${stats.includedRows}</span>
+        <span class="stat-card-label">Included rows</span>
       </div>
       <div class="stat-card">
-        <span class="stat-card-icon red" aria-hidden="true">&#x26A0;</span>
-        <span class="stat-card-value">${stats.needsReview}</span>
-        <span class="stat-card-label">Needs review</span>
+        <span class="stat-card-icon red" aria-hidden="true">!</span>
+        <span class="stat-card-value">${stats.needsPrice}</span>
+        <span class="stat-card-label">Needs price</span>
       </div>
       <div class="stat-card">
-        <span class="stat-card-icon blue" aria-hidden="true">&#x1F4B0;</span>
+        <span class="stat-card-icon amber" aria-hidden="true">$</span>
         <span class="stat-card-value">${totalValue}</span>
-        <span class="stat-card-label">Total (excl. GST)</span>
+        <span class="stat-card-label">Subtotal</span>
       </div>
     </div>
   `;
@@ -2505,6 +2588,24 @@ function commitOutputEditor(editor) {
   syncControlStates();
 }
 
+function applyOutputIncludedAction(button) {
+  const index = Number(button?.dataset.outputRow);
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) return;
+  state.outputRows[index] = recalculateOutputRow({
+    ...state.outputRows[index],
+    price_mode: "Included",
+    unit_price_override: "",
+    display_price: "Included",
+  });
+  state.lineItems = outputRowsToLineItems();
+  state.downloadFile = null;
+  const validation = outputRowsValid();
+  renderOutputValidationMessages(validation.valid ? [] : validation.errors);
+  renderPricingMatches(state.outputRows);
+  renderMatchSummary({ pricing_matches: state.outputRows });
+  syncControlStates();
+}
+
 function openOutputCellEditor(cell) {
   if (!cell || cell.querySelector("[data-output-editor-field]")) return;
   const index = Number(cell.dataset.outputRow);
@@ -2515,6 +2616,24 @@ function openOutputCellEditor(cell) {
   if (!editor) return;
   editor.focus();
   if (typeof editor.select === "function") editor.select();
+}
+
+function handleOutputCellClick(event) {
+  const includedButton = event.target.closest("[data-output-included-action]");
+  if (includedButton) {
+    event.preventDefault();
+    applyOutputIncludedAction(includedButton);
+    return;
+  }
+  if (event.target.closest("[data-output-editor-field]")) return;
+  const cell = event.target.closest(".output-edit-cell");
+  if (!cell) return;
+  openOutputCellEditor(cell);
+}
+
+function handleOutputIncludedPointerDown(event) {
+  if (!event.target.closest("[data-output-included-action]")) return;
+  event.preventDefault();
 }
 
 function handleOutputCellOpen(event) {
@@ -3041,6 +3160,7 @@ function applyBasisChatProposal() {
   state.quoteBasis = { ...cloneQuoteBasis(proposal.quoteBasis || state.quoteBasis), ...quoteBasisFromSections(state.quoteBasisSections) };
   state.lineItems = Array.isArray(proposal.lineItems) ? proposal.lineItems.map(normalizeLineItem) : [];
   state.outputRows = [];
+  state.originalOutputRows = [];
   state.outputErrors = [];
   setDownloadFiles([]);
   updateQuoteBasisCard("edited");
@@ -3128,7 +3248,7 @@ function hasCompletedQuoteBasis() {
 
 function applyDraftBasis(basis = {}) {
   state.basisConfirmed = false;
-  const sections = normalizeQuoteBasisSections(basis);
+  const sections = confirmOnlyQuoteBasisSections(basis);
   state.quoteBasisSections = sections;
   const legacyBasis = basis.quote_basis && typeof basis.quote_basis === "object" ? basis.quote_basis : basis;
   state.quoteBasis = { ...cloneQuoteBasis(legacyBasis), ...quoteBasisFromSections(sections) };
@@ -3138,6 +3258,7 @@ function applyDraftLineItems(lineItems = []) {
   state.basisConfirmed = false;
   state.lineItems = lineItems.map(normalizeLineItem);
   state.outputRows = [];
+  state.originalOutputRows = [];
   state.outputErrors = [];
 }
 
@@ -3158,6 +3279,7 @@ function clearAiFailedDraftState() {
   state.quoteBasisSections = [];
   state.lineItems = [];
   state.outputRows = [];
+  state.originalOutputRows = [];
   state.outputErrors = [];
   state.originalAnalysisSnapshot = null;
   state.basisConfirmed = false;
@@ -3190,6 +3312,7 @@ function resetQuoteBasisToOriginal() {
   state.lineItems = Array.isArray(snapshot.line_items) ? snapshot.line_items.map(normalizeLineItem) : [];
   state.boothDimensions = normalizeBoothDimensions(snapshot.boothDimensions || state.boothDimensions);
   state.outputRows = [];
+  state.originalOutputRows = [];
   state.outputErrors = [];
   state.basisConfirmed = false;
   setDownloadFiles([]);
@@ -3198,6 +3321,21 @@ function resetQuoteBasisToOriginal() {
   updateQuoteBasisCard(snapshot.source || "restored");
   noteWorkflowEvent("assistant", "Quote Basis reset to the original AI draft. Uploaded images, Customer, Quote Company, and selected Pricing Reference were kept.");
   syncControlStates();
+}
+
+function resetOutputDraft() {
+  if (state.isAnalysisRunning || state.isGenerating || !state.originalOutputRows.length) return;
+  state.outputRows = snapshotOutputRows(state.originalOutputRows);
+  state.lineItems = outputRowsToLineItems();
+  state.outputErrors = [];
+  state.downloadFile = null;
+  setDownloadFiles([]);
+  renderPricingMatches(state.outputRows);
+  renderMatchSummary({ pricing_matches: state.outputRows });
+  renderOutputValidationMessages(outputRowsValid().errors);
+  setResultStatus("Output reset to confirmed basis", "is-warn");
+  syncControlStates();
+  noteWorkflowEvent("assistant", "Output draft reset to the rows created when Quote Basis was confirmed. Images, Customer, Quote Company, and Quote Basis were kept.");
 }
 
 async function postJson(url, payload) {
@@ -3521,6 +3659,7 @@ async function confirmBasis() {
   }
   state.basisConfirmed = true;
   ensureOutputRowsFromLineItems();
+  state.originalOutputRows = snapshotOutputRows(state.outputRows);
   state.lineItems = outputRowsToLineItems();
   setWorkflowStage("completed");
   renderPricingMatches(state.outputRows);
@@ -3897,14 +4036,18 @@ function updateSidePanelNav() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   elements.sampleDetailsButton.hidden = state.activeSidePanel !== "images";
   elements.sampleDetailsButton.disabled = state.isBooting || busy;
+  elements.resetImagesButton.hidden = state.activeSidePanel !== "images";
   elements.clearCustomerButton.hidden = state.activeSidePanel !== "customer";
   elements.clearQuoteCompanyButton.hidden = state.activeSidePanel !== "quote_company";
   elements.discussQuoteButton.hidden = state.activeSidePanel !== "basis";
   elements.resetQuoteBasisButton.hidden = state.activeSidePanel !== "basis";
+  elements.resetOutputButton.hidden = state.activeSidePanel !== "output";
+  elements.resetImagesButton.disabled = busy || !state.images.length;
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
   elements.discussQuoteButton.disabled = busy || !hasSubmittedQuoteBasis();
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
+  elements.resetOutputButton.disabled = busy || !state.originalOutputRows.length;
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {
     const panelName = button.dataset.sidePanel || "images";
     const blockReason = sidePanelBlockReason(panelName);
@@ -4109,6 +4252,7 @@ function wireEvents() {
   elements.newPricingReferenceButton.addEventListener("click", openPricingReferenceModal);
   elements.deletePricingReferenceButton.addEventListener("click", deleteSelectedPricingReference);
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
+  elements.pricingReferenceTemplateButton.addEventListener("click", downloadPricingReferenceTemplate);
   elements.pricingReferenceFile.addEventListener("change", async () => {
     const file = elements.pricingReferenceFile.files?.[0];
     if (elements.pricingReferenceFileName) {
@@ -4128,12 +4272,16 @@ function wireEvents() {
   elements.analysisConfirmModal.addEventListener("click", (event) => {
     if (event.target.closest("[data-analysis-confirm-close]")) closeAnalysisConfirmModal();
   });
+  elements.pricingMatchesBody.addEventListener("pointerdown", handleOutputIncludedPointerDown);
+  elements.pricingMatchesBody.addEventListener("click", handleOutputCellClick);
   elements.pricingMatchesBody.addEventListener("dblclick", handleOutputCellOpen);
   elements.pricingMatchesBody.addEventListener("keydown", handleOutputCellKeydown);
   elements.pricingMatchesBody.addEventListener("focusout", handleOutputEditorCommit);
   elements.pricingMatchesBody.addEventListener("change", handleOutputEditorCommit);
   elements.discussQuoteButton.addEventListener("click", () => openBasisChatOverlay("quote"));
+  elements.resetImagesButton.addEventListener("click", resetImagesDraft);
   elements.resetQuoteBasisButton.addEventListener("click", resetQuoteBasisToOriginal);
+  elements.resetOutputButton.addEventListener("click", resetOutputDraft);
   elements.presetSelect.addEventListener("change", () => {
     state.selectedPresetValue = elements.presetSelect.value || "";
     updatePresetButtons();

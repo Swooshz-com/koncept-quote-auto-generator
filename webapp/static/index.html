@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=35">
+    <link rel="stylesheet" href="/static/styles.css?v=37">
   </head>
   <body>
     <div class="app-shell">
@@ -103,10 +103,12 @@
                 </div>
                 <div class="workspace-pane-header-actions">
                   <button class="secondary-button sample-button" type="button" id="sampleDetailsButton" disabled>Load Sample</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="resetImagesButton" hidden>Reset Draft</button>
                   <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Reset Draft</button>
                   <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset Draft</button>
                   <button class="secondary-button ask-changes-button" type="button" id="discussQuoteButton" hidden>Ask For Changes</button>
                   <button class="secondary-button panel-clear-button" type="button" id="resetQuoteBasisButton" hidden>Reset Draft</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="resetOutputButton" hidden>Reset Draft</button>
                 </div>
               </div>
               <div class="workspace-pane-scroll">
@@ -486,7 +488,7 @@
                   <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
                   <div class="match-summary" id="matchSummary"></div>
                   <div class="table-wrap output-table-wrap" id="pricingTableWrap">
-                    <p class="output-edit-hint">Double click a row value to amend it.</p>
+                    <p class="output-edit-hint">Click any editable value in the table to change it. Unit price accepts a number or Included.</p>
                     <table class="match-table output-match-table">
                       <thead>
                         <tr>
@@ -599,6 +601,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=45"></script>
+    <script src="/static/app.js?v=47"></script>
   </body>
 </html>

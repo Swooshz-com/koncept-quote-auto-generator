@@ -412,6 +412,47 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(lines[1]["text"], "Use a 6m x 6m booth footprint for area takeoff.")
         self.assertEqual(draft["line_items"][0]["description"], "sqm needle punch carpet in colour")
 
+    def test_normalize_ai_draft_appends_missing_catalog_backed_basis_lines(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "floor-design",
+                    "title": "Floor Design",
+                    "lines": [
+                        {"tag": "Include", "text": "AI bundled the flooring into one sentence."},
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": "36",
+                    "unit": "sqm",
+                    "description": "AI paraphrased green carpet wording",
+                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                },
+                {
+                    "section": "Floor Design",
+                    "quantity": "36",
+                    "unit": "sqm",
+                    "description": "AI paraphrased raised platform wording",
+                    "pricing_keyword": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
+                },
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(
+            [line["text"] for line in lines],
+            [
+                "sqm needle punch carpet in colour",
+                "sqm 100mm raised platfrom with aluminum edging",
+            ],
+        )
+        self.assertEqual([line["tag"] for line in lines], ["Confirm", "Confirm"])
+
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
         parsed = {
             "quote_basis_sections": [
@@ -442,6 +483,42 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(draft["line_items"][-1]["description"], "AI row 19")
         self.assertEqual(draft["quote_basis_sections"][0]["lines"][0]["tag"], "Confirm")
         self.assertEqual(draft["quote_basis_sections"][0]["lines"][0]["confidence"], 91)
+
+    def test_normalize_ai_draft_splits_embedded_basis_decisions_for_review(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "graphics",
+                    "title": "Graphics / Signage",
+                    "lines": [
+                        {
+                            "tag": "Include",
+                            "confidence_pct": 88,
+                            "text": (
+                                "Large overhead bulkhead graphics; Confirm: side feature panels; "
+                                "Exclude: artwork production; Assumption: artwork files supplied"
+                            ),
+                        }
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed)
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(
+            [line["text"] for line in lines],
+            [
+                "Large overhead bulkhead graphics",
+                "side feature panels",
+                "artwork production",
+                "artwork files supplied",
+            ],
+        )
+        self.assertEqual([line["tag"] for line in lines], ["Confirm", "Confirm", "Confirm", "Confirm"])
+        self.assertEqual([line.get("confidence") for line in lines], [88, 88, 88, 88])
 
     def test_payload_to_brief_uses_dynamic_quote_basis_sections_for_notes(self):
         payload = valid_payload()
@@ -2511,8 +2588,10 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertNotIn('!== "unmatched"', summary_body)
         self.assertIn('pricingMatchStatus(row) === "matched"', js)
         self.assertIn('status !== "matched"', js)
-        self.assertIn("Catalog confidence", summary_body)
-        self.assertIn("Needs review", summary_body)
+        self.assertIn("Priced rows", summary_body)
+        self.assertIn("Included rows", summary_body)
+        self.assertIn("Needs price", summary_body)
+        self.assertIn("Subtotal", summary_body)
         self.assertIn('data-output-edit-field="${field}"', js)
         self.assertIn('renderOutputEditCell(row, index, "unit_price_override")', table_body)
         self.assertIn("catalog_unit_price", js)
@@ -3130,7 +3209,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Resolve all review lines before confirming quotation basis.", js)
         self.assertIn("Ask For Changes", html)
         self.assertNotIn("Discuss Quote", html)
-        self.assertEqual(html.count('class="secondary-button panel-clear-button" type="button"'), 3)
+        self.assertEqual(html.count('class="secondary-button panel-clear-button" type="button"'), 5)
+        self.assertIn('id="resetImagesButton"', html)
+        self.assertIn('id="resetOutputButton"', html)
         self.assertNotIn("Reset Quote Basis", html)
         self.assertIn("Download Excel", js)
         self.assertNotIn("Next: Output", js)
@@ -3150,10 +3231,15 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Included", js)
         self.assertIn("<th>Unit price</th>", html)
         self.assertNotIn("<th>Price mode</th>", html)
-        self.assertIn("Double click a row value to amend it.", html)
+        self.assertIn("Click any editable value in the table to change it.", html)
+        self.assertNotIn("Double click a row value to amend it.", html)
         self.assertIn("<datalist", js)
         self.assertIn('<option value="Included"></option>', js)
+        self.assertIn('data-output-included-action="true"', js)
+        self.assertIn("handleOutputCellClick", js)
+        self.assertIn("resetOutputDraft", js)
         self.assertIn("Download Excel", js)
+        self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
         self.assertIn("New Pricing Reference", html)
         self.assertIn('id="newPricingReferenceButton">New</button>', html)
         self.assertIn('id="deletePricingReferenceButton">Delete</button>', html)
@@ -3163,6 +3249,12 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv";', js)
         self.assertIn('elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;', js)
         self.assertIn('/api/pricing-reference/template.xlsx', html)
+        self.assertIn("downloadPricingReferenceTemplate", js)
+        self.assertIn(".output-unit-price-editor", css)
+        self.assertIn(".output-included-button", css)
+        self.assertIn(".output-edit-cell:hover", css)
+        self.assertIn(".company-preset-panel .settings-note", css)
+        self.assertIn("padding: 12px 28px 28px;", css)
         self.assertIn('/api/pricing-reference/validate', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)
@@ -3233,6 +3325,8 @@ eval([
   "basisDisplayTitle",
   "normalizeBasisTag",
   "normalizeConfidence",
+  "splitBasisDecisionText",
+  "normalizeBasisLines",
   "parseBasisLine",
   "normalizeQuoteBasisSections",
   "basisSections",
