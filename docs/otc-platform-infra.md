@@ -172,4 +172,6 @@ Do not treat the deployment as production-ready until these pass:
 
 Do not use Vercel + Render as the default deployment target.
 
-Use it only if a later decision explicitly prioritizes managed frontend previews or managed backend hosting over single-server Coolify deployment.
+Use it only if a later decision explicitly prioritizes managed frontend previews or managed backend hosting over single-server Coolify deployment. The optional Render example lives at `docs/examples/render.yaml` so the repository root does not imply Render is the production deployment path.
+
+The current deploy/auth scaffold is guarded until a complete OIDC callback token exchange and claims-validation boundary is implemented. Do not expose a public deployment that routes users into the scaffolded callback; production access must stay blocked until the auth boundary is complete and tested.
