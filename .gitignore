@@ -19,3 +19,4 @@ webapp-server*.log
 # Local secrets
 .env
 .env.local
+debug.log*
