@@ -3618,6 +3618,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("moveOutputRow", js)
         self.assertIn('data-output-move-direction="up"', js)
         self.assertIn("source_basis_line_id", js)
+        self.assertIn('source: pricingReference.source === "company" ? "company" : pricingReference.source === "local" ? "local" : "bundled"', js)
+        self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
         customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('id="quoteCompanyPanel"', 1)[0]
@@ -3956,6 +3958,46 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         payload["pricing_reference"] = {"id": "company-vat", "source": "company", "tax": {"label": "VAT", "rate": 0.2}}
         brief = webapp.payload_to_brief(payload)
         self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
+
+    def test_pricing_reference_source_controls_catalog_collision(self):
+        company_item = {
+            "id": "company-collision-row",
+            "section": "Company Collision",
+            "description": "Company-only collision catalogue item",
+            "unit_hint": "nos",
+            "internal_cost": 10,
+            "markup_multiplier": 2,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            store.save_pricing_reference("default", {
+                "id": "koncept",
+                "label": "Company Koncept",
+                "tax": {"label": "VAT", "rate": 0.2},
+                "items": [company_item],
+            })
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                bundled_payload = {
+                    "pricing_reference_id": "koncept",
+                    "pricing_reference": {"id": "koncept", "source": "bundled"},
+                }
+                bundled_rows = webapp.pricing_catalog_prompt_rows_for_payload(bundled_payload)
+                self.assertTrue(bundled_rows)
+                self.assertNotIn("company-collision-row", {row["id"] for row in bundled_rows})
+                self.assertNotIn("Company-only collision catalogue item", {row["description"] for row in bundled_rows})
+
+                company_payload = {
+                    "pricing_reference_id": "koncept",
+                    "pricing_reference": {"id": "koncept", "source": "company"},
+                }
+                company_rows = webapp.pricing_catalog_prompt_rows_for_payload(company_payload)
+                self.assertEqual(company_rows, [{
+                    "id": "company-collision-row",
+                    "section": "Company Collision",
+                    "unit_hint": "nos",
+                    "description": "Company-only collision catalogue item",
+                    "aliases": [],
+                }])
 
     def test_deploy_generate_response_omits_local_paths_and_raw_process_output(self):
         payload = valid_payload()

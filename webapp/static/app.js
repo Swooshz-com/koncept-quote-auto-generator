@@ -2154,7 +2154,11 @@ function buildPayload(options = {}) {
   return {
     profile_id: profileId,
     pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
-    pricing_reference: ["local", "company"].includes(pricingReference?.source) ? pricingReference : { id: pricingReference?.id || state.pricingReferenceId || "", tax: selectedPricingReferenceTax() },
+    pricing_reference: pricingReference ? {
+      ...pricingReference,
+      source: pricingReference.source === "company" ? "company" : pricingReference.source === "local" ? "local" : "bundled",
+      tax: pricingReference.tax || selectedPricingReferenceTax(),
+    } : { id: state.pricingReferenceId || "", source: state.pricingReferenceSource || "bundled", tax: selectedPricingReferenceTax() },
     generator_label: generator.label,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES),
     confirmed: true,

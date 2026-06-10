@@ -2535,9 +2535,14 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
 
 def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = MAX_PROMPT_CATALOG_ROWS) -> list[dict[str, Any]]:
     reference = payload.get("pricing_reference") if isinstance(payload.get("pricing_reference"), dict) else {}
-    if reference.get("source") not in {"local", "company"}:
-        reference_id = safe_resource_id(payload.get("pricing_reference_id"), "")
-        reference = next((item for item in company_config_store().list_pricing_references(DEFAULT_COMPANY_ID) if safe_resource_id(item.get("id"), "") == reference_id), {})
+    source = clean_text(reference.get("source"))
+    if source == "company":
+        raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
+        if not raw_items:
+            reference_id = safe_resource_id(reference.get("id") or payload.get("pricing_reference_id"), "")
+            reference = next((item for item in company_config_store().list_pricing_references(DEFAULT_COMPANY_ID) if safe_resource_id(item.get("id"), "") == reference_id), {})
+    elif source != "local":
+        return []
     if not reference:
         return []
     raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
