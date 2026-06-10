@@ -1,0 +1,15 @@
+{
+  "name": "swooshz-quote-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local tooling for the Swooshz Quote Generator.",
+  "scripts": {
+    "playwright:install": "playwright install chromium",
+    "playwright:smoke": "node scripts/playwright-smoke.mjs",
+    "playwright:screenshot": "node scripts/playwright-smoke.mjs --screenshots"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

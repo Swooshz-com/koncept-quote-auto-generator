@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=28">
+    <link rel="stylesheet" href="/static/styles.css?v=37">
   </head>
   <body>
     <div class="app-shell">
@@ -33,9 +33,9 @@
         </div>
       </header>
 
-      <div class="workspace chat-workspace">
+      <div class="workspace quote-workspace">
         <main class="panels">
-          <section class="panel is-active chat-shell" id="panel-analysis" data-panel-id="analysis">
+          <section class="panel is-active quote-shell" id="panel-analysis" data-panel-id="analysis">
             <nav class="command-rail" aria-label="Quote workspace panels">
               <button class="rail-button is-active" type="button" data-side-panel="images">
                 <span class="rail-icon" aria-hidden="true">
@@ -81,17 +81,6 @@
                 </span>
                 <span>Quote Basis</span>
               </button>
-              <button class="rail-button" type="button" id="pricingButton" data-side-panel="pricing">
-                <span class="rail-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M4 7h16"></path>
-                    <path d="M4 12h16"></path>
-                    <path d="M4 17h10"></path>
-                    <path d="m17 15 2 2 3-4"></path>
-                  </svg>
-                </span>
-                <span>Pricing</span>
-              </button>
               <button class="rail-button" type="button" id="outputButton" data-side-panel="output">
                 <span class="rail-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false">
@@ -114,13 +103,14 @@
                 </div>
                 <div class="workspace-pane-header-actions">
                   <button class="secondary-button sample-button" type="button" id="sampleDetailsButton" disabled>Load Sample</button>
-                  <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Clear Customer</button>
-                  <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset Quote Company</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="resetImagesButton" hidden>Reset Draft</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Reset Draft</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset Draft</button>
+                  <button class="secondary-button ask-changes-button" type="button" id="discussQuoteButton" hidden>Ask For Changes</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="resetQuoteBasisButton" hidden>Reset Draft</button>
+                  <button class="secondary-button panel-clear-button" type="button" id="resetOutputButton" hidden>Reset Draft</button>
                 </div>
               </div>
-
-              <div class="workflow-notice" id="workflowNotice" role="status" aria-live="polite" hidden></div>
-
               <div class="workspace-pane-scroll">
               <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference images">
                 <label class="dropzone" for="imageInput">
@@ -130,9 +120,10 @@
                     <path d="M24 22v16M18 28l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span class="drop-title" id="dropTitle">Drag and drop reference images here</span>
-                  <span class="drop-meta" id="dropMeta">PNG, JPG, or WebP. Up to 12 MB each.</span>
+                  <span class="drop-meta" id="dropMeta">PNG, JPG, or WebP. Up to 8 references, 12 MB each.</span>
                   <span class="drop-action">Choose Files</span>
                 </label>
+                <p class="image-upload-status" id="imageUploadStatus" aria-live="polite"></p>
                 <div class="file-list" id="fileList" aria-live="polite"></div>
               </section>
 
@@ -147,6 +138,10 @@
                       Quote Pricing Reference
                       <select id="profileSelect"></select>
                     </label>
+                    <div class="settings-button-row">
+                      <button class="secondary-button" type="button" id="newPricingReferenceButton">New</button>
+                      <button class="secondary-button danger-button" type="button" id="deletePricingReferenceButton">Delete</button>
+                    </div>
                     <p class="settings-note">Required before moving to Quote Company.</p>
                   </div>
                 </div>
@@ -208,10 +203,17 @@
                 <div class="section-band quote-form-section">
                   <h3>Quote reference</h3>
                    <div class="form-grid">
-                     <label>
-                       Quote date
-                       <input id="quoteDate" type="date">
-                     </label>
+                     <div class="field-control date-format-field">
+                       <span>Quote date</span>
+                       <div class="date-format-control">
+                         <div class="rich-text-toolbar date-format-toolbar" aria-label="Quote date formatting">
+                           <button class="rich-text-tool is-bold" type="button" data-date-format-command="bold" title="Bold date in Excel output" aria-label="Bold date">B</button>
+                           <button class="rich-text-tool is-italic" type="button" data-date-format-command="italic" title="Italic date in Excel output" aria-label="Italic date">I</button>
+                           <button class="rich-text-tool is-underline" type="button" data-date-format-command="underline" title="Underline date in Excel output" aria-label="Underline date">U</button>
+                         </div>
+                         <input id="quoteDate" type="date">
+                       </div>
+                     </div>
                      <div class="field-control">
                        <span>Quotation Title</span>
                        <div class="rich-text-field">
@@ -242,24 +244,28 @@
 
               <section class="side-panel-card side-panel-section quote-details-panel" id="quoteCompanyPanel" data-side-panel-content="quote_company">
                 <div class="company-preset-panel">
-                  <div>
+                  <div class="company-preset-copy">
                     <h3>Company preset</h3>
                     <p>Load reusable company defaults, then adjust the quotation fields below.</p>
                   </div>
                   <div class="company-preset-controls">
-                    <label class="compact-control">
-                      Company preset
-                      <select id="presetSelect"></select>
-                    </label>
-                    <div class="settings-button-row">
-                      <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                      <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                    <div class="company-preset-control-group">
+                      <label class="compact-control">
+                        Company preset
+                        <select id="presetSelect"></select>
+                      </label>
+                      <div class="settings-button-row">
+                        <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
+                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                      </div>
                     </div>
-                    <label class="compact-control preset-save-name">
-                      Save as
-                      <input id="presetNameInput" type="text" placeholder="Example: Koncept default header">
-                    </label>
-                    <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                    <div class="company-preset-control-group">
+                      <label class="compact-control preset-save-name">
+                        Save as
+                        <input id="presetNameInput" type="text" placeholder="Example: Standard company header">
+                      </label>
+                      <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                    </div>
                   </div>
                   <p class="settings-note" id="presetStatus">Presets are stored locally in this browser and can include the uploaded header logo.</p>
                 </div>
@@ -292,7 +298,24 @@
                 </div>
 
                 <div class="section-band quote-form-section">
-                  <h3>Terms <span class="section-title-note">(Optional -- Leave empty)</span></h3>
+                  <h3>Tax</h3>
+                  <div class="form-grid compact tax-settings-grid">
+                    <label class="field-control">
+                      <span>Quotation tax label</span>
+                      <select id="taxLabel">
+                        <option value="GST">GST</option>
+                        <option value="VAT">VAT</option>
+                      </select>
+                    </label>
+                    <label class="field-control">
+                      <span>Tax rate (%)</span>
+                      <input id="taxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal">
+                    </label>
+                  </div>
+                </div>
+
+                <div class="section-band quote-form-section">
+                  <h3>Terms <span class="section-title-note">(Optional — Leave empty)</span></h3>
                   <div class="form-grid compact">
                      <div class="field-control wide">
                        <span>Terms heading</span>
@@ -322,7 +345,7 @@
                 </div>
 
                 <div class="section-band quote-form-section">
-                  <h3>Notes <span class="section-title-note">(Optional -- Leave empty)</span></h3>
+                  <h3>Notes <span class="section-title-note">(Optional — Leave empty)</span></h3>
                   <div class="form-grid compact">
                      <div class="field-control">
                        <span>Notes heading</span>
@@ -471,44 +494,39 @@
                 </section>
               </section>
 
-              <section class="side-panel-card side-panel-section" id="pricingSidePanel" data-side-panel-content="pricing">
-                <div class="side-empty-state" id="pricingEmptyState">
-                  <strong>No pricing review yet</strong>
-                  <p>Confirm the quotation basis to check pricing before output is created.</p>
-                </div>
-                <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
-                <div class="match-summary" id="matchSummary"></div>
-                <div class="table-wrap" id="pricingTableWrap">
-                  <table class="match-table">
-                    <thead>
-                      <tr>
-                        <th>Status</th>
-                        <th>Section</th>
-                        <th>Description</th>
-                        <th>Catalog ID</th>
-                        <th>Quantity</th>
-                        <th>Unit price</th>
-                        <th>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody id="pricingMatchesBody"></tbody>
-                  </table>
-                </div>
-              </section>
-
               <section class="side-panel-card side-panel-section" id="outputSidePanel" data-side-panel-content="output">
                 <div class="assistant-output" id="assistantOutput">
-                  <div class="output-download-heading output-status-heading">
-                    <span class="result-pill" id="resultStatus">No job yet</span>
-                  </div>
+                  <span class="result-pill sr-only" id="resultStatus" aria-live="polite">No job yet</span>
                   <div class="message-list" id="messageList"></div>
+                  <div class="side-empty-state" id="pricingEmptyState">
+                    <strong>No output rows yet</strong>
+                    <p>Confirm the quotation basis to review pricing rows before Excel download.</p>
+                  </div>
+                  <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
+                  <div class="match-summary" id="matchSummary"></div>
+                  <div class="table-wrap output-table-wrap" id="pricingTableWrap">
+                    <p class="output-edit-hint">Click any editable value in the table to change it. Unit price accepts a number or Included.</p>
+                    <table class="match-table output-match-table">
+                      <thead>
+                        <tr>
+                          <th>Section</th>
+                          <th>Description</th>
+                          <th>Quantity</th>
+                          <th>Unit</th>
+                          <th>Unit price</th>
+                          <th>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody id="pricingMatchesBody"></tbody>
+                    </table>
+                  </div>
                 </div>
               </section>
 
               </div>
               <div class="workspace-pane-footer">
                 <button class="secondary-button" type="button" id="sideBackButton">Back</button>
-                <a class="primary-button workspace-download-button is-disabled" id="sideDownloadButton" href="#" aria-disabled="true" tabindex="-1" download hidden>Download Quotation</a>
+                <a class="primary-button workspace-download-button is-disabled" id="sideDownloadButton" href="#" aria-disabled="true" tabindex="-1" download hidden>Download Excel</a>
                 <button class="primary-button" type="button" id="sideNextButton">Next</button>
               </div>
             </aside>
@@ -530,8 +548,8 @@
           <div class="basis-chat-messages" id="basisChatMessages" aria-live="polite"></div>
           <div class="basis-chat-proposal" id="basisChatProposal" hidden></div>
           <div class="basis-chat-proposal-actions" id="basisChatProposalActions" hidden>
-            <button class="primary-button" type="button" id="basisChatApplyButton" disabled>Apply Proposed Change</button>
-            <button class="secondary-button" type="button" id="basisChatKeepButton" disabled>Discard Draft</button>
+            <button class="secondary-button" type="button" id="basisChatKeepButton" disabled>Discard</button>
+            <button class="primary-button" type="button" id="basisChatApplyButton" disabled>Apply</button>
           </div>
           <form class="basis-chat-form" id="basisChatForm">
             <textarea id="basisChatPrompt" rows="3" placeholder="Ask about this basis or describe a change..."></textarea>
@@ -545,7 +563,61 @@
           </form>
         </section>
       </div>
+      <div class="modal-overlay" id="pricingReferenceModal" role="dialog" aria-modal="true" aria-labelledby="pricingReferenceModalTitle" hidden>
+        <div class="modal-backdrop" data-pricing-reference-close></div>
+        <section class="modal-panel pricing-reference-modal-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Pricing reference</span>
+              <h3 id="pricingReferenceModalTitle">New Pricing Reference</h3>
+            </div>
+            <button class="icon-button" type="button" id="pricingReferenceCloseButton" aria-label="Close pricing reference modal">x</button>
+          </header>
+          <form class="modal-form" id="pricingReferenceForm">
+            <div class="pricing-template-callout">
+              <div>
+                <strong>Use the import template for reliable packages.</strong>
+                <span>Fill the normalized columns, then upload the completed workbook or CSV here.</span>
+              </div>
+              <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx?template=examples-v3" download>Download Template</a>
+            </div>
+            <label>
+              Pricing reference name
+              <input id="pricingReferenceName" type="text" autocomplete="off">
+            </label>
+            <label>
+              Workbook/catalog upload
+              <span class="file-picker-control">
+                <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv">
+                <span class="secondary-button file-picker-button">Choose File</span>
+                <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
+              </span>
+            </label>
+            <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
+            <div class="modal-actions">
+              <button class="secondary-button" type="button" id="pricingReferenceCancelButton">Cancel</button>
+              <button class="primary-button" type="submit" id="pricingReferenceSaveButton" disabled>Save Reference</button>
+            </div>
+          </form>
+        </section>
+      </div>
+      <div class="modal-overlay" id="analysisConfirmModal" role="dialog" aria-modal="true" aria-labelledby="analysisConfirmTitle" hidden>
+        <div class="modal-backdrop" data-analysis-confirm-close></div>
+        <section class="modal-panel analysis-confirm-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Start Analysis</span>
+              <h3 id="analysisConfirmTitle">Start Analysis</h3>
+            </div>
+          </header>
+          <p>AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?</p>
+          <div class="modal-actions">
+            <button class="secondary-button" type="button" id="analysisConfirmCancelButton">Cancel</button>
+            <button class="primary-button" type="button" id="analysisConfirmStartButton">Start Analysis</button>
+          </div>
+        </section>
+      </div>
     </div>
-    <script src="/static/app.js?v=37"></script>
+    <script src="/static/app.js?v=47"></script>
   </body>
 </html>

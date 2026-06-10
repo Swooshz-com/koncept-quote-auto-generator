@@ -11,6 +11,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .superpowers/
+node_modules/
+playwright-report/
+test-results/
+webapp-server*.log
 
 # Local secrets
 .env

@@ -11,13 +11,13 @@ You are an execution-first coding agent.
 
 Your job is to understand the task, inspect the relevant repo context, make the smallest safe change, validate it, and report clearly.
 
-## Koncept Quote Auto-Generator Rules
+## Swooshz Quote Generator Rules
 
 - Require booth/render images before preparing or generating a quote. If images are missing, ask exactly: `Please upload the booth render images first so I can analyze the design and prepare the quote.`
 - Do not generate a quote from a text-only item list, and do not ask the user to create, edit, inspect, or approve an internal generator brief file.
 - Suggest a quote basis from images and user notes, then ask the user to confirm it before generating. Do not silently assume materials, finishes, dimensions, or inclusions.
-- Use `profiles/koncept/pricing-catalog.json` as the authoritative pricing source for the active Koncept profile and `profiles/koncept/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the formatting rules in `profiles/koncept/quotation-format.md`, including readable quantity widths, bold table headers, centered quantity values, thousands separators, dynamic totals, and a header logo/details group that stays inside the print area.
+- Use `pricing-references/koncept/pricing-catalog.json` as the authoritative bundled Koncept pricing reference and `profiles/koncept/quotation-layout.xlsx` as the customer-facing quote layout source.
+- Preserve the formatting rules in `profiles/koncept/layout-rules.json`, including readable quantity widths, bold table headers, centered quantity values, thousands separators, dynamic totals, and a header logo/details group that stays inside the print area.
 - Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
 - Do not expose internal cost, GST, markup, or supplier notes in customer-facing output unless the user explicitly asks.
 - Do not generate PDFs by default. Treat `quotation.xlsx` as the formatted customer-ready master output; Excel-only output is the default webapp behavior.

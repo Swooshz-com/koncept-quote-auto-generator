@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: swooshz-quote-generator
+    env: python
+    plan: starter
+    buildCommand: ""
+    startCommand: python webapp/server.py
+    disk:
+      name: swooshz-quote-runner-data
+      mountPath: /var/data/swooshz-quote-runner
+      sizeGB: 1
+    envVars:
+      - key: APP_MODE
+        value: deploy
+      - key: AUTH_REQUIRED
+        value: "true"
+      - key: QUOTE_OUTPUT_ROOT
+        value: /var/data/swooshz-quote-runner/output
+      - key: QUOTE_TMP_ROOT
+        value: /var/data/swooshz-quote-runner/tmp
+      - key: QUOTE_LOG_ROOT
+        value: /var/data/swooshz-quote-runner/logs
+      - key: SESSION_SECRET
+        sync: false
+      - key: OIDC_ISSUER_URL
+        sync: false
+      - key: OIDC_CLIENT_ID
+        sync: false
+      - key: OIDC_CLIENT_SECRET
+        sync: false
+      - key: OIDC_REDIRECT_URI
+        sync: false
+      - key: OIDC_LOGOUT_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_DRAFT_MODEL
+        value: gpt-5.4-mini
+      - key: OPENAI_BASIS_LINE_MODEL
+        value: gpt-5.4-nano
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_DRAFT_MODEL
+        value: gemini-flash-latest
+      - key: GEMINI_BASIS_LINE_MODEL
+        value: gemini-3.1-flash-lite
