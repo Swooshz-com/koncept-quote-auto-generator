@@ -60,6 +60,36 @@ MAX_PRICING_REFERENCE_BYTES = 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier")
 PRICING_REFERENCE_TEMPLATE_COLUMNS = (*PRICING_REFERENCE_REQUIRED_COLUMNS, "aliases")
+PRICING_REFERENCE_EXAMPLE_ID_PREFIX = "example."
+PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
+    [
+        "example.floor.raised-platform",
+        "Floor Design",
+        "100mm raised platform with aluminium edging",
+        "sqm",
+        "85",
+        "1.6",
+        "raised platform|platform",
+    ],
+    [
+        "example.graphics.vinyl-print",
+        "Graphics and Signage",
+        "Vinyl printed graphics to visible wall panels",
+        "sqm",
+        "28",
+        "1.7",
+        "graphics|vinyl print",
+    ],
+    [
+        "example.lighting.led-spotlight",
+        "Lighting and Electrical",
+        "nos. 10W LED Spotlight",
+        "nos",
+        "18",
+        "1.7",
+        "spotlight|LED light",
+    ],
+]
 DOWNLOADABLE_FILES = {"quotation.xlsx"}
 DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
 CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
@@ -830,10 +860,17 @@ def normalize_basis_lines(value: Any) -> list[dict[str, Any]]:
         if not text:
             return []
         confidence = normalize_confidence_percent(value.get("confidence_pct", value.get("confidence")))
+        has_custom_pricing = (
+            normalize_basis_tag(value.get("tag")) == "Custom"
+            or bool(value.get("custom_pricing") or value.get("custom") or value.get("manual_pricing"))
+            or normalize_basis_tag(value.get("pricing_tag") or value.get("pricing_status")) == "Custom"
+        )
         lines: list[dict[str, Any]] = []
         for line in split_basis_decision_text(text, value.get("tag")):
             if confidence is not None:
                 line["confidence"] = confidence
+            if has_custom_pricing or normalize_basis_tag(line.get("tag")) == "Custom":
+                line["custom_pricing"] = True
             lines.append(line)
         return lines
 
@@ -1006,20 +1043,36 @@ def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict
     }
 
 
+def is_pricing_reference_example_row(raw: dict[str, Any]) -> bool:
+    raw_id = clean_text(raw.get("id")).lower()
+    return raw_id.startswith(PRICING_REFERENCE_EXAMPLE_ID_PREFIX) or raw_id.startswith("example-")
+
+
 def pricing_reference_validation_result(
     items: list[dict[str, Any]],
     headers: list[str],
     skipped: int,
     source_name: str = "",
+    *,
+    example_rows: int = 0,
+    empty_message: str = "No valid pricing rows were found.",
+    empty_is_error: bool = True,
 ) -> dict[str, Any]:
     header_set = {clean_text(header) for header in headers}
     missing = [column for column in PRICING_REFERENCE_REQUIRED_COLUMNS if column not in header_set]
     errors: list[str] = []
     warnings: list[str] = []
     if not items:
-        errors.append("No valid pricing rows were found.")
+        if empty_is_error:
+            errors.append(empty_message)
+        else:
+            warnings.append(empty_message)
     if missing:
         errors.append(f"Missing required columns: {', '.join(missing)}.")
+    if example_rows:
+        warnings.append(
+            f"{example_rows} example row{'s' if example_rows != 1 else ''} ignored; replace them with real pricing rows before saving."
+        )
     if skipped:
         warnings.append(f"{skipped} row{'s' if skipped != 1 else ''} skipped during sanitizing.")
     return {
@@ -1031,6 +1084,8 @@ def pricing_reference_validation_result(
         "skipped": skipped,
         "errors": errors,
         "warnings": warnings,
+        "exampleRows": example_rows,
+        "canSave": not errors and bool(items),
     }
 
 
@@ -1041,7 +1096,11 @@ def validate_pricing_reference_rows(
 ) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     skipped = 0
+    example_rows = 0
     for index, raw in enumerate(rows[:MAX_PRICING_REFERENCE_ROWS]):
+        if is_pricing_reference_example_row(raw):
+            example_rows += 1
+            continue
         item = sanitize_pricing_reference_item(raw, index)
         if item:
             items.append(item)
@@ -1049,7 +1108,21 @@ def validate_pricing_reference_rows(
             skipped += 1
     if len(rows) > MAX_PRICING_REFERENCE_ROWS:
         skipped += len(rows) - MAX_PRICING_REFERENCE_ROWS
-    result = pricing_reference_validation_result(items, headers, skipped, source_name)
+    empty_is_error = bool(rows and skipped and not example_rows)
+    empty_message = (
+        "Replace the example rows with real pricing rows before saving."
+        if example_rows
+        else "Add at least one pricing row before saving."
+    )
+    result = pricing_reference_validation_result(
+        items,
+        headers,
+        skipped,
+        source_name,
+        example_rows=example_rows,
+        empty_message=empty_message,
+        empty_is_error=empty_is_error,
+    )
     if len(rows) > MAX_PRICING_REFERENCE_ROWS:
         result["warnings"].append(f"Only the first {MAX_PRICING_REFERENCE_ROWS} rows were validated.")
     return result
@@ -1180,10 +1253,10 @@ def pricing_reference_template_sheet_xml(rows: list[list[str]]) -> str:
 
 
 def pricing_reference_template_xlsx_bytes() -> bytes:
-    pricing_rows = [list(PRICING_REFERENCE_TEMPLATE_COLUMNS), ["", "", "", "", "", "", ""]]
+    pricing_rows = [list(PRICING_REFERENCE_TEMPLATE_COLUMNS), *PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS]
     instruction_rows = [
         ["Swooshz Pricing Reference Import Template"],
-        ["Fill the Pricing Reference sheet, then upload this workbook in New Pricing Reference."],
+        ["Replace the example rows in the Pricing Reference sheet with real pricing rows, then upload this workbook in New Pricing Reference."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
         ["id", "Stable unique id, for example floor-design.needle-punch-carpet."],
         ["section", "Quotation section, for example Floor Design."],
@@ -1260,12 +1333,11 @@ def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]
         else:
             headers, rows = rows_from_xlsx_bytes(raw)
         normalized_result = validate_pricing_reference_rows(rows, headers, filename)
-        if not normalized_result["errors"]:
-            normalized_result["layout"] = "normalized-pricing-reference"
-            return normalized_result
-        normalized_result["errors"].append(
-            "Workbook layout was not recognized. Download the pricing reference template and upload that completed format."
-        )
+        normalized_result["layout"] = "normalized-pricing-reference"
+        if normalized_result["errors"] and normalized_result["missing"]:
+            normalized_result["errors"].append(
+                "Workbook layout was not recognized. Download the pricing reference template and upload that completed format."
+            )
         return normalized_result
     except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
         return pricing_reference_validation_result([], [], 0, filename) | {
@@ -2276,22 +2348,56 @@ def build_basis_chat_prompt(payload: dict[str, Any]) -> str:
             if isinstance(item, dict)
         ],
     }
+    if required_intent == "answer":
+        response_schema = "{\"intent\":\"answer\",\"answer\":\"\"}"
+        proposal_target_rule = (
+            "For required_intent=answer, return intent=answer with answer text only. "
+            "Do not return proposal, replacement_line, quote_basis, or quote_basis_sections. "
+        )
+    elif selected_line:
+        response_schema = (
+            "{\"intent\":\"answer|proposal\",\"answer\":\"\","
+            "\"proposal\":{\"message\":\"\",\"replacement_line\":{\"tag\":\"Confirm\",\"text\":\"\",\"confidence_pct\":90},\"quote_basis_sections\":[]}}"
+        )
+        proposal_target_rule = (
+            "For required_intent=proposal, return intent=proposal with proposal.replacement_line for selected-line edits. "
+            "For selected-line proposals, return proposal.replacement_line only; preserve unchanged wording as much as possible, and do not explain the change in the answer field. "
+        )
+    else:
+        response_schema = (
+            "{\"intent\":\"answer|proposal\",\"answer\":\"\","
+            "\"proposal\":{\"message\":\"\",\"quote_basis_sections\":[]}}"
+        )
+        proposal_target_rule = (
+            "For required_intent=proposal without a selected_basis_line, return intent=proposal with proposal.quote_basis_sections as the complete updated basis. "
+            "Do not return proposal.replacement_line when selected_basis_line is empty. "
+        )
     return (
         "You are helping an operator review a customer-facing quotation basis. "
         "Return only one JSON object, with no Markdown fence and no extra text. "
-        "Use this schema: "
-        "{\"intent\":\"answer|proposal\",\"answer\":\"\",\"proposal\":{\"message\":\"\",\"replacement_line\":{\"tag\":\"Confirm\",\"text\":\"\",\"confidence_pct\":90},\"quote_basis_sections\":[]}}. "
+        f"Use this schema: {response_schema}. "
         "The quote review context JSON includes required_intent. If required_intent is proposal, you are drafting an edit, not answering a question. "
-        "For required_intent=proposal, returning intent=answer is invalid. Return intent=proposal with proposal.replacement_line for selected-line edits, or proposal.quote_basis_sections for whole-basis edits. "
+        "For required_intent=proposal, returning intent=answer is invalid. "
+        "For required_intent=answer, returning intent=proposal is invalid; answer the operator's question concisely instead. "
+        f"{proposal_target_rule}"
         "For selected-line edits, infer the operator's desired change from selected_basis_line, question, project dimensions, current quote basis, and line items. "
         "Draft the complete replacement sentence the operator is being asked to approve. Preserve unchanged wording as much as possible. "
         "If the operator gives only a short fragment, treat it as the requested replacement detail for the selected line and rewrite the selected line around that detail. "
+        "Selected-line edit mode is intentionally narrow: selected_basis_line is the only sentence being edited. "
+        "For selected-line proposals, preserve every unchanged phrase, number, material, finish, location, and scope detail from selected_basis_line unless the operator explicitly asks to change it. "
+        "Do not add new scope, assumptions, wrap/edge details, quantities, finishes, locations, or affected sections that are not stated in the operator's question. "
+        "If the operator supplies a short noun phrase, color, brand, dimension, or number, replace the closest matching detail in selected_basis_line and return the full updated sentence. "
+        "For remove, delete, no, or without requests, remove the requested detail or mark the selected line Exclude; do not keep the removed detail as included scope. "
+        "If the operator is asking what the selected line means, why it is included, or whether it is correct, answer the question instead of drafting a proposal. "
+        "If the operator asks whether the selected line is included, answer from the current tag: Include means included, Confirm means awaiting operator decision, Custom means included only if kept with manual pricing, and Exclude means not included. Do not change the tag for that question. "
+        "If an edit request is genuinely ambiguous, ask one short clarification question instead of inventing a change. "
         "Do not respond with acknowledgements such as Noted, Next step, I can help, or ask them to frame an edit request. "
         "Use intent=answer only when required_intent=answer and the operator asks what, why, meaning, clarify, or asks a genuine question. "
         "For answers, write concise clean Markdown with **bold keys**, '-' bullets, short sections, and compact tables only when useful. "
         "No text walls: keep every paragraph to one short sentence, prefer bullets for multi-step ideas, and keep the answer under 70 words. "
-        "For selected-line proposals, return proposal.replacement_line only; preserve unchanged wording as much as possible, and do not explain the change in the answer field. "
         "For whole-basis changes that affect multiple lines, return proposal.quote_basis_sections as the complete updated basis, preserving unchanged sections and lines exactly. "
+        "When the operator asks to include or exclude lines, change the tag on the matching line or lines to Include or Exclude and preserve their text. "
+        "When excluding a Custom line, preserve custom_pricing=true if you include that field. "
         "Keep proposal.message to one short approval question, for example asking whether to change to the proposed full sentence. "
         "Use tag Include, Custom, or Exclude only when the operator clearly asks for that decision; otherwise keep the current tag. "
         "Use confidence_pct as an integer 0 to 100. Preserve the current confidence when the requested edit does not change certainty. "
@@ -2309,7 +2415,7 @@ def basis_chat_required_intent(payload: dict[str, Any]) -> str:
         return "answer"
 
     lowered = question.lower()
-    if re.search(r"\b(change|cahange|chagne|update|replace|revise|edit|make|set|use|switch|correct|remove|delete|add|include|exclude)\b", lowered):
+    if re.search(r"\b(change|changed|changing|cahange|chagne|update|replace|revise|edit|make|set|use|switch|correct|remove|delete|add|include|exclude)\b", lowered):
         return "proposal"
     if re.search(r"\b(should be|needs to be|has to be|instead of|from .{1,80}\bto\b)\b", lowered):
         return "proposal"
@@ -2343,6 +2449,119 @@ def basis_chat_required_intent(payload: dict[str, Any]) -> str:
         return "proposal"
 
     return "answer"
+
+
+BASIS_CHAT_EDIT_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "actually",
+    "be",
+    "can",
+    "change",
+    "cahange",
+    "chagne",
+    "correct",
+    "delete",
+    "edit",
+    "exclude",
+    "for",
+    "from",
+    "height",
+    "include",
+    "into",
+    "it",
+    "line",
+    "make",
+    "of",
+    "please",
+    "remove",
+    "replace",
+    "revise",
+    "set",
+    "should",
+    "size",
+    "switch",
+    "the",
+    "this",
+    "to",
+    "update",
+    "use",
+    "with",
+    "width",
+    "depth",
+    "dimension",
+    "dimensions",
+    "footprint",
+}
+
+
+def basis_chat_requested_keywords(question: str) -> list[str]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    text = clean_text(question).lower()
+    replacement_match = re.search(
+        r"\b(?:change|changed|changing|replace|switch|correct)\b.+\b(?:to|with)\b\s+(.+)$",
+        text,
+    )
+    if replacement_match:
+        text = replacement_match.group(1)
+    text = re.sub(r"(?<=\d)\s*[x×]\s*(?=\d)", " ", text)
+    for token in re.findall(r"[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?", text):
+        if token in BASIS_CHAT_EDIT_STOPWORDS or (len(token) < 2 and not token.isdigit()):
+            continue
+        if token not in seen:
+            seen.add(token)
+            keywords.append(token)
+    return keywords[:8]
+
+
+def basis_chat_removal_intent(question: str) -> bool:
+    return bool(re.search(r"\b(remove|delete|without|no)\b", clean_text(question).lower()))
+
+
+def validate_basis_chat_replacement_line(
+    payload: dict[str, Any],
+    current_line: dict[str, Any],
+    replacement: dict[str, Any],
+) -> None:
+    basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
+    question = clean_multiline(basis_chat.get("question") or payload.get("user_feedback"))
+    if basis_chat_required_intent(payload) != "proposal" or not question:
+        return
+    current_text = clean_text(current_line.get("text")).lower()
+    replacement_text = clean_text(replacement.get("text")).lower()
+    current_tag = normalize_basis_tag(current_line.get("tag"))
+    replacement_tag = normalize_basis_tag(replacement.get("tag"))
+    if not replacement_text:
+        raise OpenAIAnalysisError("AI basis chat did not return a usable replacement line.")
+    if current_text == replacement_text and current_tag == replacement_tag:
+        raise OpenAIAnalysisError("AI basis chat returned the unchanged selected line.")
+    if basis_chat_removal_intent(question):
+        removable_keywords = [
+            keyword
+            for keyword in basis_chat_requested_keywords(question)
+            if keyword in current_text
+        ]
+        if replacement_tag != "Exclude" and removable_keywords and all(keyword in replacement_text for keyword in removable_keywords):
+            raise OpenAIAnalysisError(
+                "AI basis chat replacement kept the detail that the operator asked to remove: "
+                + ", ".join(removable_keywords)
+                + "."
+            )
+        return
+    missing_keywords = [
+        keyword
+        for keyword in basis_chat_requested_keywords(question)
+        if keyword not in replacement_text
+    ]
+    if missing_keywords:
+        raise OpenAIAnalysisError(
+            "AI basis chat replacement did not include the requested edit detail: "
+            + ", ".join(missing_keywords)
+            + "."
+        )
 
 
 def parse_basis_chat_line_index(value: Any) -> int:
@@ -2531,6 +2750,12 @@ def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) ->
     section_index, line_index, current_line = target
     if isinstance(replacement_line, dict) and not clean_text(replacement_line.get("tag")):
         replacement["tag"] = normalize_basis_tag(current_line.get("tag"))
+    if (
+        current_line.get("custom_pricing")
+        or normalize_basis_tag(current_line.get("tag")) == "Custom"
+        or (isinstance(replacement_line, dict) and replacement_line.get("custom_pricing"))
+    ):
+        replacement["custom_pricing"] = True
     confidence = None
     if isinstance(replacement_line, dict):
         confidence = normalize_confidence_percent(replacement_line.get("confidence_pct", replacement_line.get("confidence")))
@@ -2538,9 +2763,127 @@ def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) ->
         confidence = normalize_confidence_percent(current_line.get("confidence"))
     if confidence is not None:
         replacement["confidence"] = confidence
+    validate_basis_chat_replacement_line(payload, current_line, replacement)
 
     next_sections = copy.deepcopy(sections)
     next_sections[section_index]["lines"][line_index] = replacement
+    return next_sections
+
+
+def quote_basis_sections_preserve_custom_pricing(
+    payload: dict[str, Any],
+    sections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    current_sections = normalize_quote_basis_sections(payload)
+    next_sections = copy.deepcopy(sections)
+
+    def section_key(section: dict[str, Any]) -> tuple[str, str]:
+        return (
+            safe_section_id(section.get("id") or section.get("title"), "section"),
+            clean_basis_section_title(section.get("title")).lower(),
+        )
+
+    current_by_key: dict[str, dict[str, Any]] = {}
+    for section in current_sections:
+        for key in section_key(section):
+            current_by_key[key] = section
+
+    for section in next_sections:
+        current_section = next(
+            (current_by_key.get(key) for key in section_key(section) if current_by_key.get(key)),
+            None,
+        )
+        if not current_section:
+            continue
+        current_lines = current_section.get("lines") if isinstance(current_section.get("lines"), list) else []
+        for index, line in enumerate(section.get("lines") or []):
+            if not isinstance(line, dict):
+                continue
+            current_line = current_lines[index] if index < len(current_lines) and isinstance(current_lines[index], dict) else None
+            if not current_line:
+                continue
+            if current_line.get("custom_pricing") or normalize_basis_tag(current_line.get("tag")) == "Custom":
+                line["custom_pricing"] = True
+    return next_sections
+
+
+def basis_chat_words(value: Any) -> set[str]:
+    words: set[str] = set()
+    for word in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+        if len(word) < 3:
+            continue
+        words.add(word)
+        if word.endswith("s") and len(word) > 3:
+            words.add(word[:-1])
+    return words
+
+
+def basis_chat_global_tag_action(question: str) -> str:
+    lowered = clean_text(question).lower()
+    if re.search(r"\b(include|included)\b", lowered):
+        return "Include"
+    if re.search(r"\b(exclude|excluded|remove|delete|no)\b", lowered):
+        return "Exclude"
+    return ""
+
+
+BASIS_CHAT_TAG_COMMAND_STOPWORDS = {
+    "all",
+    "and",
+    "basis",
+    "line",
+    "lines",
+    "make",
+    "please",
+    "quote",
+    "section",
+    "sections",
+    "the",
+    "this",
+}
+
+
+def basis_chat_global_tag_command_words(question: str) -> set[str]:
+    action_words = {"include", "included", "exclude", "excluded", "remove", "delete", "no"}
+    return {
+        word
+        for word in basis_chat_words(question)
+        if word not in action_words and word not in BASIS_CHAT_TAG_COMMAND_STOPWORDS
+    }
+
+
+def quote_basis_sections_apply_global_tag_command(
+    payload: dict[str, Any],
+    sections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
+    if clean_multiline(basis_chat.get("line")):
+        return sections
+    question = clean_multiline(basis_chat.get("question") or payload.get("user_feedback"))
+    action = basis_chat_global_tag_action(question)
+    if action not in {"Include", "Exclude"}:
+        return sections
+    command_words = basis_chat_global_tag_command_words(question)
+    if not command_words:
+        return sections
+
+    next_sections = copy.deepcopy(sections)
+    target_custom = "custom" in command_words
+    for section in next_sections:
+        section_words = basis_chat_words(section.get("id")) | basis_chat_words(section.get("title"))
+        section_matches = bool(command_words & section_words)
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            custom_pricing = line.get("custom_pricing") or normalize_basis_tag(line.get("tag")) == "Custom"
+            line_matches = section_matches or bool(command_words & basis_chat_words(line.get("text")))
+            if target_custom and custom_pricing:
+                line["tag"] = action
+                line["custom_pricing"] = True
+            elif line_matches and not target_custom:
+                if custom_pricing:
+                    line["custom_pricing"] = True
+                line["tag"] = action
     return next_sections
 
 
@@ -2551,6 +2894,8 @@ def normalize_basis_chat_result(parsed: dict[str, Any], payload: dict[str, Any],
     required_intent = basis_chat_required_intent(payload)
 
     if has_proposal:
+        if required_intent == "answer":
+            raise OpenAIAnalysisError("AI basis chat returned a proposal for a question instead of an answer.")
         message = clean_multiline(raw_proposal.get("message") or parsed.get("message"))
         line_items = normalized_basis_chat_line_items(raw_proposal.get("line_items") or parsed.get("line_items"), payload)
         raw_sections_payload: dict[str, Any] | None = None
@@ -2568,6 +2913,8 @@ def normalize_basis_chat_result(parsed: dict[str, Any], payload: dict[str, Any],
             sections = replacement_line_sections(payload, raw_proposal.get("replacement_line"))
         if not sections:
             raise OpenAIAnalysisError("AI basis chat did not return a usable proposal.")
+        sections = quote_basis_sections_preserve_custom_pricing(payload, sections)
+        sections = quote_basis_sections_apply_global_tag_command(payload, sections)
 
         return {
             "status": "answered",

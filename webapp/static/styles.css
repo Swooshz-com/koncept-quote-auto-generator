@@ -1819,6 +1819,10 @@ select:focus {
   content: "X";
 }
 
+.basis-line-custom-priced .basis-line-icon::before {
+  content: "$";
+}
+
 .basis-line-exclude .basis-line-text {
   color: #a1382f;
 }

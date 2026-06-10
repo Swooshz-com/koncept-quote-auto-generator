@@ -731,7 +731,8 @@ class WebappServerTest(unittest.TestCase):
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
 
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
-        self.assertEqual(rows, [])
+        self.assertGreaterEqual(len(rows), 2)
+        self.assertTrue(rows[0]["id"].startswith("example."))
 
         with LocalRunnerServer() as runner:
             with urllib.request.urlopen(f"{runner.base_url}/api/pricing-reference/template.xlsx", timeout=3) as response:
@@ -739,6 +740,21 @@ class WebappServerTest(unittest.TestCase):
                 self.assertEqual(response.headers["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 self.assertIn("swooshz-pricing-reference-template.xlsx", response.headers["Content-Disposition"])
         self.assertEqual(webapp.rows_from_xlsx_bytes(downloaded)[0], list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
+
+    def test_pricing_reference_template_upload_ignores_example_rows(self):
+        raw = webapp.pricing_reference_template_xlsx_bytes()
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "swooshz-pricing-reference-template.xlsx",
+            "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+            + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["layout"], "normalized-pricing-reference")
+        self.assertEqual(result["rowCount"], 0)
+        self.assertGreaterEqual(result["exampleRows"], 2)
+        self.assertFalse(result["canSave"])
+        self.assertIn("Replace the example rows", " ".join(result["warnings"]))
 
     def test_non_template_pricing_reference_upload_is_rejected(self):
         raw = minimal_pricing_reference_xlsx(["old_id", "section", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
@@ -1458,7 +1474,44 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("**bold keys**", prompt)
         self.assertIn("No text walls", prompt)
         self.assertIn("short fragment", prompt)
+        self.assertIn("selected_basis_line is the only sentence being edited", prompt)
+        self.assertIn("Do not add new scope", prompt)
+        self.assertIn("For required_intent=answer, returning intent=proposal is invalid", prompt)
+        self.assertIn("remove the requested detail", prompt)
+        self.assertIn("whether the selected line is included", prompt)
         self.assertIn("under 70 words", prompt)
+
+    def test_basis_chat_global_prompt_forbids_replacement_line_without_selection(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "change all BRASIL graphics to GAY graphics",
+            "scope": "quote",
+            "field": "",
+            "line_index": -1,
+            "line": "",
+        }
+
+        prompt = webapp.build_basis_chat_prompt(payload)
+
+        self.assertIn("quote_basis_sections", prompt)
+        self.assertIn("Do not return proposal.replacement_line when selected_basis_line is empty", prompt)
+        self.assertNotIn("\"replacement_line\"", prompt)
+
+    def test_basis_chat_answer_prompt_uses_answer_only_schema(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "what should I check before confirming?",
+            "scope": "quote",
+            "field": "",
+            "line_index": -1,
+            "line": "",
+        }
+
+        prompt = webapp.build_basis_chat_prompt(payload)
+
+        self.assertIn('{"intent":"answer","answer":""}', prompt)
+        self.assertIn("Do not return proposal", prompt)
+        self.assertNotIn("\"quote_basis_sections\"", prompt)
 
     def test_basis_chat_result_replaces_selected_line_and_cleans_title(self):
         payload = valid_payload()
@@ -1525,6 +1578,250 @@ class WebappServerTest(unittest.TestCase):
 
         with self.assertRaises(webapp.OpenAIAnalysisError):
             webapp.normalize_basis_chat_result({"intent": "answer", "answer": "Noted."}, payload, "openai")
+
+    def test_basis_chat_requested_keywords_focus_on_replacement_detail(self):
+        self.assertEqual(webapp.basis_chat_requested_keywords("change BRASIL to GAY"), ["gay"])
+        self.assertEqual(webapp.basis_chat_requested_keywords("change LED spotlight to track light"), ["track", "light"])
+        self.assertEqual(webapp.basis_chat_requested_keywords("7x7"), ["7"])
+        self.assertEqual(webapp.basis_chat_requested_keywords("actually 6m x 3m"), ["6m", "3m"])
+        self.assertEqual(webapp.basis_chat_required_intent({"basis_chat": {"question": "can this be changed to GAY graphics?", "line": "Custom: BRASIL graphics"}}), "proposal")
+
+    def test_basis_chat_edit_request_rejects_replacement_missing_requested_phrase(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Graphics and Signage",
+                "lines": [
+                    {
+                        "tag": "Custom",
+                        "text": "BRASIL graphics on the front low wall cladding panels, printed and mounted as shown in the render.",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "GAY graphics",
+            "field": "graphics-and-signage",
+            "line_index": 0,
+            "line": "Custom: BRASIL graphics on the front low wall cladding panels, printed and mounted as shown in the render.",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "replacement_line": {
+                    "tag": "Custom",
+                    "text": "BRASIL graphics on the front low wall cladding panels, printed and mounted as shown in the render, including full wrap/edges for a seamless finish.",
+                },
+            },
+        }
+
+        with self.assertRaises(webapp.OpenAIAnalysisError) as context:
+            webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        self.assertIn("gay", str(context.exception).lower())
+
+    def test_basis_chat_edit_request_allows_remove_prompt_without_requested_phrase(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Flooring",
+                "lines": [
+                    {
+                        "tag": "Confirm",
+                        "text": "100mm raised platform with aluminium edging visible around the booth.",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "remove aluminium edging",
+            "field": "flooring",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with aluminium edging visible around the booth.",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "replacement_line": {
+                    "text": "100mm raised platform visible around the booth.",
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        self.assertEqual(result["proposal"]["quote_basis_sections"][0]["lines"][0]["text"], "100mm raised platform visible around the booth.")
+
+    def test_basis_chat_edit_request_rejects_remove_prompt_that_keeps_removed_detail(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Flooring",
+                "lines": [
+                    {
+                        "tag": "Confirm",
+                        "text": "100mm raised platform with aluminium edging visible around the booth.",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "remove aluminium edging",
+            "field": "flooring",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with aluminium edging visible around the booth.",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "replacement_line": {
+                    "text": "100mm raised platform without aluminium edging visible around the booth.",
+                },
+            },
+        }
+
+        with self.assertRaises(webapp.OpenAIAnalysisError):
+            webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+    def test_basis_chat_question_rejects_proposal_response(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "is this included?",
+            "field": "flooring",
+            "line_index": 0,
+            "line": "Confirm: Green needle-punch carpet covering primary floor area.",
+        }
+
+        with self.assertRaises(webapp.OpenAIAnalysisError):
+            webapp.normalize_basis_chat_result({
+                "intent": "proposal",
+                "proposal": {
+                    "replacement_line": {"tag": "Include", "text": "Green needle-punch carpet covering primary floor area."}
+                },
+            }, payload, "openai")
+
+    def test_basis_chat_edit_request_preserves_custom_pricing_flag(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Graphics and Signage",
+                "lines": [
+                    {
+                        "tag": "Custom",
+                        "custom_pricing": True,
+                        "text": "BRASIL graphics on the front low wall cladding panels, printed and mounted as shown in the render.",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "GAY graphics",
+            "field": "graphics-and-signage",
+            "line_index": 0,
+            "line": "Custom: BRASIL graphics on the front low wall cladding panels, printed and mounted as shown in the render.",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "replacement_line": {
+                    "tag": "Custom",
+                    "text": "GAY graphics on the front low wall cladding panels, printed and mounted as shown in the render.",
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Custom")
+        self.assertTrue(line["custom_pricing"])
+        self.assertEqual(line["text"], "GAY graphics on the front low wall cladding panels, printed and mounted as shown in the render.")
+
+    def test_basis_chat_global_proposal_preserves_custom_pricing_flag(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "id": "graphics-and-signage",
+                "title": "Graphics and Signage",
+                "lines": [
+                    {
+                        "tag": "Custom",
+                        "custom_pricing": True,
+                        "text": "BRASIL graphics on the front low wall cladding panels.",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "make all custom lines excluded",
+            "scope": "quote",
+            "field": "",
+            "line_index": -1,
+            "line": "",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "quote_basis_sections": [
+                    {
+                        "id": "graphics-and-signage",
+                        "title": "Graphics and Signage",
+                        "lines": [
+                            {
+                                "tag": "Exclude",
+                                "text": "BRASIL graphics on the front low wall cladding panels.",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Exclude")
+        self.assertTrue(line["custom_pricing"])
+
+    def test_basis_chat_global_include_command_retags_matching_section(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "id": "lighting-and-electrical",
+                "title": "Lighting and Electrical",
+                "lines": [
+                    {"tag": "Confirm", "text": "nos. 10W LED Spotlight"},
+                    {"tag": "Confirm", "text": "nos. LED recess downlight 3 inch"},
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "include all lighting and electrical lines",
+            "scope": "quote",
+            "field": "",
+            "line_index": -1,
+            "line": "",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "quote_basis_sections": [
+                    {
+                        "id": "lighting-and-electrical",
+                        "title": "Lighting and Electrical",
+                        "lines": [
+                            {"tag": "Confirm", "text": "nos. 10W LED Spotlight"},
+                            {"tag": "Confirm", "text": "nos. LED recess downlight 3 inch"},
+                        ],
+                    }
+                ],
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        tags = [line["tag"] for line in result["proposal"]["quote_basis_sections"][0]["lines"]]
+        self.assertEqual(tags, ["Include", "Include"])
 
     def test_openai_basis_chat_uses_basis_line_model_env(self):
         payload = valid_payload()
@@ -3082,6 +3379,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "data-basis-section-action",
             "retagBasisLine",
             "retagBasisSectionConfirmLines",
+            "isCustomPricingBasisLine",
             "quoteBasisSections",
             "pendingFeedback",
             "renderInlineMarkdown",
@@ -3094,6 +3392,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "Tell me what to change. I will draft the full replacement sentence for approval before applying it.",
             "Ask a question or describe changes to the quotation basis.",
             "basisLinePillLabel",
+            "Check",
             "normalizeConfidence",
             "renderBasisChatProposalCard",
             "basis-section-action-spacer",
@@ -3127,6 +3426,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "column-count: 2",
             "break-inside: avoid",
             ".basis-line-icon::before",
+            ".basis-line-custom-priced",
             ".basis-line-include .basis-line-text",
             ".basis-line-include .basis-line-icon::before",
             ".basis-line-exclude .basis-line-text",
@@ -3324,6 +3624,7 @@ eval([
   "safeId",
   "basisDisplayTitle",
   "normalizeBasisTag",
+  "isCustomPricingBasisLine",
   "normalizeConfidence",
   "splitBasisDecisionText",
   "normalizeBasisLines",
@@ -3336,6 +3637,9 @@ eval([
 
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Platform / Flooring: Finish colour."]);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
+const customLine = normalizeBasisLines({ tag: "Custom", text: "Manual graphics." })[0];
+assert.strictEqual(customLine.custom_pricing, true);
+assert.strictEqual(isCustomPricingBasisLine({ tag: "Exclude", custom_pricing: true }), true);
 state.quoteBasisSections[0].lines[1].tag = "Include";
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), []);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");

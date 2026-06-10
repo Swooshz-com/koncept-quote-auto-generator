@@ -1622,6 +1622,12 @@ function normalizeBasisTag(tag = "") {
   return "Confirm";
 }
 
+function isCustomPricingBasisLine(line = {}) {
+  return normalizeBasisTag(line.tag) === "Custom"
+    || Boolean(line.custom_pricing || line.custom || line.manual_pricing)
+    || normalizeBasisTag(line.pricing_tag || line.pricing_status) === "Custom";
+}
+
 function normalizeConfidence(value) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(String(value).replace("%", "").trim());
@@ -1655,9 +1661,11 @@ function normalizeBasisLines(line = "") {
     const text = String(line.text || line.line || line.description || "").trim();
     if (!text) return [];
     const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
+    const hasCustomPricing = isCustomPricingBasisLine(line);
     return splitBasisDecisionText(text, line.tag).map((parsed) => {
       const next = { tag: normalizeBasisTag(parsed.tag), text: parsed.text };
       if (confidence !== null) next.confidence = confidence;
+      if (hasCustomPricing || normalizeBasisTag(parsed.tag) === "Custom") next.custom_pricing = true;
       return next;
     });
   }
@@ -1761,6 +1769,8 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
     layout: "normalized-pricing-reference",
     errors,
     warnings,
+    exampleRows: 0,
+    canSave: !errors.length && items.length > 0,
   };
 }
 
@@ -1773,20 +1783,23 @@ function renderPricingReferencePreview(result = null) {
   }
   const required = pricingReferenceRequiredColumns();
   const found = required.filter((column) => !result.missing.includes(column));
-  const tone = result.errors.length ? "error" : result.warnings.length ? "warn" : "ok";
+  const canSave = result.canSave ?? (!result.errors.length && result.rowCount > 0);
+  const tone = result.errors.length ? "error" : result.warnings.length || !canSave ? "warn" : "ok";
+  const title = result.errors.length ? "Validation failed" : canSave ? "Validation preview" : "Template preview";
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
-    <strong>${result.errors.length ? "Validation failed" : "Validation preview"}</strong>
+    <strong>${title}</strong>
     <ul>
       <li>Layout: ${escapeHtml(result.layout || "normalized pricing reference")}</li>
       <li>Detected row count: ${result.rowCount}</li>
+      ${result.exampleRows ? `<li>Example rows ignored: ${result.exampleRows}</li>` : ""}
       <li>Required columns found: ${escapeHtml(found.join(", ") || "None")}</li>
       <li>Required columns missing: ${escapeHtml(result.missing.join(", ") || "None")}</li>
       <li>Skipped rows count: ${result.skipped}</li>
     </ul>
     ${result.errors.concat(result.warnings).map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
   `;
-  if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = Boolean(result.errors.length);
+  if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = !canSave;
 }
 
 async function validatePricingReferenceFile(file) {
@@ -1858,7 +1871,8 @@ function savePricingReferenceFromModal(event) {
   event.preventDefault();
   const name = elements.pricingReferenceName.value.trim();
   const result = state.pendingPricingReference;
-  if (!name || !result || result.errors.length) {
+  const canSave = result?.canSave ?? Boolean(result && !result.errors.length && result.items.length);
+  if (!name || !result || !canSave) {
     renderPricingReferencePreview(result || pricingReferenceValidationResult([], [], 0, ""));
     return;
   }
@@ -2181,7 +2195,9 @@ function includedBasisOutputRows(existingRows = []) {
   basisSections(state.quoteBasisSections).forEach((section) => {
     (section.lines || []).forEach((line) => {
       const basisTag = normalizeBasisTag(line.tag);
-      if (!["Include", "Custom"].includes(basisTag)) return;
+      const customPricing = isCustomPricingBasisLine(line);
+      if (basisTag === "Exclude") return;
+      if (!["Include", "Custom"].includes(basisTag) && !customPricing) return;
       const text = String(line.text || "").trim();
       if (!text) return;
       const duplicate = existingRows.some((row) => outputRowCoversBasisLine(row, text))
@@ -2195,7 +2211,7 @@ function includedBasisOutputRows(existingRows = []) {
         price_mode: "Priced",
         unit_price_override: "",
         pricing_keyword: "",
-        status: basisTag === "Custom" ? "custom" : "needs-pricing",
+        status: customPricing ? "custom" : "needs-pricing",
       }));
     });
   });
@@ -2724,17 +2740,23 @@ function basisLinePillLabel(line = {}) {
   const tag = normalizeBasisTag(line.tag);
   const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
   if (tag === "Confirm" && confidence !== null) return `${confidence}%`;
-  if (tag === "Confirm") return "Review";
+  if (tag === "Confirm") return "Check";
   return basisTagLabel(tag);
 }
 
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
-  const primaryAction = tag === "Custom"
+  const customPricing = isCustomPricingBasisLine(line);
+  const rowClasses = [
+    "basis-line-row",
+    `basis-line-${tag.toLowerCase()}`,
+    customPricing ? "basis-line-custom-priced" : "",
+  ].filter(Boolean).join(" ");
+  const primaryAction = customPricing
     ? `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Custom" aria-label="Keep this line as custom manual pricing" title="Custom manual pricing">$</button>`
     : `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Include" aria-label="Mark this line as included" title="Mark included">&#x2713;</button>`;
   return `
-    <li class="basis-line-row basis-line-${escapeHtml(tag.toLowerCase())}">
+    <li class="${escapeHtml(rowClasses)}">
       <span class="basis-line-icon" aria-hidden="true"></span>
       <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
       <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
@@ -2833,7 +2855,13 @@ function retagBasisLine(sectionId, lineIndex, nextTag) {
   const section = sections.find((item) => item.id === sectionId);
   const index = Number(lineIndex);
   if (!section || !section.lines[index]) return;
-  section.lines[index] = { ...section.lines[index], tag: nextTag };
+  const currentLine = section.lines[index];
+  const customPricing = isCustomPricingBasisLine(currentLine) || nextTag === "Custom";
+  section.lines[index] = {
+    ...currentLine,
+    tag: nextTag,
+    ...(customPricing ? { custom_pricing: true } : {}),
+  };
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
