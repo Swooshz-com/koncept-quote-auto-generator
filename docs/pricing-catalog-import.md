@@ -63,7 +63,8 @@ Preview generation is not persistence. The company pricing reference is written 
 
 ## Deferred items
 
+- Full DB-backed persistence.
 - Advanced multi-sheet workbook inference.
-- Full human-in-the-loop AI chat editing.
-- DB-backed persistence.
-- Company role/session integration.
+- Richer human-in-the-loop AI editing UI.
+- Full profile CRUD.
+- Deployment/auth architecture changes.
