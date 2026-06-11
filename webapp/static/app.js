@@ -2570,7 +2570,17 @@ function outputComparableText(value = "") {
     .trim();
 }
 
-function outputRowCoversBasisLine(row = {}, lineText = "") {
+function outputRowSectionMatchesBasis(row = {}, sectionTitle = "") {
+  if (!String(sectionTitle || "").trim()) return true;
+  const basisSection = sectionTitleKey(normalizeQuoteBasisTitle(sectionTitle));
+  if (!basisSection) return true;
+  const rowSection = sectionTitleKey(row.section);
+  if (!rowSection) return true;
+  return rowSection === basisSection;
+}
+
+function outputRowCoversBasisLine(row = {}, lineText = "", sectionTitle = "") {
+  if (!outputRowSectionMatchesBasis(row, sectionTitle)) return false;
   const rowText = outputComparableText(row.description);
   const basisText = outputComparableText(lineText);
   if (!rowText || !basisText) return false;
@@ -2579,7 +2589,17 @@ function outputRowCoversBasisLine(row = {}, lineText = "") {
   if (basisWords.length < 4) return false;
   const rowWords = new Set(rowText.split(" "));
   const overlap = basisWords.filter((word) => rowWords.has(word)).length;
-  return overlap / Math.min(basisWords.length, 10) >= 0.6;
+  return overlap / basisWords.length >= 0.85;
+}
+
+function outputRowCoversBasisEntry(row = {}, line = {}, sectionTitle = "") {
+  const lineIds = [line.id, line.source_line_item_id].map((value) => String(value || "").trim()).filter(Boolean);
+  const sourceId = String(row.source_basis_line_id || "").trim();
+  if (sourceId && lineIds.length) return lineIds.includes(sourceId);
+  const keywordMatch = row.pricing_keyword && line.pricing_keyword && String(row.pricing_keyword) === String(line.pricing_keyword);
+  if (keywordMatch) return true;
+  return outputRowCoversBasisLine(row, line.text || "", sectionTitle)
+    || outputRowCoversBasisLine(row, line.catalog_description || "", sectionTitle);
 }
 
 function basisLineAllowsOutput(line = {}) {
@@ -2601,7 +2621,9 @@ function outputRowAllowedByBasis(row = {}) {
       const lineIds = [line.id, line.source_line_item_id].map((value) => String(value || "").trim()).filter(Boolean);
       const sourceMatch = sourceId && lineIds.includes(sourceId);
       const keywordMatch = row.pricing_keyword && line.pricing_keyword && String(row.pricing_keyword) === String(line.pricing_keyword);
-      const textMatch = outputRowCoversBasisLine(row, line.text || "") || outputRowCoversBasisLine(row, line.catalog_description || "");
+      const sectionTitle = section.title || section.id || "";
+      if (sourceId && lineIds.length && !sourceMatch) return;
+      const textMatch = outputRowCoversBasisLine(row, line.text || "", sectionTitle) || outputRowCoversBasisLine(row, line.catalog_description || "", sectionTitle);
       if (!sourceMatch && !keywordMatch && !textMatch) return;
       matched = true;
       allowed = allowed || basisLineAllowsOutput(line);
@@ -2620,8 +2642,9 @@ function includedBasisOutputRows(existingRows = []) {
       if (!text) return;
       const isBoothSizeInfo = /\bbooth size\b/i.test(text) && !line.pricing_keyword;
       if (isBoothSizeInfo && !customPricing) return;
-      const duplicate = existingRows.some((row) => outputRowCoversBasisLine(row, text))
-        || rows.some((row) => outputRowCoversBasisLine(row, text));
+      const sectionTitle = section.title || section.id || "";
+      const duplicate = existingRows.some((row) => outputRowCoversBasisEntry(row, line, sectionTitle))
+        || rows.some((row) => outputRowCoversBasisEntry(row, line, sectionTitle));
       if (duplicate) return;
       rows.push(normalizeOutputRow({
         section: normalizeCategoryTitle(section.title || section.id || "Quote Basis"),

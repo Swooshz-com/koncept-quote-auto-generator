@@ -60,84 +60,84 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Item:** m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Backwall or any partition; PAINTED
-- **Search aliases:** m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal m length; m length single side partition wall at height 2.4m; Booth Structure single side partition wall at height 2.4m; Booth Structure wooden construct in painted finished as per design proposal; single side partition wall at height 2.4m m length
+- **Search aliases:** m length single side partition wall at height 2.4m; single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 2.4m; Booth Structure wooden construct in painted finished as per design proposal; single side partition wall at height 2.4m m length; wooden construct in painted finished as per design proposal m length
 
 ### booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Backwall or any partition; LAMINATED
-- **Search aliases:** m length single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; Backwall or any partition; LAMINATED; Booth Structure single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal m length; m length single side partition wall at height 2.4m; Booth Structure single side partition wall at height 2.4m; Booth Structure wooden construct in laminated finished as per design proposal; single side partition wall at height 2.4m m length
+- **Search aliases:** m length single side partition wall at height 2.4m; single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; Backwall or any partition; LAMINATED; Booth Structure single side partition wall at height 2.4m; Booth Structure wooden construct in laminated finished as per design proposal; single side partition wall at height 2.4m m length; wooden construct in laminated finished as per design proposal m length
 
 ### booth-structure.double-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal
 
 - **Item:** m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Double sided partition; PAINTED
-- **Search aliases:** m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; Double sided partition; PAINTED; Booth Structure double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal m length; m length double side partition wall at height 2.4m; Booth Structure double side partition wall at height 2.4m; Booth Structure wooden construct in painted finished as per design proposal; double side partition wall at height 2.4m m length
+- **Search aliases:** m length double side partition wall at height 2.4m; double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; Double sided partition; PAINTED; Booth Structure double side partition wall at height 2.4m; Booth Structure wooden construct in painted finished as per design proposal; double side partition wall at height 2.4m m length; wooden construct in painted finished as per design proposal m length
 
 ### booth-structure.double-side-partition-wall-at-height-2-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Double sided partition; LAMINATE
-- **Search aliases:** m length double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; Double sided partition; LAMINATE; Booth Structure double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal m length; m length double side partition wall at height 2.4m; Booth Structure double side partition wall at height 2.4m; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 2.4m m length
+- **Search aliases:** m length double side partition wall at height 2.4m; double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; Double sided partition; LAMINATE; Booth Structure double side partition wall at height 2.4m; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 2.4m m length; wooden construct in laminated finished as per design proposal m length
 
 ### booth-structure.single-side-partition-wall-at-height-4m-wooden-construct-in-painted-finished-as-per-design-proposal
 
 - **Item:** m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Backwall or any partition; PAINTED
-- **Search aliases:** m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; wooden construct in painted finished as per design proposal m length; m length single side partition wall at height 4m; Booth Structure single side partition wall at height 4m; Booth Structure wooden construct in painted finished as per design proposal; single side partition wall at height 4m m length
+- **Search aliases:** m length single side partition wall at height 4m; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 4m; Booth Structure wooden construct in painted finished as per design proposal; single side partition wall at height 4m m length; wooden construct in painted finished as per design proposal m length
 
 ### booth-structure.single-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length single side partition wall at height 4m; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Backwall or any partition; LAMINATED
-- **Search aliases:** m length single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; Backwall or any partition; LAMINATED; Booth Structure single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 4m; wooden construct in laminated finished as per design proposal m length; m length single side partition wall at height 4m; Booth Structure single side partition wall at height 4m; Booth Structure wooden construct in laminated finished as per design proposal; single side partition wall at height 4m m length
+- **Search aliases:** m length single side partition wall at height 4m; single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; Backwall or any partition; LAMINATED; Booth Structure single side partition wall at height 4m; Booth Structure wooden construct in laminated finished as per design proposal; single side partition wall at height 4m m length; wooden construct in laminated finished as per design proposal m length
 
 ### booth-structure.double-side-partition-wall-at-height-4m-wooden-construct-in-painted-finished-as-per-design-proposal
 
 - **Item:** m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Double sided partition; PAINTED
-- **Search aliases:** m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; Double sided partition; PAINTED; Booth Structure double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; wooden construct in painted finished as per design proposal m length; m length double side partition wall at height 4m; Booth Structure double side partition wall at height 4m; Booth Structure wooden construct in painted finished as per design proposal; double side partition wall at height 4m m length
+- **Search aliases:** m length double side partition wall at height 4m; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; Double sided partition; PAINTED; Booth Structure double side partition wall at height 4m; Booth Structure wooden construct in painted finished as per design proposal; double side partition wall at height 4m m length; wooden construct in painted finished as per design proposal m length
 
 ### booth-structure.double-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length double side partition wall at height 4m; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Double sided partition; LAMINATE
-- **Search aliases:** m length double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; Double sided partition; LAMINATE; Booth Structure double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 4m; wooden construct in laminated finished as per design proposal m length; m length double side partition wall at height 4m; Booth Structure double side partition wall at height 4m; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 4m m length
+- **Search aliases:** m length double side partition wall at height 4m; double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; Double sided partition; LAMINATE; Booth Structure double side partition wall at height 4m; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 4m m length; wooden construct in laminated finished as per design proposal m length
 
 ### booth-structure.top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal
 
 - **Item:** m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Top Booth Structure; PAINTED
-- **Search aliases:** m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; Top Booth Structure; PAINTED; Booth Structure top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal m length; m length top fascia structure at height 3.99m; Booth Structure top fascia structure at height 3.99m; Booth Structure wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m m length
+- **Search aliases:** m length top fascia structure at height 3.99m; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; Top Booth Structure; PAINTED; Booth Structure top fascia structure at height 3.99m; Booth Structure wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m m length; wooden construct in painted finished as per design proposal m length
 
 ### booth-structure.top-fascia-structure-at-height-3-99m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Top Booth Structure; LAMINATED
-- **Search aliases:** m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; Top Booth Structure; LAMINATED; Booth Structure top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal m length; m length top fascia structure at height 3.99m; Booth Structure top fascia structure at height 3.99m; Booth Structure wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m m length
+- **Search aliases:** m length top fascia structure at height 3.99m; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; Top Booth Structure; LAMINATED; Booth Structure top fascia structure at height 3.99m; Booth Structure wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m m length; wooden construct in laminated finished as per design proposal m length
 
 ### booth-structure.double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal
 
 - **Item:** m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Partition for meeting room; PAINTED
-- **Search aliases:** m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; Partition for meeting room; PAINTED; Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal m length; m length double side partition wall at height 2.5m for meeting room; Booth Structure double side partition wall at height 2.5m for meeting room; Booth Structure wooden construct in painted finished as per design proposal; double side partition wall at height 2.5m for meeting room m length
+- **Search aliases:** m length double side partition wall at height 2.5m for meeting room; double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; Partition for meeting room; PAINTED; Booth Structure double side partition wall at height 2.5m for meeting room; Booth Structure wooden construct in painted finished as per design proposal; double side partition wall at height 2.5m for meeting room m length; wooden construct in painted finished as per design proposal m length
 
 ### booth-structure.double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** Partition for meeting room; LAMINATE
-- **Search aliases:** m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; Partition for meeting room; LAMINATE; Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal m length; m length double side partition wall at height 2.5m for meeting room; Booth Structure double side partition wall at height 2.5m for meeting room; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room m length
+- **Search aliases:** m length double side partition wall at height 2.5m for meeting room; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; Partition for meeting room; LAMINATE; Booth Structure double side partition wall at height 2.5m for meeting room; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room m length; wooden construct in laminated finished as per design proposal m length
 
 ### booth-structure.wooden-construct-low-partition-ready-in-painted-finished
 
@@ -202,42 +202,42 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
 - **Unit hint:** m length
 - **Remarks:** INFORMATION COUNTER; PAINTED
-- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal m length; m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter m length
+- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in painted finished and laminated top as per design proposal m length
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** INFORMATION COUNTER; FULL LAMINATED
-- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal m length; m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter m length
+- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in laminated finished as per design proposal m length
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal
 - **Unit hint:** m length
 - **Remarks:** COUNTER; PAINTED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal m length; nos. of 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter m length; wooden construct in painted finished and laminated top as per design proposal m length
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** COUNTER; FULL LAMINATED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal m length; nos. of 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter m length; wooden construct in laminated finished as per design proposal m length
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal
 - **Unit hint:** m length
 - **Remarks:** COUNTER WITH GLASS TOP; PAINTED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; COUNTER WITH GLASS TOP; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal m length; nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; COUNTER WITH GLASS TOP; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top m length; wooden construct in painted finished and laminated top as per design proposal m length
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m length
 - **Remarks:** COUNTER; FULL LAMINATED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal m length; nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top m length; wooden construct in laminated finished as per design proposal m length
 
 ### counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m
 
@@ -283,21 +283,21 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Item:** m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal
 - **Unit hint:** m run
 - **Remarks:** Wooden hanging structure; PAINTED
-- **Search aliases:** m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; wooden construct in painted finished as per design proposal; Wooden hanging structure; PAINTED; Hanging Structure hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; wooden construct in painted finished as per design proposal m run; m run of hanging structure x 1m height; Hanging Structure hanging structure x 1m height; Hanging Structure wooden construct in painted finished as per design proposal; hanging structure x 1m height m run
+- **Search aliases:** m run of hanging structure x 1m height; hanging structure x 1m height; wooden construct in painted finished as per design proposal; Wooden hanging structure; PAINTED; Hanging Structure hanging structure x 1m height; Hanging Structure wooden construct in painted finished as per design proposal; hanging structure x 1m height m run; wooden construct in painted finished as per design proposal m run
 
 ### hanging-structure.hanging-structure-x-1m-height-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal
 - **Unit hint:** m run
 - **Remarks:** Wooden hanging structure; LAMINATE
-- **Search aliases:** m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; Wooden hanging structure; LAMINATE; Hanging Structure hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; wooden construct in laminated finished as per design proposal m run; m run of hanging structure x 1m height; Hanging Structure hanging structure x 1m height; Hanging Structure wooden construct in laminated finished as per design proposal; hanging structure x 1m height m run
+- **Search aliases:** m run of hanging structure x 1m height; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; Wooden hanging structure; LAMINATE; Hanging Structure hanging structure x 1m height; Hanging Structure wooden construct in laminated finished as per design proposal; hanging structure x 1m height m run; wooden construct in laminated finished as per design proposal m run
 
 ### hanging-structure.hanging-structure-x-1m-height-aluminum-profile-construct-in-fabric-finished-as-per-design-proposal-including-fabric-print
 
 - **Item:** m run of hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print
 - **Unit hint:** m run
 - **Remarks:** TUBE with PRINTED FABRIC
-- **Search aliases:** m run of hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print; hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print; hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print; TUBE with PRINTED FABRIC; Hanging Structure hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print; hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print m run; m run of hanging structure x 1m height; Hanging Structure hanging structure x 1m height; Hanging Structure aluminum profile construct in fabric finished as per design proposal; Hanging Structure Including fabric print
+- **Search aliases:** m run of hanging structure x 1m height; hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print; TUBE with PRINTED FABRIC; Hanging Structure hanging structure x 1m height; Hanging Structure aluminum profile construct in fabric finished as per design proposal; Hanging Structure Including fabric print; hanging structure x 1m height m run; aluminum profile construct in fabric finished as per design proposal m run; Including fabric print m run
 
 ### hanging-structure.professional-engineer-endorsement-for-hanging
 
@@ -315,6 +315,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** SPOTLIGHT
 - **Search aliases:** nos. 10W LED Spotlight; 10W LED Spotlight; SPOTLIGHT; Electrical Fittings ( Excluding connection fees by Organiser) 10W LED Spotlight; 10W LED Spotlight nos
+- **Visual references:** pricing-catalog-images/image3.png
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.10w-arm-led-spotlight
 
@@ -329,6 +330,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** ARM Flood light
 - **Search aliases:** nos. 70W LED Arm Floodlight; 70W LED Arm Floodlight; ARM Flood light; Electrical Fittings ( Excluding connection fees by Organiser) 70W LED Arm Floodlight; 70W LED Arm Floodlight nos
+- **Visual references:** pricing-catalog-images/image1.png
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.150w-hqi-floodlight
 
@@ -350,6 +352,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Downlight
 - **Search aliases:** nos. LED recess downlight 6"; LED recess downlight 6"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 6"; LED recess downlight 6" nos
+- **Visual references:** pricing-catalog-images/image2.png
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.nos-13amp-230v-sp-50hz-ac-socket-max-800w-not-for-lighting-use
 
@@ -394,6 +397,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Bistro Chairs; Bistro Chairs; Bistro Low Chair; Furniture Rental Bistro Chairs; Bistro Chairs nos
+- **Visual references:** pricing-catalog-images/image5.png
 
 ### furniture-rental.eames-replica-chair-white
 
@@ -401,6 +405,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Eames Replica Chair (White); Eames Replica Chair (White); Bistro Low Chair; Furniture Rental Eames Replica Chair (White); Eames Replica Chair (White) nos
+- **Visual references:** pricing-catalog-images/image4.png; pricing-catalog-images/image6.png
 
 ### furniture-rental.low-lidas-chair
 
@@ -408,6 +413,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. low Lidas Chair; low Lidas Chair; Bistro Low Chair; Furniture Rental low Lidas Chair; low Lidas Chair nos
+- **Visual references:** pricing-catalog-images/image5.png
 
 ### furniture-rental.chair-with-cushion
 
@@ -415,6 +421,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Chair With Cushion; Chair With Cushion; Bistro Low Chair; Furniture Rental Chair With Cushion; Chair With Cushion nos
+- **Visual references:** pricing-catalog-images/image7.png
 
 ### furniture-rental.eames-style-replica-arm-chair-black
 
@@ -422,6 +429,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Eames-Style Replica Arm Chair (Black); Eames-Style Replica Arm Chair (Black); Bistro Low Chair; Furniture Rental Eames-Style Replica Arm Chair (Black); Eames-Style Replica Arm Chair (Black) nos
+- **Visual references:** pricing-catalog-images/image8.png
 
 ### furniture-rental.seating-chair-grey
 
@@ -429,6 +437,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Seating chair
 - **Search aliases:** nos. seating chair (grey); seating chair (grey); Seating chair; Furniture Rental seating chair (grey); seating chair (grey) nos
+- **Visual references:** pricing-catalog-images/image9.jpg
 
 ### furniture-rental.opel-replica-chairs-white
 
@@ -436,6 +445,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Seating chair
 - **Search aliases:** nos. Opel replica chairs (white); Opel replica chairs (white); Seating chair; Furniture Rental Opel replica chairs (white); Opel replica chairs (white) nos
+- **Visual references:** pricing-catalog-images/image10.png
 
 ### furniture-rental.white-folding-chairs
 
@@ -450,6 +460,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Eames-Style Bar Stool (Replica); Eames-Style Bar Stool (Replica); Bar Stool; Furniture Rental Eames-Style Bar Stool (Replica); Eames-Style Bar Stool (Replica) nos
+- **Visual references:** pricing-catalog-images/image11.jpg; pricing-catalog-images/image12.jpg
 
 ### furniture-rental.max-white-bar-stool
 
@@ -464,6 +475,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Jay White Bar Stool with high back rest; Jay White Bar Stool with high back rest; Bar Stool; Furniture Rental Jay White Bar Stool with high back rest; Jay White Bar Stool with high back rest nos
+- **Visual references:** pricing-catalog-images/image13.jpg; pricing-catalog-images/image14.jpg
 
 ### furniture-rental.don-white-bar-stool
 
@@ -471,6 +483,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Don White Bar Stool; Don White Bar Stool; Bar Stool; Furniture Rental Don White Bar Stool; Don White Bar Stool nos
+- **Visual references:** pricing-catalog-images/image15.jpg
 
 ### furniture-rental.saffron-bar-stool-black
 
@@ -485,6 +498,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Roudy Bar Stool (Black); Roudy Bar Stool (Black); Bar Stool; Furniture Rental Roudy Bar Stool (Black); Roudy Bar Stool (Black) nos
+- **Visual references:** pricing-catalog-images/image16.jpg; pricing-catalog-images/image17.png
 
 ### furniture-rental.roudy-bar-stool-white
 
@@ -499,6 +513,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Juliette Bar Stool; Juliette Bar Stool; Bar Stool; Furniture Rental Juliette Bar Stool; Juliette Bar Stool nos
+- **Visual references:** pricing-catalog-images/image18.png; pricing-catalog-images/image19.png
 
 ### furniture-rental.conference-chair
 
@@ -513,6 +528,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** SOFA chairs
 - **Search aliases:** nos. Faux Leather Black Chair Twin Seating; Faux Leather Black Chair Twin Seating; SOFA chairs; Furniture Rental Faux Leather Black Chair Twin Seating; Faux Leather Black Chair Twin Seating nos
+- **Visual references:** pricing-catalog-images/image20.png
 
 ### furniture-rental.modular-faux-leather-white-sofa-per-unit
 
@@ -520,6 +536,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** SOFA SEATS
 - **Search aliases:** nos. Modular Faux Leather White Sofa per unit; Modular Faux Leather White Sofa per unit; SOFA SEATS; Furniture Rental Modular Faux Leather White Sofa per unit; Modular Faux Leather White Sofa per unit nos
+- **Visual references:** pricing-catalog-images/image21.jpg
 
 ### furniture-rental.high-top-table-white
 
@@ -527,6 +544,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** BISTRO TABLE HIGH
 - **Search aliases:** nos. High Top Table White; High Top Table White; BISTRO TABLE HIGH; Furniture Rental High Top Table White; High Top Table White nos
+- **Visual references:** pricing-catalog-images/image22.png
 
 ### furniture-rental.aluminum-bistro-table-round
 
@@ -534,6 +552,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** BISTRO TABLE HIGH
 - **Search aliases:** nos. Aluminum Bistro Table (Round); Aluminum Bistro Table (Round); BISTRO TABLE HIGH; Furniture Rental Aluminum Bistro Table (Round); Aluminum Bistro Table (Round) nos
+- **Visual references:** pricing-catalog-images/image23.png; pricing-catalog-images/image24.png
 
 ### furniture-rental.aluminum-bistro-table-square
 
@@ -548,6 +567,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** BISTRO TABLE HIGH
 - **Search aliases:** nos. Aluminum Bistro Table (Square); Aluminum Bistro Table (Square); BISTRO TABLE HIGH; Furniture Rental Aluminum Bistro Table (Square); Aluminum Bistro Table (Square) nos
+- **Visual references:** pricing-catalog-images/image25.jpg
 
 ### furniture-rental.white-tulip-table-60cm
 
@@ -555,6 +575,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** ROUNDTABLE LOW
 - **Search aliases:** nos. White Tulip Table (60cm); White Tulip Table (60cm); ROUNDTABLE LOW; Furniture Rental White Tulip Table (60cm); White Tulip Table (60cm) nos
+- **Visual references:** pricing-catalog-images/image26.png
 
 ### furniture-rental.round-glass-low-table-90cm
 
@@ -571,6 +592,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Brochure stand
 - **Search aliases:** nos. Aluminum Foldable Brochure Stand; Aluminum Foldable Brochure Stand; Brochure stand; Rental Items Aluminum Foldable Brochure Stand; Aluminum Foldable Brochure Stand nos
+- **Visual references:** pricing-catalog-images/image27.jpg; pricing-catalog-images/image28.jpg
 
 ### rental-items.aluminum-foldable-magazine-stand
 
@@ -585,6 +607,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** Q POLES
 - **Search aliases:** nos. Queue pole 1m (Silver); Queue pole 1m (Silver); Q POLES; Rental Items Queue pole 1m (Silver); Queue pole 1m (Silver) nos
+- **Visual references:** pricing-catalog-images/image29.jpg; pricing-catalog-images/image30.png
 
 ### rental-items.queue-pole-1m-black
 
@@ -599,6 +622,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** MINI FRIDGE
 - **Search aliases:** nos. 420L Freezer (Mini Fridge); 420L Freezer (Mini Fridge); MINI FRIDGE; Rental Items 420L Freezer (Mini Fridge); 420L Freezer (Mini Fridge) nos
+- **Visual references:** pricing-catalog-images/image31.png
 
 ### rental-items.550l-refrigerator
 
@@ -606,6 +630,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Unit hint:** nos
 - **Remarks:** MINI FRIDGE
 - **Search aliases:** nos. 550L Refrigerator; 550L Refrigerator; MINI FRIDGE; Rental Items 550L Refrigerator; 550L Refrigerator nos
+- **Visual references:** pricing-catalog-images/image32.png
 
 ### rental-items.sink-with-cabinet
 
@@ -707,14 +732,14 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Item:** nos. digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH)
 - **Unit hint:** nos
 - **Remarks:** For Shell Scheme
-- **Search aliases:** nos. digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH); digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH); digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH); For Shell Scheme; Graphics digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH); digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH) nos; nos. digital print graphic mounted directly onto system panels; Graphics digital print graphic mounted directly onto system panels; Graphics (Size: 950mmL x 2340mmH); digital print graphic mounted directly onto system panels nos; (Size: 950mmL x 2340mmH) nos
+- **Search aliases:** nos. digital print graphic mounted directly onto system panels; digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH); For Shell Scheme; Graphics digital print graphic mounted directly onto system panels; Graphics (Size: 950mmL x 2340mmH); digital print graphic mounted directly onto system panels nos; (Size: 950mmL x 2340mmH) nos
 
 ### graphics.nos-seamless-wall-graphic-on-flex-foam-size-3000mml-x-2500mmh
 
 - **Item:** nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH)
 - **Unit hint:** nos
 - **Remarks:** For Shell Scheme
-- **Search aliases:** nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH); nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH); For Shell Scheme; Graphics nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH); nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH) nos; Graphics nos.seamless wall graphic on flex foam; Graphics (Size: 3000mmL x 2500mmH); nos.seamless wall graphic on flex foam nos; (Size: 3000mmL x 2500mmH) nos
+- **Search aliases:** nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH); For Shell Scheme; Graphics nos.seamless wall graphic on flex foam; Graphics (Size: 3000mmL x 2500mmH); nos.seamless wall graphic on flex foam nos; (Size: 3000mmL x 2500mmH) nos
 
 ### graphics.poster-print-on-foam-for-exhibitor-wall-at-approx-1ml-x-1-2mh
 

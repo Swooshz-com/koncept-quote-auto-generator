@@ -72,6 +72,7 @@ MAX_PRICING_REFERENCE_VISUALS = 80
 MAX_PRICING_REFERENCE_VISUAL_BYTES = 512 * 1024
 MAX_PRICING_REFERENCE_VISUALS_PER_ITEM = 3
 MAX_PROMPT_CATALOG_VISUAL_IMAGES = 8
+PRICING_REFERENCE_ASSETS_DIR_NAME = "pricing-reference-assets"
 V11_COL_SECTION_NO = 0
 V11_COL_DEFAULT_QUANTITY = 1
 V11_COL_DESCRIPTION = 2
@@ -1321,6 +1322,21 @@ def default_pricing_reference_aliases(section: str, description: str, unit_hint:
     return aliases[:8]
 
 
+def sanitize_visual_reference_path(value: Any) -> str:
+    path = clean_text(value).replace("\\", "/")
+    if not path or path.startswith("/") or re.match(r"^[A-Za-z]:", path):
+        return ""
+    normalized = posixpath.normpath(path)
+    if normalized in {"", ".", ".."} or normalized.startswith("../") or "/../" in normalized:
+        return ""
+    root = normalized.split("/", 1)[0]
+    if root not in {PRICING_REFERENCE_ASSETS_DIR_NAME, "pricing-catalog-images"}:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp)", normalized, flags=re.IGNORECASE):
+        return ""
+    return normalized
+
+
 def sanitize_visual_references(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -1332,6 +1348,10 @@ def sanitize_visual_references(value: Any) -> list[dict[str, Any]]:
         source = clean_text(raw.get("source")).replace("\\", "/")
         if source and not re.fullmatch(r"xl/media/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp)", source, flags=re.IGNORECASE):
             continue
+        raw_path = clean_text(raw.get("path"))
+        path = sanitize_visual_reference_path(raw_path)
+        if raw_path and not path:
+            continue
         data_url = clean_text(raw.get("data_url"))
         if data_url:
             inline = data_url_inline_image(data_url)
@@ -1341,13 +1361,15 @@ def sanitize_visual_references(value: Any) -> list[dict[str, Any]]:
                 continue
         anchor_row = int(parse_pricing_number(raw.get("anchor_row")) or 0)
         anchor_col = int(parse_pricing_number(raw.get("anchor_col")) or 0)
-        key = (source or hashlib.sha256(data_url.encode("utf-8")).hexdigest(), anchor_row)
+        key = (source or path or hashlib.sha256(data_url.encode("utf-8")).hexdigest(), anchor_row)
         if key in seen:
             continue
         seen.add(key)
         ref: dict[str, Any] = {}
         if source:
             ref["source"] = source
+        if path:
+            ref["path"] = path
         if anchor_row > 0:
             ref["anchor_row"] = anchor_row
         if anchor_col > 0:
@@ -1357,6 +1379,116 @@ def sanitize_visual_references(value: Any) -> list[dict[str, Any]]:
         if ref:
             refs.append(ref)
     return refs
+
+
+def visual_reference_file_path(value: Any, base_dir: Path | None) -> Path | None:
+    if base_dir is None:
+        return None
+    relative = sanitize_visual_reference_path(value)
+    if not relative:
+        return None
+    try:
+        resolved_base = base_dir.resolve()
+        resolved_path = (base_dir / relative).resolve()
+        resolved_path.relative_to(resolved_base)
+    except (OSError, ValueError):
+        return None
+    return resolved_path if resolved_path.exists() and resolved_path.is_file() else None
+
+
+def image_file_data_url(path: Path) -> str:
+    try:
+        if path.stat().st_size > MAX_PRICING_REFERENCE_VISUAL_BYTES:
+            return ""
+        mime_type = (mimetypes.guess_type(str(path))[0] or "image/png").lower().replace("image/jpg", "image/jpeg")
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            return ""
+        return f"data:{mime_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+    except OSError:
+        return ""
+
+
+def resolve_visual_references(value: Any, base_dir: Path | None = None) -> list[dict[str, Any]]:
+    refs = sanitize_visual_references(value)
+    resolved_refs: list[dict[str, Any]] = []
+    for ref in refs:
+        next_ref = dict(ref)
+        if not clean_text(next_ref.get("data_url")):
+            path = visual_reference_file_path(next_ref.get("path"), base_dir)
+            if path:
+                data_url = image_file_data_url(path)
+                if data_url:
+                    next_ref["data_url"] = data_url
+        resolved_refs.append(next_ref)
+    return resolved_refs
+
+
+def visual_reference_extension(source: Any, mime_type: str) -> str:
+    source_suffix = Path(posixpath.basename(clean_text(source).replace("\\", "/"))).suffix.lower()
+    if source_suffix == ".jpeg":
+        source_suffix = ".jpg"
+    if source_suffix in {".png", ".jpg", ".webp"}:
+        return source_suffix
+    return {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }.get(mime_type.lower().replace("image/jpg", "image/jpeg"), ".png")
+
+
+def unique_visual_asset_filename(source: Any, fallback: str, mime_type: str, used: set[str]) -> str:
+    name = posixpath.basename(clean_text(source).replace("\\", "/"))
+    stem = Path(name).stem if name else clean_text(fallback)
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-_") or "visual-reference"
+    suffix = visual_reference_extension(source, mime_type)
+    candidate = f"{stem}{suffix}"
+    index = 2
+    while candidate.lower() in used:
+        candidate = f"{stem}-{index}{suffix}"
+        index += 1
+    used.add(candidate.lower())
+    return candidate
+
+
+def persist_pricing_reference_visuals(reference: dict[str, Any], company_id: str) -> dict[str, Any]:
+    reference_id = safe_resource_id(reference.get("id") or reference.get("label"), "")
+    if not reference_id:
+        return reference
+    stored = copy.deepcopy(reference)
+    items = stored.get("items") if isinstance(stored.get("items"), list) else []
+    company_dir = company_config_store().company_dir(company_id)
+    assets_dir = company_dir / PRICING_REFERENCE_ASSETS_DIR_NAME / reference_id
+    used_names: set[str] = set()
+    for item_index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            continue
+        next_refs: list[dict[str, Any]] = []
+        for ref_index, ref in enumerate(sanitize_visual_references(item.get("visual_references")), start=1):
+            next_ref = {key: value for key, value in ref.items() if key != "data_url"}
+            data_url = clean_text(ref.get("data_url"))
+            if data_url:
+                inline = data_url_inline_image(data_url)
+                if not inline:
+                    continue
+                try:
+                    image_bytes = base64.b64decode(inline["data"], validate=True)
+                except (binascii.Error, KeyError):
+                    continue
+                if not image_bytes or len(image_bytes) > MAX_PRICING_REFERENCE_VISUAL_BYTES:
+                    continue
+                assets_dir.mkdir(parents=True, exist_ok=True)
+                fallback = f"{safe_section_id(item.get('id'), f'item-{item_index}')}-{ref_index}"
+                filename = unique_visual_asset_filename(ref.get("source"), fallback, inline.get("mime_type", "image/png"), used_names)
+                (assets_dir / filename).write_bytes(image_bytes)
+                next_ref["path"] = f"{PRICING_REFERENCE_ASSETS_DIR_NAME}/{reference_id}/{filename}"
+            if next_ref.get("path") or next_ref.get("source"):
+                next_refs.append(next_ref)
+        if next_refs:
+            item["visual_references"] = next_refs
+        else:
+            item.pop("visual_references", None)
+    stored["items"] = items
+    return stored
 
 
 def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict[str, Any] | None:
@@ -3256,7 +3388,8 @@ def parse_json_object(text: str) -> dict[str, Any]:
 
 def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[str, Any]]:
     try:
-        payload = json.loads(load_pricing_reference_pack(reference_id).pricing_catalog_path.read_text(encoding="utf-8-sig"))
+        pack = load_pricing_reference_pack(reference_id)
+        payload = json.loads(pack.pricing_catalog_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return []
     rows = []
@@ -3296,7 +3429,9 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
 def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = MAX_PROMPT_CATALOG_ROWS) -> list[dict[str, Any]]:
     reference = payload.get("pricing_reference") if isinstance(payload.get("pricing_reference"), dict) else {}
     source = clean_text(reference.get("source"))
+    visual_base_dir: Path | None = None
     if source == "company":
+        visual_base_dir = company_config_store().company_dir(DEFAULT_COMPANY_ID)
         raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
         if not raw_items:
             reference_id = safe_resource_id(reference.get("id") or payload.get("pricing_reference_id"), "")
@@ -3337,7 +3472,7 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
                 if clean_text(alias)
             ],
         }
-        visual_references = sanitize_visual_references(raw.get("visual_references"))
+        visual_references = resolve_visual_references(raw.get("visual_references"), visual_base_dir)
         if visual_references:
             item["visual_references"] = visual_references
         items.append(item)
@@ -3369,6 +3504,8 @@ def visual_reference_prompt_metadata(value: Any) -> list[dict[str, Any]]:
         item: dict[str, Any] = {}
         if clean_text(ref.get("source")):
             item["source"] = clean_text(ref.get("source"))
+        if clean_text(ref.get("path")):
+            item["path"] = clean_text(ref.get("path"))
         if int(ref.get("anchor_row") or 0) > 0:
             item["anchor_row"] = int(ref.get("anchor_row") or 0)
         if item:
@@ -3389,21 +3526,24 @@ def catalog_visual_section_rank(section: Any) -> int:
 
 def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int = MAX_PROMPT_CATALOG_VISUAL_IMAGES) -> list[dict[str, Any]]:
     local_items = local_pricing_reference_items(payload, limit=None)
+    visual_base_dir: Path | None = None
     if local_items:
         source_items = local_items
     else:
         try:
-            data = json.loads(load_pricing_reference_pack(pricing_reference_id_from_payload(payload)).pricing_catalog_path.read_text(encoding="utf-8-sig"))
+            pack = load_pricing_reference_pack(pricing_reference_id_from_payload(payload))
+            data = json.loads(pack.pricing_catalog_path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError):
             source_items = []
         else:
             source_items = [item for item in data.get("items") or [] if isinstance(item, dict)]
+            visual_base_dir = pack.directory
     candidates: list[tuple[int, str, dict[str, Any]]] = []
     for item in source_items:
         rank = catalog_visual_section_rank(item.get("reference_section") or item.get("section"))
         if rank >= 99:
             continue
-        refs = sanitize_visual_references(item.get("visual_references"))
+        refs = resolve_visual_references(item.get("visual_references"), visual_base_dir)
         if not refs:
             continue
         label = clean_text(f"{item.get('id')}: {item.get('description')}")
@@ -5661,6 +5801,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             try:
                 reference = normalize_pricing_reference_payload(payload)
+                reference = persist_pricing_reference_visuals(reference, DEFAULT_COMPANY_ID)
                 saved = company_config_store().save_pricing_reference(DEFAULT_COMPANY_ID, reference)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)

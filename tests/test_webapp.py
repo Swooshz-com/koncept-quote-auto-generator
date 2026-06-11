@@ -1082,6 +1082,47 @@ class WebappServerTest(unittest.TestCase):
         furniture_visual_items = [item for item in visual_items if item["section"] == "Furniture Rental"]
         self.assertTrue(furniture_visual_items)
 
+    def test_imported_pricing_reference_visuals_are_saved_as_files_for_prompt_reuse(self):
+        reference = {
+            "id": "custom-visuals",
+            "label": "Custom Visuals",
+            "items": [
+                {
+                    "id": "furniture.white-chair",
+                    "section": "Furniture Rental",
+                    "description": "nos. White chair",
+                    "unit_hint": "nos",
+                    "internal_cost": 30,
+                    "markup_multiplier": 1.5,
+                    "visual_references": [
+                        {
+                            "source": "xl/media/image4.png",
+                            "anchor_row": 20,
+                            "data_url": "data:image/png;base64,ZmFrZS1jaGFpcg==",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_root = Path(tmp)
+            with mock.patch.object(webapp, "configured_data_root", return_value=data_root):
+                stored = webapp.persist_pricing_reference_visuals(reference, webapp.DEFAULT_COMPANY_ID)
+                saved = webapp.company_config_store().save_pricing_reference(webapp.DEFAULT_COMPANY_ID, stored)
+                payload = {
+                    "pricing_reference_id": "custom-visuals",
+                    "pricing_reference": {"id": "custom-visuals", "source": "company"},
+                }
+                prompt_items = webapp.local_pricing_reference_items(payload, limit=None)
+                saved_file_exists = (data_root / webapp.DEFAULT_COMPANY_ID / saved["items"][0]["visual_references"][0]["path"]).is_file()
+
+        visual_refs = saved["items"][0]["visual_references"]
+        self.assertIn("path", visual_refs[0])
+        self.assertNotIn("data_url", visual_refs[0])
+        self.assertTrue(saved_file_exists)
+        self.assertEqual(prompt_items[0]["visual_references"][0]["data_url"], "data:image/png;base64,ZmFrZS1jaGFpcg==")
+
     def test_pricing_reference_import_prompt_reuses_reference_sections_first(self):
         prompt = webapp.build_pricing_catalog_import_prompt(
             "messy.xlsx",
@@ -1974,8 +2015,13 @@ class WebappServerTest(unittest.TestCase):
             webapp.request_openai_quote_basis(payload, "sk-test-redacted")
 
         body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
-        self.assertEqual(len(body["input"][0]["content"]), 9)
-        self.assertTrue(all(item.get("detail") == "high" for item in body["input"][0]["content"][1:]))
+        content = body["input"][0]["content"]
+        uploaded_images = [item for item in content if item.get("type") == "input_image" and item.get("detail") == "high"]
+        catalog_images = [item for item in content if item.get("type") == "input_image" and item.get("detail") == "low"]
+        self.assertEqual(len(uploaded_images), webapp.MAX_REFERENCE_IMAGES)
+        self.assertLessEqual(len(catalog_images), webapp.MAX_PROMPT_CATALOG_VISUAL_IMAGES)
+        self.assertTrue(catalog_images)
+        self.assertIn("Internal catalog reference images follow", json.dumps(content))
 
     def test_openai_request_appends_internal_catalog_visuals_when_available(self):
         response = mock.MagicMock()
@@ -2006,6 +2052,45 @@ class WebappServerTest(unittest.TestCase):
         content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
         self.assertIn("Internal catalog reference images follow", content[-2]["text"])
         self.assertEqual(content[-1]["detail"], "low")
+        self.assertEqual(content[-1]["image_url"], "data:image/png;base64,ZmFrZS1jaGFpcg==")
+
+    def test_openai_request_resolves_bundled_catalog_visual_paths(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            reference_dir = Path(tmp)
+            image_path = reference_dir / "pricing-catalog-images" / "chair.png"
+            image_path.parent.mkdir(parents=True)
+            image_path.write_bytes(b"fake-chair")
+            catalog_path = reference_dir / "pricing-catalog.json"
+            catalog_path.write_text(json.dumps({
+                "schema_version": 1,
+                "items": [{
+                    "id": "furniture.white-chair",
+                    "section": "Furniture Rental",
+                    "description": "nos. White chair",
+                    "unit_hint": "nos",
+                    "internal_cost": 30,
+                    "markup_multiplier": 1.5,
+                    "visual_references": [{
+                        "source": "xl/media/image4.png",
+                        "path": "pricing-catalog-images/chair.png",
+                        "anchor_row": 20,
+                    }],
+                }],
+            }), encoding="utf-8")
+
+            pack = mock.MagicMock()
+            pack.directory = reference_dir
+            pack.pricing_catalog_path = catalog_path
+            with mock.patch.object(webapp, "load_pricing_reference_pack", return_value=pack):
+                with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                    webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
+
+        content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
+        self.assertIn("Internal catalog reference images follow", content[-2]["text"])
         self.assertEqual(content[-1]["image_url"], "data:image/png;base64,ZmFrZS1jaGFpcg==")
 
     def test_openai_prompt_uses_compact_profile_context_without_logo_or_presets(self):
@@ -4862,7 +4947,9 @@ eval([
   "normalizeLineItem",
   "normalizeOutputRow",
   "outputComparableText",
+  "outputRowSectionMatchesBasis",
   "outputRowCoversBasisLine",
+  "outputRowCoversBasisEntry",
   "basisLineAllowsOutput",
   "outputRowAllowedByBasis",
   "includedBasisOutputRows",
@@ -4871,6 +4958,33 @@ eval([
   "refreshOutputRowsFromLineItems",
   "ensureOutputRowsFromLineItems",
 ].map(extractFunction).join("\n"));
+
+const plainCounter = {
+  section: "COUNTERS AND CABINETS",
+  description: "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
+};
+const glassCounterLine = "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal";
+assert.strictEqual(outputRowCoversBasisLine(plainCounter, plainCounter.description), true);
+assert.strictEqual(outputRowCoversBasisLine(plainCounter, glassCounterLine), false);
+const boomLift = {
+  section: "Hanging Structure",
+  description: "Lot. rental of Boom Lift for Rigging (Mandatory charge per booth)",
+};
+assert.strictEqual(outputRowCoversBasisLine(boomLift, boomLift.description, "Hanging Structure"), true);
+assert.strictEqual(outputRowCoversBasisLine(boomLift, boomLift.description, "Booth Structure"), false);
+const originalBasisSections = state.quoteBasisSections;
+state.quoteBasisSections = [{
+  id: "hanging-structure",
+  title: "Hanging Structure",
+  lines: [
+    { id: "boom-lift-1", tag: "Include", text: boomLift.description, quantity: 1, unit: "lot" },
+    { id: "boom-lift-2", tag: "Include", text: boomLift.description, quantity: 1, unit: "lot" },
+  ],
+}];
+const duplicateBoomRows = includedBasisOutputRows([]);
+assert.deepStrictEqual(duplicateBoomRows.map((row) => row.source_basis_line_id), ["boom-lift-1", "boom-lift-2"]);
+assert.strictEqual(includedBasisOutputRows([duplicateBoomRows[0]]).length, 1);
+state.quoteBasisSections = originalBasisSections;
 
 refreshOutputRowsFromLineItems();
 assert.deepStrictEqual(
