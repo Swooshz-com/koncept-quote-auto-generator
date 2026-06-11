@@ -1932,8 +1932,9 @@ function renderPricingReferencePreview(result = null) {
   const errors = result.errors || [];
   const warnings = result.warnings || [];
   const canSave = Boolean(result.canSave);
+  const isAiNormalizationState = String(result.layout || "").startsWith("ai-normalization");
   const tone = errors.length ? "error" : warnings.length || !canSave ? "warn" : "ok";
-  const title = errors.length ? "Import preview needs review" : canSave ? "Editable import preview" : "Template preview";
+  const title = isAiNormalizationState ? "AI import needs setup" : errors.length ? "Import preview needs review" : canSave ? "Editable import preview" : "Template preview";
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
     <strong>${title}</strong>
@@ -1941,19 +1942,19 @@ function renderPricingReferencePreview(result = null) {
       <li>Layout: ${escapeHtml(result.layout || "normalized pricing reference")}</li>
       <li>Detected row count: ${result.rowCount ?? result.items.length}</li>
       ${result.exampleRows ? `<li>Example rows ignored: ${result.exampleRows}</li>` : ""}
-      <li>Required columns found: ${escapeHtml(found.join(", ") || "None")}</li>
-      <li>Required columns missing: ${escapeHtml(missing.join(", ") || "None")}</li>
+      ${isAiNormalizationState ? "" : `<li>Required columns found: ${escapeHtml(found.join(", ") || "None")}</li>`}
+      ${isAiNormalizationState ? "" : `<li>Required columns missing: ${escapeHtml(missing.join(", ") || "None")}</li>`}
       <li>Skipped rows count: ${result.skipped || 0}</li>
     </ul>
     ${errors.concat(warnings).map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
     ${result.items.length ? `
       <div class="pricing-reference-preview-table-wrap">
         <table class="pricing-reference-preview-table">
-          <thead><tr><th>section</th><th>description</th><th>unit_hint</th><th>internal_cost</th><th>markup_multiplier</th><th>remarks</th><th>aliases</th><th>warning/status</th></tr></thead>
+          <thead><tr><th>section</th><th>description</th><th>unit_hint</th><th>internal_cost</th><th>markup_multiplier</th><th>remarks</th><th>warning/status</th></tr></thead>
           <tbody>
             ${result.items.map((item, index) => `
               <tr data-preview-row="${index}">
-                ${["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "aliases"].map((field) => `
+                ${["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks"].map((field) => `
                   <td><input class="pricing-preview-input" data-preview-field="${field}" data-preview-row="${index}" value="${escapeHtml(item[field] ?? "")}"></td>
                 `).join("")}
                 <td class="pricing-preview-status">${escapeHtml(item.warning || "OK")}</td>
@@ -3055,6 +3056,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog"}</span>
         </div>
       </div>
+      ${renderAnalysisFindings()}
       ${renderBasisTagLegend()}
       <div class="basis-review-grid">
         ${sections.map((section) => `
@@ -3584,8 +3586,9 @@ function canStartAnalysis() {
 
 function hasSubmittedQuoteBasis() {
   if (state.aiFailed) return false;
+  const hasClarificationQuestions = (state.blockingClarificationQuestions || []).length > 0;
   return ["basis_review", "generating", "pricing_review", "completed"].includes(state.workflowStage)
-    && (state.lineItems.length > 0 || state.quoteBasisSections.some((section) => (section.lines || []).length > 0) || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0));
+    && (hasClarificationQuestions || state.lineItems.length > 0 || state.quoteBasisSections.some((section) => (section.lines || []).length > 0) || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0));
 }
 
 function hasCompletedQuoteBasis() {
@@ -3637,8 +3640,38 @@ function openBlockingClarifications(questions = [], findings = [], project = {})
   syncControlStates();
 }
 
+function renderAnalysisFindings(findings = state.analysisFindings || []) {
+  const visibleFindings = (Array.isArray(findings) ? findings : [])
+    .filter((finding) => String(finding?.text || "").trim());
+  if (!visibleFindings.length) return "";
+  return `
+    <div class="analysis-findings-card">
+      <h4>Analysis Findings</h4>
+      <ul>${visibleFindings.map((finding) => `<li>${escapeHtml(finding.text)}${finding.confidence_pct ? ` (${finding.confidence_pct}%)` : ""}</li>`).join("")}</ul>
+    </div>
+  `;
+}
+
+function renderClarificationQuestionText(text = "") {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  const colonIndex = normalized.indexOf(":");
+  const hasCompactLead = colonIndex > 0 && colonIndex <= 72;
+  const title = hasCompactLead ? normalized.slice(0, colonIndex).trim() : "";
+  const body = hasCompactLead ? normalized.slice(colonIndex + 1).trim() : normalized;
+  const points = body
+    .split(/(?:;\s+|\.\s+)/)
+    .map((point) => point.replace(/\.$/, "").trim())
+    .filter(Boolean);
+  const visiblePoints = points.length ? points : [body || normalized];
+  return `
+    ${title ? `<strong class="clarification-question-title">${escapeHtml(title)}</strong>` : ""}
+    <ul class="clarification-question-points">
+      ${visiblePoints.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
+    </ul>
+  `;
+}
+
 function renderClarificationQuestions() {
-  const findings = state.analysisFindings || [];
   const questions = state.blockingClarificationQuestions || [];
   elements.basisReviewSurface.innerHTML = `
     <div class="assistant-card quote-basis-card clarification-card">
@@ -3648,11 +3681,10 @@ function renderClarificationQuestions() {
           <p>These answers can affect wording, quantity, inclusion, material, or pricing. Final Quote Basis and Output stay locked until all are answered.</p>
         </div>
       </div>
-      ${findings.length ? `<div class="analysis-findings-card"><h4>Analysis Findings</h4><ul>${findings.map((finding) => `<li>${escapeHtml(finding.text)}${finding.confidence_pct ? ` (${finding.confidence_pct}%)` : ""}</li>`).join("")}</ul></div>` : ""}
       <form id="clarificationForm" class="clarification-form">
         ${questions.map((question, index) => `
           <label class="clarification-question">
-            <span>${escapeHtml(question.question)}</span>
+            <div class="clarification-question-copy">${renderClarificationQuestionText(question.question)}</div>
             ${question.reason ? `<small>${escapeHtml(question.reason)}</small>` : ""}
             ${Array.isArray(question.choices) && question.choices.length ? `
               <select data-clarification-index="${index}">
@@ -4369,6 +4401,9 @@ function setSidePanel(panelName, options = {}) {
   document.querySelectorAll(".side-panel-section[data-side-panel-content]").forEach((section) => {
     section.classList.toggle("is-active", section.dataset.sidePanelContent === state.activeSidePanel);
   });
+  if (state.activeSidePanel === "basis" && (state.blockingClarificationQuestions || []).length && !state.quoteBasisSections.length && !state.lineItems.length) {
+    renderClarificationQuestions();
+  }
   elements.sideWorkspace.setAttribute("aria-hidden", "false");
   updateSidePanelNav();
   return true;
@@ -4397,7 +4432,7 @@ function updateSidePanelNav() {
   elements.resetImagesButton.disabled = busy || !state.images.length;
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
-  elements.discussQuoteButton.disabled = busy || !hasSubmittedQuoteBasis();
+  elements.discussQuoteButton.disabled = busy || (state.blockingClarificationQuestions || []).length > 0 || !hasSubmittedQuoteBasis();
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
   elements.resetOutputButton.disabled = busy || !state.originalOutputRows.length;
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {
@@ -4589,10 +4624,10 @@ function wireEvents() {
     if (event.key === "Escape") {
       if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
+      } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
+        closePricingReferenceModal();
       } else if (elements.settingsModal && !elements.settingsModal.hidden) {
         closeSettingsModal();
-      } else if (!elements.pricingReferenceModal.hidden) {
-        closePricingReferenceModal();
       } else if (!elements.analysisConfirmModal.hidden) {
         closeAnalysisConfirmModal();
       }

@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+
+  validate:
+    name: Validate app
+    runs-on: ubuntu-latest
+    needs:
+      - secret-scan
+      - dependency-review
+    if: always() && needs.secret-scan.result == 'success' && (needs.dependency-review.result == 'success' || needs.dependency-review.result == 'skipped')
+    env:
+      APP_MODE: local
+      LOCAL_USER_ROLE: admin
+      CI: "true"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check webapp/static/app.js
+          node --check scripts/playwright-smoke.mjs
+          node --check scripts/playwright-ai-basis-chat-stress.mjs
+
+      - name: Check Python syntax
+        run: python -m py_compile webapp/server.py scripts/generate_quote.py scripts/live_ai_basis_chat_smoke.py
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests
+
+      - name: Run AI basis chat stress smoke
+        run: npm run playwright:ai-stress
+
+      - name: Run app smoke test
+        run: npm run playwright:smoke

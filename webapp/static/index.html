@@ -135,12 +135,14 @@
                     <p>Choose the pricing catalog and analysis reference for this quotation.</p>
                   </div>
                   <div class="pricing-reference-controls">
-                    <label class="compact-control">
-                      Quote Pricing Reference
-                      <select id="profileSelect"></select>
-                    </label>
+                    <div class="pricing-reference-control-group">
+                      <label class="compact-control">
+                        Quote Pricing Reference
+                        <select id="profileSelect"></select>
+                      </label>
+                      <span class="tax-badge" id="selectedPricingReferenceTax">GST 9%</span>
+                    </div>
                     <p class="settings-note" id="selectedPricingReferenceSummary">Required before moving to Quote Company. Managed in Settings.</p>
-                    <span class="tax-badge" id="selectedPricingReferenceTax">GST 9%</span>
                   </div>
                 </div>
 
@@ -612,8 +614,8 @@
           <form class="modal-form" id="pricingReferenceForm">
             <div class="pricing-template-callout">
               <div>
-                <strong>Use the import template for reliable packages.</strong>
-                <span>Fill the normalized columns, then upload the completed workbook or CSV here.</span>
+                <strong>Template is optional for clean manual entry.</strong>
+                <span>Upload an existing messy Excel, CSV, or Markdown catalog and AI will normalize it for review. Use the template only when starting from scratch.</span>
               </div>
               <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx?template=examples-v3" download>Download Template</a>
             </div>
@@ -636,7 +638,7 @@
             </div>
             <label>
               Pricing catalog upload
-              <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). AI will normalize it into the required pricing reference format for review before saving.</span>
+              <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
               <span class="file-picker-control">
                 <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
                 <span class="secondary-button file-picker-button">Choose File</span>

@@ -800,6 +800,33 @@ class WebappServerTest(unittest.TestCase):
         self.assertFalse(result["saved"])
         self.assertFalse(result["canSave"])
         self.assertIn(webapp.AI_PRICING_IMPORT_NOT_CONFIGURED, result["errors"])
+        self.assertEqual(result["layout"], "ai-normalization-required")
+
+    def test_messy_pricing_reference_import_uses_ai_normalization(self):
+        raw = "Item,Price\nWhite painted walling per sqm,50\n".encode("utf-8")
+        parsed = {
+            "items": [{
+                "section": "Structures",
+                "description": "White painted walling",
+                "unit_hint": "sqm",
+                "internal_cost": 50,
+                "markup_multiplier": 1.7,
+                "remarks": ["painted wall"],
+                "aliases": ["white wall"],
+            }]
+        }
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed) as request_import:
+            result = webapp.pricing_reference_import_preview({
+                "filename": "messy.csv",
+                "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+            })
+
+        request_import.assert_called_once()
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["rowCount"], 1)
+        self.assertEqual(result["items"][0]["aliases"], ["white wall"])
 
     def test_customer_quote_text_sanitization_preserves_dimensions_and_units(self):
         cleaned = webapp.clean_customer_quote_line_text("Booth size taken from quotation title: 6m x 6m.")
@@ -871,6 +898,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertTrue(webapp.PRICING_REFERENCE_TEMPLATE_PATH.exists())
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
+        self.assertNotIn("aliases", headers)
         self.assertGreaterEqual(len(rows), 2)
         self.assertTrue(rows[0]["id"].startswith("example."))
 
@@ -911,7 +939,7 @@ class WebappServerTest(unittest.TestCase):
         })
 
         self.assertTrue(result["errors"])
-        self.assertIn("Download the pricing reference template", " ".join(result["errors"]))
+        self.assertIn("Use the New Pricing Reference import flow with AI enabled", " ".join(result["errors"]))
         self.assertNotEqual(result.get("layout"), "v1-estimating-workbook")
         self.assertNotIn("V1.1", " ".join(result["errors"]))
 
@@ -3967,12 +3995,16 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('/api/pricing-reference/template.xlsx', html)
         self.assertIn("downloadPricingReferenceTemplate", js)
         self.assertIn("Pricing catalog upload", html)
-        self.assertIn("AI will normalize it into the required pricing reference format for review before saving.", html)
+        self.assertIn("Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.", html)
+        self.assertIn("Template is optional for clean manual entry.", html)
         self.assertIn("pricing-reference-preview-table", js)
+        self.assertNotIn("<th>aliases</th>", js)
         self.assertIn(".output-unit-price-editor", css)
         self.assertIn(".output-included-button", css)
         self.assertIn(".output-edit-cell:hover", css)
         self.assertIn(".company-preset-panel .settings-note", css)
+        self.assertIn(".pricing-reference-control-group", css)
+        self.assertIn("grid-template-columns: minmax(220px, 320px) minmax(260px, 1fr);", css)
         self.assertIn("padding: 12px 28px 28px;", css)
         self.assertIn('/api/settings/pricing-references/import-preview', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
@@ -4381,12 +4413,25 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         self.assertIn("errorDisplayed: true", js)
         self.assertIn("if (aiResult?.errorDisplayed) return;", js)
 
+    def test_static_escape_closes_topmost_settings_modal_first(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        escape_handler = js.split('document.addEventListener("keydown"', 1)[1].split("elements.sampleDetailsButton", 1)[0]
+
+        self.assertLess(
+            escape_handler.index("elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden"),
+            escape_handler.index("elements.settingsModal && !elements.settingsModal.hidden"),
+        )
+
     def test_static_repeated_clarification_blockers_keep_clarification_ui(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("openBlockingClarifications(data.blocking_clarification_questions", js)
         self.assertIn("if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length)", js)
         self.assertIn("const hasFinalBasis", js)
         self.assertIn("if (options.finalAfterClarifications && !hasFinalBasis)", js)
+        self.assertIn("const hasClarificationQuestions = (state.blockingClarificationQuestions || []).length > 0;", js)
+        self.assertIn("hasClarificationQuestions || state.lineItems.length > 0", js)
+        self.assertIn("renderClarificationQuestionText", js)
+        self.assertNotIn("${findings.length ? `<div class=\"analysis-findings-card\"", js)
 
 
     def test_static_literal_replacement_and_clarification_contracts_exist(self):

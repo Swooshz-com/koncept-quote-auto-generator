@@ -68,7 +68,7 @@ MAX_XLSX_EXCEL_COLUMNS = 16384
 MAX_XLSX_SHARED_STRINGS = 2000
 MAX_XLSX_SHARED_STRING_CHARS = 2000
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
-PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks", "aliases")
+PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
 PRICING_REFERENCE_EXAMPLE_ID_PREFIX = "example."
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
@@ -79,7 +79,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "7",
         "1.5",
         "needle punch",
-        "needle punch carpet in colour|needle punch|carpet sqm",
     ],
     [
         "example.floor-design.100mm-raised-platfrom-with-aluminum-edging",
@@ -89,7 +88,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "40",
         "1.5",
         "Platform ONLY",
-        "raised platform|platform|aluminum edging",
     ],
     [
         "example.booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
@@ -99,7 +97,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "180",
         "1.5",
         "Backwall or any partition; PAINTED",
-        "partition wall|painted backwall|wooden partition",
     ],
     [
         "example.counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
@@ -109,7 +106,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "800",
         "1.5",
         "INFORMATION COUNTER; PAINTED",
-        "information counter|lockable counter|counter laminated top",
     ],
     [
         "example.electrical-fittings-excluding-connection-fees-by-organiser.10w-led-spotlight",
@@ -119,7 +115,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "30",
         "1.5",
         "SPOTLIGHT",
-        "spotlight|LED light|10W light",
     ],
     [
         "example.graphics.vinyl-printed-graphics",
@@ -129,7 +124,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "40",
         "1.5",
         "Printed Graphics on wall",
-        "vinyl graphics|printed graphics|wall graphics",
     ],
     [
         "example.furniture-rental.bistro-chairs",
@@ -139,7 +133,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "30",
         "1.5",
         "Bistro Low Chair",
-        "bistro chairs|low chair|chair rental",
     ],
     [
         "example.av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
@@ -149,7 +142,6 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "300",
         "1.5",
         "TV",
-        "LED TV|screen|monitor|42 inch TV",
     ],
 ]
 DOWNLOADABLE_FILES = {"quotation.xlsx"}
@@ -1553,7 +1545,6 @@ def pricing_reference_template_sheet_xml(rows: list[list[str]], *, hide_internal
             '<col min="4" max="4" width="14" customWidth="1"/>'
             '<col min="5" max="6" width="18" customWidth="1"/>'
             '<col min="7" max="7" width="36" customWidth="1"/>'
-            '<col min="8" max="8" width="56" customWidth="1"/>'
             if hide_internal_id else
             '<col min="1" max="1" width="72" customWidth="1"/>'
             '<col min="2" max="2" width="72" customWidth="1"/>'
@@ -1575,8 +1566,7 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
         ["unit_hint", "Examples: sqm, m length, no, lot, set."],
         ["internal_cost", "Number only. This stays internal."],
         ["markup_multiplier", "Number only, for example 1.5."],
-        ["remarks", "Optional. Internal matching/search notes; separate multiple values with semicolon."],
-        ["aliases", "Optional. Separate search aliases with | or ;."],
+        ["remarks", "Optional. Internal matching/search notes; separate multiple values with semicolon. AI-generated aliases are added during import."],
     ]
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -1715,7 +1705,7 @@ def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
     return False, {"status": "blocked", "errors": ["You do not have permission to manage these settings."], "permissions": permissions}
 
 
-AI_PRICING_IMPORT_NOT_CONFIGURED = "AI pricing catalog import is not configured in this environment. Upload the normalized template or configure AI import."
+AI_PRICING_IMPORT_NOT_CONFIGURED = "AI pricing catalog import is not configured in this environment. Configure OPENAI_API_KEY or GEMINI_API_KEY, then upload the messy pricing file again. The template remains optional for clean manual entry."
 
 
 def markdown_text_from_bytes(raw: bytes) -> str:
@@ -1861,7 +1851,7 @@ def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]
         normalized_result["layout"] = "normalized-pricing-reference"
         if normalized_result["errors"] and normalized_result["missing"]:
             normalized_result["errors"].append(
-                "Workbook layout was not recognized. Download the pricing reference template and upload that completed format."
+                "Workbook layout was not recognized as a normalized pricing reference. Use the New Pricing Reference import flow with AI enabled for messy files, or download the optional template for clean manual entry."
             )
         return normalized_result
     except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:

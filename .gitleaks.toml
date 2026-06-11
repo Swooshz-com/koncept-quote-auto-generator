@@ -1,0 +1,7 @@
+[allowlist]
+description = "Redacted fake provider tokens used only by local tests."
+regexes = [
+  '''sk-test-redacted''',
+  '''sk-proj-secret123''',
+  '''gemini-test-redacted''',
+]
