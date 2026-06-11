@@ -2053,6 +2053,131 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["max_output_tokens"], 1200)
         self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
 
+    def test_openai_whole_basis_chat_uses_draft_model_env(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "include all lighting and electrical lines",
+            "scope": "quote",
+            "field": "",
+            "line_index": -1,
+            "line": "",
+        }
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "intent": "proposal",
+                "proposal": {
+                    "message": "Apply this whole-basis update?",
+                    "quote_basis_sections": [
+                        {
+                            "id": "lighting-and-electrical",
+                            "title": "Lighting and Electrical",
+                            "lines": [
+                                {"tag": "Include", "text": "Standard 13A sockets and LED lighting only."},
+                            ],
+                        },
+                    ],
+                },
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
+                return "gpt-draft-mini-test"
+            if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
+                return "gpt-basis-line-nano-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["model"], "gpt-draft-mini-test")
+        self.assertEqual(result["type"], "proposal")
+
+    def test_openai_line_basis_chat_retries_with_draft_model_after_invalid_nano_output(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "change 100mm to 150mm",
+            "scope": "line",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with needle punch carpet.",
+        }
+        bad_response = mock.MagicMock()
+        bad_response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": "not valid json"
+        }).encode("utf-8")
+        good_response = mock.MagicMock()
+        good_response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "intent": "proposal",
+                "proposal": {
+                    "message": "Change the platform height to 150mm?",
+                    "replacement_line": {
+                        "tag": "Confirm",
+                        "text": "150mm raised platform with needle punch carpet.",
+                        "confidence_pct": 90,
+                    },
+                },
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
+                return "gpt-draft-mini-test"
+            if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
+                return "gpt-basis-line-nano-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_response, good_response]) as urlopen:
+                result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+
+        first_body = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
+        second_body = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
+        self.assertEqual(first_body["model"], "gpt-basis-line-nano-test")
+        self.assertEqual(second_body["model"], "gpt-draft-mini-test")
+        platform_section = next(section for section in result["proposal"]["quote_basis_sections"] if section["id"] == "platform")
+        next_line = platform_section["lines"][0]
+        self.assertEqual(next_line["text"], "150mm raised platform with needle punch carpet.")
+
+    def test_openai_line_basis_chat_http_error_does_not_retry_draft_model(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "change 100mm to 150mm",
+            "scope": "line",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with needle punch carpet.",
+        }
+        http_error = webapp.urllib.error.HTTPError(
+            url=webapp.OPENAI_RESPONSES_URL,
+            code=401,
+            msg="Unauthorized",
+            hdrs={},
+            fp=io.BytesIO(b'{"error":{"message":"Invalid API key"}}'),
+        )
+
+        def dotenv(name):
+            if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
+                return "gpt-draft-mini-test"
+            if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
+                return "gpt-basis-line-nano-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=http_error) as urlopen:
+                with self.assertRaises(webapp.OpenAIAnalysisError) as context:
+                    webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+
+        self.assertEqual(urlopen.call_count, 1)
+        body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertEqual(body["model"], "gpt-basis-line-nano-test")
+        self.assertIn("HTTP 401", str(context.exception))
+
     def test_gemini_basis_chat_uses_basis_line_model_env(self):
         payload = valid_payload()
         payload["basis_chat"] = {
@@ -2082,6 +2207,58 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("/gemini-basis-line-test:generateContent", request.full_url)
         self.assertEqual(body["generationConfig"]["responseMimeType"], "application/json")
         self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
+
+    def test_gemini_whole_basis_chat_uses_draft_model_env(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "include all lighting and electrical lines",
+            "scope": "quote",
+            "field": "",
+            "line_index": -1,
+            "line": "",
+        }
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": json.dumps({
+                                    "intent": "proposal",
+                                    "proposal": {
+                                        "quote_basis_sections": [
+                                            {
+                                                "id": "lighting-and-electrical",
+                                                "title": "Lighting and Electrical",
+                                                "lines": [
+                                                    {"tag": "Include", "text": "Standard 13A sockets and LED lighting only."},
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                })
+                            }
+                        ]
+                    }
+                }
+            ]
+        }).encode("utf-8")
+
+        def dotenv(name):
+            if name == webapp.GEMINI_DRAFT_MODEL_ENV_NAME:
+                return "gemini-draft-test"
+            if name == webapp.GEMINI_BASIS_LINE_MODEL_ENV_NAME:
+                return "gemini-basis-line-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_gemini_basis_chat(payload, "gemini-test-redacted")
+
+        request = urlopen.call_args.args[0]
+        self.assertIn("/gemini-draft-test:generateContent", request.full_url)
+        self.assertEqual(result["type"], "proposal")
 
     def test_basis_chat_without_provider_does_not_use_local_fallback(self):
         with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
@@ -2471,17 +2648,12 @@ class WebappServerTest(unittest.TestCase):
             "dateLabel",
             "taxLabel",
             "taxRate",
-            "customerDetailsButton",
-            "quoteCompanyButton",
-            "customerDetailsPanel",
-            "quoteCompanyPanel",
             "sideWorkspace",
             "sideDrawerTitle",
             "sideDrawerSubtitle",
             "sideBackButton",
             "sideNextButton",
             "sideDownloadButton",
-            "quoteBasisButton",
             "newQuoteButton",
             "imageIntake",
             "sampleDetailsButton",
@@ -2533,7 +2705,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("QUOTE_PRESETS_STORAGE_KEY", js)
         self.assertIn("loadProfiles", js)
         self.assertIn("/api/profiles", js)
-        self.assertIn("Pricing reference changed", js)
+        self.assertIn("function handleProfileSelectionChange", js)
+        self.assertIn("clearGeneratedQuoteState();", js)
         self.assertIn("Quote Pricing Reference", html)
         self.assertNotIn("Quote type", html)
         self.assertNotIn("Quote type changed", js)
@@ -2577,8 +2750,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("clearQuoteCompanyDetails", js)
         self.assertIn(">Reset Draft</button>", html)
         self.assertNotIn(">Reset</button>", html)
-        self.assertIn("Customer details cleared.", js)
-        self.assertIn("Quote-company defaults reset.", js)
+        self.assertIn('setInputValue(elements.clientName, "")', js)
+        self.assertIn('renderPresetStatus("Quote-company defaults reset to the selected company preset.")', js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
         self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageIntake"'))
@@ -2657,7 +2830,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn(".quote-details-clear-button", css)
         self.assertIn("loadDefaultProfilePreset", js)
         self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
-        self.assertIn("Customer and quote-company details were left unchanged", js)
+        self.assertIn("function resetImagesDraft", js)
+        self.assertIn("state.images = [];", js)
         self.assertIn("Save Current", html)
         self.assertIn("Download Excel", html)
         self.assertNotIn("Download Quotation", html)
@@ -2730,7 +2904,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("showAiFailedDraftState", js)
         self.assertIn("clearAiFailedDraftState", js)
         self.assertIn("AI analysis did not complete", js)
-        self.assertIn("I cleared the local fallback draft", js)
+        self.assertIn("state.lineItems = [];", js)
+        self.assertIn("renderBasisFailureState(message)", js)
         self.assertIn('state.draftSource === "local"', js)
         self.assertIn("if (state.aiFailed) return false", js)
         self.assertIn(".basis-empty-state-error", css)
@@ -2771,8 +2946,9 @@ class WebappServerTest(unittest.TestCase):
         profile_change_body = js.split("function handleProfileSelectionChange()", 1)[1].split("async function setSampleDetails()", 1)[0]
         sample_loader_body = js.split("async function setSampleDetails()", 1)[1].split("function buildPayload()", 1)[0]
         self.assertIn("loadDefaultProfilePreset({ silent: true })", initial_values_body)
-        self.assertIn("Pricing reference changed", profile_change_body)
-        self.assertIn("quote-company details were left unchanged", profile_change_body)
+        self.assertIn("syncSelectedPricingReference();", profile_change_body)
+        self.assertIn("clearGeneratedQuoteState();", profile_change_body)
+        self.assertIn("syncControlStates();", profile_change_body)
         self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
         self.assertIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
 
@@ -3048,8 +3224,8 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
-        self.assertIn("Excel quotation is ready. Use Download Excel in the Output footer.", js)
-        self.assertIn("I found pricing items that need review. Resolve them in Output before downloading Excel.", js)
+        self.assertIn('setResultStatus("Completed", "is-ok")', js)
+        self.assertIn('setResultStatus("Needs pricing review", "is-warn")', js)
         self.assertIn("state.downloadFile = excelFile", js)
         self.assertIn("setDownloadFiles", js)
         self.assertIn("updateDownloadButton", js)
@@ -3261,11 +3437,14 @@ assert.strictEqual(formatElapsedDuration(3661000), "1:01:01");
         for field_id in (
             "aiFailureBanner",
             "basisReviewSurface",
+        ):
+            self.assertIn(f'id="{field_id}"', html)
+            self.assertIn(field_id, js)
+        for field_id in (
             "quoteBasisButton",
             "quoteBasisPanel",
         ):
             self.assertIn(f'id="{field_id}"', html)
-            self.assertIn(field_id, js)
 
         for removed_id in (
             "workflowStage",
@@ -4204,10 +4383,10 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
 
     def test_static_repeated_clarification_blockers_keep_clarification_ui(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("More clarification is required before the final Quote Basis can be generated", js)
+        self.assertIn("openBlockingClarifications(data.blocking_clarification_questions", js)
         self.assertIn("if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length)", js)
         self.assertIn("const hasFinalBasis", js)
-        self.assertIn("Final Quote Basis was not generated yet", js)
+        self.assertIn("if (options.finalAfterClarifications && !hasFinalBasis)", js)
 
 
     def test_static_literal_replacement_and_clarification_contracts_exist(self):

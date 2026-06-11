@@ -38,7 +38,6 @@ const DEFAULT_BOOTH_DIMENSIONS = {
 
 const QUOTE_COPY = {
   label: "Quotation",
-  assistantSubtitle: "Start with reference images or a sample fixture, confirm one quotation basis, then generate Excel.",
   intakeSubtitle: "Drop reference images for a real quote, or load the demo fixture for a quick test run.",
   dropTitle: "Drop reference images to start",
   dropMeta: `JPG, PNG, or WebP. Up to ${MAX_REFERENCE_IMAGES} references, 12 MB each; files stay local to this runner.`,
@@ -94,17 +93,6 @@ const BASIS_TAGS = [
   ["Custom", "Custom", "Not found in pricing reference"],
   ["Confirm", "Confidence", "AI confidence before your decision"],
 ];
-
-const STAGE_LABELS = {
-  needs_images: "Needs images",
-  ready_to_analyze: "Ready to analyze",
-  analyzing: "Analyzing",
-  basis_review: "Confirm basis",
-  details_review: "Needs details",
-  generating: "Generating",
-  pricing_review: "Pricing review",
-  completed: "Completed",
-};
 
 const state = {
   profileId: "",
@@ -166,7 +154,6 @@ const elements = {
   healthText: qs("#healthText"),
   statusDot: qs("#statusDot"),
   topbarStatus: qs("#topbarStatus"),
-  assistantSubtitle: qs("#assistantSubtitle"),
   imageIntake: qs("#imageIntake"),
   dropTitle: qs("#dropTitle"),
   dropMeta: qs("#dropMeta"),
@@ -174,14 +161,6 @@ const elements = {
   imageInput: qs("#imageInput"),
   imageUploadStatus: qs("#imageUploadStatus"),
   fileList: qs("#fileList"),
-  customerDetailsButton: qs("#customerDetailsButton"),
-  quoteCompanyButton: qs("#quoteCompanyButton"),
-  quoteBasisButton: qs("#quoteBasisButton"),
-  outputButton: qs("#outputButton"),
-  customerDetailsPanel: qs("#customerDetailsPanel"),
-  quoteCompanyPanel: qs("#quoteCompanyPanel"),
-  quoteBasisPanel: qs("#quoteBasisPanel"),
-  outputSidePanel: qs("#outputSidePanel"),
   newQuoteButton: qs("#newQuoteButton"),
   sideWorkspace: qs("#sideWorkspace"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
@@ -213,11 +192,8 @@ const elements = {
   dateLabel: qs("#dateLabel"),
   taxLabel: qs("#taxLabel"),
   taxRate: qs("#taxRate"),
-  workflowStage: qs("#workflowStage"),
   aiFailureBanner: qs("#aiFailureBanner"),
   basisReviewSurface: qs("#basisReviewSurface"),
-  busyText: qs("#busyText"),
-  assistantOutput: qs("#assistantOutput"),
   resultStatus: qs("#resultStatus"),
   messageList: qs("#messageList"),
   matchSummary: qs("#matchSummary"),
@@ -300,14 +276,6 @@ function pricingReferenceSelectionFromValue(value = "") {
     source: text.slice(0, delimiterIndex) || "bundled",
     pricingReferenceId: text.slice(delimiterIndex + 2),
   };
-}
-
-function safeLocalPricingReferences() {
-  return [];
-}
-
-function saveLocalPricingReferences() {
-  // Company pricing references are persisted server-side via Settings, not browser localStorage.
 }
 
 function mergePricingReferences(bundled = []) {
@@ -447,7 +415,6 @@ function currentGenerator() {
 function updateGeneratorCopy() {
   const generator = currentGenerator();
   const atImageLimit = state.images.length >= MAX_REFERENCE_IMAGES;
-  if (elements.assistantSubtitle) elements.assistantSubtitle.textContent = generator.assistantSubtitle;
   if (state.activeSidePanel === "images") elements.sideDrawerSubtitle.textContent = generator.intakeSubtitle;
   elements.dropTitle.textContent = atImageLimit
     ? "Maximum reference images added"
@@ -459,10 +426,6 @@ function updateGeneratorCopy() {
 
 function setWorkflowStage(stage) {
   state.workflowStage = stage;
-  if (elements.workflowStage) {
-    elements.workflowStage.textContent = STAGE_LABELS[stage] || stage;
-    elements.workflowStage.dataset.stage = stage;
-  }
   document.body.dataset.workflowStage = stage;
 }
 
@@ -641,10 +604,6 @@ async function addImagesFromFiles(files) {
   const duplicateMessage = duplicateCount ? ` ${duplicateCount} duplicate image${duplicateCount === 1 ? "" : "s"} skipped.` : "";
   const overflowMessage = overflowCount ? ` ${overflowCount} image${overflowCount === 1 ? "" : "s"} skipped because the maximum is ${MAX_REFERENCE_IMAGES}.` : "";
   setImageUploadStatus(`${unique.length} new ${generator.imageNoun}${unique.length === 1 ? "" : "s"} added.${duplicateMessage}${overflowMessage}`);
-  noteWorkflowEvent(
-    "assistant",
-    `${state.images.length} ${generator.imageNoun}${state.images.length === 1 ? "" : "s"} loaded. Click ${generator.analyzeLabel} when you want me to draft the quote basis.${duplicateMessage}${overflowMessage}`
-  );
   syncControlStates();
 }
 
@@ -654,7 +613,6 @@ function removeImageAt(index) {
   if (!state.images.length) {
     setWorkflowStage("needs_images");
     setImageUploadStatus("");
-    noteWorkflowEvent("assistant", `No ${currentGenerator().imageNoun}s are loaded now. Drop references to start the quote analysis.`);
   } else {
     setImageUploadStatus(`${state.images.length} reference image${state.images.length === 1 ? "" : "s"} loaded.`);
   }
@@ -1571,9 +1529,6 @@ function loadSelectedPreset(options = {}) {
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   syncControlStates();
-  if (!options.silent) {
-    noteWorkflowEvent("assistant", `Loaded company preset "${preset.name}". Pricing reference and reference images are unchanged.`);
-  }
   renderPresetStatus(`Loaded "${preset.name}".`);
 }
 
@@ -1610,7 +1565,6 @@ function clearCustomerDetails() {
   renderProfileOptions();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   syncControlStates();
-  noteWorkflowEvent("assistant", "Customer details cleared. The selected pricing reference, images, and quote-company defaults were left unchanged.");
 }
 
 function clearQuoteCompanyDetails() {
@@ -1639,7 +1593,6 @@ function clearQuoteCompanyDetails() {
   loadDefaultProfilePreset({ silent: true });
   syncControlStates();
   renderPresetStatus("Quote-company defaults reset to the selected company preset.");
-  noteWorkflowEvent("assistant", "Quote-company defaults reset. Customer details, pricing reference, and images were left unchanged.");
 }
 
 function resetImagesDraft() {
@@ -1651,7 +1604,6 @@ function resetImagesDraft() {
   renderFiles();
   setWorkflowStage("needs_images");
   syncControlStates();
-  noteWorkflowEvent("assistant", "Image draft reset. Customer, Quote Company, and selected Pricing Reference were kept.");
 }
 
 function startNewQuote() {
@@ -1822,10 +1774,6 @@ function normalizeBasisLines(line = "") {
 
 function parseBasisLine(line = "") {
   return normalizeBasisLines(line)[0] || { tag: "Confirm", text: "" };
-}
-
-function basisLineMeta(line = "") {
-  return parseBasisLine(line);
 }
 
 function normalizeQuoteBasisSections(value = {}) {
@@ -2127,7 +2075,6 @@ async function savePricingReferenceFromModal(event) {
   renderProfileOptions();
   clearGeneratedQuoteState();
   closePricingReferenceModal();
-  noteWorkflowEvent("assistant", `Saved and selected pricing reference "${name}" in Settings. Previous analysis/output state was cleared.`);
   syncControlStates();
 }
 
@@ -2141,7 +2088,6 @@ async function deleteCompanyPricingReference(referenceId) {
     headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
   }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
   if (!ok) {
-    noteWorkflowEvent("assistant", (data.errors || ["Delete failed."]).join("\n"), { tone: "error" });
     return;
   }
   await loadProfiles();
@@ -2152,7 +2098,6 @@ async function deleteCompanyPricingReference(referenceId) {
   }
   renderProfileOptions();
   clearGeneratedQuoteState();
-  noteWorkflowEvent("assistant", `Deleted company pricing reference "${reference.label || reference.id}".`);
   syncControlStates();
 }
 
@@ -2210,7 +2155,6 @@ function handleProfileSelectionChange() {
   renderProfileOptions();
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? (canStartAnalysis() ? "ready_to_analyze" : "details_review") : "needs_images");
-  noteWorkflowEvent("assistant", "Pricing reference changed. I cleared the previous draft so the next analysis uses the selected pricing context. Customer and quote-company details were left unchanged.");
   syncControlStates();
 }
 
@@ -2220,7 +2164,6 @@ async function setSampleDetails() {
   try {
     const { ok, data } = await getJson(`/api/samples/${DEFAULT_SAMPLE_ID}`);
     if (!ok) {
-      noteWorkflowEvent("assistant", (data.errors || [data.error || "Sample fixture could not be loaded."]).join("\n"), { tone: "error" });
       return;
     }
     if (!state.profiles.length) await loadProfiles();
@@ -2236,7 +2179,6 @@ async function setSampleDetails() {
     renderFiles();
     setImageUploadStatus(`${state.images.length} sample reference image${state.images.length === 1 ? "" : "s"} loaded.`);
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
-    noteWorkflowEvent("assistant", `${data.label || "Sample"} loaded with ${state.images.length} reference image${state.images.length === 1 ? "" : "s"}.`);
     syncControlStates();
   } finally {
     elements.sampleDetailsButton.disabled = false;
@@ -2371,11 +2313,6 @@ function pricingReviewIssues(result = {}) {
   const errorIssues = extractPricingIssues(result.errors || []);
   const rowIssues = (result.pricing_matches || []).map(pricingIssueForRow).filter(Boolean);
   return [...new Set([...errorIssues, ...rowIssues])];
-}
-
-function pricingReviewBlockReason() {
-  const count = state.pricingIssues.length || state.pricingMatches.filter(pricingRowNeedsReview).length;
-  return count ? `Resolve ${count} pricing item${count === 1 ? "" : "s"} before opening Output.` : "";
 }
 
 function pricingStatusLabel(status = "") {
@@ -2798,14 +2735,12 @@ async function handlePricingChoice(action, issue) {
   if (state.isGenerating) return;
   const index = findLineItemIndexForPricingIssue(issue);
   if (index < 0) {
-    noteWorkflowEvent("assistant", "I could not map that pricing issue back to a generated line item. Regenerate analysis and try again.", { tone: "warn" });
     return;
   }
 
   const item = state.lineItems[index];
   if (action === "remove_line") {
     const [removed] = state.lineItems.splice(index, 1);
-    noteWorkflowEvent("assistant", `Removed "${removed.description}" from the quotation. Checking pricing again.`);
     await handleGenerate();
     return;
   }
@@ -2814,7 +2749,6 @@ async function handlePricingChoice(action, issue) {
     const manualPrice = window.prompt("Manual display price", item.display_price || "");
     if (!manualPrice || !manualPrice.trim()) return;
     item.display_price = manualPrice.trim();
-    noteWorkflowEvent("assistant", `Set a manual display price for "${item.description}". Checking pricing again.`);
     await handleGenerate();
     return;
   }
@@ -2824,7 +2758,6 @@ async function handlePricingChoice(action, issue) {
     if (!keyword || !keyword.trim()) return;
     item.pricing_keyword = keyword.trim();
     item.display_price = "";
-    noteWorkflowEvent("assistant", `Updated the pricing keyword for "${item.description}". Checking pricing again.`);
     await handleGenerate();
   }
 }
@@ -2992,8 +2925,6 @@ function handleOutputEditorCommit(event) {
   commitOutputEditor(editor);
 }
 
-function noteWorkflowEvent() {}
-
 function renderBasisEmptyState(message = "Load images, complete Customer and Quote Company, then start analysis to review the draft here.") {
   elements.basisReviewSurface.innerHTML = `
     <div class="basis-empty-state">
@@ -3015,8 +2946,6 @@ function renderBasisFailureState(message = "AI analysis failed before a usable q
 function clearBasisReviewSurface() {
   elements.basisReviewSurface.innerHTML = "";
 }
-
-function renderCurrentActions() {}
 
 function basisSections(sections = state.quoteBasisSections) {
   const normalized = normalizeQuoteBasisSections(sections.length ? sections : state.quoteBasis);
@@ -3051,13 +2980,6 @@ function basisQuantityLabel(line = {}) {
   const quantityText = Number.isFinite(quantity) ? quantity.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(line.quantity).trim();
   const unit = normalizeUnit(line.unit || "");
   return `${quantityText}${unit ? ` ${unit}` : ""}`;
-}
-
-function basisStats(sections = basisSections()) {
-  const scopeLines = sections.reduce((sum, section) => sum + (section.lines || []).length, 0);
-  const proposedRows = state.lineItems.length || scopeLines;
-  const needsReview = unresolvedConfirmLines(sections).length + state.blockingClarificationQuestions.filter((question) => question.status !== "answered" && !String(question.answer || "").trim()).length;
-  return { sections: sections.length, scopeLines, proposedRows, needsReview };
 }
 
 function basisLinePillLabel(line = {}) {
@@ -3159,11 +3081,6 @@ function basisFieldLabel(field) {
   return basisDisplayTitle(state.quoteBasisSections.find((section) => section.id === field)?.title)
     || BASIS_FIELDS.find(([key]) => key === field)?.[1]
     || "Quote basis";
-}
-
-function currentQuoteBasisCard() {
-  const cards = Array.from(elements.basisReviewSurface.querySelectorAll(".quote-basis-card"));
-  return cards.at(-1) || null;
 }
 
 function updateQuoteBasisCard(source = "edited") {
@@ -3276,16 +3193,6 @@ function proposalChangedFields(proposal) {
   const next = JSON.stringify(cloneQuoteBasisSections(nextSections));
   if (current === next) return [];
   return nextSections.map((section) => section.title);
-}
-
-function proposalLinePreview(proposal) {
-  if (state.basisChat.scope !== "line" || !state.basisChat.sectionId) return "";
-  const nextSections = normalizeQuoteBasisSections(proposal?.quoteBasisSections || proposal?.quoteBasis || {});
-  const section = nextSections.find((item) => item.id === state.basisChat.sectionId);
-  const nextLine = section?.lines?.[state.basisChat.lineIndex];
-  const currentLine = selectedBasisLine();
-  if (!nextLine || !currentLine || nextLine.text === currentLine.text && nextLine.tag === currentLine.tag) return "";
-  return `${normalizeBasisTag(nextLine.tag)}: ${nextLine.text}`;
 }
 
 function proposalLineDelta(proposal) {
@@ -3532,9 +3439,7 @@ async function buildAiBasisChatResponse(text) {
       appendBasisChatMessage("assistant", (started.data.errors || ["I could not answer that yet."]).join("\n"));
       return { errorDisplayed: true };
     }
-    const polled = await pollJob(started.data.job_id, (job) => {
-      setBusyText(job.status === "running" ? "Answering basis question..." : "Queued...");
-    });
+    const polled = await pollJob(started.data.job_id);
     const data = polled.data.result || {};
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       removeBasisChatTyping(typingMessage);
@@ -3548,7 +3453,6 @@ async function buildAiBasisChatResponse(text) {
   } finally {
     removeBasisChatTyping(typingMessage);
     state.isAnalysisRunning = previousRunning;
-    setBusyText("");
     setBasisChatBusy(false);
     syncControlStates();
   }
@@ -3776,7 +3680,6 @@ async function handleClarificationSubmit(event) {
     state.blockingClarificationQuestions[index].status = input.value.trim() ? "answered" : "open";
   });
   if ((state.blockingClarificationQuestions || []).some((question) => !String(question.answer || "").trim())) {
-    noteWorkflowEvent("assistant", "Answer all clarification questions before generating the final Quote Basis.", { tone: "warn" });
     renderClarificationQuestions();
     return;
   }
@@ -3811,7 +3714,6 @@ function showAiFailedDraftState(data = {}) {
   showAiFailureBanner(message);
   renderBasisFailureState(message);
   setSidePanel("basis", { force: true });
-  noteWorkflowEvent("assistant", "AI analysis failed before a usable quote basis was produced. I cleared the local fallback draft so it is not mistaken for AI output.", { tone: "error" });
   syncControlStates();
 }
 
@@ -3832,7 +3734,6 @@ function resetQuoteBasisToOriginal() {
   clearPricingReviewMessages();
   setWorkflowStage("basis_review");
   updateQuoteBasisCard(snapshot.source || "restored");
-  noteWorkflowEvent("assistant", "Quote Basis reset to the original AI draft. Uploaded images, Customer, Quote Company, and selected Pricing Reference were kept.");
   syncControlStates();
 }
 
@@ -3848,7 +3749,6 @@ function resetOutputDraft() {
   renderOutputValidationMessages(outputRowsValid().errors);
   setResultStatus("Output reset to confirmed basis", "is-warn");
   syncControlStates();
-  noteWorkflowEvent("assistant", "Output draft reset to the rows created when Quote Basis was confirmed. Images, Customer, Quote Company, and Quote Basis were kept.");
 }
 
 async function postJson(url, payload) {
@@ -3974,7 +3874,6 @@ function isInterruptedJobPoll(polled) {
 }
 
 function handleInterruptedJobPoll(jobType = "draft") {
-  setBusyText("");
   if (jobType === "draft") {
     state.isAnalysisRunning = false;
     showAiFailureBanner("Local server connection was interrupted. Refresh this app to resume the active AI analysis job.");
@@ -3985,10 +3884,6 @@ function handleInterruptedJobPoll(jobType = "draft") {
     renderMessages(["Local server connection was interrupted. Refresh this app to resume the active Excel job."], "error");
   }
   syncControlStates();
-}
-
-function setBusyText(message = "") {
-  if (elements.busyText) elements.busyText.textContent = message;
 }
 
 function logClientEvent(event, details = {}) {
@@ -4013,17 +3908,13 @@ async function initializeSession() {
   elements.healthText.textContent = "Local session unavailable";
 }
 
-function setAnalysisButtons() {}
-
 function syncControlStates() {
   const busy = state.isAnalysisRunning || state.isGenerating;
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.title = busy
     ? (state.isAnalysisRunning ? "Analysis is running." : "Quotation generation is running.")
     : "";
-  setAnalysisButtons(busy);
   updateSidePanelNav();
-  renderCurrentActions();
   saveSessionState();
 }
 
@@ -4035,8 +3926,6 @@ async function handleDraftBasis(options = {}) {
   if (!state.images.length) {
     setWorkflowStage("needs_images");
     showBlockedAction(`Please drop at least one ${currentGenerator().imageNoun} before analysis.`, { details: false });
-    noteWorkflowEvent("assistant", `Please drop at least one ${currentGenerator().imageNoun} before analysis.`, { tone: "warn" });
-    renderCurrentActions();
     syncControlStates();
     return;
   }
@@ -4045,7 +3934,6 @@ async function handleDraftBasis(options = {}) {
     setWorkflowStage("details_review");
     showBlockedAction(`Fill Customer and Quote Company before AI analysis: ${missing.join(", ")}.`);
     renderBasisEmptyState("Complete the missing Customer and Quote Company details, then start analysis to draft the quote basis.");
-    noteWorkflowEvent("assistant", `Fill Customer and Quote Company before AI analysis: ${missing.join(", ")}.`, { tone: "warn" });
     setDetailsDrawer(true);
     syncControlStates();
     return;
@@ -4059,8 +3947,6 @@ async function handleDraftBasis(options = {}) {
   showAiRunningBanner("Reading the reference images and preparing the quote basis. Please wait.", analysisRequestedAt);
   clearBasisReviewSurface();
   setSidePanel("basis", { force: true });
-  setBusyText("Running analysis...");
-  setAnalysisButtons(true);
   syncControlStates();
 
   const started = await startJob("draft", buildPayload({
@@ -4069,8 +3955,6 @@ async function handleDraftBasis(options = {}) {
   }));
   if (!started.ok) {
     state.isAnalysisRunning = false;
-    setBusyText("");
-    setAnalysisButtons(false);
     const errors = started.data.errors || ["Draft failed."];
     const wasBlocked = started.data.status === "blocked";
     setWorkflowStage(wasBlocked ? "details_review" : "ready_to_analyze");
@@ -4079,7 +3963,6 @@ async function handleDraftBasis(options = {}) {
     } else {
       showAiFailureBanner("Try again later.");
     }
-    noteWorkflowEvent("assistant", errors.join("\n"), { tone: wasBlocked ? "warn" : "error" });
     syncControlStates();
     return;
   }
@@ -4088,9 +3971,7 @@ async function handleDraftBasis(options = {}) {
   showAiRunningBanner("Reading the reference images and preparing the quote basis. Please wait.", startedAt);
   saveSessionState();
 
-  const polled = await pollJob(started.data.job_id, (job) => {
-    setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
-  });
+  const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
     handleInterruptedJobPoll("draft");
@@ -4098,8 +3979,6 @@ async function handleDraftBasis(options = {}) {
   }
   state.isAnalysisRunning = false;
   state.activeJob = null;
-  setBusyText("");
-  setAnalysisButtons(false);
 
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
     const errors = polled.data.errors || polled.data.result?.errors || ["Draft failed."];
@@ -4110,7 +3989,6 @@ async function handleDraftBasis(options = {}) {
     } else {
       showAiFailureBanner("Try again later.");
     }
-    noteWorkflowEvent("assistant", errors.join("\n"), { tone: wasBlocked ? "warn" : "error" });
     syncControlStates();
     return;
   }
@@ -4119,16 +3997,11 @@ async function handleDraftBasis(options = {}) {
   if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length) {
     clearAiFailureBanner();
     openBlockingClarifications(data.blocking_clarification_questions, data.analysis_findings || state.analysisFindings || [], data.project || state.boothDimensions || {});
-    const message = options.finalAfterClarifications
-      ? "More clarification is required before the final Quote Basis can be generated. Please answer the open questions."
-      : "Please answer the clarification questions before I generate the final Quote Basis.";
-    noteWorkflowEvent("assistant", message, { tone: "warn" });
     return;
   }
   const hasFinalBasis = Array.isArray(data.quote_basis_sections) && data.quote_basis_sections.length && Array.isArray(data.line_items) && data.line_items.length;
   if (options.finalAfterClarifications && !hasFinalBasis) {
     renderClarificationQuestions();
-    noteWorkflowEvent("assistant", "Final Quote Basis was not generated yet. Please review the clarification answers and try again.", { tone: "warn" });
     return;
   }
   state.blockingClarificationQuestions = [];
@@ -4145,16 +4018,9 @@ async function handleDraftBasis(options = {}) {
   captureOriginalAnalysisSnapshot(data);
   state.aiFailed = false;
   setWorkflowStage("basis_review");
-  const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
   clearAiFailureBanner();
-  if (Array.isArray(data.warnings) && data.warnings.length) {
-    noteWorkflowEvent("assistant", data.warnings.join("\n"), { tone: "warn" });
-  }
   updateQuoteBasisCard(data.source);
   setSidePanel("basis", { force: true });
-  if (!state.lineItems.length) {
-    noteWorkflowEvent("assistant", EMPTY_LINE_ITEMS_MESSAGE, { tone: "warn" });
-  }
   syncControlStates();
 }
 
@@ -4163,26 +4029,20 @@ async function confirmBasis() {
   const confirmBlockReason = basisConfirmBlockReason();
   if (confirmBlockReason) {
     setWorkflowStage("basis_review");
-    noteWorkflowEvent("assistant", confirmBlockReason, { tone: "warn" });
     syncControlStates();
     return;
   }
   if (state.aiFailed) {
     showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
-    noteWorkflowEvent("assistant", "AI analysis failed. Try again later before confirming or generating the quotation.", { tone: "error" });
-    renderCurrentActions();
     return;
   }
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
-    noteWorkflowEvent("assistant", "I do not have any generated quotation line items yet. Regenerate analysis before confirming the basis.", { tone: "warn" });
-    renderCurrentActions();
     return;
   }
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
-    noteWorkflowEvent("assistant", `Please fill these details before I generate Excel: ${missing.join(", ")}.`, { tone: "warn" });
     setDetailsDrawer(true);
     syncControlStates();
     return;
@@ -4197,7 +4057,6 @@ async function confirmBasis() {
   setResultStatus("Ready for pricing review", "is-warn");
   renderOutputValidationMessages(outputRowsValid().errors);
   setSidePanel("output", { force: true });
-  noteWorkflowEvent("assistant", "Basis confirmed. Review the editable Output rows, then Download Excel when pricing is valid.");
   syncControlStates();
 }
 
@@ -4217,7 +4076,6 @@ async function handleGenerate() {
     if (hasSubmittedQuoteBasis()) {
       setWorkflowStage("basis_review");
       setSidePanel("basis", { force: true });
-      noteWorkflowEvent("assistant", "Confirm Quotation Basis before generating the Excel quotation.", { tone: "warn" });
     }
     syncControlStates();
     return;
@@ -4225,28 +4083,23 @@ async function handleGenerate() {
   if (state.aiFailed) {
     setWorkflowStage("basis_review");
     showAiFailureBanner("Try again later. Regenerate analysis before generating Excel.");
-    noteWorkflowEvent("assistant", "Cannot generate because AI analysis failed. Try again later or regenerate analysis first.", { tone: "error" });
     syncControlStates();
     return;
   }
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
-    noteWorkflowEvent("assistant", `Please fill these details before I generate Excel: ${missing.join(", ")}.`, { tone: "warn" });
     setDetailsDrawer(true);
     syncControlStates();
     return;
   }
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
-    noteWorkflowEvent("assistant", "There are no generated line items yet. Run analysis first so Excel has quotation rows.", { tone: "warn" });
-    renderCurrentActions();
     return;
   }
 
   state.isGenerating = true;
   setWorkflowStage("generating");
-  setBusyText("Generating Excel...");
   setResultStatus("Generating Excel", "is-warn");
   renderMessages([]);
   setDownloadFiles([]);
@@ -4256,20 +4109,16 @@ async function handleGenerate() {
   const started = await startJob("generate", buildPayload());
   if (!started.ok) {
     state.isGenerating = false;
-    setBusyText("");
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
     setResultStatus(started.data.status || "Failed", "is-bad");
     renderMessages(started.data.errors || ["Generation failed."], "error");
-    noteWorkflowEvent("assistant", (started.data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
   }
   state.activeJob = { id: started.data.job_id, type: "generate" };
   saveSessionState();
 
-  const polled = await pollJob(started.data.job_id, (job) => {
-    setBusyText(job.status === "running" ? "Generating Excel..." : "Queued...");
-  });
+  const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
     handleInterruptedJobPoll("generate");
@@ -4277,7 +4126,6 @@ async function handleGenerate() {
   }
   state.isGenerating = false;
   state.activeJob = null;
-  setBusyText("");
 
   const data = polled.data.result || polled.data || {};
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
@@ -4286,7 +4134,6 @@ async function handleGenerate() {
     renderMessages(data.errors || ["Generation failed."], "error");
     if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
     renderMatchSummary(data);
-    noteWorkflowEvent("assistant", (data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
     syncControlStates();
     return;
   }
@@ -4300,14 +4147,12 @@ async function handleGenerate() {
     renderPricingReviewMessages(data);
     setSidePanel("output", { force: true });
     setDownloadFiles([]);
-    noteWorkflowEvent("assistant", "I found pricing items that need review. Resolve them in Output before downloading Excel.", { tone: "warn" });
   } else {
     setWorkflowStage("completed");
     setResultStatus("Completed", "is-ok");
     renderMessages([]);
     clearPricingReviewMessages();
     setSidePanel("output", { force: true });
-    noteWorkflowEvent("assistant", "Excel quotation is ready. Use Download Excel in the Output footer.", { tone: "instruction" });
     setDownloadFiles(data.files || []);
   }
   if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
@@ -4326,7 +4171,6 @@ async function resumeSavedJob() {
     showAiRunningBanner("Resuming the analysis job after refresh.", activeJobStartedAt(activeJob));
     clearBasisReviewSurface();
     setSidePanel("basis", { force: true });
-    setBusyText("Checking saved analysis job...");
     syncControlStates();
 
     const polled = await pollJob(activeJob.id, (job) => {
@@ -4335,7 +4179,6 @@ async function resumeSavedJob() {
         showAiRunningBanner("Resuming the analysis job after refresh.", job.created_at);
         saveSessionState();
       }
-      setBusyText(job.status === "running" ? "Running analysis..." : "Queued...");
     });
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
@@ -4344,13 +4187,10 @@ async function resumeSavedJob() {
     }
     state.isAnalysisRunning = false;
     state.activeJob = null;
-    setBusyText("");
-    setAnalysisButtons(false);
 
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       setWorkflowStage("ready_to_analyze");
       showAiFailureBanner("Try again later.");
-      noteWorkflowEvent("assistant", (polled.data.errors || polled.data.result?.errors || ["Draft failed."]).join("\n"), { tone: "error" });
       syncControlStates();
       return;
     }
@@ -4369,14 +4209,8 @@ async function resumeSavedJob() {
     state.aiFailed = false;
     setWorkflowStage("basis_review");
     clearAiFailureBanner();
-    if (Array.isArray(data.warnings) && data.warnings.length) {
-      noteWorkflowEvent("assistant", data.warnings.join("\n"), { tone: "warn" });
-    }
     updateQuoteBasisCard(data.source);
     setSidePanel("basis", { force: true });
-    if (!state.lineItems.length) {
-      noteWorkflowEvent("assistant", EMPTY_LINE_ITEMS_MESSAGE, { tone: "warn" });
-    }
     syncControlStates();
     return;
   }
@@ -4385,14 +4219,11 @@ async function resumeSavedJob() {
     state.isGenerating = true;
     state.isAnalysisRunning = false;
     setWorkflowStage("generating");
-    setBusyText("Checking saved Excel job...");
     setResultStatus("Checking Excel", "is-warn");
     setSidePanel("output", { force: true });
     syncControlStates();
 
-    const polled = await pollJob(activeJob.id, (job) => {
-      setBusyText(job.status === "running" ? "Checking Excel..." : "Queued...");
-    });
+    const polled = await pollJob(activeJob.id);
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
       handleInterruptedJobPoll("generate");
@@ -4400,7 +4231,6 @@ async function resumeSavedJob() {
     }
     state.isGenerating = false;
     state.activeJob = null;
-    setBusyText("");
 
     const data = polled.data.result || polled.data || {};
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
@@ -4409,7 +4239,6 @@ async function resumeSavedJob() {
       renderMessages(data.errors || ["Generation failed."], "error");
       if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
       renderMatchSummary(data);
-      noteWorkflowEvent("assistant", (data.errors || ["Generation failed."]).join("\n"), { tone: "error" });
       syncControlStates();
       return;
     }
@@ -4423,14 +4252,12 @@ async function resumeSavedJob() {
       renderPricingReviewMessages(data);
       setSidePanel("output", { force: true });
       setDownloadFiles([]);
-      noteWorkflowEvent("assistant", "I found pricing items that need review. Resolve them in Output before downloading Excel.", { tone: "warn" });
     } else {
       setWorkflowStage("completed");
       setResultStatus("Completed", "is-ok");
       renderMessages([]);
       clearPricingReviewMessages();
       setSidePanel("output");
-      noteWorkflowEvent("assistant", "Excel quotation is ready. Use Download Excel in the Output footer.", { tone: "instruction" });
       setDownloadFiles(data.files || []);
     }
     if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
@@ -4460,7 +4287,6 @@ function requestStartAnalysis() {
   const reason = startAnalysisBlockReason();
   if (reason) {
     showBlockedAction(reason);
-    noteWorkflowEvent("assistant", reason, { tone: "warn" });
     syncControlStates();
     return;
   }
@@ -4517,10 +4343,6 @@ function sidePanelBlockReason(panelName) {
   return "";
 }
 
-function canOpenSidePanel(panelName) {
-  return !sidePanelBlockReason(panelName);
-}
-
 function setSidePanel(panelName, options = {}) {
   const panelTitles = {
     images: ["Images", "Reference Inputs", currentGenerator().intakeSubtitle],
@@ -4532,7 +4354,6 @@ function setSidePanel(panelName, options = {}) {
   const nextPanel = panelTitles[panelName] ? panelName : "images";
   const blockReason = sidePanelBlockReason(nextPanel);
   if (blockReason && !options.force) {
-    if (options.notify) noteWorkflowEvent("assistant", blockReason, { tone: "warn" });
     updateSidePanelNav();
     return false;
   }
@@ -4632,7 +4453,6 @@ function goToNextSidePanel() {
     elements.sideNextButton.title = "";
     elements.sideNextButton.blur();
     if (state.activeSidePanel === "quote_company") showBlockedAction(reason);
-    noteWorkflowEvent("assistant", reason, { tone: "warn" });
     return;
   }
   if (state.activeSidePanel === "quote_company") {
@@ -4913,7 +4733,6 @@ function setInitialValues() {
   renderHeaderLogoPreview();
   renderPresetStatus();
   if (restoreSessionState()) {
-    renderCurrentActions();
     syncControlStates();
     return;
   }
@@ -4925,7 +4744,6 @@ function setInitialValues() {
   renderMatchSummary({});
   setWorkflowStage("needs_images");
   renderBasisEmptyState();
-  renderCurrentActions();
   syncControlStates();
   setSidePanel("images");
 }

@@ -1,0 +1,328 @@
+import { spawn } from "node:child_process";
+import fsSync from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const args = process.argv.slice(2);
+
+function readArg(name, fallback = "") {
+  const index = args.indexOf(name);
+  if (index >= 0 && args[index + 1]) return args[index + 1];
+  const prefix = `${name}=`;
+  const inline = args.find((arg) => arg.startsWith(prefix));
+  return inline ? inline.slice(prefix.length) : fallback;
+}
+
+const options = {
+  screenshots: args.includes("--screenshots") || args.includes("--screenshot"),
+  headed: args.includes("--headed"),
+  keepServer: args.includes("--keep-server"),
+  host: readArg("--host", "127.0.0.1"),
+  port: Number(readArg("--port", process.env.PLAYWRIGHT_PORT || "8765")),
+};
+
+const baseUrl = `http://${options.host}:${options.port}`;
+const outputDir = path.join(root, "_output", "playwright");
+
+function pythonCommand() {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  if (process.platform !== "win32") return "python3";
+  const bundled = path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe");
+  if (fsSync.existsSync(bundled)) return bundled;
+  return "python";
+}
+
+async function healthOk() {
+  try {
+    const response = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(1200) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForHealth(timeoutMs = 15000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await healthOk()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  return false;
+}
+
+function startServer() {
+  const server = spawn(
+    pythonCommand(),
+    ["webapp/server.py", "--host", options.host, "--port", String(options.port)],
+    {
+      cwd: root,
+      env: { ...process.env, APP_MODE: "local" },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+  const output = [];
+  const collect = (chunk) => {
+    output.push(String(chunk));
+    if (output.join("").length > 8000) output.shift();
+  };
+  server.stdout.on("data", collect);
+  server.stderr.on("data", collect);
+  return { server, output };
+}
+
+async function stopServer(serverInfo) {
+  if (!serverInfo || options.keepServer) return;
+  if (serverInfo.server.killed) return;
+  serverInfo.server.kill();
+  await new Promise((resolve) => serverInfo.server.once("exit", resolve));
+}
+
+async function screenshot(page, name) {
+  if (!options.screenshots) return "";
+  await fs.mkdir(outputDir, { recursive: true });
+  const filePath = path.join(outputDir, name);
+  await page.screenshot({ path: filePath, fullPage: false });
+  return filePath;
+}
+
+function quoteBasisSections(platformText = "100mm raised platform with needle punch carpet.", electricalTag = "Confirm") {
+  return [
+    {
+      id: "surfaces",
+      title: "Surfaces",
+      lines: [
+        { tag: "Include", text: "Painted booth structure and fascia from uploaded render images.", confidence_pct: 90 },
+      ],
+    },
+    {
+      id: "platform",
+      title: "Platform",
+      lines: [
+        { tag: "Confirm", text: platformText, confidence_pct: 90 },
+      ],
+    },
+    {
+      id: "electrical",
+      title: "Lighting and Electrical",
+      lines: [
+        { tag: electricalTag, text: "Standard 13A sockets and LED lighting only.", confidence_pct: 85 },
+      ],
+    },
+    {
+      id: "graphics",
+      title: "Graphics",
+      lines: [
+        { tag: "Custom", text: "Printed graphics pending manual pricing.", confidence_pct: 70, custom_pricing: true },
+      ],
+    },
+  ];
+}
+
+function quoteBasisFromSections(sections) {
+  return Object.fromEntries(sections.map((section) => [
+    section.id,
+    section.lines.map((line) => `${line.tag}: ${line.text}`).join("\n"),
+  ]));
+}
+
+function draftResult() {
+  const sections = quoteBasisSections();
+  return {
+    status: "drafted",
+    source: "playwright-mock",
+    quote_basis: quoteBasisFromSections(sections),
+    quote_basis_sections: sections,
+    line_items: [
+      {
+        section: "Floor Design",
+        quantity: "36",
+        unit: "sqm",
+        description: "Needle punch carpet in colour",
+        pricing_keyword: "",
+        display_price: "Included",
+        source_basis_line_id: "platform-1",
+      },
+    ],
+    project: {
+      booth_width: "6",
+      booth_depth: "6",
+      booth_size: "6m x 6m",
+      dimension_source: "user",
+    },
+  };
+}
+
+function basisChatResult(payload) {
+  const chat = payload?.basis_chat || {};
+  const question = String(chat.question || "").toLowerCase();
+  if (chat.scope === "line" && question.includes("150mm")) {
+    const sections = quoteBasisSections("150mm raised platform with needle punch carpet.");
+    return {
+      status: "answered",
+      type: "proposal",
+      source: "playwright-mock",
+      proposal: {
+        message: "Change the selected platform line to 150mm?",
+        quote_basis: quoteBasisFromSections(sections),
+        quote_basis_sections: sections,
+        line_items: draftResult().line_items,
+      },
+    };
+  }
+  if (!chat.line && question.includes("what does")) {
+    return {
+      status: "answered",
+      type: "answer",
+      source: "playwright-mock",
+      answer: "- **Meaning:** This basis line describes scope that needs operator review.",
+    };
+  }
+  if (!chat.line && question.includes("include all lighting")) {
+    const sections = quoteBasisSections("150mm raised platform with needle punch carpet.", "Include");
+    return {
+      status: "answered",
+      type: "proposal",
+      source: "playwright-mock",
+      proposal: {
+        message: "Mark lighting and electrical as included?",
+        quote_basis: quoteBasisFromSections(sections),
+        quote_basis_sections: sections,
+        line_items: draftResult().line_items,
+      },
+    };
+  }
+  return {
+    status: "failed",
+    errors: ["I could not understand that basis change. Please rephrase it."],
+  };
+}
+
+async function installMockJobs(page) {
+  const jobs = new Map();
+  let counter = 0;
+
+  await page.route("**/api/jobs", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const body = JSON.parse(route.request().postData() || "{}");
+    const jobId = `playwright-job-${counter += 1}`;
+    if (body.type === "draft") {
+      jobs.set(jobId, { status: "completed", result: draftResult() });
+    } else if (body.type === "basis_chat") {
+      const result = basisChatResult(body.payload || {});
+      jobs.set(jobId, {
+        status: result.status === "failed" ? "failed" : "completed",
+        result,
+        errors: result.errors || [],
+      });
+    } else {
+      jobs.set(jobId, { status: "failed", errors: [`Unexpected job type: ${body.type}`] });
+    }
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "queued", job_id: jobId, created_at: new Date().toISOString() }),
+    });
+  });
+
+  await page.route("**/api/jobs/*", async (route) => {
+    const jobId = route.request().url().split("/").pop();
+    const job = jobs.get(jobId) || { status: "failed", errors: [`Unknown mocked job: ${jobId}`] };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(job),
+    });
+  });
+}
+
+async function submitBasisChat(page, text) {
+  await page.locator("#basisChatPrompt").fill(text);
+  await page.locator("#basisChatSendButton").click();
+}
+
+async function main() {
+  let serverInfo = null;
+  if (!(await healthOk())) {
+    serverInfo = startServer();
+    if (!(await waitForHealth())) {
+      const serverOutput = serverInfo.output.join("").trim();
+      await stopServer(serverInfo);
+      throw new Error(`Could not start webapp at ${baseUrl}.${serverOutput ? `\n\n${serverOutput}` : ""}`);
+    }
+  }
+
+  const browser = await chromium.launch({ headless: !options.headed });
+  const page = await browser.newPage({ viewport: { width: 1365, height: 768 } });
+  const consoleProblems = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleProblems.push(`${message.type()}: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => consoleProblems.push(`pageerror: ${error.message}`));
+
+  try {
+    await installMockJobs(page);
+    await page.goto(baseUrl, { waitUntil: "networkidle" });
+    await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
+    await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
+    await page.locator("#sampleDetailsButton").click();
+    await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+
+    await page.locator('[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
+    await page.locator('[data-side-panel="quote_company"]').click();
+    await page.locator("#sideNextButton").click();
+    await page.locator("#analysisConfirmModal:not([hidden])").waitFor({ timeout: 15000 });
+    await page.locator("#analysisConfirmStartButton").click();
+    await page.locator("#quoteBasisPanel.is-active").waitFor({ timeout: 15000 });
+    await page.locator('[data-revise-section="platform"]').first().waitFor({ timeout: 15000 });
+    const basisShot = await screenshot(page, "ai-basis-chat-basis.png");
+
+    await page.locator('[data-revise-section="platform"]').first().click();
+    await page.locator("#basisChatOverlay:not([hidden])").waitFor({ timeout: 15000 });
+    await submitBasisChat(page, "change 100mm to 150mm");
+    await page.locator("#basisChatProposal:not([hidden])").waitFor({ timeout: 15000 });
+    await page.locator("#basisChatApplyButton:not([disabled])").click();
+    await page.locator(".basis-line-text", { hasText: "150mm raised platform" }).waitFor({ timeout: 15000 });
+    await page.locator("#basisChatCloseButton").click();
+
+    await page.locator("#discussQuoteButton:not([hidden])").click();
+    await page.locator("#basisChatOverlay:not([hidden])").waitFor({ timeout: 15000 });
+    await submitBasisChat(page, "what does this mean?");
+    await page.locator("#basisChatMessages", { hasText: "This basis line describes scope" }).waitFor({ timeout: 15000 });
+    await submitBasisChat(page, "include all lighting and electrical lines");
+    await page.locator("#basisChatProposal:not([hidden])", { hasText: "Mark lighting and electrical as included" }).waitFor({ timeout: 15000 });
+    await page.locator("#basisChatKeepButton:not([disabled])").click();
+    await page.locator("#basisChatMessages", { hasText: "Kept the current quote basis unchanged." }).waitFor({ timeout: 15000 });
+    await submitBasisChat(page, "banana everything but also delete it");
+    await page.locator("#basisChatMessages", { hasText: "Please rephrase it" }).waitFor({ timeout: 15000 });
+    const chatShot = await screenshot(page, "ai-basis-chat-stress.png");
+
+    const bodyText = await page.locator("body").innerText();
+    for (const forbidden of ["Traceback", "Request body must be valid JSON", "OpenAI chat returned invalid JSON"]) {
+      if (bodyText.includes(forbidden)) throw new Error(`Raw internal error leaked to UI: ${forbidden}`);
+    }
+    if (consoleProblems.length) throw new Error(`Console errors detected: ${consoleProblems.join("; ")}`);
+
+    console.log(JSON.stringify({
+      status: "ok",
+      url: page.url(),
+      screenshots: [basisShot, chatShot].filter(Boolean),
+      consoleProblems,
+    }, null, 2));
+  } finally {
+    await browser.close();
+    await stopServer(serverInfo);
+  }
+}
+
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exitCode = 1;
+});

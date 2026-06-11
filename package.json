@@ -7,6 +7,7 @@
   "scripts": {
     "playwright:install": "playwright install chromium",
     "playwright:smoke": "node scripts/playwright-smoke.mjs",
+    "playwright:ai-stress": "node scripts/playwright-ai-basis-chat-stress.mjs",
     "playwright:screenshot": "node scripts/playwright-smoke.mjs --screenshots"
   },
   "devDependencies": {
