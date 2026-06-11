@@ -1154,11 +1154,6 @@ h3 {
   text-align: left;
 }
 
-.pricing-reference-panel .settings-note,
-.company-preset-panel .settings-note {
-  text-align: left;
-}
-
 .header-logo-row {
   display: grid;
   grid-template-columns: 1fr;
@@ -1405,13 +1400,6 @@ select:focus {
 /* ============================================================
    BUTTONS — premium gradient system
    ============================================================ */
-.button-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
 .primary-button,
 .secondary-button {
   display: inline-flex;
@@ -1832,15 +1820,6 @@ select:focus {
   color: #a1382f;
 }
 
-.basis-line-assumption .basis-line-pill {
-  background: #eef1f5;
-  color: #4a5c70;
-}
-
-.basis-line-assumption .basis-line-icon::before {
-  content: "i";
-}
-
 .basis-line-text {
   display: block;
   color: #1f2d3d;
@@ -1982,32 +1961,6 @@ select:focus {
 .side-workspace .assistant-output .match-summary {
   margin-right: 0;
   margin-left: 0;
-}
-
-.output-download-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.output-status-heading {
-  justify-content: flex-end;
-  padding-bottom: 0;
-}
-
-.output-download-heading h4 {
-  margin: 0 0 4px;
-  color: #10223b;
-  font-size: 16px;
-  line-height: 1.2;
-}
-
-.output-download-heading p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.4;
 }
 
 .side-workspace #outputSidePanel .pricing-review-messages,

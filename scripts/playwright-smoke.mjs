@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -27,7 +29,11 @@ const baseUrl = `http://${options.host}:${options.port}`;
 const outputDir = path.join(root, "_output", "playwright");
 
 function pythonCommand() {
-  return process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+  if (process.env.PYTHON) return process.env.PYTHON;
+  if (process.platform !== "win32") return "python3";
+  const bundled = path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe");
+  if (fsSync.existsSync(bundled)) return bundled;
+  return "python";
 }
 
 async function healthOk() {
@@ -135,14 +141,21 @@ async function main() {
     await page.locator(".workspace-pane-scroll").evaluate((element) => {
       element.scrollTop = 0;
     });
-    const pricingButtonText = await page.locator(".pricing-reference-panel .settings-button-row").innerText();
-    if (!pricingButtonText.includes("New") || !pricingButtonText.includes("Delete") || pricingButtonText.includes("New Pricing Reference")) {
-      throw new Error(`Unexpected pricing reference button labels: ${pricingButtonText}`);
+    const pricingSummary = await page.locator("#selectedPricingReferenceSummary").innerText();
+    if (!pricingSummary.includes("Managed in Settings")) {
+      throw new Error(`Unexpected pricing reference summary: ${pricingSummary}`);
+    }
+    const pricingTaxText = await page.locator("#selectedPricingReferenceTax").innerText();
+    if (!/GST|VAT/i.test(pricingTaxText)) {
+      throw new Error(`Unexpected pricing reference tax badge: ${pricingTaxText}`);
+    }
+    const selectedPricingValue = await page.locator("#profileSelect").inputValue();
+    if (!selectedPricingValue) {
+      throw new Error("Pricing reference select did not have a selected value.");
     }
     const profileSelectBox = await page.locator("#profileSelect").boundingBox();
-    const pricingButtonsBox = await page.locator(".pricing-reference-panel .settings-button-row").boundingBox();
-    if (!profileSelectBox || !pricingButtonsBox || Math.abs(profileSelectBox.width - pricingButtonsBox.width) > 2) {
-      throw new Error("Pricing reference buttons are not aligned to the dropdown width.");
+    if (!profileSelectBox || profileSelectBox.width < 200) {
+      throw new Error("Pricing reference dropdown is unexpectedly narrow.");
     }
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
     await page.locator("#quoteDate").waitFor({ state: "visible" });

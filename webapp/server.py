@@ -2405,6 +2405,34 @@ def configured_gemini_basis_line_model() -> str:
     return safe_segment(read_dotenv_value(GEMINI_BASIS_LINE_MODEL_ENV_NAME), GEMINI_BASIS_LINE_MODEL)
 
 
+def basis_chat_has_selected_line(payload: dict[str, Any]) -> bool:
+    basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
+    return bool(clean_multiline(basis_chat.get("line")))
+
+
+def unique_model_sequence(*models: str) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for model in models:
+        cleaned = clean_text(model)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result
+
+
+def openai_basis_chat_models(payload: dict[str, Any]) -> list[str]:
+    if basis_chat_has_selected_line(payload):
+        return unique_model_sequence(configured_openai_basis_line_model(), configured_openai_draft_model())
+    return unique_model_sequence(configured_openai_draft_model())
+
+
+def gemini_basis_chat_models(payload: dict[str, Any]) -> list[str]:
+    if basis_chat_has_selected_line(payload):
+        return unique_model_sequence(configured_gemini_basis_line_model(), configured_gemini_draft_model())
+    return unique_model_sequence(configured_gemini_draft_model())
+
+
 def configured_timeout_seconds(env_name: str, fallback: int) -> int:
     raw = read_dotenv_value(env_name)
     if not raw:
@@ -2694,6 +2722,10 @@ def default_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 class OpenAIAnalysisError(RuntimeError):
+    pass
+
+
+class AIModelOutputError(OpenAIAnalysisError):
     pass
 
 
@@ -3770,9 +3802,9 @@ def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
     return normalize_ai_draft(parse_json_object(response_output_text(data)), payload)
 
 
-def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+def request_openai_basis_chat_with_model(payload: dict[str, Any], api_key: str, model: str) -> dict[str, Any]:
     body = {
-        "model": configured_openai_basis_line_model(),
+        "model": model,
         "input": [{"role": "user", "content": [{"type": "input_text", "text": build_basis_chat_prompt(payload)}]}],
         "max_output_tokens": 1200,
     }
@@ -3803,7 +3835,29 @@ def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str
             raise OpenAIAnalysisError(provider_connection_error_message("OpenAI", exc)) from exc
         except json.JSONDecodeError as exc:
             raise OpenAIAnalysisError("OpenAI chat returned invalid JSON.") from exc
-    return normalize_basis_chat_result(parse_json_object(response_output_text(data)), payload, "openai")
+    try:
+        return normalize_basis_chat_result(parse_json_object(response_output_text(data)), payload, "openai")
+    except OpenAIAnalysisError as exc:
+        raise AIModelOutputError(str(exc)) from exc
+
+
+def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+    models = openai_basis_chat_models(payload)
+    errors: list[str] = []
+    for index, model in enumerate(models):
+        try:
+            return request_openai_basis_chat_with_model(payload, api_key, model)
+        except AIModelOutputError as exc:
+            errors.append(str(exc))
+            if index + 1 < len(models):
+                write_local_log("openai_basis_chat_model_retry", {
+                    "from_model": model,
+                    "to_model": models[index + 1],
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            raise
+    raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
 
 
 def data_url_inline_image(data_url: str) -> dict[str, str] | None:
@@ -3908,13 +3962,13 @@ def request_gemini_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
     return normalize_ai_draft(parsed, payload)
 
 
-def request_gemini_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+def request_gemini_basis_chat_with_model(payload: dict[str, Any], api_key: str, model: str) -> dict[str, Any]:
     body = {
         "contents": [{"role": "user", "parts": [{"text": build_basis_chat_prompt(payload)}]}],
         "generationConfig": {"maxOutputTokens": 1200, "responseMimeType": "application/json"},
     }
     request = urllib.request.Request(
-        f"{GEMINI_GENERATE_CONTENT_BASE_URL}/{configured_gemini_basis_line_model()}:generateContent",
+        f"{GEMINI_GENERATE_CONTENT_BASE_URL}/{model}:generateContent",
         data=json.dumps(body).encode("utf-8"),
         headers={
             "x-goog-api-key": api_key,
@@ -3942,8 +3996,30 @@ def request_gemini_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str
             raise OpenAIAnalysisError("Gemini chat returned invalid JSON.") from exc
     answer = gemini_response_text(data)
     if not answer:
-        raise OpenAIAnalysisError("Gemini fallback did not return chat text.")
-    return normalize_basis_chat_result(parse_json_object(answer), payload, "gemini")
+        raise AIModelOutputError("Gemini fallback did not return chat text.")
+    try:
+        return normalize_basis_chat_result(parse_json_object(answer), payload, "gemini")
+    except OpenAIAnalysisError as exc:
+        raise AIModelOutputError(str(exc)) from exc
+
+
+def request_gemini_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+    models = gemini_basis_chat_models(payload)
+    errors: list[str] = []
+    for index, model in enumerate(models):
+        try:
+            return request_gemini_basis_chat_with_model(payload, api_key, model)
+        except AIModelOutputError as exc:
+            errors.append(str(exc))
+            if index + 1 < len(models):
+                write_local_log("gemini_basis_chat_model_retry", {
+                    "from_model": model,
+                    "to_model": models[index + 1],
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            raise
+    raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
 
 
 def unpack_ai_draft(ai_draft: dict[str, Any], payload: dict[str, Any] | None = None) -> tuple[dict[str, str], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:

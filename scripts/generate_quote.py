@@ -182,24 +182,6 @@ def cell_value(cell: ET.Element, shared_strings: list[str]) -> Any:
         return raw
 
 
-def read_first_sheet_rows(xlsx_path: Path) -> list[list[Any]]:
-    with zipfile.ZipFile(xlsx_path) as zf:
-        shared_strings = read_shared_strings(zf)
-        sheet_xml = zf.read("xl/worksheets/sheet1.xml")
-    root = ET.fromstring(sheet_xml)
-    rows: list[list[Any]] = []
-    for row in root.iter(f"{NS_MAIN}row"):
-        values: list[Any] = []
-        for cell in row.findall(f"{NS_MAIN}c"):
-            ref = cell.attrib.get("r", "A1")
-            col_index = col_to_index(ref)
-            while len(values) <= col_index:
-                values.append(None)
-            values[col_index] = cell_value(cell, shared_strings)
-        rows.append(values)
-    return rows
-
-
 def read_first_sheet_rows_with_numbers(xlsx_path: Path) -> list[tuple[int, list[Any]]]:
     with zipfile.ZipFile(xlsx_path) as zf:
         shared_strings = read_shared_strings(zf)
@@ -721,19 +703,6 @@ def brief_rich_text_cell_runs(
     lines = brief_rich_text_lines(brief, key, [fallback], fallback_bold=fallback_bold)
     runs = lines[0] if lines else [RichTextRun(str(fallback or ""), bold=fallback_bold)]
     return ([RichTextRun(prefix)] if prefix else []) + runs
-
-
-def is_draft_or_placeholder_note(note: str) -> bool:
-    lowered = clean_text(note).lower()
-    return any(word in lowered for word in ("draft", "placeholder"))
-
-
-def customer_notes(brief: dict[str, Any]) -> list[str]:
-    return [
-        note
-        for note in (clean_text(note) for note in brief.get("notes", []))
-        if note and not is_draft_or_placeholder_note(note)
-    ]
 
 
 def quote_tax_config(brief: dict[str, Any]) -> tuple[str, float]:
