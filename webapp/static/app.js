@@ -6,7 +6,7 @@ const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
 const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
 const QUOTE_SESSION_STATE_VERSION = 4;
-const OUTPUT_SORT_MODES = ["category", "name", "category_name", "manual"];
+const OUTPUT_SORT_MODES = ["category", "name", "category_name"];
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const LOCAL_PRESET_PREFIX = "local:";
@@ -333,6 +333,46 @@ function basisDisplayTitle(value = "") {
     .replace(/\u2013|\u2014/g, "-")
     .replace(/\s*-\s*quote\s+basis\s+to\s+confirm\s*$/i, "")
     .trim();
+}
+
+function normalizeCategoryTitle(value = "") {
+  const text = basisDisplayTitle(value);
+  const compact = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  if (!compact) return "General";
+  if (/\b(counter|counters|cabinet|cabinets|cabinetry|reception counter|storage cabinet|display counter|lockable cabinet)\b/.test(compact)) return "Counters & Cabinets";
+  if (/\b(rigging|overhead structure|aluminium box truss|aluminum box truss|box truss|truss|suspended structure|hanging frame|hanging structure)\b/.test(compact)) return "Hanging Structure";
+  if (/\b(platform|flooring|floor|carpet|raised platform|vinyl flooring)\b/.test(compact)) return "Flooring / Platform";
+  if (/\b(graphic|graphics|signage|sign|logo|lightbox|print|printed|vinyl)\b/.test(compact)) return "Graphics / Signage";
+  if (/\b(furniture|decor|plant|plants|chair|table|rental item|loose rental)\b/.test(compact)) return "Furniture / Decor";
+  if (/\b(electrical|power|socket|light|lighting|av|audio|visual|screen|monitor|tv)\b/.test(compact)) return "Electrical / AV";
+  const boothTerms = new Set(["booth", "booth dimension", "booth dimensions", "booth structure", "booth structures", "structure", "structures", "walls", "wall", "partitions", "partition", "fascia", "system profile partitions", "entrance frame", "curved frame", "back wall", "side wall", "header fascia structure", "header"]);
+  if (boothTerms.has(compact) || /\b(booth|wall|walls|partition|partitions|fascia|entrance frame|curved frame|back wall|side wall|system profile|header)\b/.test(compact)) return "Booth Structure";
+  return text;
+}
+
+function cleanCustomerQuoteLineText(value = "") {
+  let text = normalizeUnit(String(value || "").trim().replace(/\s+/g, " "));
+  const replacements = [
+    /\s+taken\s+from\s+quotation\s+title\s*:?\s*/gi,
+    /\s+from\s+quotation\s+title\s*:?\s*/gi,
+    /\s+visible\s+in\s+image(?:s)?\s*(?:at\s+)?/gi,
+    /\s+as\s+seen\s+in\s+render\s*/gi,
+    /\s+as\s+per\s+image\s*/gi,
+    /\s+based\s+on\s+uploaded\s+reference\s*/gi,
+    /\s+ai\s+detected\s*:?\s*/gi,
+    /\s+assumed\s+from\s+image\s*/gi,
+    /\s+suggested\s+by\s+image\s*/gi,
+    /\s+from\s+reference\s+image\s*/gi,
+    /\s+appears\s+to\s+be\s+/gi,
+    /\s+likely\s+/gi,
+  ];
+  replacements.forEach((pattern) => { text = text.replace(pattern, " "); });
+  return text.replace(/\s+(:|,|\.)/g, "$1").replace(/:\s*([0-9])/g, " $1").replace(/\s{2,}/g, " ").replace(/^[ ;]+|[ ;]+$/g, "");
+}
+
+function neutralizeFormulaText(value = "") {
+  const text = String(value || "").trim();
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
 
 function normalizeUnit(value = "") {
@@ -910,10 +950,10 @@ function normalizeLineItem(item = {}) {
     ? "Included"
     : "Priced";
   return {
-    section: item.section || "",
+    section: normalizeCategoryTitle(item.section || ""),
     quantity: item.quantity ?? "",
     unit: item.unit || "",
-    description: item.description || "",
+    description: cleanCustomerQuoteLineText(item.description || ""),
     pricing_keyword: item.pricing_keyword || "",
     display_price: item.display_price || "",
     price_mode: priceMode,
@@ -1762,7 +1802,7 @@ function splitBasisDecisionText(text = "", defaultTag = "Confirm") {
 
 function normalizeBasisLines(line = "") {
   if (line && typeof line === "object") {
-    const text = String(line.text || line.line || line.description || "").trim();
+    const text = cleanCustomerQuoteLineText(line.text || line.line || line.description || "");
     if (!text) return [];
     const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
     const hasCustomPricing = isCustomPricingBasisLine(line);
@@ -1777,7 +1817,7 @@ function normalizeBasisLines(line = "") {
       return next;
     });
   }
-  return splitBasisDecisionText(line);
+  return splitBasisDecisionText(cleanCustomerQuoteLineText(line));
 }
 
 function parseBasisLine(line = "") {
@@ -1797,7 +1837,7 @@ function normalizeQuoteBasisSections(value = {}) {
   if (rawSections) {
     return rawSections
       .map((section, index) => {
-        const title = basisDisplayTitle(section?.title || "Section") || "Section";
+        const title = normalizeCategoryTitle(section?.title || "Section") || "Section";
         const id = safeId(section?.id && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(section.id)) ? section.id : title, `section-${index + 1}`);
         const rawLines = Array.isArray(section?.lines) ? section.lines : splitLines(section?.text || "");
         const lines = rawLines.flatMap(normalizeBasisLines).filter((line) => line.text);
@@ -1846,8 +1886,8 @@ function normalizeOutputRow(row = {}) {
     ? "Included"
     : "Priced";
   return recalculateOutputRow({
-    section: String(row.section || ""),
-    description: String(row.description || ""),
+    section: normalizeCategoryTitle(row.section || ""),
+    description: cleanCustomerQuoteLineText(row.description || ""),
     quantity: row.quantity ?? "",
     unit: normalizeUnit(row.unit || ""),
     price_mode: priceMode,
@@ -1883,6 +1923,52 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
   };
 }
 
+function pricingReferenceRowStatus(row = {}) {
+  const warnings = [];
+  if (!String(row.section || "").trim()) warnings.push("section required");
+  if (!String(row.description || "").trim()) warnings.push("description required");
+  if (!String(row.unit_hint || "").trim()) warnings.push("unit_hint required");
+  const cost = numberOrNull(row.internal_cost);
+  const markup = numberOrNull(row.markup_multiplier);
+  if (cost === null || cost <= 0) warnings.push("internal_cost must be positive");
+  if (markup === null || markup <= 0) warnings.push("markup_multiplier must be positive");
+  return warnings;
+}
+
+function normalizePricingReferencePreviewItem(item = {}, index = 0) {
+  return {
+    id: safeId(item.id || `${item.section || "item"}-${item.description || index + 1}`, `item-${index + 1}`),
+    section: normalizeCategoryTitle(neutralizeFormulaText(item.section || "")),
+    description: cleanCustomerQuoteLineText(neutralizeFormulaText(item.description || "")),
+    unit_hint: normalizeUnit(neutralizeFormulaText(item.unit_hint || item.unit || "")),
+    internal_cost: item.internal_cost ?? "",
+    markup_multiplier: item.markup_multiplier ?? "",
+    remarks: Array.isArray(item.remarks) ? item.remarks.map(neutralizeFormulaText).join("; ") : neutralizeFormulaText(item.remarks || ""),
+    aliases: Array.isArray(item.aliases) ? item.aliases.map(neutralizeFormulaText).join(" | ") : neutralizeFormulaText(item.aliases || ""),
+    warning: item.warning || item.status || "",
+  };
+}
+
+function refreshPricingReferencePreviewValidity(result = state.pendingPricingReference) {
+  if (!result) return false;
+  const ids = new Set();
+  const duplicateIds = new Set();
+  result.items = (result.items || []).map(normalizePricingReferencePreviewItem);
+  result.items.forEach((item) => {
+    if (ids.has(item.id)) duplicateIds.add(item.id);
+    ids.add(item.id);
+  });
+  const invalid = result.items.flatMap((item) => {
+    const warnings = pricingReferenceRowStatus(item);
+    if (duplicateIds.has(item.id)) warnings.push("duplicate id");
+    item.warning = warnings.join("; ") || item.warning || "OK";
+    return warnings;
+  });
+  result.canSave = !invalid.length && result.items.length > 0 && !(result.errors || []).length;
+  if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = !result.canSave;
+  return result.canSave;
+}
+
 function renderPricingReferencePreview(result = null) {
   if (!elements.pricingReferencePreview) return;
   if (!result) {
@@ -1890,26 +1976,49 @@ function renderPricingReferencePreview(result = null) {
     if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = true;
     return;
   }
+  result.items = (result.items || []).map(normalizePricingReferencePreviewItem);
+  refreshPricingReferencePreviewValidity(result);
   const required = pricingReferenceRequiredColumns();
-  const found = required.filter((column) => !result.missing.includes(column));
-  const canSave = result.canSave ?? (!result.errors.length && result.rowCount > 0);
-  const tone = result.errors.length ? "error" : result.warnings.length || !canSave ? "warn" : "ok";
-  const title = result.errors.length ? "Validation failed" : canSave ? "Validation preview" : "Template preview";
+  const missing = Array.isArray(result.missing) ? result.missing : [];
+  const found = required.filter((column) => !missing.includes(column));
+  const errors = result.errors || [];
+  const warnings = result.warnings || [];
+  const canSave = Boolean(result.canSave);
+  const tone = errors.length ? "error" : warnings.length || !canSave ? "warn" : "ok";
+  const title = errors.length ? "Import preview needs review" : canSave ? "Editable import preview" : "Template preview";
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
     <strong>${title}</strong>
     <ul>
       <li>Layout: ${escapeHtml(result.layout || "normalized pricing reference")}</li>
-      <li>Detected row count: ${result.rowCount}</li>
+      <li>Detected row count: ${result.rowCount ?? result.items.length}</li>
       ${result.exampleRows ? `<li>Example rows ignored: ${result.exampleRows}</li>` : ""}
       <li>Required columns found: ${escapeHtml(found.join(", ") || "None")}</li>
-      <li>Required columns missing: ${escapeHtml(result.missing.join(", ") || "None")}</li>
-      <li>Skipped rows count: ${result.skipped}</li>
+      <li>Required columns missing: ${escapeHtml(missing.join(", ") || "None")}</li>
+      <li>Skipped rows count: ${result.skipped || 0}</li>
     </ul>
-    ${result.errors.concat(result.warnings).map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
+    ${errors.concat(warnings).map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
+    ${result.items.length ? `
+      <div class="pricing-reference-preview-table-wrap">
+        <table class="pricing-reference-preview-table">
+          <thead><tr><th>section</th><th>description</th><th>unit_hint</th><th>internal_cost</th><th>markup_multiplier</th><th>remarks</th><th>aliases</th><th>warning/status</th></tr></thead>
+          <tbody>
+            ${result.items.map((item, index) => `
+              <tr data-preview-row="${index}">
+                ${["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "aliases"].map((field) => `
+                  <td><input class="pricing-preview-input" data-preview-field="${field}" data-preview-row="${index}" value="${escapeHtml(item[field] ?? "")}"></td>
+                `).join("")}
+                <td class="pricing-preview-status">${escapeHtml(item.warning || "OK")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    ` : ""}
   `;
   if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = !canSave;
 }
+
 
 function pricingReferenceModalTax() {
   return {
@@ -2352,15 +2461,17 @@ function includedBasisOutputRows(existingRows = []) {
       if (!["Include", "Custom"].includes(basisTag) && !customPricing) return;
       const text = String(line.text || "").trim();
       if (!text) return;
+      const isBoothSizeInfo = /\bbooth size\b/i.test(text) && !line.pricing_keyword;
+      if (isBoothSizeInfo && !customPricing) return;
       const duplicate = existingRows.some((row) => outputRowCoversBasisLine(row, text))
         || rows.some((row) => outputRowCoversBasisLine(row, text));
       if (duplicate) return;
       rows.push(normalizeOutputRow({
-        section: basisDisplayTitle(section.title || section.id || "Quote Basis"),
+        section: normalizeCategoryTitle(section.title || section.id || "Quote Basis"),
         description: text,
-        quantity: "",
-        unit: "",
-        price_mode: "Priced",
+        quantity: line.quantity || (isBoothSizeInfo ? 1 : ""),
+        unit: normalizeUnit(line.unit || (isBoothSizeInfo ? "lot" : "")),
+        price_mode: isBoothSizeInfo ? "Included" : "Priced",
         unit_price_override: "",
         pricing_keyword: "",
         status: customPricing ? "custom" : "needs-pricing",
@@ -2406,7 +2517,6 @@ function outputRowFromPricingMatch(row = {}) {
 function sortOutputRows(rows = state.outputRows) {
   const copy = rows.map((row, index) => ({ row, index }));
   const compareText = (value) => String(value || "").toLowerCase();
-  if (state.outputSortMode === "manual") return rows;
   copy.sort((a, b) => {
     if (state.outputSortMode === "name") {
       return compareText(a.row.description).localeCompare(compareText(b.row.description)) || a.index - b.index;
@@ -2510,6 +2620,7 @@ function outputRowsValid(rows = state.outputRows) {
     const label = `Row ${index + 1}`;
     if (!String(row.description || "").trim()) errors.push(`${label}: Description is required.`);
     const quantity = numberOrNull(row.quantity);
+    if (!String(row.unit || "").trim()) errors.push(`${label}: Unit is required.`);
     if (row.price_mode !== "Included" && (quantity === null || quantity <= 0)) {
       errors.push(`${label}: Quantity must be greater than 0.`);
     }
@@ -2542,20 +2653,6 @@ function deleteOutputRow(index) {
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
-  syncControlStates();
-}
-
-function moveOutputRow(index, direction) {
-  if (!Number.isInteger(index) || index < 0 || index >= state.outputRows.length) return;
-  const nextIndex = direction === "up" ? index - 1 : direction === "down" ? index + 1 : index;
-  if (nextIndex < 0 || nextIndex >= state.outputRows.length || nextIndex === index) return;
-  const [row] = state.outputRows.splice(index, 1);
-  state.outputRows.splice(nextIndex, 0, row);
-  state.outputSortMode = "manual";
-  state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
-  renderPricingMatches(state.outputRows);
-  renderMatchSummary({ pricing_matches: state.outputRows });
   syncControlStates();
 }
 
@@ -2654,8 +2751,7 @@ function renderPricingMatches(rows = [], options = {}) {
         ${renderOutputEditCell(row, index, "unit_price_override")}
         <td class="amount-cell ${outputCellDisplayValue(row, "amount") === "???" ? "is-pending" : ""}">${escapeHtml(outputCellDisplayValue(row, "amount"))}</td>
         <td class="output-row-actions">
-          ${state.outputSortMode === "manual" ? `<button class="output-move-button" type="button" data-output-move-row="${index}" data-output-move-direction="up" ${index === 0 ? "disabled" : ""}>Up</button><button class="output-move-button" type="button" data-output-move-row="${index}" data-output-move-direction="down" ${index === outputRows.length - 1 ? "disabled" : ""}>Down</button>` : ""}
-          <button class="output-delete-button" type="button" data-output-delete-row="${index}" aria-label="Delete row">Trash</button>
+          <button class="output-delete-button" type="button" data-output-delete-row="${index}" aria-label="Delete row">Del</button>
         </td>
       </tr>
     `)
@@ -2839,12 +2935,6 @@ function openOutputCellEditor(cell) {
 }
 
 function handleOutputCellClick(event) {
-  const moveButton = event.target.closest("[data-output-move-row]");
-  if (moveButton) {
-    event.preventDefault();
-    moveOutputRow(Number(moveButton.dataset.outputMoveRow), moveButton.dataset.outputMoveDirection);
-    return;
-  }
   const deleteButton = event.target.closest("[data-output-delete-row]");
   if (deleteButton) {
     event.preventDefault();
@@ -2974,7 +3064,7 @@ function basisLinePillLabel(line = {}) {
   const tag = normalizeBasisTag(line.tag);
   const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
   if (tag === "Confirm" && confidence !== null) return `${confidence}%`;
-  if (tag === "Confirm") return "Check";
+  if (tag === "Confirm") return "—%";
   return basisTagLabel(tag);
 }
 
@@ -2993,8 +3083,8 @@ function renderBasisLine(section, line, index) {
     <li class="${escapeHtml(rowClasses)}">
       <span class="basis-line-icon" aria-hidden="true"></span>
       <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
-      <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
       ${basisQuantityLabel(line) ? `<span class="basis-quantity-pill">${escapeHtml(basisQuantityLabel(line))}</span>` : ""}
+      <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
@@ -3029,8 +3119,6 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
   }
   const statusText = aiFailed ? "AI failed" : source === "edited" ? "Edited draft" : "Needs review";
   const sections = basisSections(state.quoteBasisSections.length ? state.quoteBasisSections : normalizeQuoteBasisSections(basis));
-  const stats = basisStats(sections);
-  const summaryText = `${stats.proposedRows} proposed quote row${stats.proposedRows === 1 ? "" : "s"}`;
   return `
     <div class="assistant-card quote-basis-card ${aiFailed ? "quote-basis-card-failed" : ""}">
       <div class="quote-basis-header">
@@ -3043,14 +3131,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         </div>
         <div class="quote-basis-source">
           <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog"}</span>
-          <strong>${escapeHtml(summaryText)}</strong>
         </div>
-      </div>
-      <div class="basis-stat-row">
-        <div class="stat-card"><span class="stat-card-value">${stats.sections}</span><span class="stat-card-label">Sections</span></div>
-        <div class="stat-card"><span class="stat-card-value">${stats.scopeLines}</span><span class="stat-card-label">Scope lines</span></div>
-        <div class="stat-card"><span class="stat-card-value">${stats.proposedRows}</span><span class="stat-card-label">Proposed quote rows</span></div>
-        <div class="stat-card"><span class="stat-card-value">${stats.needsReview}</span><span class="stat-card-label">Needs review / open decisions</span></div>
       </div>
       ${renderBasisTagLegend()}
       <div class="basis-review-grid">
@@ -3118,9 +3199,10 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   let changed = false;
   section.lines = (section.lines || []).map((line) => {
     const currentTag = normalizeBasisTag(line.tag);
-    if (currentTag === "Custom" || currentTag === nextTag) return line;
+    if (currentTag === nextTag) return line;
+    if (nextTag === "Include" && currentTag === "Custom") return line;
     changed = true;
-    return { ...line, tag: nextTag };
+    return { ...line, tag: nextTag, ...(currentTag === "Custom" ? { custom_pricing: true } : {}) };
   });
   if (!changed) return;
   state.quoteBasisSections = sections;
@@ -4721,6 +4803,18 @@ function wireEvents() {
     const result = await validatePricingReferenceFile(file);
     state.pendingPricingReference = result;
     renderPricingReferencePreview(result);
+  });
+  elements.pricingReferencePreview?.addEventListener("input", (event) => {
+    const input = event.target.closest("[data-preview-field]");
+    if (!input || !state.pendingPricingReference?.items) return;
+    const rowIndex = Number(input.dataset.previewRow);
+    const field = input.dataset.previewField;
+    if (!Number.isInteger(rowIndex) || !state.pendingPricingReference.items[rowIndex]) return;
+    state.pendingPricingReference.items[rowIndex][field] = input.value;
+    refreshPricingReferencePreviewValidity(state.pendingPricingReference);
+    const row = input.closest("tr");
+    const status = row?.querySelector(".pricing-preview-status");
+    if (status) status.textContent = state.pendingPricingReference.items[rowIndex].warning || "OK";
   });
   elements.pricingReferenceCancelButton.addEventListener("click", closePricingReferenceModal);
   elements.pricingReferenceCloseButton.addEventListener("click", closePricingReferenceModal);

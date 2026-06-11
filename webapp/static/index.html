@@ -502,13 +502,6 @@
                     <p>Confirm the quotation basis to review pricing rows before Excel download.</p>
                   </div>
                   <div class="message-list pricing-review-messages" id="pricingReviewMessages"></div>
-                  <div class="output-header-card">
-                    <div>
-                      <h3>Output</h3>
-                      <p>Review editable quotation rows created from the confirmed Quote Basis.</p>
-                      <span class="output-context-line">Source: confirmed Quote Basis and selected Pricing Reference.</span>
-                    </div>
-                  </div>
                   <div class="match-summary" id="matchSummary"></div>
                   <div class="table-wrap output-table-wrap" id="pricingTableWrap">
                     <div class="output-table-toolbar">
@@ -517,12 +510,20 @@
                           <option value="category">Category A-Z</option>
                           <option value="name">Name A-Z</option>
                           <option value="category_name" selected>Category + Name</option>
-                          <option value="manual">Manual</option>
                         </select>
                       </label>
                     </div>
                     <p class="output-edit-hint">Click on any field in the table below to change it.<br>Unit price accepts a number or "Included".</p>
                     <table class="match-table output-match-table">
+                      <colgroup>
+                        <col class="output-col-section">
+                        <col class="output-col-description">
+                        <col class="output-col-quantity">
+                        <col class="output-col-unit">
+                        <col class="output-col-unit-price">
+                        <col class="output-col-amount">
+                        <col class="output-col-actions">
+                      </colgroup>
                       <thead>
                         <tr>
                           <th>Section</th>
@@ -634,7 +635,8 @@
               </label>
             </div>
             <label>
-              Workbook/catalog upload
+              Pricing catalog upload
+              <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). AI will normalize it into the required pricing reference format for review before saving.</span>
               <span class="file-picker-control">
                 <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
                 <span class="secondary-button file-picker-button">Choose File</span>
