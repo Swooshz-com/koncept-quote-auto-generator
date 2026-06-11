@@ -49,9 +49,9 @@
       "sale_unit_price": 28.5
     },
     {
-      "id": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
+      "id": "floor-design.100mm-raised-platform-with-aluminum-edging",
       "section": "Floor Design",
-      "description": "m2 100mm raised platfrom with aluminum edging",
+      "description": "m2 100mm raised platform with aluminum edging",
       "default_quantity": null,
       "default_quote_amount": null,
       "internal_cost": 40.0,
@@ -63,11 +63,11 @@
       "extra_values": [],
       "unit_hint": "sqm",
       "aliases": [
-        "m2 100mm raised platfrom with aluminum edging",
-        "100mm raised platfrom with aluminum edging",
+        "m2 100mm raised platform with aluminum edging",
+        "100mm raised platform with aluminum edging",
         "Platform ONLY",
-        "Floor Design 100mm raised platfrom with aluminum edging",
-        "100mm raised platfrom with aluminum edging sqm"
+        "Floor Design 100mm raised platform with aluminum edging",
+        "100mm raised platform with aluminum edging sqm"
       ],
       "sale_unit_price": 60.0
     },
@@ -525,9 +525,9 @@
       "sale_unit_price": 840.0
     },
     {
-      "id": "booth-structure.wooden-construct-low-parition-ready-in-painted-finished",
+      "id": "booth-structure.wooden-construct-low-partition-ready-in-painted-finished",
       "section": "Booth Structure",
-      "description": "nos. wooden construct low parition ready in painted finished",
+      "description": "nos. wooden construct low partition ready in painted finished",
       "default_quantity": null,
       "default_quote_amount": null,
       "internal_cost": 180.0,
@@ -540,19 +540,19 @@
       "extra_values": [],
       "unit_hint": "nos",
       "aliases": [
-        "nos. wooden construct low parition ready in painted finished",
-        "wooden construct low parition ready in painted finished",
+        "nos. wooden construct low partition ready in painted finished",
+        "wooden construct low partition ready in painted finished",
         "Low dividing Partition",
         "PAINTED",
-        "Booth Structure wooden construct low parition ready in painted finished",
-        "wooden construct low parition ready in painted finished nos"
+        "Booth Structure wooden construct low partition ready in painted finished",
+        "wooden construct low partition ready in painted finished nos"
       ],
       "sale_unit_price": 270.0
     },
     {
-      "id": "booth-structure.wooden-construct-low-parition-ready-in-laminated-finished",
+      "id": "booth-structure.wooden-construct-low-partition-ready-in-laminated-finished",
       "section": "Booth Structure",
-      "description": "nos. wooden construct low parition ready in laminated finished",
+      "description": "nos. wooden construct low partition ready in laminated finished",
       "default_quantity": null,
       "default_quote_amount": null,
       "internal_cost": 280.0,
@@ -565,19 +565,19 @@
       "extra_values": [],
       "unit_hint": "nos",
       "aliases": [
-        "nos. wooden construct low parition ready in laminated finished",
-        "wooden construct low parition ready in laminated finished",
+        "nos. wooden construct low partition ready in laminated finished",
+        "wooden construct low partition ready in laminated finished",
         "Low dividing Partition",
         "LAMINATED",
-        "Booth Structure wooden construct low parition ready in laminated finished",
-        "wooden construct low parition ready in laminated finished nos"
+        "Booth Structure wooden construct low partition ready in laminated finished",
+        "wooden construct low partition ready in laminated finished nos"
       ],
       "sale_unit_price": 420.0
     },
     {
-      "id": "booth-structure.1mw-x-2-5mh-sytem-profile-partition-with-clear-acrylic-panel",
+      "id": "booth-structure.1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel",
       "section": "Booth Structure",
-      "description": "m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
+      "description": "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
       "default_quantity": null,
       "default_quote_amount": null,
       "internal_cost": 185.0,
@@ -590,12 +590,12 @@
       "extra_values": [],
       "unit_hint": "m length",
       "aliases": [
-        "m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
-        "1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
+        "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "1mW x 2.5mH System Profile partition with clear acrylic panel",
         "Acrylic System Partition",
         "Octanorm",
-        "Booth Structure 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
-        "1mW x 2.5mH Sytem Profile partition with clear acrylic panel m length"
+        "Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "1mW x 2.5mH System Profile partition with clear acrylic panel m length"
       ],
       "sale_unit_price": 277.5
     },
@@ -1243,9 +1243,9 @@
       "sale_unit_price": 105.0
     },
     {
-      "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-dowlight-3",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-3",
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
-      "description": "nos. LED recess dowlight 3\"",
+      "description": "nos. LED recess downlight 3\"",
       "default_quantity": null,
       "default_quote_amount": null,
       "internal_cost": 30.0,
@@ -1257,18 +1257,18 @@
       "extra_values": [],
       "unit_hint": "nos",
       "aliases": [
-        "nos. LED recess dowlight 3\"",
-        "LED recess dowlight 3\"",
+        "nos. LED recess downlight 3\"",
+        "LED recess downlight 3\"",
         "Downlight",
-        "Electrical Fittings ( Excluding connection fees by Organiser) LED recess dowlight 3\"",
-        "LED recess dowlight 3\" nos"
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 3\"",
+        "LED recess downlight 3\" nos"
       ],
       "sale_unit_price": 45.0
     },
     {
-      "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-dowlight-6",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-6",
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
-      "description": "nos. LED recess dowlight 6\"",
+      "description": "nos. LED recess downlight 6\"",
       "default_quantity": null,
       "default_quote_amount": null,
       "internal_cost": 35.0,
@@ -1280,11 +1280,11 @@
       "extra_values": [],
       "unit_hint": "nos",
       "aliases": [
-        "nos. LED recess dowlight 6\"",
-        "LED recess dowlight 6\"",
+        "nos. LED recess downlight 6\"",
+        "LED recess downlight 6\"",
         "Downlight",
-        "Electrical Fittings ( Excluding connection fees by Organiser) LED recess dowlight 6\"",
-        "LED recess dowlight 6\" nos"
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 6\"",
+        "LED recess downlight 6\" nos"
       ],
       "sale_unit_price": 52.5
     },

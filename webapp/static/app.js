@@ -91,8 +91,8 @@ const BASIS_FIELDS = [
 const BASIS_TAGS = [
   ["Include", "Include", "Confirmed in the draft"],
   ["Exclude", "Exclude", "Not included unless requested"],
-  ["Custom", "Custom", "Not found in pricing reference"],
-  ["Confirm", "Confidence", "AI confidence before your decision"],
+  ["Custom", "AI Proposal", "Not found in pricing reference"],
+  ["Confirm", "Confirm", "Needs include, exclude, or revision"],
 ];
 
 const state = {
@@ -133,6 +133,8 @@ const state = {
   pricingIssues: [],
   activeJob: null,
   pendingPricingReference: null,
+  pricingReferenceImportBusy: false,
+  pricingReferenceImportToken: "",
   permissions: {
     role: "viewer",
     canManageSettings: false,
@@ -151,6 +153,9 @@ const state = {
     sectionId: "",
     lineIndex: -1,
     line: "",
+    quantity: "",
+    unit: "",
+    quantityLabel: "",
     proposal: null,
   },
 };
@@ -218,7 +223,6 @@ const elements = {
   resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
   clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
-  discussQuoteButton: qs("#discussQuoteButton"),
   resetQuoteBasisButton: qs("#resetQuoteBasisButton"),
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
@@ -315,15 +319,68 @@ function normalizeCategoryTitle(value = "") {
   const text = basisDisplayTitle(value);
   const compact = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
   if (!compact) return "General";
-  if (/\b(counter|counters|cabinet|cabinets|cabinetry|reception counter|storage cabinet|display counter|lockable cabinet)\b/.test(compact)) return "Counters & Cabinets";
+  if (/\b(counter|counters|cabinet|cabinets|cabinetry|reception counter|storage cabinet|display counter|lockable cabinet)\b/.test(compact)) return "COUNTERS AND CABINETS";
   if (/\b(rigging|overhead structure|aluminium box truss|aluminum box truss|box truss|truss|suspended structure|hanging frame|hanging structure)\b/.test(compact)) return "Hanging Structure";
-  if (/\b(platform|flooring|floor|carpet|raised platform|vinyl flooring)\b/.test(compact)) return "Flooring / Platform";
-  if (/\b(graphic|graphics|signage|sign|logo|lightbox|print|printed|vinyl)\b/.test(compact)) return "Graphics / Signage";
-  if (/\b(furniture|decor|plant|plants|chair|table|rental item|loose rental)\b/.test(compact)) return "Furniture / Decor";
-  if (/\b(electrical|power|socket|light|lighting|av|audio|visual|screen|monitor|tv)\b/.test(compact)) return "Electrical / AV";
+  if (/\b(platform|flooring|floor|carpet|raised platform|vinyl flooring)\b/.test(compact)) return "Floor Design";
+  if (/\b(graphic|graphics|signage|sign|logo|lightbox|print|printed|vinyl)\b/.test(compact)) return "Graphics";
+  if (/\b(furniture|chair|table)\b/.test(compact)) return "Furniture Rental";
+  if (/\b(decor|plant|plants|rental item|loose rental)\b/.test(compact)) return "Rental Items";
+  if (/\b(electrical|power|socket|light|lighting|spotlight)\b/.test(compact)) return "Electrical Fittings ( Excluding connection fees by Organiser)";
+  if (/\b(av|audio|visual|screen|monitor|tv)\b/.test(compact)) return "AV Equipment Rental Items";
+  if (/\b(water|sink|tap|plumbing)\b/.test(compact)) return "Water Connection";
+  if (/\b(coffee|tea|beverage|drink)\b/.test(compact)) return "Coffee / Tea (Subject to approval by Venue owner and Organiser)";
   const boothTerms = new Set(["booth", "booth dimension", "booth dimensions", "booth structure", "booth structures", "structure", "structures", "walls", "wall", "partitions", "partition", "fascia", "system profile partitions", "entrance frame", "curved frame", "back wall", "side wall", "header fascia structure", "header"]);
   if (boothTerms.has(compact) || /\b(booth|wall|walls|partition|partitions|fascia|entrance frame|curved frame|back wall|side wall|system profile|header)\b/.test(compact)) return "Booth Structure";
   return text;
+}
+
+function sectionTitleKey(value = "") {
+  return basisDisplayTitle(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function referenceSectionTitleAliases(value = "") {
+  const title = basisDisplayTitle(value);
+  if (!title) return [];
+  const aliasesByTitle = {
+    "floor design": ["Flooring / Platform", "Platform / Flooring", "Flooring", "Platform"],
+    "counters and cabinets": ["Counters & Cabinets", "Counters", "Cabinets"],
+    "graphics": ["Graphics / Signage", "Signage"],
+    "furniture rental": ["Furniture / Decor", "Furniture", "Furniture Decor"],
+    "rental items": ["Decor", "Plant", "Plants", "Loose Rental", "Rental Item"],
+    "av equipment rental items": ["Electrical / AV", "AV", "Audio Visual", "Screens", "Monitor", "TV"],
+    "electrical fittings excluding connection fees by organiser": ["Electrical / AV", "Electrical", "Lighting", "Lights", "Power"],
+    "booth structure": ["Surfaces / Structures", "Walls / Structures", "Walls", "Partitions", "Fascia"],
+  };
+  const aliases = new Set([title, normalizeCategoryTitle(title)]);
+  (aliasesByTitle[sectionTitleKey(title)] || []).forEach((alias) => aliases.add(alias));
+  return Array.from(aliases).filter((alias) => basisDisplayTitle(alias));
+}
+
+function exactPricingReferenceSectionTitle(value = "") {
+  const text = basisDisplayTitle(value);
+  if (!text) return "";
+  const appState = typeof state === "object" && state ? state : {};
+  const references = Array.isArray(appState.pricingReferences) ? appState.pricingReferences : [];
+  const selectedId = String(appState.pricingReferenceId || "").trim();
+  const selectedSource = String(appState.pricingReferenceSource || "").trim();
+  const reference = references.find((item) => String(item?.id || "") === selectedId && (!selectedSource || String(item?.source || "") === selectedSource))
+    || references.find((item) => String(item?.id || "") === selectedId)
+    || null;
+  const items = Array.isArray(reference?.items) ? reference.items : [];
+  const lookup = new Map();
+  items.forEach((item) => {
+    const title = basisDisplayTitle(item?.reference_section || item?.source_section || item?.section || "");
+    if (!title) return;
+    referenceSectionTitleAliases(title).forEach((candidate) => {
+      const key = sectionTitleKey(candidate);
+      if (key && !lookup.has(key)) lookup.set(key, title);
+    });
+  });
+  return referenceSectionTitleAliases(text).map(sectionTitleKey).map((key) => lookup.get(key)).find(Boolean) || "";
+}
+
+function normalizeQuoteBasisTitle(value = "") {
+  return exactPricingReferenceSectionTitle(value) || normalizeCategoryTitle(value);
 }
 
 function cleanCustomerQuoteLineText(value = "") {
@@ -1741,6 +1798,11 @@ function isCustomPricingBasisLine(line = {}) {
     || normalizeBasisTag(line.pricing_tag || line.pricing_status) === "Custom";
 }
 
+function isPendingAiProposalLine(line = {}) {
+  const tag = normalizeBasisTag(line.tag);
+  return isCustomPricingBasisLine(line) && (tag === "Confirm" || (tag === "Custom" && !line.custom_confirmed));
+}
+
 function normalizeConfidence(value) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(String(value).replace("%", "").trim());
@@ -1779,10 +1841,13 @@ function normalizeBasisLines(line = "") {
       const next = { tag: normalizeBasisTag(parsed.tag), text: parsed.text };
       if (line.id) next.id = String(line.id);
       if (line.source_line_item_id) next.source_line_item_id = String(line.source_line_item_id);
+      if (line.pricing_keyword) next.pricing_keyword = String(line.pricing_keyword);
+      if (line.catalog_description) next.catalog_description = cleanCustomerQuoteLineText(line.catalog_description);
       if (line.quantity !== undefined && line.quantity !== null && String(line.quantity).trim() !== "") next.quantity = line.quantity;
       if (line.unit) next.unit = normalizeUnit(line.unit);
       if (confidence !== null) next.confidence = confidence;
       if (hasCustomPricing || normalizeBasisTag(parsed.tag) === "Custom") next.custom_pricing = true;
+      if (line.custom_confirmed) next.custom_confirmed = true;
       return next;
     });
   }
@@ -1802,7 +1867,7 @@ function normalizeQuoteBasisSections(value = {}) {
   if (rawSections) {
     return rawSections
       .map((section, index) => {
-        const title = normalizeCategoryTitle(section?.title || "Section") || "Section";
+        const title = normalizeQuoteBasisTitle(section?.title || "Section") || "Section";
         const id = safeId(section?.id && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(section.id)) ? section.id : title, `section-${index + 1}`);
         const rawLines = Array.isArray(section?.lines) ? section.lines : splitLines(section?.text || "");
         const lines = rawLines.flatMap(normalizeBasisLines).filter((line) => line.text);
@@ -1875,7 +1940,7 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
   if (skipped) warnings.push(`${skipped} row${skipped === 1 ? "" : "s"} skipped during sanitizing.`);
   return {
     sourceName,
-    items,
+    items: sortPricingReferencePreviewItems(items),
     rowCount: items.length,
     headers,
     missing,
@@ -1886,6 +1951,16 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
     exampleRows: 0,
     canSave: !errors.length && items.length > 0,
   };
+}
+
+function sortPricingReferencePreviewItems(items = []) {
+  return [...items].sort((a, b) => {
+    const sectionCompare = String(a?.section || "").toLowerCase().localeCompare(String(b?.section || "").toLowerCase());
+    if (sectionCompare) return sectionCompare;
+    const descriptionCompare = String(a?.description || "").toLowerCase().localeCompare(String(b?.description || "").toLowerCase());
+    if (descriptionCompare) return descriptionCompare;
+    return String(a?.id || "").toLowerCase().localeCompare(String(b?.id || "").toLowerCase());
+  });
 }
 
 function pricingReferenceRowStatus(row = {}) {
@@ -1900,6 +1975,59 @@ function pricingReferenceRowStatus(row = {}) {
   return warnings;
 }
 
+function pricingReferenceSaveBlockReason(result = state.pendingPricingReference) {
+  if (state.pricingReferenceImportBusy) return "Import preview is still being prepared.";
+  if (!result) return "Upload a pricing catalog file before saving.";
+  const errors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
+  if (errors.length) return errors.join(" ");
+  if (!(result.items || []).length) return "Add at least one valid pricing row before saving.";
+  if (!result.canSave) return "Fix the highlighted pricing-reference rows before saving.";
+  return "";
+}
+
+function setPricingReferenceModalBusyState(busy = false, reason = "") {
+  const disabledTitle = busy ? reason || "Import preview is still being prepared." : "";
+  if (elements.pricingReferenceModal) {
+    elements.pricingReferenceModal.classList.toggle("is-busy", busy);
+  }
+  [elements.pricingReferenceCloseButton, elements.pricingReferenceCancelButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = busy;
+    button.title = disabledTitle;
+    button.setAttribute("aria-disabled", String(busy));
+  });
+  if (elements.pricingReferenceFile) {
+    elements.pricingReferenceFile.disabled = busy;
+  }
+  if (elements.pricingReferenceTemplateButton) {
+    elements.pricingReferenceTemplateButton.setAttribute("aria-disabled", String(busy));
+    elements.pricingReferenceTemplateButton.setAttribute("tabindex", busy ? "-1" : "0");
+    elements.pricingReferenceTemplateButton.title = disabledTitle;
+  }
+}
+
+function setPricingReferenceSaveButtonState(options = {}) {
+  const button = elements.pricingReferenceSaveButton;
+  if (!button) return;
+  const busy = Boolean(options.busy);
+  const canSave = Boolean(options.canSave) && !busy;
+  const disabled = busy || !canSave;
+  const reason = String(options.reason || "").trim();
+  button.disabled = disabled;
+  button.textContent = busy ? "Importing..." : "Save Reference";
+  button.title = disabled ? reason : "";
+  button.setAttribute("aria-disabled", String(disabled));
+  setPricingReferenceModalBusyState(busy, reason);
+}
+
+function blockPricingReferenceBusyInteraction(event) {
+  if (!state.pricingReferenceImportBusy) return;
+  const blockedControl = event.target.closest("button, a, label, input, select, textarea, [role='button'], [data-pricing-reference-close]");
+  if (!blockedControl) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function normalizePricingReferencePreviewItem(item = {}, index = 0) {
   return {
     id: safeId(item.id || `${item.section || "item"}-${item.description || index + 1}`, `item-${index + 1}`),
@@ -1910,6 +2038,7 @@ function normalizePricingReferencePreviewItem(item = {}, index = 0) {
     markup_multiplier: item.markup_multiplier ?? "",
     remarks: Array.isArray(item.remarks) ? item.remarks.map(neutralizeFormulaText).join("; ") : neutralizeFormulaText(item.remarks || ""),
     aliases: Array.isArray(item.aliases) ? item.aliases.map(neutralizeFormulaText).join(" | ") : neutralizeFormulaText(item.aliases || ""),
+    visual_references: Array.isArray(item.visual_references) ? item.visual_references : [],
     warning: item.warning || item.status || "",
   };
 }
@@ -1918,7 +2047,7 @@ function refreshPricingReferencePreviewValidity(result = state.pendingPricingRef
   if (!result) return false;
   const ids = new Set();
   const duplicateIds = new Set();
-  result.items = (result.items || []).map(normalizePricingReferencePreviewItem);
+  result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
   result.items.forEach((item) => {
     if (ids.has(item.id)) duplicateIds.add(item.id);
     ids.add(item.id);
@@ -1930,7 +2059,11 @@ function refreshPricingReferencePreviewValidity(result = state.pendingPricingRef
     return warnings;
   });
   result.canSave = !invalid.length && result.items.length > 0 && !(result.errors || []).length;
-  if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = !result.canSave;
+  setPricingReferenceSaveButtonState({
+    canSave: result.canSave,
+    busy: state.pricingReferenceImportBusy,
+    reason: pricingReferenceSaveBlockReason(result),
+  });
   return result.canSave;
 }
 
@@ -1938,10 +2071,27 @@ function renderPricingReferencePreview(result = null) {
   if (!elements.pricingReferencePreview) return;
   if (!result) {
     elements.pricingReferencePreview.innerHTML = "";
-    if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = true;
+    setPricingReferenceSaveButtonState({ canSave: false, reason: pricingReferenceSaveBlockReason(null) });
     return;
   }
-  result.items = (result.items || []).map(normalizePricingReferencePreviewItem);
+  if (String(result.layout || "") === "importing") {
+    state.pendingPricingReference = null;
+    elements.pricingReferencePreview.className = "pricing-reference-preview importing";
+    elements.pricingReferencePreview.innerHTML = `
+      <div class="pricing-reference-import-overlay" role="status" aria-live="polite">
+        <span class="pricing-reference-spinner" aria-hidden="true"></span>
+        <strong>Preparing import preview</strong>
+        <p>Please wait while AI reads the file and builds editable pricing rows.</p>
+      </div>
+    `;
+    setPricingReferenceSaveButtonState({
+      canSave: false,
+      busy: true,
+      reason: "Import preview is still being prepared.",
+    });
+    return;
+  }
+  result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
   refreshPricingReferencePreviewValidity(result);
   const required = pricingReferenceRequiredColumns();
   const missing = Array.isArray(result.missing) ? result.missing : [];
@@ -1982,7 +2132,11 @@ function renderPricingReferencePreview(result = null) {
       </div>
     ` : ""}
   `;
-  if (elements.pricingReferenceSaveButton) elements.pricingReferenceSaveButton.disabled = !canSave;
+  setPricingReferenceSaveButtonState({
+    canSave,
+    busy: state.pricingReferenceImportBusy,
+    reason: pricingReferenceSaveBlockReason(result),
+  });
 }
 
 
@@ -2020,35 +2174,30 @@ async function validatePricingReferenceFile(file) {
 
 async function downloadPricingReferenceTemplate(event) {
   event.preventDefault();
+  if (state.pricingReferenceImportBusy) {
+    return;
+  }
+  state.pendingPricingReference = null;
+  state.pricingReferenceImportBusy = false;
+  state.pricingReferenceImportToken = "";
+  renderPricingReferencePreview(null);
+  const templateUrl = `/api/pricing-reference/template.xlsx?template=examples-v3&t=${Date.now()}`;
   try {
-    const templateUrl = `/api/pricing-reference/template.xlsx?template=examples-v3&t=${Date.now()}`;
-    const response = await fetch(templateUrl, { cache: "no-store" });
-    if (!response.ok) {
-      renderPricingReferencePreview({
-        ...pricingReferenceValidationResult([], [], 0, "swooshz-pricing-reference-template.xlsx"),
-        errors: [`Template download failed with server status ${response.status}.`],
-      });
-      return;
-    }
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    link.href = templateUrl;
     link.download = "swooshz-pricing-reference-template.xlsx";
     document.body.appendChild(link);
     link.click();
     link.remove();
-    window.URL.revokeObjectURL(url);
   } catch (error) {
-    renderPricingReferencePreview({
-      ...pricingReferenceValidationResult([], [], 0, "swooshz-pricing-reference-template.xlsx"),
-      errors: [`Template download failed: ${error.message || String(error)}`],
-    });
+    window.location.href = templateUrl;
   }
 }
 
 function openPricingReferenceModal() {
   state.pendingPricingReference = null;
+  state.pricingReferenceImportBusy = false;
+  state.pricingReferenceImportToken = "";
   if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
   if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
   if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
@@ -2060,13 +2209,25 @@ function openPricingReferenceModal() {
 }
 
 function closePricingReferenceModal() {
+  if (state.pricingReferenceImportBusy) {
+    return;
+  }
   elements.pricingReferenceModal.classList.remove("is-open");
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
+  state.pricingReferenceImportBusy = false;
+  state.pricingReferenceImportToken = "";
 }
 
 async function savePricingReferenceFromModal(event) {
   event.preventDefault();
+  if (state.pricingReferenceImportBusy) {
+    setPricingReferenceSaveButtonState({
+      busy: true,
+      reason: "Import preview is still being prepared.",
+    });
+    return;
+  }
   const name = elements.pricingReferenceName.value.trim();
   const tax = pricingReferenceModalTax();
   const result = state.pendingPricingReference;
@@ -2304,6 +2465,21 @@ function updateDownloadButton() {
   elements.sideDownloadButton.textContent = "Download Excel";
 }
 
+function downloadCurrentExcelFile(file = state.downloadFile) {
+  if (!file?.url) return false;
+  try {
+    const link = document.createElement("a");
+    link.href = file.url;
+    link.download = file.name || "quotation.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    window.location.href = file.url;
+  }
+  return true;
+}
+
 function pricingMatchStatus(row = {}) {
   const status = typeof row === "string" ? row : row.status;
   return String(status || "").trim().toLowerCase();
@@ -2406,14 +2582,40 @@ function outputRowCoversBasisLine(row = {}, lineText = "") {
   return overlap / Math.min(basisWords.length, 10) >= 0.6;
 }
 
+function basisLineAllowsOutput(line = {}) {
+  const basisTag = normalizeBasisTag(line.tag);
+  if (basisTag === "Exclude" || basisTag === "Confirm") return false;
+  if (basisTag === "Include") return true;
+  return isCustomPricingBasisLine(line) && Boolean(line.custom_confirmed);
+}
+
+function outputRowAllowedByBasis(row = {}) {
+  const reviewedSections = normalizeQuoteBasisSections(state.quoteBasisSections);
+  const hasReviewedBasis = reviewedSections.some((section) => (section.lines || []).length > 0);
+  const sections = hasReviewedBasis ? reviewedSections : basisSections(state.quoteBasisSections);
+  const sourceId = String(row.source_basis_line_id || "").trim();
+  let matched = false;
+  let allowed = false;
+  sections.forEach((section) => {
+    (section.lines || []).forEach((line) => {
+      const lineIds = [line.id, line.source_line_item_id].map((value) => String(value || "").trim()).filter(Boolean);
+      const sourceMatch = sourceId && lineIds.includes(sourceId);
+      const keywordMatch = row.pricing_keyword && line.pricing_keyword && String(row.pricing_keyword) === String(line.pricing_keyword);
+      const textMatch = outputRowCoversBasisLine(row, line.text || "") || outputRowCoversBasisLine(row, line.catalog_description || "");
+      if (!sourceMatch && !keywordMatch && !textMatch) return;
+      matched = true;
+      allowed = allowed || basisLineAllowsOutput(line);
+    });
+  });
+  return hasReviewedBasis ? matched && allowed : !matched || allowed;
+}
+
 function includedBasisOutputRows(existingRows = []) {
   const rows = [];
   basisSections(state.quoteBasisSections).forEach((section) => {
     (section.lines || []).forEach((line) => {
-      const basisTag = normalizeBasisTag(line.tag);
       const customPricing = isCustomPricingBasisLine(line);
-      if (basisTag === "Exclude") return;
-      if (!["Include", "Custom"].includes(basisTag) && !customPricing) return;
+      if (!basisLineAllowsOutput(line)) return;
       const text = String(line.text || "").trim();
       if (!text) return;
       const isBoothSizeInfo = /\bbooth size\b/i.test(text) && !line.pricing_keyword;
@@ -2428,7 +2630,8 @@ function includedBasisOutputRows(existingRows = []) {
         unit: normalizeUnit(line.unit || (isBoothSizeInfo ? "lot" : "")),
         price_mode: isBoothSizeInfo ? "Included" : "Priced",
         unit_price_override: "",
-        pricing_keyword: "",
+        pricing_keyword: line.pricing_keyword || "",
+        source_basis_line_id: line.id || line.source_line_item_id || "",
         status: customPricing ? "custom" : "needs-pricing",
       }));
     });
@@ -2451,15 +2654,30 @@ function outputRowFromLineItem(item = {}) {
   });
 }
 
+function outputQuantityPartsFromPricingMatch(row = {}) {
+  const rawQuantity = String(row.quantity || "").trim();
+  const explicitUnit = normalizeUnit(row.unit || "");
+  if (!rawQuantity) return { quantity: "", unit: explicitUnit };
+  if (explicitUnit) {
+    const escapedUnit = explicitUnit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const quantity = rawQuantity.replace(new RegExp(`\\s+${escapedUnit}$`, "i"), "").trim();
+    return { quantity: quantity || rawQuantity, unit: explicitUnit };
+  }
+  const match = rawQuantity.match(/^(-?\d+(?:\.\d+)?)\s+(.+)$/);
+  if (match) return { quantity: match[1], unit: normalizeUnit(match[2]) };
+  return { quantity: rawQuantity, unit: "" };
+}
+
 function outputRowFromPricingMatch(row = {}) {
   const status = pricingMatchStatus(row);
   const unitPrice = row.unit_price || row.unit_price_override || "";
   const amount = String(row.amount || "").trim();
+  const quantityParts = outputQuantityPartsFromPricingMatch(row);
   return normalizeOutputRow({
     section: row.section,
     description: row.catalog_description || row.description,
-    quantity: String(row.quantity || "").replace(/\s+[A-Za-z]+$/, ""),
-    unit: row.unit || String(row.quantity || "").match(/\s+([A-Za-z]+)$/)?.[1] || "",
+    quantity: quantityParts.quantity,
+    unit: quantityParts.unit,
     price_mode: status === "included" ? "Included" : "Priced",
     unit_price_override: status === "manual-price" ? unitPrice : "",
     catalog_unit_price: status === "manual-price" ? "" : unitPrice,
@@ -2516,10 +2734,13 @@ function outputEditorHtml(row = {}, index = 0, field = "") {
     `;
   }
   if (field === "unit_price_override") {
+    const includedButton = row.price_mode !== "Included"
+      ? `<button class="output-included-button" type="button" data-output-included-action="true" data-output-row="${index}" aria-label="Mark row ${index + 1} unit price as included" title="Mark unit price as Included">Included</button>`
+      : "";
     return `
       <span class="output-unit-price-editor">
         <input class="output-cell-input is-editing" data-output-editor-field="${field}" data-output-row="${index}" value="${escapeHtml(value)}" inputmode="decimal">
-        <button class="output-included-button" type="button" data-output-included-action="true" data-output-row="${index}">Included</button>
+        ${includedButton}
       </span>
     `;
   }
@@ -2530,17 +2751,32 @@ function outputEditorHtml(row = {}, index = 0, field = "") {
 function renderOutputEditCell(row = {}, index = 0, field = "", extraClass = "") {
   const display = outputCellDisplayValue(row, field);
   const pending = display === "???";
+  const unitPriceCell = field === "unit_price_override";
+  const className = [
+    "output-edit-cell",
+    extraClass,
+    unitPriceCell ? "output-unit-price-cell" : "",
+    pending ? "is-pending" : "",
+  ].filter(Boolean).join(" ");
+  const cellBody = unitPriceCell
+    ? `<span class="output-unit-price-content"><span class="output-cell-text">${escapeHtml(display)}</span></span>`
+    : `<span class="output-cell-text">${escapeHtml(display)}</span>`;
   return `
-    <td class="output-edit-cell ${extraClass} ${pending ? "is-pending" : ""}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Click to edit">
-      <span class="output-cell-text">${escapeHtml(display)}</span>
+    <td class="${className}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Click to edit">
+      ${cellBody}
     </td>
   `;
 }
 
 function ensureOutputRowsFromLineItems() {
   if (state.outputRows.length) return;
+  refreshOutputRowsFromLineItems();
+}
+
+function refreshOutputRowsFromLineItems() {
   const generatedRows = state.lineItems.map(outputRowFromLineItem);
-  state.outputRows = sortOutputRows([...generatedRows, ...includedBasisOutputRows(generatedRows)]);
+  const allowedRows = generatedRows.filter(outputRowAllowedByBasis);
+  state.outputRows = sortOutputRows([...allowedRows, ...includedBasisOutputRows(allowedRows)]);
 }
 
 function snapshotOutputRows(rows = state.outputRows) {
@@ -2643,6 +2879,12 @@ function matchSummaryStats(rows = []) {
   return { sections, pricedRows, needsManualInput, total, totalPending };
 }
 
+function formatSubtotalValue(stats = {}) {
+  const total = Number(stats.total || 0);
+  const totalText = `SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return stats.totalPending ? `${totalText} + ???` : totalText;
+}
+
 function renderMatchSummary(result = {}) {
   const rows = result.pricing_matches || [];
   if (!rows.length) {
@@ -2650,9 +2892,7 @@ function renderMatchSummary(result = {}) {
     return;
   }
   const stats = matchSummaryStats(rows);
-  const totalValue = stats.totalPending
-    ? "???"
-    : `SGD ${stats.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const totalValue = formatSubtotalValue(stats);
   elements.matchSummary.innerHTML = `
     <div class="stat-card-row output-stat-card-row">
       <div class="stat-card">
@@ -2832,6 +3072,7 @@ function handleOutputRowEdit(event) {
 
 function commitOutputEditor(editor) {
   if (!editor || !editor.dataset.outputEditorField) return;
+  if (editor.isConnected === false) return;
   const index = Number(editor.dataset.outputRow);
   const field = editor.dataset.outputEditorField;
   if (!Number.isInteger(index) || index < 0 || !state.outputRows[index] || !field) return;
@@ -2839,7 +3080,7 @@ function commitOutputEditor(editor) {
   let nextRow = { ...currentRow, [field]: editor.value };
   if (field === "unit_price_override") {
     const value = String(editor.value || "").trim();
-    if (value.toLowerCase() === "included") {
+    if (value.toLowerCase() === "included" || (currentRow.price_mode === "Included" && value === "")) {
       nextRow = { ...currentRow, price_mode: "Included", unit_price_override: "", display_price: "Included" };
     } else {
       nextRow = { ...currentRow, price_mode: "Priced", display_price: "", unit_price_override: value };
@@ -2975,7 +3216,7 @@ function basisSections(sections = state.quoteBasisSections) {
 function unresolvedConfirmLines(sections = state.quoteBasisSections) {
   return basisSections(sections)
     .flatMap((section) => (section.lines || [])
-      .filter((line) => normalizeBasisTag(line.tag) === "Confirm")
+      .filter((line) => normalizeBasisTag(line.tag) === "Confirm" || isPendingAiProposalLine(line))
       .map((line) => `${section.title}: ${line.text}`));
 }
 
@@ -2989,44 +3230,110 @@ function basisConfirmBlockReason(sections = state.quoteBasisSections) {
 }
 
 function basisTagLabel(tag = "") {
-  return normalizeBasisTag(tag);
+  const normalized = normalizeBasisTag(tag);
+  if (normalized === "Custom") return "AI Proposal";
+  return normalized;
+}
+
+function basisQuantityText(value = "") {
+  if (value === undefined || value === null) return "";
+  const text = String(value).replaceAll(",", "").trim();
+  if (!text) return "";
+  const match = text.match(/^-?\d+(?:\.\d+)?/);
+  if (!match) return "";
+  const quantity = Number(match[0]);
+  if (!Number.isFinite(quantity) || quantity <= 0) return "";
+  return quantity.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function basisQuantityLabel(line = {}) {
-  if (line.quantity === undefined || line.quantity === null || String(line.quantity).trim() === "") return "";
-  const quantity = Number(line.quantity);
-  const quantityText = Number.isFinite(quantity) ? quantity.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(line.quantity).trim();
+  const quantityText = basisQuantityText(line.quantity);
+  if (!quantityText) return "";
   const unit = normalizeUnit(line.unit || "");
   return `${quantityText}${unit ? ` ${unit}` : ""}`;
 }
 
+function basisQuantityDisplayLabel(line = {}) {
+  const quantityText = basisQuantityText(line.quantity);
+  if (!quantityText) return "1 lot";
+  let unit = normalizeUnit(line.unit || "").replace(/\s+length$/i, "").trim();
+  if (/^nos?\.?$/i.test(unit)) unit = "nos.";
+  return `${quantityText}${unit ? ` ${unit}` : ""}`;
+}
+
+function basisChatLineContext(line = {}) {
+  const tag = normalizeBasisTag(line.tag);
+  const text = String(line.text || "").trim();
+  return `${tag}: ${text}`.trim();
+}
+
 function basisLinePillLabel(line = {}) {
   const tag = normalizeBasisTag(line.tag);
-  const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
-  if (tag === "Confirm" && confidence !== null) return `${confidence}%`;
-  if (tag === "Confirm") return "Review";
+  if (isPendingAiProposalLine(line)) return "AI Confirm";
   return basisTagLabel(tag);
+}
+
+function basisConfidenceLabel(line = {}) {
+  const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
+  return `${confidence === null ? 50 : confidence}%`;
+}
+
+function basisTotalLineCount(sections = []) {
+  return (Array.isArray(sections) ? sections : []).reduce((total, section) => {
+    const lines = Array.isArray(section?.lines) ? section.lines : [];
+    return total + lines.length;
+  }, 0);
+}
+
+function basisTotalLineLabel(count = 0) {
+  return `Total lines: ${Math.max(0, Number(count) || 0)}`;
+}
+
+function renderBasisConfirmSummary(sections = state.quoteBasisSections) {
+  return "";
+}
+
+function basisCatalogReferenceTitle(line = {}) {
+  const catalogDescription = cleanCustomerQuoteLineText(line.catalog_description || "");
+  const keyword = String(line.pricing_keyword || "").trim();
+  if (!catalogDescription && !keyword) return "";
+  return `Pricing reference: ${catalogDescription || keyword}`;
+}
+
+function basisLineTitle(line = {}) {
+  const text = String(line.text || "").trim();
+  const source = basisCatalogReferenceTitle(line);
+  return source ? `${text}\n${source}` : text;
+}
+
+function basisPillTitle(line = {}, tag = "") {
+  return basisCatalogReferenceTitle(line) || basisTagLabel(tag);
 }
 
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
   const customPricing = isCustomPricingBasisLine(line);
+  const pendingAiProposal = isPendingAiProposalLine(line);
+  const quantityLabel = basisQuantityDisplayLabel(line);
+  const confidenceLabel = basisConfidenceLabel(line);
   const rowClasses = [
     "basis-line-row",
     `basis-line-${tag.toLowerCase()}`,
     customPricing ? "basis-line-custom-priced" : "",
+    pendingAiProposal ? "basis-line-custom-confirm" : "",
   ].filter(Boolean).join(" ");
   const primaryAction = customPricing
-    ? `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Custom" aria-label="Keep this line as custom manual pricing" title="Custom manual pricing">$</button>`
+    ? `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Custom" aria-label="Accept this AI proposal" title="Accept AI proposal">&#x2713;</button>`
     : `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Include" aria-label="Mark this line as included" title="Mark included">&#x2713;</button>`;
   return `
     <li class="${escapeHtml(rowClasses)}">
       <span class="basis-line-icon" aria-hidden="true"></span>
       <span class="basis-line-meta">
-        <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
-        ${basisQuantityLabel(line) ? `<span class="basis-quantity-pill">${escapeHtml(basisQuantityLabel(line))}</span>` : ""}
+        <span class="basis-line-pill" title="${escapeHtml(basisPillTitle(line, tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
+        <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
+        <span class="basis-quantity-pill">${escapeHtml(quantityLabel)}</span>
       </span>
-      <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
+      <span class="basis-line-text" title="${escapeHtml(basisLineTitle(line))}">${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
@@ -3039,12 +3346,28 @@ function renderBasisLine(section, line, index) {
 function renderBasisTagLegend() {
   return `
     <div class="basis-tag-legend" aria-label="Quote basis tag meanings">
-      ${BASIS_TAGS.map(([tag, label, description]) => `
-        <span class="basis-tag-legend-item basis-line-${escapeHtml(tag.toLowerCase())}">
-          <strong class="basis-line-pill">${escapeHtml(label)}</strong>
-          <span>${escapeHtml(description)}</span>
+      <div class="basis-tag-legend-column basis-tag-legend-actions">
+        ${BASIS_TAGS.filter(([tag]) => ["Include", "Exclude", "Custom"].includes(tag)).map(([tag, label, description]) => `
+          <span class="basis-tag-legend-item basis-line-${escapeHtml(tag.toLowerCase())}">
+            <strong class="basis-line-pill">${escapeHtml(label)}</strong>
+            <span>${escapeHtml(description)}</span>
+          </span>
+        `).join("")}
+      </div>
+      <div class="basis-tag-legend-column basis-tag-legend-review">
+        <span class="basis-tag-legend-item basis-line-confirm">
+          <strong class="basis-line-pill">Confirm</strong>
+          <span>Needs include, exclude, or revision</span>
         </span>
-      `).join("")}
+        <span class="basis-tag-legend-item basis-line-custom-confirm">
+          <strong class="basis-line-pill">AI Confirm</strong>
+          <span>AI proposal needs acceptance or revision</span>
+        </span>
+        <span class="basis-tag-legend-item basis-line-confirm">
+          <strong class="basis-confidence-pill">92%</strong>
+          <span>AI confidence level in quote basis line</span>
+        </span>
+      </div>
     </div>
   `;
 }
@@ -3069,13 +3392,15 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
             <h3>Quote Basis</h3>
             <span>${escapeHtml(statusText)}</span>
           </div>
-          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff, revise a line, or request changes."}</p>
+          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and revise individual lines where needed."}</p>
         </div>
         <div class="quote-basis-source">
           <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog"}</span>
+          <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(sections)))}</strong>
         </div>
       </div>
       ${renderAnalysisFindings()}
+      ${renderBasisConfirmSummary(sections)}
       ${renderBasisTagLegend()}
       <div class="basis-review-grid">
         ${sections.map((section) => `
@@ -3083,8 +3408,8 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
             <div class="basis-section-heading">
               <h4>${escapeHtml(section.title)}</h4>
               <span class="basis-section-actions">
-                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Include" aria-label="Mark all non-custom review lines in ${escapeHtml(section.title)} as included" title="Mark all non-custom lines included">&#x2713;</button>
-                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Exclude" aria-label="Mark all non-custom review lines in ${escapeHtml(section.title)} as excluded" title="Mark all non-custom lines excluded">X</button>
+                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Include" aria-label="Accept all review lines in ${escapeHtml(section.title)}" title="Accept all review lines">&#x2713;</button>
+                <button class="basis-section-action-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-section-action="Exclude" aria-label="Exclude all review lines in ${escapeHtml(section.title)}" title="Exclude all review lines">X</button>
                 <span class="basis-section-action-spacer" aria-hidden="true"></span>
               </span>
             </div>
@@ -3109,17 +3434,21 @@ function updateQuoteBasisCard(source = "edited") {
 }
 
 function retagBasisLine(sectionId, lineIndex, nextTag) {
-  if (!sectionId || !["Include", "Custom", "Exclude"].includes(nextTag)) return;
+  const requestedTag = normalizeBasisTag(nextTag);
+  if (!sectionId || !["Include", "Custom", "Exclude"].includes(requestedTag)) return;
   const sections = cloneQuoteBasisSections(state.quoteBasisSections);
   const section = sections.find((item) => item.id === sectionId);
   const index = Number(lineIndex);
   if (!section || !section.lines[index]) return;
   const currentLine = section.lines[index];
-  const customPricing = isCustomPricingBasisLine(currentLine) || nextTag === "Custom";
+  const resolvedTag = requestedTag === "Include" && isCustomPricingBasisLine(currentLine) ? "Custom" : requestedTag;
+  const customPricing = isCustomPricingBasisLine(currentLine) || resolvedTag === "Custom";
+  const customConfirmed = customPricing && ["Include", "Custom"].includes(requestedTag);
   section.lines[index] = {
     ...currentLine,
-    tag: nextTag,
+    tag: resolvedTag,
     ...(customPricing ? { custom_pricing: true } : {}),
+    ...(customConfirmed ? { custom_confirmed: true } : { custom_confirmed: false }),
   };
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
@@ -3137,10 +3466,16 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   let changed = false;
   section.lines = (section.lines || []).map((line) => {
     const currentTag = normalizeBasisTag(line.tag);
-    if (currentTag === nextTag) return line;
-    if (nextTag === "Include" && currentTag === "Custom") return line;
+    const customPricing = isCustomPricingBasisLine(line);
+    const resolvedTag = customPricing && nextTag === "Include" ? "Custom" : nextTag;
+    const customConfirmed = customPricing && nextTag === "Include";
+    if (currentTag === resolvedTag && (!customPricing || Boolean(line.custom_confirmed) === customConfirmed)) return line;
     changed = true;
-    return { ...line, tag: nextTag, ...(currentTag === "Custom" ? { custom_pricing: true } : {}) };
+    return {
+      ...line,
+      tag: resolvedTag,
+      ...(customPricing ? { custom_pricing: true, custom_confirmed: customConfirmed } : {}),
+    };
   });
   if (!changed) return;
   state.quoteBasisSections = sections;
@@ -3152,10 +3487,7 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
 }
 
 function basisChatIntroMessage() {
-  if (state.basisChat.scope === "line") {
-    return "Tell me what to change. I will draft the full replacement sentence for approval before applying it.";
-  }
-  return "Ask a question or describe changes to the quotation basis. I will show a proposed update before applying anything.";
+  return "Tell me what to change. I will draft the full replacement sentence for approval before applying it.";
 }
 
 function selectedBasisLine() {
@@ -3210,10 +3542,11 @@ function resetBasisChatProposal() {
 
 function proposalChangedFields(proposal) {
   const nextSections = normalizeQuoteBasisSections(proposal?.quoteBasisSections || proposal?.quoteBasis || {});
-  const current = JSON.stringify(cloneQuoteBasisSections(state.quoteBasisSections));
-  const next = JSON.stringify(cloneQuoteBasisSections(nextSections));
-  if (current === next) return [];
-  return nextSections.map((section) => section.title);
+  const currentSections = cloneQuoteBasisSections(state.quoteBasisSections);
+  const currentById = new Map(currentSections.map((section) => [section.id, section]));
+  return nextSections
+    .filter((section) => JSON.stringify(currentById.get(section.id) || null) !== JSON.stringify(section))
+    .map((section) => section.title);
 }
 
 function proposalLineDelta(proposal) {
@@ -3250,12 +3583,12 @@ function renderProposalSectionChips(changedFields = []) {
 
 function renderBasisChatProposalCard(proposal, changedFields = []) {
   const delta = proposalLineDelta(proposal);
-  const message = proposal?.message || "Review this proposed quote basis change before applying it.";
+  const message = proposal?.message || "Review this proposed line change before applying it.";
   return `
     <div class="basis-chat-proposal-header">
       <div>
         <span>Proposed change</span>
-        <strong>${escapeHtml(state.basisChat.scope === "line" ? "Basis line update" : "Quote basis update")}</strong>
+        <strong>Basis line update</strong>
       </div>
       <span class="basis-chat-proposal-status">Review</span>
     </div>
@@ -3272,7 +3605,7 @@ function renderBasisChatProposalCard(proposal, changedFields = []) {
         </div>
       </div>
     ` : `
-      <p class="basis-chat-proposal-summary">This proposal updates the quotation basis and keeps existing line items available for review.</p>
+      <p class="basis-chat-proposal-summary">This proposal updates the selected basis line and keeps existing line items available for review.</p>
     `}
     ${renderProposalSectionChips(changedFields)}
   `;
@@ -3289,6 +3622,21 @@ function setBasisChatProposal(proposal) {
   appendBasisChatMessage("assistant", "I drafted a proposed update below. Review it, then apply or discard.");
 }
 
+function basisChatFriendlyError(messages = []) {
+  const list = Array.isArray(messages) ? messages : [messages];
+  const text = list.map((message) => String(message || "").trim()).filter(Boolean).join(" ");
+  if (/not configured|api[_\s-]?key/i.test(text)) {
+    return "AI editing is not set up yet. Add the AI key, then try again.";
+  }
+  if (/503|high demand|timeout|timed out|temporar/i.test(text)) {
+    return "The AI service is busy right now. Please wait a moment and try again.";
+  }
+  if (/replacement line|usable proposal|usable answer|did not return|invalid json|json/i.test(text)) {
+    return "I could not update that line from this message. Try a shorter instruction like \"change 10W to 20W\".";
+  }
+  return "I could not complete that change. Try a shorter, more specific instruction.";
+}
+
 function setBasisChatBusy(isBusy) {
   elements.basisChatPrompt.disabled = isBusy;
   elements.basisChatSendButton.disabled = isBusy;
@@ -3296,35 +3644,46 @@ function setBasisChatBusy(isBusy) {
   elements.basisChatKeepButton.disabled = isBusy || !state.basisChat.proposal;
 }
 
-function openBasisChatOverlay(scope = "quote", options = {}) {
+function openBasisChatOverlay(scope = "line", options = {}) {
+  if (scope !== "line") return;
   state.basisChat = {
     scope,
     field: options.sectionId || options.field || "",
     sectionId: options.sectionId || options.field || "",
     lineIndex: Number.isInteger(options.lineIndex) ? options.lineIndex : -1,
     line: options.line || "",
+    quantity: options.quantity ?? "",
+    unit: options.unit || "",
+    quantityLabel: options.quantityLabel || "",
     proposal: null,
   };
   resetBasisChatProposal();
-  elements.basisChatTitle.textContent = scope === "line" ? "Revise basis line" : "Ask for changes";
+  elements.basisChatTitle.textContent = "Revise basis line";
   elements.basisChatContext.classList.toggle("has-selected-line", scope === "line");
-  if (scope === "line") {
-    const line = selectedBasisLine() || parseBasisLine(state.basisChat.line);
-    const tag = normalizeBasisTag(line.tag);
-    const tagClass = `basis-chat-selected-tag-${tag.toLowerCase()}`;
-    state.basisChat.line = `${tag}: ${line.text}`;
-    elements.basisChatContext.innerHTML = `
-      <span class="basis-chat-context-label">${escapeHtml(basisFieldLabel(state.basisChat.sectionId))}</span>
-      <span class="basis-chat-selected-line">
-        <strong class="basis-chat-selected-tag ${escapeHtml(tagClass)}" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</strong>
-        <span>${escapeHtml(line.text || state.basisChat.line)}</span>
+  const line = selectedBasisLine() || parseBasisLine(state.basisChat.line);
+  const tag = normalizeBasisTag(line.tag);
+  const tagClass = `basis-chat-selected-tag-${tag.toLowerCase()}`;
+  const quantityLabel = basisQuantityLabel(line);
+  const displayQuantityLabel = basisQuantityDisplayLabel(line);
+  const confidenceLabel = basisConfidenceLabel(line);
+  state.basisChat.line = basisChatLineContext(line);
+  state.basisChat.quantity = line.quantity ?? state.basisChat.quantity ?? "";
+  state.basisChat.unit = normalizeUnit(line.unit || state.basisChat.unit || "");
+  state.basisChat.quantityLabel = quantityLabel || state.basisChat.quantityLabel || "";
+  elements.basisChatContext.innerHTML = `
+    <span class="basis-chat-context-label">${escapeHtml(basisFieldLabel(state.basisChat.sectionId))}</span>
+    <span class="basis-chat-selected-line">
+      <span class="basis-chat-selected-meta">
+        <strong class="basis-chat-selected-tag ${escapeHtml(tagClass)}" title="${escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</strong>
+        <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
       </span>
-    `;
-    elements.basisChatPrompt.placeholder = "Describe the change for this line...";
-  } else {
-    elements.basisChatContext.textContent = "Ask about or revise the whole quote basis.";
-    elements.basisChatPrompt.placeholder = "Ask about this basis or describe a change...";
-  }
+      <span class="basis-chat-selected-body">
+        <span class="basis-chat-selected-quantity">${escapeHtml(displayQuantityLabel)}</span>
+        <span class="basis-chat-selected-text">${escapeHtml(line.text || state.basisChat.line)}</span>
+      </span>
+    </span>
+  `;
+  elements.basisChatPrompt.placeholder = "Describe the change for this line...";
   elements.basisChatMessages.innerHTML = "";
   appendBasisChatMessage("assistant", basisChatIntroMessage());
   elements.basisChatPrompt.value = "";
@@ -3350,6 +3709,9 @@ function basisChatPayload(text) {
       field: state.basisChat.sectionId || state.basisChat.field,
       line_index: state.basisChat.lineIndex,
       line: state.basisChat.line,
+      quantity: state.basisChat.quantity,
+      unit: state.basisChat.unit,
+      quantity_label: state.basisChat.quantityLabel,
     },
   };
 }
@@ -3457,14 +3819,14 @@ async function buildAiBasisChatResponse(text) {
     const started = await startJob("basis_chat", basisChatPayload(text));
     if (!started.ok) {
       removeBasisChatTyping(typingMessage);
-      appendBasisChatMessage("assistant", (started.data.errors || ["I could not answer that yet."]).join("\n"));
+      appendBasisChatMessage("assistant", basisChatFriendlyError(started.data.errors));
       return { errorDisplayed: true };
     }
     const polled = await pollJob(started.data.job_id);
     const data = polled.data.result || {};
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       removeBasisChatTyping(typingMessage);
-      appendBasisChatMessage("assistant", (data.errors || polled.data.errors || ["I could not answer that yet."]).join("\n"));
+      appendBasisChatMessage("assistant", basisChatFriendlyError(data.errors || polled.data.errors));
       return { errorDisplayed: true };
     }
     if (data.proposal) {
@@ -3515,7 +3877,7 @@ async function handleBasisChatSubmit(event) {
   }
   if (aiResult?.errorDisplayed) return;
 
-  appendBasisChatMessage("assistant", "AI basis chat did not return a usable response. Try rephrasing the change.");
+  appendBasisChatMessage("assistant", "I could not update the basis from that message. Try a shorter, more specific instruction.");
 }
 
 function applyBasisChatProposal() {
@@ -3532,7 +3894,7 @@ function applyBasisChatProposal() {
   updateQuoteBasisCard("edited");
   setSidePanel("basis", { force: true });
   resetBasisChatProposal();
-  appendBasisChatMessage("assistant", "Change applied to the quote basis. Review the updated basis before confirming the quotation basis.");
+  closeBasisChatOverlay();
   syncControlStates();
 }
 
@@ -4109,7 +4471,7 @@ async function confirmBasis() {
     return;
   }
   state.basisConfirmed = true;
-  ensureOutputRowsFromLineItems();
+  refreshOutputRowsFromLineItems();
   state.originalOutputRows = snapshotOutputRows(state.outputRows);
   state.lineItems = outputRowsToLineItems();
   setWorkflowStage("completed");
@@ -4208,6 +4570,8 @@ async function handleGenerate() {
     renderPricingReviewMessages(data);
     setSidePanel("output", { force: true });
     setDownloadFiles([]);
+    if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+    renderMatchSummary(data);
   } else {
     setWorkflowStage("completed");
     setResultStatus("Completed", "is-ok");
@@ -4215,9 +4579,9 @@ async function handleGenerate() {
     clearPricingReviewMessages();
     setSidePanel("output", { force: true });
     setDownloadFiles(data.files || []);
+    renderPricingMatches(state.outputRows);
+    renderMatchSummary({ pricing_matches: state.outputRows });
   }
-  if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
-  renderMatchSummary(data);
   syncControlStates();
 }
 
@@ -4409,7 +4773,7 @@ function setSidePanel(panelName, options = {}) {
     images: ["Images", "Reference Inputs", currentGenerator().intakeSubtitle],
     customer: ["Customer", "Customer Details", "Customer, project, booth size, and customer address for this quotation."],
     quote_company: ["Quote Company", "Quotation Defaults", "Reusable quotation-company header, payment terms, notes, and signature defaults."],
-    basis: ["Quote Basis", "Confirm Draft", "Review the drafted basis, revise individual lines, or request a full-basis change."],
+    basis: ["Quote Basis", "Confirm Draft", "Review the drafted basis and revise individual lines where needed."],
     output: ["Output", "Editable Pricing", "Review quotation rows, resolve pricing, and download Excel."],
   };
   const nextPanel = panelTitles[panelName] ? panelName : "images";
@@ -4455,13 +4819,11 @@ function updateSidePanelNav() {
   elements.resetImagesButton.hidden = state.activeSidePanel !== "images";
   elements.clearCustomerButton.hidden = state.activeSidePanel !== "customer";
   elements.clearQuoteCompanyButton.hidden = state.activeSidePanel !== "quote_company";
-  elements.discussQuoteButton.hidden = state.activeSidePanel !== "basis";
   elements.resetQuoteBasisButton.hidden = state.activeSidePanel !== "basis";
   elements.resetOutputButton.hidden = state.activeSidePanel !== "output";
   elements.resetImagesButton.disabled = busy || !state.images.length;
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
-  elements.discussQuoteButton.disabled = busy || (state.blockingClarificationQuestions || []).length > 0 || !hasSubmittedQuoteBasis();
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
   elements.resetOutputButton.disabled = busy || !state.originalOutputRows.length;
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {
@@ -4558,7 +4920,10 @@ function handleQuoteBasisClick(event) {
     openBasisChatOverlay("line", {
       sectionId,
       lineIndex,
-      line: line ? `${normalizeBasisTag(line.tag)}: ${line.text}` : "",
+      line: line ? basisChatLineContext(line) : "",
+      quantity: line?.quantity ?? "",
+      unit: line?.unit || "",
+      quantityLabel: line ? basisQuantityLabel(line) : "",
     });
     return;
   }
@@ -4637,7 +5002,7 @@ function wireEvents() {
   });
   elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);
   elements.sideNextButton.addEventListener("click", goToNextSidePanel);
-  elements.sideDownloadButton.addEventListener("click", (event) => {
+  elements.sideDownloadButton.addEventListener("click", async (event) => {
     if (elements.sideDownloadButton.getAttribute("aria-disabled") === "true") {
       event.preventDefault();
       const validation = outputRowsValid();
@@ -4646,7 +5011,8 @@ function wireEvents() {
     }
     if (!state.downloadFile?.url) {
       event.preventDefault();
-      handleGenerate();
+      await handleGenerate();
+      downloadCurrentExcelFile();
     }
   });
   document.addEventListener("keydown", (event) => {
@@ -4684,8 +5050,35 @@ function wireEvents() {
     if (elements.pricingReferenceFileName) {
       elements.pricingReferenceFileName.textContent = file?.name || "No file chosen";
     }
-    const result = await validatePricingReferenceFile(file);
+    if (!file) {
+      state.pendingPricingReference = null;
+      state.pricingReferenceImportBusy = false;
+      state.pricingReferenceImportToken = "";
+      renderPricingReferencePreview(null);
+      return;
+    }
+    const importToken = `${Date.now()}-${file.name}-${file.size}`;
+    state.pricingReferenceImportToken = importToken;
+    state.pricingReferenceImportBusy = true;
+    setPricingReferenceSaveButtonState({ busy: true, reason: pricingReferenceSaveBlockReason(null) });
+    renderPricingReferencePreview({
+      ...pricingReferenceValidationResult([], [], 0, file.name),
+      layout: "importing",
+      warnings: ["Import preview is still being prepared."],
+      errors: [],
+    });
+    let result;
+    try {
+      result = await validatePricingReferenceFile(file);
+    } catch (error) {
+      result = {
+        ...pricingReferenceValidationResult([], [], 0, file.name),
+        errors: [`Pricing-reference validation failed: ${error.message || String(error)}`],
+      };
+    }
+    if (state.pricingReferenceImportToken !== importToken) return;
     state.pendingPricingReference = result;
+    state.pricingReferenceImportBusy = false;
     renderPricingReferencePreview(result);
   });
   elements.pricingReferencePreview?.addEventListener("input", (event) => {
@@ -4702,6 +5095,7 @@ function wireEvents() {
   });
   elements.pricingReferenceCancelButton.addEventListener("click", closePricingReferenceModal);
   elements.pricingReferenceCloseButton.addEventListener("click", closePricingReferenceModal);
+  elements.pricingReferenceModal.addEventListener("click", blockPricingReferenceBusyInteraction, true);
   elements.pricingReferenceModal.addEventListener("click", (event) => {
     if (event.target.closest("[data-pricing-reference-close]")) closePricingReferenceModal();
   });
@@ -4716,7 +5110,6 @@ function wireEvents() {
   elements.pricingMatchesBody.addEventListener("keydown", handleOutputCellKeydown);
   elements.pricingMatchesBody.addEventListener("focusout", handleOutputEditorCommit);
   elements.pricingMatchesBody.addEventListener("change", handleOutputEditorCommit);
-  elements.discussQuoteButton.addEventListener("click", () => openBasisChatOverlay("quote"));
   elements.resetImagesButton.addEventListener("click", resetImagesDraft);
   elements.resetQuoteBasisButton.addEventListener("click", resetQuoteBasisToOriginal);
   elements.resetOutputButton.addEventListener("click", resetOutputDraft);

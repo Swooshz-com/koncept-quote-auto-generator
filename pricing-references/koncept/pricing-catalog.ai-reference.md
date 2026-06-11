@@ -25,12 +25,12 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Remarks:** velour
 - **Search aliases:** m2 needle velour carpet in colour; needle velour carpet in colour; velour; Floor Design needle velour carpet in colour; needle velour carpet in colour sqm
 
-### floor-design.100mm-raised-platfrom-with-aluminum-edging
+### floor-design.100mm-raised-platform-with-aluminum-edging
 
-- **Item:** m2 100mm raised platfrom with aluminum edging
+- **Item:** m2 100mm raised platform with aluminum edging
 - **Unit hint:** sqm
 - **Remarks:** Platform ONLY
-- **Search aliases:** m2 100mm raised platfrom with aluminum edging; 100mm raised platfrom with aluminum edging; Platform ONLY; Floor Design 100mm raised platfrom with aluminum edging; 100mm raised platfrom with aluminum edging sqm
+- **Search aliases:** m2 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging; Platform ONLY; Floor Design 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging sqm
 
 ### floor-design.white-laminated-flooring-on-raised-platform
 
@@ -139,26 +139,26 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Remarks:** Partition for meeting room; LAMINATE
 - **Search aliases:** m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; Partition for meeting room; LAMINATE; Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal m length; m length double side partition wall at height 2.5m for meeting room; Booth Structure double side partition wall at height 2.5m for meeting room; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room m length
 
-### booth-structure.wooden-construct-low-parition-ready-in-painted-finished
+### booth-structure.wooden-construct-low-partition-ready-in-painted-finished
 
-- **Item:** nos. wooden construct low parition ready in painted finished
+- **Item:** nos. wooden construct low partition ready in painted finished
 - **Unit hint:** nos
 - **Remarks:** Low dividing Partition; PAINTED
-- **Search aliases:** nos. wooden construct low parition ready in painted finished; wooden construct low parition ready in painted finished; Low dividing Partition; PAINTED; Booth Structure wooden construct low parition ready in painted finished; wooden construct low parition ready in painted finished nos
+- **Search aliases:** nos. wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished; Low dividing Partition; PAINTED; Booth Structure wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished nos
 
-### booth-structure.wooden-construct-low-parition-ready-in-laminated-finished
+### booth-structure.wooden-construct-low-partition-ready-in-laminated-finished
 
-- **Item:** nos. wooden construct low parition ready in laminated finished
+- **Item:** nos. wooden construct low partition ready in laminated finished
 - **Unit hint:** nos
 - **Remarks:** Low dividing Partition; LAMINATED
-- **Search aliases:** nos. wooden construct low parition ready in laminated finished; wooden construct low parition ready in laminated finished; Low dividing Partition; LAMINATED; Booth Structure wooden construct low parition ready in laminated finished; wooden construct low parition ready in laminated finished nos
+- **Search aliases:** nos. wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished; Low dividing Partition; LAMINATED; Booth Structure wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished nos
 
-### booth-structure.1mw-x-2-5mh-sytem-profile-partition-with-clear-acrylic-panel
+### booth-structure.1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel
 
-- **Item:** m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel
+- **Item:** m length 1mW x 2.5mH System Profile partition with clear acrylic panel
 - **Unit hint:** m length
 - **Remarks:** Acrylic System Partition; Octanorm
-- **Search aliases:** m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel; 1mW x 2.5mH Sytem Profile partition with clear acrylic panel; Acrylic System Partition; Octanorm; Booth Structure 1mW x 2.5mH Sytem Profile partition with clear acrylic panel; 1mW x 2.5mH Sytem Profile partition with clear acrylic panel m length
+- **Search aliases:** m length 1mW x 2.5mH System Profile partition with clear acrylic panel; 1mW x 2.5mH System Profile partition with clear acrylic panel; Acrylic System Partition; Octanorm; Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel; 1mW x 2.5mH System Profile partition with clear acrylic panel m length
 
 ### booth-structure.vertical-support-pillars-in-painted-finished
 
@@ -337,19 +337,19 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Remarks:** HQI Floodlight
 - **Search aliases:** nos. 150W HQI Floodlight; 150W HQI Floodlight; HQI Floodlight; Electrical Fittings ( Excluding connection fees by Organiser) 150W HQI Floodlight; 150W HQI Floodlight nos
 
-### electrical-fittings-excluding-connection-fees-by-organiser.led-recess-dowlight-3
+### electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-3
 
-- **Item:** nos. LED recess dowlight 3"
+- **Item:** nos. LED recess downlight 3"
 - **Unit hint:** nos
 - **Remarks:** Downlight
-- **Search aliases:** nos. LED recess dowlight 3"; LED recess dowlight 3"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess dowlight 3"; LED recess dowlight 3" nos
+- **Search aliases:** nos. LED recess downlight 3"; LED recess downlight 3"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 3"; LED recess downlight 3" nos
 
-### electrical-fittings-excluding-connection-fees-by-organiser.led-recess-dowlight-6
+### electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-6
 
-- **Item:** nos. LED recess dowlight 6"
+- **Item:** nos. LED recess downlight 6"
 - **Unit hint:** nos
 - **Remarks:** Downlight
-- **Search aliases:** nos. LED recess dowlight 6"; LED recess dowlight 6"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess dowlight 6"; LED recess dowlight 6" nos
+- **Search aliases:** nos. LED recess downlight 6"; LED recess downlight 6"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 6"; LED recess downlight 6" nos
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.nos-13amp-230v-sp-50hz-ac-socket-max-800w-not-for-lighting-use
 
