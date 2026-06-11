@@ -3,5 +3,9 @@
   "label": "Koncept Exhibition Quotation",
   "description": "Koncept pricing catalog and analysis reference for exhibition quotations.",
   "pricing_catalog": "pricing-catalog.json",
-  "pricing_reference": "pricing-catalog.ai-reference.md"
+  "pricing_reference": "pricing-catalog.ai-reference.md",
+  "tax": {
+    "label": "GST",
+    "rate": 0.09
+  }
 }

@@ -280,7 +280,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["standard_notes"], ["Editable note one", "Editable note two"])
         self.assertEqual(brief["acceptance"]["text"], "Accepted by customer")
         self.assertEqual(brief["signature"]["koncept_date_label"], "Date:")
-        self.assertEqual(brief["line_items"][0]["section"], "Floor Design")
+        self.assertEqual(brief["line_items"][0]["section"], "Flooring / Platform")
         self.assertEqual(brief["line_items"][0]["quantity"], 12.0)
         self.assertEqual(brief["line_items"][0]["unit"], "sqm")
         self.assertEqual(brief["rich_text"]["clientAddress"], "<div><strong>10 Sample Street</strong></div><div><u>Singapore 000010</u></div>")
@@ -349,8 +349,8 @@ class WebappServerTest(unittest.TestCase):
 
         sections = webapp.normalize_quote_basis_sections(payload)
 
-        self.assertEqual(sections[0]["id"], "walls-structures")
-        self.assertEqual(sections[0]["title"], "Walls / Structures")
+        self.assertEqual(sections[0]["id"], "booth-structure")
+        self.assertEqual(sections[0]["title"], "Booth Structure")
         self.assertEqual(
             sections[0]["lines"],
             [
@@ -381,7 +381,7 @@ class WebappServerTest(unittest.TestCase):
             }
         })
         self.assertEqual([section["id"] for section in dynamic_basis], ["brazil-feature-wall", "flooring-zone"])
-        self.assertEqual([section["title"] for section in dynamic_basis], ["Brazil Feature Wall", "Flooring Zone"])
+        self.assertEqual([section["title"] for section in dynamic_basis], ["Booth Structure", "Flooring / Platform"])
         self.assertEqual(dynamic_basis[0]["lines"][0]["text"], "Curved yellow framed display wall.")
 
     def test_normalize_line_items_uses_customer_facing_sqm_text(self):
@@ -414,7 +414,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         })
 
-        self.assertEqual(items[0]["section"], "Floor Design")
+        self.assertEqual(items[0]["section"], "Flooring / Platform")
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(items[0]["description"], "sqm needle punch carpet in colour")
         self.assertEqual(items[0]["catalog_unit_price"], 10.5)
@@ -574,7 +574,7 @@ class WebappServerTest(unittest.TestCase):
 
         brief = webapp.payload_to_brief(payload)
 
-        self.assertIn("Walls / Structures:", brief["notes"][1])
+        self.assertIn("Booth Structure:", brief["notes"][1])
         self.assertIn("Include: White painted walling.", brief["notes"][1])
         self.assertIn("Exclude: Rigging above booth.", brief["notes"][1])
 
@@ -733,7 +733,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
-        self.assertEqual(result["items"][0]["id"], "structures-white-painted-walling")
+        self.assertEqual(result["items"][0]["id"], "booth-structure-white-painted-walling")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
@@ -761,6 +761,83 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
         self.assertEqual(result["items"][0]["aliases"], ["painted wall", "white wall"])
 
+    def test_pricing_reference_import_stitches_multirow_description_remarks_and_keeps_rigging(self):
+        raw = (
+            "section,description,unit_hint,internal_cost,markup_multiplier,remarks,aliases\n"
+            "Hanging Structure,m run of hanging structure x 1m height,m run,100,1.5,Wooden hanging structure,hanging structure\n"
+            ",wooden construct in painted finished as per design proposal,,,,PAINTED,\n"
+            "Rigging Point,nos. rigging point for Overhead Structure or Aluminium Box Truss,nos,300,1.5,Prices are not inclusive of truss,RIGGING POINT|Overhead Structure|Aluminium Box Truss|rigging point|truss\n"
+        ).encode("utf-8")
+        result = webapp.pricing_reference_import_preview({
+            "filename": "messy.csv",
+            "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+            "tax": {"label": "GST", "rate": 0.09},
+        })
+
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["rowCount"], 2)
+        hanging = result["items"][0]
+        rigging = result["items"][1]
+        self.assertEqual(hanging["section"], "Hanging Structure")
+        self.assertEqual(hanging["description"], "m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal")
+        self.assertEqual(hanging["remarks"], ["Wooden hanging structure", "PAINTED"])
+        self.assertEqual(rigging["section"], "Hanging Structure")
+        self.assertEqual(rigging["description"], "nos. rigging point for Overhead Structure or Aluminium Box Truss")
+        self.assertEqual(rigging["unit_hint"], "nos")
+        self.assertEqual(rigging["remarks"], ["Prices are not inclusive of truss"])
+        self.assertIn("RIGGING POINT", rigging["aliases"])
+        self.assertIn("truss", rigging["aliases"])
+        self.assertEqual(result["tax"], {"label": "GST", "rate": 0.09})
+
+    def test_markdown_pricing_reference_import_without_ai_is_clear_and_not_saved(self):
+        raw = b"# Messy catalog\n\n- m run of hanging structure x 1m height"
+        with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
+            result = webapp.pricing_reference_import_preview({
+                "filename": "catalog.md",
+                "data_url": "data:text/markdown;base64," + base64.b64encode(raw).decode("ascii"),
+            })
+
+        self.assertFalse(result["saved"])
+        self.assertFalse(result["canSave"])
+        self.assertIn(webapp.AI_PRICING_IMPORT_NOT_CONFIGURED, result["errors"])
+
+    def test_customer_quote_text_sanitization_preserves_dimensions_and_units(self):
+        cleaned = webapp.clean_customer_quote_line_text("Booth size taken from quotation title: 6m x 6m.")
+        self.assertEqual(cleaned, "Booth size 6m x 6m.")
+        draft = webapp.normalize_ai_draft({
+            "quote_basis_sections": [{"title": "Booth Dimensions", "lines": [{"tag": "Confirm", "text": "Booth size taken from quotation title: 6m x 6m.", "quantity": 1, "unit": "lot", "confidence_pct": 90}]}],
+            "line_items": [{"section": "Walls", "quantity": 12, "unit": "m", "description": "Partition wall as seen in render.", "pricing_keyword": ""}],
+        }, valid_payload())
+        dumped = json.dumps(draft)
+        self.assertIn("Booth size 6m x 6m.", dumped)
+        self.assertIn("Partition wall.", dumped)
+        self.assertNotIn("taken from quotation title", dumped)
+        self.assertNotIn("as seen in render", dumped)
+        self.assertNotIn("AI detected", dumped)
+
+    def test_category_normalization_keeps_counters_and_hanging_separate(self):
+        expectations = {
+            "Booth Dimensions": "Booth Structure",
+            "Booth Structures": "Booth Structure",
+            "Walls": "Booth Structure",
+            "Partitions": "Booth Structure",
+            "Fascia": "Booth Structure",
+            "Counters": "Counters & Cabinets",
+            "Cabinets": "Counters & Cabinets",
+            "Rigging Point": "Hanging Structure",
+            "Overhead Structure": "Hanging Structure",
+        }
+        for raw, expected in expectations.items():
+            self.assertEqual(webapp.normalize_catalog_section(raw), expected)
+        self.assertNotEqual(webapp.normalize_catalog_section("Counters"), "Booth Structure")
+
+    def test_pricing_catalog_prompt_rows_include_rigging_aliases_and_remarks(self):
+        rows = webapp.pricing_catalog_prompt_rows("koncept")
+        rigging = next(row for row in rows if "rigging point" in row["description"].lower())
+        combined = json.dumps(rigging)
+        self.assertIn("RIGGING POINT", combined)
+        self.assertIn("truss", combined.lower())
+
     def test_pricing_reference_upload_generates_ids_when_absent(self):
         raw = (
             "section,description,unit_hint,internal_cost,markup_multiplier,remarks\n"
@@ -774,10 +851,10 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertEqual([item["id"] for item in result["items"]], [
-            "structures-white-painted-walling",
-            "structures-white-painted-walling-2",
+            "booth-structure-white-painted-walling",
+            "booth-structure-white-painted-walling-2",
         ])
-        self.assertIn("painted wall", result["items"][0]["aliases"])
+        self.assertIn("painted wall", [alias.lower() for alias in result["items"][0]["aliases"]])
 
     def test_json_pricing_reference_upload_is_rejected(self):
         result = webapp.validate_pricing_reference_upload({
@@ -1113,7 +1190,7 @@ class WebappServerTest(unittest.TestCase):
                     result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "openai")
-        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Brazil Feature Wall", "Flooring Zone"])
+        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Booth Structure", "Flooring / Platform"])
         self.assertIn("brazil-feature-wall", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
@@ -1674,7 +1751,7 @@ class WebappServerTest(unittest.TestCase):
         section = proposal["quote_basis_sections"][0]
         line = section["lines"][0]
         self.assertEqual(result["type"], "proposal")
-        self.assertEqual(section["title"], "Flooring & Platform")
+        self.assertEqual(section["title"], "Flooring / Platform")
         self.assertEqual(line["tag"], "Confirm")
         self.assertEqual(line["confidence"], 90)
         self.assertEqual(line["text"], "Full 200mm raised platform visible across entire 6.0m x 6.0m footprint.")
@@ -3539,7 +3616,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "Tell me what to change. I will draft the full replacement sentence for approval before applying it.",
             "Ask a question or describe changes to the quotation basis.",
             "basisLinePillLabel",
-            "Check",
+            "—%",
             "normalizeConfidence",
             "renderBasisChatProposalCard",
             "basis-section-action-spacer",
@@ -3686,8 +3763,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('data-output-included-action="true"', js)
         self.assertIn("handleOutputCellClick", js)
         self.assertIn("resetOutputDraft", js)
-        self.assertIn("moveOutputRow", js)
-        self.assertIn('data-output-move-direction="up"', js)
+        self.assertNotIn("moveOutputRow", js)
+        self.assertNotIn("data-output-move-row", js)
+        self.assertNotIn('value="manual"', html)
+        self.assertIn('value="category_name" selected', html)
         self.assertIn("source_basis_line_id", js)
         self.assertIn('source: pricingReference.source === "company" ? "company" : pricingReference.source === "local" ? "local" : "bundled"', js)
         self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
@@ -3708,6 +3787,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;', js)
         self.assertIn('/api/pricing-reference/template.xlsx', html)
         self.assertIn("downloadPricingReferenceTemplate", js)
+        self.assertIn("Pricing catalog upload", html)
+        self.assertIn("AI will normalize it into the required pricing reference format for review before saving.", html)
+        self.assertIn("pricing-reference-preview-table", js)
         self.assertIn(".output-unit-price-editor", css)
         self.assertIn(".output-included-button", css)
         self.assertIn(".output-edit-cell:hover", css)
@@ -3781,6 +3863,9 @@ eval([
   "splitLines",
   "safeId",
   "basisDisplayTitle",
+  "normalizeUnit",
+  "normalizeCategoryTitle",
+  "cleanCustomerQuoteLineText",
   "normalizeBasisTag",
   "isCustomPricingBasisLine",
   "normalizeConfidence",
@@ -3793,7 +3878,7 @@ eval([
   "basisConfirmBlockReason",
 ].map(extractFunction).join("\n"));
 
-assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Platform / Flooring: Finish colour."]);
+assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Flooring / Platform: Finish colour."]);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
 const customLine = normalizeBasisLines({ tag: "Custom", text: "Manual graphics." })[0];
 assert.strictEqual(customLine.custom_pricing, true);
@@ -4067,6 +4152,7 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
                     "section": "Company Collision",
                     "unit_hint": "nos",
                     "description": "Company-only collision catalogue item",
+                    "remarks": [],
                     "aliases": [],
                 }])
 
