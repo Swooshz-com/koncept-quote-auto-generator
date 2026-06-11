@@ -59,10 +59,10 @@ MISSING_IMAGES_MESSAGE = "Please upload reference images first so I can analyze 
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
-MAX_PRICING_REFERENCE_BYTES = 2 * 1024 * 1024
+MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
-MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES = 1 * 1024 * 1024
-MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024
+MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES = 8 * 1024 * 1024
+MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
 MAX_PRICING_REFERENCE_XLSX_COLUMNS = 64
 MAX_XLSX_EXCEL_COLUMNS = 16384
 MAX_XLSX_SHARED_STRINGS = 2000
@@ -1650,7 +1650,7 @@ def decode_data_url_bytes(data_url: Any, max_bytes: int) -> bytes:
     except binascii.Error as exc:
         raise ValueError("Upload payload is not valid base64.") from exc
     if len(raw) > max_bytes:
-        raise ValueError("Pricing reference file is larger than 2 MB.")
+        raise ValueError(f"Pricing reference file is larger than {max_bytes // (1024 * 1024)} MB.")
     return raw
 
 
@@ -2354,12 +2354,13 @@ def list_bundled_pricing_references() -> list[dict[str, Any]]:
 
 
 def public_company_pricing_reference(reference: dict[str, Any]) -> dict[str, Any]:
+    items = reference.get("items") if isinstance(reference.get("items"), list) else []
     return {
         "id": safe_resource_id(reference.get("id"), ""),
         "label": clean_text(reference.get("label")) or safe_resource_id(reference.get("id"), ""),
         "description": clean_text(reference.get("description")),
         "tax": normalized_tax_config(reference.get("tax")),
-        "items": reference.get("items") if isinstance(reference.get("items"), list) else [],
+        "item_count": len(items),
         "source": "company",
     }
 
@@ -4630,6 +4631,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 "csrf_token": configured_csrf_token(),
                 "auth_required": auth_required(),
                 "authenticated": bool(session),
+                "permissions": current_permissions(),
                 "user": session.get("user") if session else None,
             })
             return
@@ -4642,6 +4644,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             })
             return
         if path == "/api/settings":
+            allowed, error = require_permission("canManageSettings")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
             self.send_json({
                 "status": "ok",
                 "company_id": DEFAULT_COMPANY_ID,
@@ -4651,9 +4657,17 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             })
             return
         if path == "/api/settings/pricing-references":
+            allowed, error = require_permission("canManagePricingReferences")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
             self.send_json({"pricing_references": list_pricing_references()})
             return
         if path == "/api/settings/profiles":
+            allowed, error = require_permission("canManageProfiles")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
             self.send_json({"profiles": list_profiles(), "company_profiles": company_config_store().list_profiles(DEFAULT_COMPANY_ID)})
             return
         if path == "/api/samples":

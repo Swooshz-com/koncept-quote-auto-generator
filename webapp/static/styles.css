@@ -1724,7 +1724,7 @@ select:focus {
 
 .basis-line-row {
   display: grid;
-  grid-template-columns: 26px 58px minmax(0, 1fr) var(--basis-action-width);
+  grid-template-columns: 26px minmax(124px, max-content) minmax(0, 1fr) var(--basis-action-width);
   gap: 8px;
   align-items: start;
   min-height: 30px;
@@ -1750,7 +1750,6 @@ select:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  justify-self: stretch;
   min-width: 0;
   min-height: 22px;
   padding: 0 5px;
@@ -1760,6 +1759,14 @@ select:focus {
   font-size: 11px;
   font-weight: 850;
   line-height: 1.15;
+}
+
+.basis-line-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 /* Tag-specific colors — matches mockup */
@@ -3099,16 +3106,31 @@ td input {
     padding-top: 14px;
   }
 
-  .topbar,
-  .brand-lockup,
-  .topbar-controls {
+  .topbar {
     align-items: stretch;
     flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .brand-lockup {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .topbar-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 
   .topbar-action,
   .topbar-status {
     width: 100%;
+  }
+
+  .topbar-status {
+    grid-column: 1 / -1;
   }
 
   .workspace-pane-header {
@@ -3229,12 +3251,27 @@ td input {
   }
 
   .basis-line-row {
-    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-columns: 24px minmax(0, 1fr);
     gap: 8px;
   }
 
-  .basis-line-pill {
-    display: none;
+  .basis-line-meta,
+  .basis-line-text,
+  .basis-line-actions {
+    grid-column: 2;
+  }
+
+  .basis-line-meta {
+    grid-row: 1;
+  }
+
+  .basis-line-text {
+    grid-row: 2;
+  }
+
+  .basis-line-actions {
+    grid-row: 3;
+    justify-content: flex-start;
   }
 
   .basis-line-icon {

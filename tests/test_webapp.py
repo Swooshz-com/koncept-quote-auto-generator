@@ -999,6 +999,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(response["errors"])
         self.assertIn("invalid cell reference", " ".join(response["errors"]))
 
+    def test_session_endpoint_includes_current_permissions(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+            with LocalRunnerServer() as runner:
+                response = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+
+        self.assertEqual(response["permissions"]["role"], "viewer")
+        self.assertFalse(response["permissions"]["canManageSettings"])
+        self.assertFalse(response["permissions"]["canManagePricingReferences"])
+
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
         payload["company"]["header_details"] = "Line one<br>Line two<br><br>Line four"
@@ -2923,6 +2932,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("CSRF_HEADER_NAME", js)
         self.assertIn("/api/session", js)
         self.assertIn("initializeSession", js)
+        self.assertIn("state.permissions = { ...state.permissions, ...data.permissions };", js)
+        self.assertIn("canManageSettings", js)
+        self.assertIn("You do not have permission to manage settings.", js)
+        self.assertIn("elements.settingsButton.hidden = !canManage;", js)
         self.assertIn("overflow-wrap: anywhere", css)
         self.assertIn("AI analysis failed.", html)
         self.assertIn("showAiFailureBanner", js)
@@ -2934,6 +2947,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("AI analysis did not complete", js)
         self.assertIn("state.lineItems = [];", js)
         self.assertIn("renderBasisFailureState(message)", js)
+        self.assertIn(".basis-line-meta", css)
+        self.assertIn("grid-template-columns: 26px minmax(124px, max-content) minmax(0, 1fr) var(--basis-action-width);", css)
+        self.assertIn(".topbar-controls {\n    display: grid;\n    grid-template-columns: 1fr 1fr;", css)
+        self.assertIn(".topbar-status {\n    grid-column: 1 / -1;", css)
         self.assertIn('state.draftSource === "local"', js)
         self.assertIn("if (state.aiFailed) return false", js)
         self.assertIn(".basis-empty-state-error", css)
@@ -3823,9 +3840,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "Tell me what to change. I will draft the full replacement sentence for approval before applying it.",
             "Ask a question or describe changes to the quotation basis.",
             "basisLinePillLabel",
-            "—%",
+            "Review",
             "normalizeConfidence",
             "renderBasisChatProposalCard",
+            "basis-line-meta",
             "basis-section-action-spacer",
         ):
             self.assertIn(expected, js)
@@ -3869,7 +3887,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "--basis-action-width: 112px;",
             "grid-template-columns: minmax(0, 1fr) var(--basis-action-width);",
             "grid-template-columns: 32px 32px 38px;",
-            "grid-template-columns: 26px 58px minmax(0, 1fr) var(--basis-action-width);",
+            "grid-template-columns: 26px minmax(124px, max-content) minmax(0, 1fr) var(--basis-action-width);",
             'content: "\\2713"',
             'content: "X"',
             ".basis-chat-context",
@@ -3991,6 +4009,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('accept=".xlsx,.csv,.md"', html)
         self.assertNotIn('accept=".xlsx,.csv,.json"', html)
         self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";', js)
+        self.assertIn("const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;", js)
+        self.assertIn('errors: ["Pricing reference file is larger than 10 MB."]', js)
+        self.assertNotIn('errors: ["Pricing reference file is larger than 2 MB."]', js)
         self.assertIn('elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;', js)
         self.assertIn('/api/pricing-reference/template.xlsx', html)
         self.assertIn("downloadPricingReferenceTemplate", js)
@@ -4087,6 +4108,8 @@ eval([
   "basisSections",
   "unresolvedConfirmLines",
   "basisConfirmBlockReason",
+  "basisTagLabel",
+  "basisLinePillLabel",
 ].map(extractFunction).join("\n"));
 
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Flooring / Platform: Finish colour."]);
@@ -4094,6 +4117,9 @@ assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve a
 const customLine = normalizeBasisLines({ tag: "Custom", text: "Manual graphics." })[0];
 assert.strictEqual(customLine.custom_pricing, true);
 assert.strictEqual(isCustomPricingBasisLine({ tag: "Exclude", custom_pricing: true }), true);
+assert.strictEqual(basisLinePillLabel({ tag: "Confirm" }), "Review");
+assert.strictEqual(basisLinePillLabel({ tag: "Confirm", confidence: 92 }), "92%");
+assert.strictEqual(basisLinePillLabel({ tag: "Custom" }), "Custom");
 state.quoteBasisSections[0].lines[1].tag = "Include";
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), []);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
@@ -4307,6 +4333,105 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
             self.assertEqual(store.list_pricing_references("default")[0]["tax"]["rate"], 0.2)
             with self.assertRaises(ValueError):
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
+
+    def test_public_company_pricing_reference_redacts_internal_costs(self):
+        reference = webapp.normalize_pricing_reference_payload({
+            "id": "company-ref",
+            "label": "Company Ref",
+            "tax": {"label": "VAT", "rate": 0.2},
+            "items": [{
+                "id": "row-1",
+                "section": "Graphics",
+                "description": "Printed graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 10,
+                "markup_multiplier": 2,
+                "remarks": "supplier-only note",
+                "aliases": "printed graphics",
+            }],
+        })
+
+        public_reference = webapp.public_company_pricing_reference(reference)
+        serialized = json.dumps(public_reference)
+
+        self.assertEqual(public_reference["source"], "company")
+        self.assertEqual(public_reference["item_count"], 1)
+        self.assertNotIn("items", public_reference)
+        self.assertNotIn("internal_cost", serialized)
+        self.assertNotIn("markup_multiplier", serialized)
+        self.assertNotIn("supplier-only note", serialized)
+
+    def test_public_company_reference_still_resolves_catalog_server_side(self):
+        company_item = {
+            "id": "company-ref-row",
+            "section": "Graphics",
+            "description": "Company saved graphics",
+            "unit_hint": "sqm",
+            "internal_cost": 10,
+            "markup_multiplier": 2,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            saved = store.save_pricing_reference("default", {
+                "id": "company-ref",
+                "label": "Company Ref",
+                "tax": {"label": "VAT", "rate": 0.2},
+                "items": [company_item],
+            })
+            public_reference = webapp.public_company_pricing_reference(saved)
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                rows = webapp.pricing_catalog_prompt_rows_for_payload({
+                    "pricing_reference_id": "company-ref",
+                    "pricing_reference": public_reference,
+                })
+
+        self.assertEqual(rows, [{
+            "id": "company-ref-row",
+            "section": "Graphics",
+            "unit_hint": "sqm",
+            "description": "Company saved graphics",
+            "remarks": [],
+            "aliases": [],
+        }])
+
+    def test_profiles_api_redacts_company_pricing_reference_for_viewer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            store.save_pricing_reference("default", {
+                "id": "company-ref",
+                "label": "Company Ref",
+                "tax": {"label": "VAT", "rate": 0.2},
+                "items": [{
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                }],
+            })
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
+                        payload = json.loads(response.read().decode("utf-8"))
+
+        company_reference = next(item for item in payload["pricing_references"] if item["id"] == "company-ref" and item["source"] == "company")
+        serialized = json.dumps(company_reference)
+        self.assertEqual(company_reference["item_count"], 1)
+        self.assertNotIn("items", company_reference)
+        self.assertNotIn("internal_cost", serialized)
+        self.assertNotIn("markup_multiplier", serialized)
+
+    def test_settings_read_endpoints_require_management_permission(self):
+        paths = ["/api/settings", "/api/settings/pricing-references", "/api/settings/profiles"]
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+            with LocalRunnerServer() as runner:
+                for path in paths:
+                    with self.subTest(path=path):
+                        with self.assertRaises(urllib.error.HTTPError) as error:
+                            urllib.request.urlopen(f"{runner.base_url}{path}", timeout=3)
+                        self.assertEqual(error.exception.code, 403)
 
     def test_settings_permissions_deny_non_admin_writes(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "operator"}, clear=True):

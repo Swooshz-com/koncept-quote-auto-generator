@@ -11,6 +11,7 @@ const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "bl
 const PROFILE_PRESET_PREFIX = "profile:";
 const LOCAL_PRESET_PREFIX = "local:";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
+const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_REFERENCE_IMAGES = 8;
 const DEFAULT_DATE_LABEL = "Date:";
 const DEFAULT_TERMS_HEADING = "Terms & Conditions:";
@@ -132,6 +133,13 @@ const state = {
   pricingIssues: [],
   activeJob: null,
   pendingPricingReference: null,
+  permissions: {
+    role: "viewer",
+    canManageSettings: false,
+    canManagePricingReferences: false,
+    canManageProfiles: false,
+    canImportPricingReferences: false,
+  },
   quoteDateFormat: {
     bold: false,
     italic: false,
@@ -1695,7 +1703,16 @@ function renderSettingsSummary() {
     : "<p>No pricing references loaded.</p>";
 }
 
+function canManageSettings() {
+  return Boolean(state.permissions?.canManageSettings);
+}
+
 function openSettingsModal() {
+  if (!canManageSettings()) {
+    showBlockedAction("You do not have permission to manage settings.");
+    syncControlStates();
+    return;
+  }
   renderSettingsSummary();
   elements.settingsModal.hidden = false;
   elements.settingsModal.classList.add("is-open");
@@ -1983,8 +2000,8 @@ function resetPricingReferenceTaxInputs() {
 
 async function validatePricingReferenceFile(file) {
   if (!file) return pricingReferenceValidationResult([], [], 0, "");
-  if (file.size > 2 * 1024 * 1024) {
-    return { ...pricingReferenceValidationResult([], [], 0, file.name), errors: ["Pricing reference file is larger than 2 MB."] };
+  if (file.size > MAX_PRICING_REFERENCE_FILE_BYTES) {
+    return { ...pricingReferenceValidationResult([], [], 0, file.name), errors: ["Pricing reference file is larger than 10 MB."] };
   }
   const extension = file.name.split(".").pop().toLowerCase();
   if (!["csv", "xlsx", "md"].includes(extension)) {
@@ -2987,7 +3004,7 @@ function basisLinePillLabel(line = {}) {
   const tag = normalizeBasisTag(line.tag);
   const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
   if (tag === "Confirm" && confidence !== null) return `${confidence}%`;
-  if (tag === "Confirm") return "—%";
+  if (tag === "Confirm") return "Review";
   return basisTagLabel(tag);
 }
 
@@ -3005,8 +3022,10 @@ function renderBasisLine(section, line, index) {
   return `
     <li class="${escapeHtml(rowClasses)}">
       <span class="basis-line-icon" aria-hidden="true"></span>
-      <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
-      ${basisQuantityLabel(line) ? `<span class="basis-quantity-pill">${escapeHtml(basisQuantityLabel(line))}</span>` : ""}
+      <span class="basis-line-meta">
+        <span class="basis-line-pill" title="${tag === "Confirm" ? "AI confidence before review" : escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
+        ${basisQuantityLabel(line) ? `<span class="basis-quantity-pill">${escapeHtml(basisQuantityLabel(line))}</span>` : ""}
+      </span>
       <span class="basis-line-text" title="${escapeHtml(line.text)}">${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
@@ -3935,6 +3954,9 @@ async function initializeSession() {
   if (ok && data.csrf_token) {
     state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
     state.csrfToken = data.csrf_token;
+    if (data.permissions && typeof data.permissions === "object") {
+      state.permissions = { ...state.permissions, ...data.permissions };
+    }
     return;
   }
   elements.healthText.textContent = "Local session unavailable";
@@ -3946,6 +3968,13 @@ function syncControlStates() {
   elements.newQuoteButton.title = busy
     ? (state.isAnalysisRunning ? "Analysis is running." : "Quotation generation is running.")
     : "";
+  if (elements.settingsButton) {
+    const canManage = canManageSettings();
+    elements.settingsButton.hidden = !canManage;
+    elements.settingsButton.disabled = busy || !canManage;
+    elements.settingsButton.title = canManage ? "" : "You do not have permission to manage settings.";
+    elements.settingsButton.setAttribute("aria-disabled", String(elements.settingsButton.disabled));
+  }
   updateSidePanelNav();
   saveSessionState();
 }
