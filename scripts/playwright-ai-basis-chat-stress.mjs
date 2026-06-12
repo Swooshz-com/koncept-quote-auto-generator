@@ -103,7 +103,7 @@ function quoteBasisSections(platformText = "100mm raised platform with needle pu
       id: "platform",
       title: "Platform",
       lines: [
-        { tag: "Confirm", text: platformText, confidence_pct: 90 },
+        { tag: "Confirm", text: platformText, quantity: 36, unit: "sqm", confidence_pct: 90 },
       ],
     },
     {
@@ -161,6 +161,12 @@ function basisChatResult(payload) {
   const chat = payload?.basis_chat || {};
   const question = String(chat.question || "").toLowerCase();
   if (chat.scope === "line" && question.includes("150mm")) {
+    if (String(chat.quantity || "") !== "36" || chat.unit !== "sqm" || chat.quantity_label !== "36 sqm") {
+      return {
+        status: "failed",
+        errors: [`Selected line quantity was not included in basis chat payload: ${JSON.stringify(chat)}`],
+      };
+    }
     const sections = quoteBasisSections("150mm raised platform with needle punch carpet.");
     return {
       status: "answered",
@@ -174,7 +180,7 @@ function basisChatResult(payload) {
       },
     };
   }
-  if (!chat.line && question.includes("what does")) {
+  if (question.includes("what does")) {
     return {
       status: "answered",
       type: "answer",
@@ -182,7 +188,7 @@ function basisChatResult(payload) {
       answer: "- **Meaning:** This basis line describes scope that needs operator review.",
     };
   }
-  if (!chat.line && question.includes("include all lighting")) {
+  if (question.includes("include all lighting")) {
     const sections = quoteBasisSections("150mm raised platform with needle punch carpet.", "Include");
     return {
       status: "answered",
@@ -248,6 +254,23 @@ async function submitBasisChat(page, text) {
   await page.locator("#basisChatSendButton").click();
 }
 
+function basisLineRow(page, text) {
+  return page.locator(".basis-line-row", { hasText: text });
+}
+
+async function retagBasisLineAndWait(page, text, tag, expectedPill = tag) {
+  const row = basisLineRow(page, text);
+  await row.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+  await row.locator(`[data-basis-tag="${tag}"]`).click();
+  try {
+    await basisLineRow(page, text).locator(".basis-line-pill", { hasText: expectedPill }).waitFor({ timeout: 15000 });
+  } catch (error) {
+    console.error(`Retag wait failed for ${JSON.stringify(text)} -> ${expectedPill}`);
+    console.error(await basisLineRow(page, text).innerHTML().catch(() => "<row not found>"));
+    throw error;
+  }
+}
+
 async function main() {
   let serverInfo = null;
   if (!(await healthOk())) {
@@ -284,15 +307,22 @@ async function main() {
     await page.locator('[data-revise-section="platform"]').first().waitFor({ timeout: 15000 });
     const basisShot = await screenshot(page, "ai-basis-chat-basis.png");
 
+    const customGraphicsText = "Printed graphics pending manual pricing.";
+    await retagBasisLineAndWait(page, customGraphicsText, "Exclude");
+    await page.locator(".basis-review-item", { hasText: "Graphics" }).locator('[data-basis-section-action="Include"]').click();
+    await basisLineRow(page, customGraphicsText).locator(".basis-line-pill", { hasText: "Exclude" }).waitFor({ timeout: 15000 });
+    await retagBasisLineAndWait(page, customGraphicsText, "Custom", "AI Proposal");
+
     await page.locator('[data-revise-section="platform"]').first().click();
     await page.locator("#basisChatOverlay:not([hidden])").waitFor({ timeout: 15000 });
+    await page.locator(".basis-chat-selected-quantity", { hasText: "36 sqm" }).waitFor({ timeout: 15000 });
     await submitBasisChat(page, "change 100mm to 150mm");
     await page.locator("#basisChatProposal:not([hidden])").waitFor({ timeout: 15000 });
     await page.locator("#basisChatApplyButton:not([disabled])").click();
     await page.locator(".basis-line-text", { hasText: "150mm raised platform" }).waitFor({ timeout: 15000 });
-    await page.locator("#basisChatCloseButton").click();
+    await page.locator("#basisChatOverlay").waitFor({ state: "hidden", timeout: 15000 });
 
-    await page.locator("#discussQuoteButton:not([hidden])").click();
+    await basisLineRow(page, "Standard 13A sockets and LED lighting only.").locator("[data-revise-section]").click();
     await page.locator("#basisChatOverlay:not([hidden])").waitFor({ timeout: 15000 });
     await submitBasisChat(page, "what does this mean?");
     await page.locator("#basisChatMessages", { hasText: "This basis line describes scope" }).waitFor({ timeout: 15000 });
@@ -301,8 +331,40 @@ async function main() {
     await page.locator("#basisChatKeepButton:not([disabled])").click();
     await page.locator("#basisChatMessages", { hasText: "Kept the current quote basis unchanged." }).waitFor({ timeout: 15000 });
     await submitBasisChat(page, "banana everything but also delete it");
-    await page.locator("#basisChatMessages", { hasText: "Please rephrase it" }).waitFor({ timeout: 15000 });
+    await page.locator("#basisChatMessages", { hasText: "Try a shorter" }).waitFor({ timeout: 15000 });
     const chatShot = await screenshot(page, "ai-basis-chat-stress.png");
+
+    await page.locator("#basisChatCloseButton").click();
+    await page.locator("#basisChatOverlay").waitFor({ state: "hidden", timeout: 15000 });
+    for (let remaining = await page.locator(".basis-line-row.basis-line-confirm").count(); remaining > 0;) {
+      await page.locator(".basis-line-row.basis-line-confirm [data-basis-tag=\"Include\"]").first().click();
+      remaining = await page.locator(".basis-line-row.basis-line-confirm").count();
+    }
+    await page.locator("#sideNextButton:not(.is-disabled)").waitFor({ timeout: 15000 });
+    await page.locator("#sideNextButton").click();
+    await page.locator("#outputSidePanel.is-active").waitFor({ timeout: 15000 });
+    const pendingUnitPriceCells = page.locator(".output-unit-price-cell", { hasText: "???" });
+    await pendingUnitPriceCells.first().waitFor({ timeout: 15000 });
+    const outputIncludedRows = await pendingUnitPriceCells.evaluateAll((cells) => (
+      cells.slice(0, 2).map((cell) => cell.getAttribute("data-output-row")).filter(Boolean)
+    ));
+    if (!outputIncludedRows.length) {
+      throw new Error("Expected at least one pending output unit price cell.");
+    }
+    for (const row of outputIncludedRows) {
+      const unitPriceCell = page.locator(`.output-unit-price-cell[data-output-row="${row}"]`);
+      await unitPriceCell.locator(".output-cell-text").click();
+      const includedButton = unitPriceCell.locator(".output-unit-price-editor .output-included-button");
+      await includedButton.waitFor({ timeout: 15000 });
+      await includedButton.click();
+    }
+    const outputUnitPrices = await page.locator("#pricingMatchesBody tr").evaluateAll((rows, selectedRows) => (
+      selectedRows.map((row) => rows[Number(row)]?.querySelector(".output-unit-price-cell .output-cell-text")?.textContent?.trim() || "")
+    ), outputIncludedRows);
+    if (outputUnitPrices.some((value) => value !== "Included")) {
+      throw new Error(`Sequential Included clicks did not persist: ${JSON.stringify(outputUnitPrices)}.`);
+    }
+    const outputShot = await screenshot(page, "ai-output-included-overlay.png");
 
     const bodyText = await page.locator("body").innerText();
     for (const forbidden of ["Traceback", "Request body must be valid JSON", "OpenAI chat returned invalid JSON"]) {
@@ -313,7 +375,7 @@ async function main() {
     console.log(JSON.stringify({
       status: "ok",
       url: page.url(),
-      screenshots: [basisShot, chatShot].filter(Boolean),
+      screenshots: [basisShot, chatShot, outputShot].filter(Boolean),
       consoleProblems,
     }, null, 2));
   } finally {

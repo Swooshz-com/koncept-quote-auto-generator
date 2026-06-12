@@ -134,6 +134,10 @@ async function main() {
     if (restoredPresetValue !== "profile:koncept-image-default") {
       throw new Error(`Expected refresh to preserve company preset, found ${restoredPresetValue}.`);
     }
+    const presetSelectBox = await page.locator("#presetSelect").boundingBox();
+    if (!presetSelectBox || presetSelectBox.width < 200) {
+      throw new Error("Company preset dropdown is unexpectedly narrow.");
+    }
     await page.locator('[data-side-panel="customer"]:not([disabled])').waitFor({ timeout: 15000 });
     await page.locator('[data-side-panel="customer"]').click();
     await page.mouse.move(4, 4);
@@ -157,7 +161,21 @@ async function main() {
     if (!profileSelectBox || profileSelectBox.width < 200) {
       throw new Error("Pricing reference dropdown is unexpectedly narrow.");
     }
+    if (Math.abs(profileSelectBox.width - presetSelectBox.width) > 1) {
+      throw new Error(`Pricing reference dropdown width ${profileSelectBox.width} did not match company preset width ${presetSelectBox.width}.`);
+    }
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
+    await page.locator("#settingsButton").click();
+    await page.locator("#settingsModal").waitFor({ state: "visible" });
+    await page.locator("#settingsNewPricingReferenceButton").click();
+    await page.locator("#pricingReferenceModal").waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await page.locator("#pricingReferenceModal").waitFor({ state: "hidden" });
+    if (!(await page.locator("#settingsModal").isVisible())) {
+      throw new Error("Escape closed Settings before the nested pricing reference modal.");
+    }
+    await page.keyboard.press("Escape");
+    await page.locator("#settingsModal").waitFor({ state: "hidden" });
     await page.locator("#quoteDate").waitFor({ state: "visible" });
     const dateBoldButton = page.locator('[data-date-format-command="bold"]');
     await dateBoldButton.click();
