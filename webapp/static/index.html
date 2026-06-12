@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=37">
+    <link rel="stylesheet" href="/static/styles.css?v=43">
   </head>
   <body>
     <div class="app-shell">
@@ -23,6 +23,7 @@
             <span class="status-dot" id="statusDot"></span>
             <span id="healthText" class="health-text">Checking local server</span>
           </div>
+          <a class="topbar-action topbar-link-action" href="/privacy" target="_blank" rel="noopener">Privacy</a>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -107,6 +108,7 @@
                   <button class="secondary-button panel-clear-button" type="button" id="resetImagesButton" hidden>Reset Draft</button>
                   <button class="secondary-button panel-clear-button" type="button" id="clearCustomerButton" hidden>Reset Draft</button>
                   <button class="secondary-button panel-clear-button" type="button" id="clearQuoteCompanyButton" hidden>Reset Draft</button>
+                  <button class="secondary-button panel-analyse-button" type="button" id="analyseAgainButton" hidden>Analyse Again</button>
                   <button class="secondary-button panel-clear-button" type="button" id="resetQuoteBasisButton" hidden>Reset Draft</button>
                   <button class="secondary-button panel-clear-button" type="button" id="resetOutputButton" hidden>Reset Draft</button>
                 </div>
@@ -129,9 +131,12 @@
 
               <section class="side-panel-card side-panel-section quote-details-panel" id="customerDetailsPanel" data-side-panel-content="customer">
                 <div class="pricing-reference-panel">
-                  <div>
-                    <h3>Quote Pricing Reference</h3>
-                    <p>Choose the pricing catalog and analysis reference for this quotation.</p>
+                  <div class="pricing-reference-copy">
+                    <div class="pricing-reference-heading">
+                      <h3>Quote Pricing Reference</h3>
+                      <span class="pricing-reference-source-badge">Repo catalog</span>
+                    </div>
+                    <p class="settings-note" id="selectedPricingReferenceSummary">Managed in Settings.</p>
                   </div>
                   <div class="pricing-reference-controls">
                     <div class="pricing-reference-control-group">
@@ -141,7 +146,6 @@
                       </label>
                       <span class="tax-badge" id="selectedPricingReferenceTax">GST 9%</span>
                     </div>
-                    <p class="settings-note" id="selectedPricingReferenceSummary">Required before moving to Quote Company. Managed in Settings.</p>
                   </div>
                 </div>
 
@@ -244,8 +248,11 @@
               <section class="side-panel-card side-panel-section quote-details-panel" id="quoteCompanyPanel" data-side-panel-content="quote_company">
                 <div class="company-preset-panel">
                   <div class="company-preset-copy">
-                    <h3>Company preset</h3>
-                    <p>Load reusable company defaults, then adjust the quotation fields below.</p>
+                    <div class="company-preset-heading">
+                      <h3>Company preset</h3>
+                      <span class="company-preset-source-badge">Profile template</span>
+                    </div>
+                    <p class="settings-note" id="presetStatus">Database save pending.</p>
                   </div>
                   <div class="company-preset-controls">
                     <div class="company-preset-control-group">
@@ -255,18 +262,17 @@
                       </label>
                       <div class="settings-button-row">
                         <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                        <button class="secondary-button danger-button" type="button" id="deletePresetButton" hidden>Delete</button>
                       </div>
                     </div>
-                    <div class="company-preset-control-group">
+                    <div class="company-preset-control-group company-preset-save-group" aria-disabled="true">
                       <label class="compact-control preset-save-name">
-                        Save as
-                        <input id="presetNameInput" type="text" placeholder="Example: Standard company header">
+                        Save profile
+                        <input id="presetNameInput" type="text" placeholder="Database save pending" disabled aria-describedby="presetStatus">
                       </label>
-                      <button class="primary-button" type="button" id="savePresetButton">Save Current</button>
+                      <button class="primary-button" type="button" id="savePresetButton" disabled title="Database-backed profile saving is not enabled yet.">Save Profile</button>
                     </div>
                   </div>
-                  <p class="settings-note" id="presetStatus">Presets are stored locally in this browser and can include the uploaded header logo.</p>
                 </div>
 
                 <div class="section-band first-band quote-form-section">
@@ -293,24 +299,6 @@
                         <textarea class="rich-text-source" id="headerDetails" rows="8" hidden></textarea>
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                <div class="section-band quote-form-section">
-                  <h3>Tax</h3>
-                  <p class="settings-note">Tax is owned by the selected Pricing Reference and managed in Settings.</p>
-                  <div class="form-grid compact tax-settings-grid">
-                    <label class="field-control">
-                      <span>Quotation tax label</span>
-                      <select id="taxLabel" disabled>
-                        <option value="GST">GST</option>
-                        <option value="VAT">VAT</option>
-                      </select>
-                    </label>
-                    <label class="field-control">
-                      <span>Tax rate (%)</span>
-                      <input id="taxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" disabled>
-                    </label>
                   </div>
                 </div>
 
@@ -484,7 +472,7 @@
               <section class="side-panel-card side-panel-section" id="quoteBasisPanel" data-side-panel-content="basis">
                 <div class="ai-failure-banner" id="aiFailureBanner" role="alert" hidden>
                   <strong>AI analysis failed.</strong>
-                  <span>Try again later.</span>
+                  <span>Failed. Please try again. Contact support if this keeps happening.</span>
                 </div>
                 <section class="basis-review-surface" id="basisReviewSurface" aria-live="polite">
                   <div class="basis-empty-state">
@@ -497,6 +485,19 @@
               <section class="side-panel-card side-panel-section" id="outputSidePanel" data-side-panel-content="output">
                 <div class="assistant-output" id="assistantOutput">
                   <span class="result-pill sr-only" id="resultStatus" aria-live="polite">No job yet</span>
+                  <div class="quote-basis-header output-page-header">
+                    <div>
+                      <div class="quote-basis-title-row output-title-row">
+                        <h3>Output</h3>
+                        <span class="output-status-pill" id="outputStatusPill">Draft</span>
+                      </div>
+                      <p>Review quotation rows, resolve pricing, and download Excel.</p>
+                    </div>
+                    <div class="quote-basis-source output-source">
+                      <span id="outputSourceLabel">Source: Pricing reference</span>
+                      <strong id="outputTotalLines">Total lines: 0</strong>
+                    </div>
+                  </div>
                   <div class="message-list" id="messageList"></div>
                   <div class="side-empty-state" id="pricingEmptyState">
                     <strong>No output rows yet</strong>
@@ -582,24 +583,6 @@
           </form>
         </section>
       </div>
-      <div class="modal-overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle" hidden>
-        <div class="modal-backdrop" data-settings-close></div>
-        <section class="modal-panel settings-modal-panel">
-          <header class="modal-header">
-            <div>
-              <span class="basis-chat-eyebrow">Company Settings</span>
-              <h3 id="settingsModalTitle">Settings</h3>
-            </div>
-            <button class="icon-button" type="button" id="settingsCloseButton" aria-label="Close settings modal">x</button>
-          </header>
-          <div class="settings-tabs">
-            <section><h4>Pricing References</h4><p>Pricing catalogue, matching aliases, and GST/VAT configuration.</p><div class="settings-section-actions"><button class="secondary-button" type="button" id="settingsNewPricingReferenceButton">New / Import</button></div><div id="settingsPricingReferencesList"></div></section>
-            <section><h4>Profiles</h4><p>Quote layout, company defaults, and reusable presets.</p></section>
-            <section><h4>Import</h4><p>Upload .xlsx, .csv, or .md references for preview before saving.</p></section>
-            <section><h4>Permissions / Role info</h4><p>Admin and management can manage settings. Operators and viewers cannot save, delete, edit, or import references.</p></section>
-          </div>
-        </section>
-      </div>
       <div class="modal-overlay" id="pricingReferenceModal" role="dialog" aria-modal="true" aria-labelledby="pricingReferenceModalTitle" hidden>
         <div class="modal-backdrop" data-pricing-reference-close></div>
         <section class="modal-panel pricing-reference-modal-panel">
@@ -611,45 +594,91 @@
             <button class="icon-button" type="button" id="pricingReferenceCloseButton" aria-label="Close pricing reference modal">x</button>
           </header>
           <form class="modal-form" id="pricingReferenceForm">
-            <div class="pricing-template-callout">
-              <div>
-                <strong>Template is optional for clean manual entry.</strong>
-                <span>Upload an existing messy Excel, CSV, or Markdown catalog and AI will normalize it for review. Use the template only when starting from scratch.</span>
+            <div class="pricing-reference-no-access" id="pricingReferenceNoAccess" hidden>
+              <strong>No access</strong>
+              <p>Your current role cannot create, edit, import, delete, or save pricing references.</p>
+            </div>
+            <div class="pricing-reference-editor-body" id="pricingReferenceEditorBody">
+              <section class="pricing-reference-upload-field pricing-reference-delete-section" id="pricingReferenceDeleteSection">
+                <span class="pricing-reference-field-title">Existing repo references</span>
+                <span class="settings-note">Delete imported pricing reference packs from this repo. Default profile references are protected.</span>
+                <div class="pricing-reference-delete-controls">
+                  <label class="compact-control">
+                    Pricing reference
+                    <select id="deletePricingReferenceSelect"></select>
+                  </label>
+                  <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>Delete Reference</button>
+                </div>
+              </section>
+              <label class="pricing-reference-upload-field">
+                <span class="pricing-reference-field-title">Pricing catalog upload</span>
+                <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
+                <span class="file-picker-control">
+                  <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
+                  <span class="secondary-button file-picker-button">Choose File</span>
+                  <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
+                </span>
+              </label>
+              <label>
+                Pricing reference name
+                <input id="pricingReferenceName" type="text" autocomplete="off">
+              </label>
+              <div class="form-grid compact tax-settings-grid">
+                <label class="field-control">
+                  <span>Tax label</span>
+                  <select id="pricingReferenceTaxLabel" required>
+                    <option value="GST">GST</option>
+                    <option value="VAT">VAT</option>
+                  </select>
+                </label>
+                <label class="field-control">
+                  <span>Tax rate (%)</span>
+                  <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
+                </label>
               </div>
-              <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx?template=examples-v3" download>Download Template</a>
+              <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
             </div>
-            <label>
-              Pricing reference name
-              <input id="pricingReferenceName" type="text" autocomplete="off">
-            </label>
-            <div class="form-grid compact tax-settings-grid">
-              <label class="field-control">
-                <span>Tax label</span>
-                <select id="pricingReferenceTaxLabel" required>
-                  <option value="GST">GST</option>
-                  <option value="VAT">VAT</option>
-                </select>
-              </label>
-              <label class="field-control">
-                <span>Tax rate (%)</span>
-                <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
-              </label>
-            </div>
-            <label>
-              Pricing catalog upload
-              <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
-              <span class="file-picker-control">
-                <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
-                <span class="secondary-button file-picker-button">Choose File</span>
-                <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
-              </span>
-            </label>
-            <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
-            <div class="modal-actions">
-              <button class="secondary-button" type="button" id="pricingReferenceCancelButton">Cancel</button>
-              <button class="primary-button" type="submit" id="pricingReferenceSaveButton" disabled>Save Reference</button>
+            <div class="modal-actions pricing-reference-modal-actions">
+              <div class="pricing-reference-template-footer">
+                <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx?template=examples-v3" download>Download Template</a>
+              </div>
+              <div class="pricing-reference-action-buttons">
+                <button class="secondary-button" type="button" id="pricingReferenceCancelButton">Cancel</button>
+                <button class="primary-button" type="submit" id="pricingReferenceSaveButton" disabled>Save Reference</button>
+              </div>
             </div>
           </form>
+        </section>
+      </div>
+      <div class="modal-overlay pricing-reference-table-overlay" id="pricingReferenceTableOverlay" role="dialog" aria-modal="true" aria-labelledby="pricingReferenceTableTitle" hidden>
+        <div class="modal-backdrop" data-pricing-reference-table-close></div>
+        <section class="modal-panel pricing-reference-table-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Pricing reference</span>
+              <h3 id="pricingReferenceTableTitle">Review Imported Rows</h3>
+              <p class="pricing-reference-table-summary" id="pricingReferenceTableSummary">No imported rows yet.</p>
+            </div>
+            <button class="icon-button" type="button" id="pricingReferenceTableCloseButton" aria-label="Close pricing reference table">x</button>
+          </header>
+          <div class="pricing-reference-table-wrap">
+            <table class="pricing-reference-preview-table pricing-reference-full-table">
+              <colgroup>
+                <col class="pricing-reference-col-section">
+                <col class="pricing-reference-col-description">
+                <col class="pricing-reference-col-unit">
+                <col class="pricing-reference-col-cost">
+                <col class="pricing-reference-col-markup">
+                <col class="pricing-reference-col-remarks">
+                <col class="pricing-reference-col-status">
+              </colgroup>
+              <thead><tr><th>Section</th><th>Description</th><th>Unit</th><th>Cost</th><th>Markup</th><th>Remarks</th><th>Warning/status</th></tr></thead>
+              <tbody id="pricingReferenceTableBody"></tbody>
+            </table>
+          </div>
+          <div class="modal-actions pricing-reference-table-actions">
+            <button class="secondary-button" type="button" data-pricing-reference-table-close>Done</button>
+          </div>
         </section>
       </div>
       <div class="modal-overlay" id="analysisConfirmModal" role="dialog" aria-modal="true" aria-labelledby="analysisConfirmTitle" hidden>
@@ -662,13 +691,15 @@
             </div>
           </header>
           <p>AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?</p>
-          <div class="modal-actions">
+          <div class="modal-actions analysis-mode-actions">
+            <button class="secondary-button ai-mode-button" type="button" id="analysisConfirmHighAccuracyButton">Run High Accuracy</button>
+            <span class="modal-action-spacer" aria-hidden="true"></span>
             <button class="secondary-button" type="button" id="analysisConfirmCancelButton">Cancel</button>
-            <button class="primary-button" type="button" id="analysisConfirmStartButton">Start Analysis</button>
+            <button class="primary-button" type="button" id="analysisConfirmStartButton">Run Standard</button>
           </div>
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=48"></script>
+    <script src="/static/app.js?v=54"></script>
   </body>
 </html>

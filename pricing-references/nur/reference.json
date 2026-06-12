@@ -1,0 +1,12 @@
+{
+  "description": "Imported from Quotation-Cost-Template-V1.1.xlsx",
+  "id": "nur",
+  "label": "nur",
+  "pricing_catalog": "pricing-catalog.json",
+  "pricing_reference": "pricing-catalog.ai-reference.md",
+  "saved_at": "2026-06-12T19:51:33.060809Z",
+  "tax": {
+    "label": "GST",
+    "rate": 0.2
+  }
+}

@@ -42,9 +42,3 @@ services:
         value: gpt-5.4-mini
       - key: OPENAI_BASIS_LINE_MODEL
         value: gpt-5.4-nano
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_DRAFT_MODEL
-        value: gemini-flash-latest
-      - key: GEMINI_BASIS_LINE_MODEL
-        value: gemini-3.1-flash-lite

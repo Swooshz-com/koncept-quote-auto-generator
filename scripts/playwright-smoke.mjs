@@ -166,16 +166,10 @@ async function main() {
     }
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
     await page.locator("#settingsButton").click();
-    await page.locator("#settingsModal").waitFor({ state: "visible" });
-    await page.locator("#settingsNewPricingReferenceButton").click();
     await page.locator("#pricingReferenceModal").waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "New Pricing Reference" }).waitFor();
     await page.keyboard.press("Escape");
     await page.locator("#pricingReferenceModal").waitFor({ state: "hidden" });
-    if (!(await page.locator("#settingsModal").isVisible())) {
-      throw new Error("Escape closed Settings before the nested pricing reference modal.");
-    }
-    await page.keyboard.press("Escape");
-    await page.locator("#settingsModal").waitFor({ state: "hidden" });
     await page.locator("#quoteDate").waitFor({ state: "visible" });
     const dateBoldButton = page.locator('[data-date-format-command="bold"]');
     await dateBoldButton.click();

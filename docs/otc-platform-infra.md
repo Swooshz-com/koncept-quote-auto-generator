@@ -120,9 +120,6 @@ QUOTE_LOG_ROOT=/data/swooshz/logs
 OPENAI_API_KEY=<openai-key-if-used>
 OPENAI_DRAFT_MODEL=<model-id-or-app-alias>
 OPENAI_BASIS_LINE_MODEL=<model-id-or-app-alias>
-GEMINI_API_KEY=<gemini-key-if-used>
-GEMINI_DRAFT_MODEL=<model-id-or-app-alias>
-GEMINI_BASIS_LINE_MODEL=<model-id-or-app-alias>
 ```
 
 Storage and database variables:

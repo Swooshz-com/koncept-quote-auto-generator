@@ -29,10 +29,8 @@ FORBIDDEN_OUTPUT_TERMS = (
     "traceback",
     "invalid json",
     "openai_api_key=",
-    "gemini_api_key=",
     "sk-",
     "sk_",
-    "aiza",
 )
 
 
@@ -108,7 +106,7 @@ def base_payload() -> dict[str, Any]:
             },
         ],
         "profile_id": "koncept",
-        "pricing_reference_id": "koncept",
+        "pricing_reference_id": "koncept-exhibition-quotation",
         "confirmed": True,
         "client": {"name": "Live AI Smoke Test Client", "attention": "Test Operator"},
         "project": {
@@ -200,13 +198,10 @@ def smoke_cases(include_injection: bool, selected_cases: set[str] | None = None)
     return cases
 
 
-def configured_providers() -> list[str]:
-    providers = []
+def configured_provider() -> str:
     if webapp.read_dotenv_value(webapp.OPENAI_API_KEY_ENV_NAME):
-        providers.append("openai")
-    if webapp.read_dotenv_value(webapp.GEMINI_API_KEY_ENV_NAME):
-        providers.append("gemini")
-    return providers
+        return "openai"
+    return ""
 
 
 def result_summary(result: dict[str, Any]) -> str:
@@ -259,11 +254,11 @@ def main() -> int:
     parser.add_argument("--case", action="append", default=[], help="Run only the named case. Can be repeated.")
     args = parser.parse_args()
 
-    providers = configured_providers()
-    if not providers:
+    provider = configured_provider()
+    if not provider:
         print(json.dumps({
             "status": "blocked",
-            "error": "No OPENAI_API_KEY or GEMINI_API_KEY is configured in the local environment.",
+            "error": f"Configure {webapp.OPENAI_API_KEY_ENV_NAME} in the local environment.",
         }, indent=2))
         return 2
 
@@ -278,7 +273,7 @@ def main() -> int:
     failures = [item for item in results if item["status"] != "ok"]
     print(json.dumps({
         "status": "ok" if not failures else "failed",
-        "providers_configured": providers,
+        "provider_configured": provider,
         "case_count": len(cases),
         "results": results,
     }, indent=2))

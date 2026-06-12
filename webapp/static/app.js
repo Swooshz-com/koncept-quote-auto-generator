@@ -1,15 +1,14 @@
 const EMPTY_LINE_ITEMS_MESSAGE = "AI analysis will populate line items here.";
 const DEFAULT_PROFILE_ID = "koncept";
-const DEFAULT_PRICING_REFERENCE_ID = "koncept";
+const DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation";
 const DEFAULT_SAMPLE_ID = "brazil-pavilion";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
-const QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
+const LEGACY_QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
 const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
 const QUOTE_SESSION_STATE_VERSION = 4;
 const OUTPUT_SORT_MODES = ["category", "name", "category_name"];
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
-const LOCAL_PRESET_PREFIX = "local:";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
 const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_REFERENCE_IMAGES = 8;
@@ -122,6 +121,8 @@ const state = {
   isGenerating: false,
   aiFailed: false,
   draftSource: "",
+  lastAnalysisMode: "standard",
+  pendingAnalysisMode: "standard",
   isBooting: true,
   isPageUnloading: false,
   csrfHeaderName: CSRF_HEADER_NAME,
@@ -208,6 +209,9 @@ const elements = {
   aiFailureBanner: qs("#aiFailureBanner"),
   basisReviewSurface: qs("#basisReviewSurface"),
   resultStatus: qs("#resultStatus"),
+  outputStatusPill: qs("#outputStatusPill"),
+  outputSourceLabel: qs("#outputSourceLabel"),
+  outputTotalLines: qs("#outputTotalLines"),
   messageList: qs("#messageList"),
   matchSummary: qs("#matchSummary"),
   pricingMatchesBody: qs("#pricingMatchesBody"),
@@ -223,6 +227,7 @@ const elements = {
   resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
   clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
+  analyseAgainButton: qs("#analyseAgainButton"),
   resetQuoteBasisButton: qs("#resetQuoteBasisButton"),
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
@@ -250,11 +255,15 @@ const elements = {
   pricingReferenceFile: qs("#pricingReferenceFile"),
   pricingReferenceFileName: qs("#pricingReferenceFileName"),
   pricingReferencePreview: qs("#pricingReferencePreview"),
+  pricingReferenceNoAccess: qs("#pricingReferenceNoAccess"),
+  pricingReferenceEditorBody: qs("#pricingReferenceEditorBody"),
+  pricingReferenceDeleteSection: qs("#pricingReferenceDeleteSection"),
+  deletePricingReferenceSelect: qs("#deletePricingReferenceSelect"),
+  pricingReferenceTableOverlay: qs("#pricingReferenceTableOverlay"),
+  pricingReferenceTableSummary: qs("#pricingReferenceTableSummary"),
+  pricingReferenceTableBody: qs("#pricingReferenceTableBody"),
+  pricingReferenceTableCloseButton: qs("#pricingReferenceTableCloseButton"),
   settingsButton: qs("#settingsButton"),
-  settingsModal: qs("#settingsModal"),
-  settingsCloseButton: qs("#settingsCloseButton"),
-  settingsPricingReferencesList: qs("#settingsPricingReferencesList"),
-  settingsNewPricingReferenceButton: qs("#settingsNewPricingReferenceButton"),
   pricingReferenceTaxLabel: qs("#pricingReferenceTaxLabel"),
   pricingReferenceTaxRate: qs("#pricingReferenceTaxRate"),
   selectedPricingReferenceSummary: qs("#selectedPricingReferenceSummary"),
@@ -266,9 +275,28 @@ const elements = {
   analysisConfirmModal: qs("#analysisConfirmModal"),
   analysisConfirmCancelButton: qs("#analysisConfirmCancelButton"),
   analysisConfirmStartButton: qs("#analysisConfirmStartButton"),
+  analysisConfirmHighAccuracyButton: qs("#analysisConfirmHighAccuracyButton"),
   richTextEditors: Array.from(document.querySelectorAll("[data-rich-text-source]")),
   richTextToolbar: Array.from(document.querySelectorAll("[data-rich-command]")),
 };
+
+function normalizeAnalysisMode(value) {
+  const text = String(value || "").trim().toLowerCase().replace(/-/g, "_");
+  if (["high", "accurate", "high_accuracy", "frontier"].includes(text)) return "high_accuracy";
+  return "standard";
+}
+
+function analysisRunningMessage(mode) {
+  return normalizeAnalysisMode(mode) === "high_accuracy"
+    ? "Running high accuracy analysis. This can take longer, so keep this window open."
+    : "Reading the reference images and preparing the quote basis. Please wait.";
+}
+
+function analysisModeBadge(mode = state.lastAnalysisMode) {
+  return normalizeAnalysisMode(mode) === "high_accuracy"
+    ? `<span class="analysis-mode-badge">High Accuracy</span>`
+    : "";
+}
 
 function pricingReferenceSelectValue(reference = {}) {
   const referenceId = String(reference.id || "").trim();
@@ -293,10 +321,21 @@ function pricingReferenceSelectionFromValue(value = "") {
 function mergePricingReferences(bundled = []) {
   const seen = new Set();
   return [...bundled].filter((reference) => {
+    const source = String(reference?.source || "bundled").trim() || "bundled";
+    if (source !== "bundled") return false;
     const key = pricingReferenceSelectValue(reference);
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+}
+
+function sortedPricingReferencesForDisplay(references = []) {
+  return [...references].sort((left, right) => {
+    const leftLabel = String(left?.label || left?.id || "").trim();
+    const rightLabel = String(right?.label || right?.id || "").trim();
+    return leftLabel.localeCompare(rightLabel, undefined, { sensitivity: "base" })
+      || String(left?.id || "").localeCompare(String(right?.id || ""), undefined, { sensitivity: "base" });
   });
 }
 
@@ -385,6 +424,8 @@ function normalizeQuoteBasisTitle(value = "") {
 
 function cleanCustomerQuoteLineText(value = "") {
   let text = normalizeUnit(String(value || "").trim().replace(/\s+/g, " "));
+  text = text.replace(/(^|[^A-Za-z0-9])m\s*(?:2|\^2)(?=$|[^A-Za-z0-9])/gi, "$1sqm");
+  text = text.replace(/(^|[^A-Za-z0-9])sq\.?\s*m\.?(?=$|[^A-Za-z0-9])/gi, "$1sqm");
   const replacements = [
     /\s+taken\s+from\s+quotation\s+title\s*:?\s*/gi,
     /\s+from\s+quotation\s+title\s*:?\s*/gi,
@@ -401,6 +442,106 @@ function cleanCustomerQuoteLineText(value = "") {
   ];
   replacements.forEach((pattern) => { text = text.replace(pattern, " "); });
   return text.replace(/\s+(:|,|\.)/g, "$1").replace(/:\s*([0-9])/g, " $1").replace(/\s{2,}/g, " ").replace(/^[ ;]+|[ ;]+$/g, "");
+}
+
+function pricingReferenceLineText(value = "") {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function leadingNumber(value = "") {
+  const match = String(value ?? "").replaceAll(",", "").trim().match(/^-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const number = Number(match[0]);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatQuantityNumber(value) {
+  return Number.isInteger(value) ? value : value;
+}
+
+function normalizeQuantityPrefixUnit(value = "") {
+  const unit = String(value || "").toLowerCase().replace(/\s+/g, " ").replace(/\.+$/g, "").trim();
+  if (["sqm", "m2", "m^2", "sq m", "sq.m", "sq.m."].includes(unit)) return "sqm";
+  if (["nos", "no", "pc", "pcs", "piece", "pieces", "unit", "units"].includes(unit)) return "nos";
+  if (["lot", "lots"].includes(unit)) return "lot";
+  if (["set", "sets"].includes(unit)) return "set";
+  if (["each", "ea"].includes(unit)) return "each";
+  if (["m length", "m run"].includes(unit)) return "m length";
+  return normalizeUnit(value);
+}
+
+function leadingQuantityPrefix(value = "") {
+  const cleaned = cleanCustomerQuoteLineText(value);
+  const match = cleaned.match(/^(\d[\d,]*(?:\.\d+)?)\s+(m\s+(?:length|run)|sq\.?\s*m\.?|m\s*(?:2|\^2)|sqm|nos?\.?|no\.?|pcs?\.?|pieces?|units?|lots?|sets?|each|ea)(?=$|[\s:;,\-.])/i);
+  if (!match) return null;
+  const quantity = leadingNumber(match[1]);
+  if (quantity === null || quantity <= 0) return null;
+  let text = cleaned.slice(match[0].length).replace(/^[\s:;,\-.]+/, "").replace(/^of\s+/i, "").trim();
+  if (!text) return null;
+  return {
+    text,
+    quantity: formatQuantityNumber(quantity),
+    unit: normalizeQuantityPrefixUnit(match[2]),
+  };
+}
+
+function quantityUnitAliases(unit = "") {
+  const normalized = normalizeUnit(unit).toLowerCase().replace(/\s+/g, " ").trim();
+  const aliases = new Set();
+  if (normalized) aliases.add(normalized);
+  if (normalized === "sqm") {
+    ["sqm", "m2", "m^2", "sq m", "sq.m", "sq.m."].forEach((alias) => aliases.add(alias));
+  }
+  if (/^nos?\.?$/.test(normalized)) {
+    ["nos", "nos.", "no", "no.", "pcs", "pieces", "units"].forEach((alias) => aliases.add(alias));
+  }
+  if (normalized === "m length") {
+    ["m length", "m"].forEach((alias) => aliases.add(alias));
+  }
+  return Array.from(aliases).filter(Boolean).sort((a, b) => b.length - a.length);
+}
+
+function startsWithQuantityUnit(textAfterNumber = "", unit = "") {
+  const after = String(textAfterNumber || "").trimStart().toLowerCase();
+  if (!after) return true;
+  if (!/^[a-z]/.test(after)) return true;
+  return quantityUnitAliases(unit).some((alias) => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\ /g, "\\s+");
+    return new RegExp(`^${escaped}(?=$|[^a-z0-9])`, "i").test(after);
+  });
+}
+
+function stripLeadingQuantityCountFromLineText(text = "", quantity = "", unit = "") {
+  const cleaned = cleanCustomerQuoteLineText(text);
+  const prefix = leadingQuantityPrefix(cleaned);
+  if (prefix) {
+    const quantityNumber = leadingNumber(quantity);
+    if (quantityNumber === null || Math.abs(Number(prefix.quantity) - quantityNumber) <= 0.0001) {
+      return prefix.text;
+    }
+  }
+  const quantityNumber = leadingNumber(quantity);
+  if (quantityNumber === null || quantityNumber <= 0 || !cleaned) return cleaned;
+  const match = cleaned.replaceAll(",", "").match(/^-?\d+(?:\.\d+)?/);
+  if (!match) return cleaned;
+  const textNumber = Number(match[0]);
+  if (!Number.isFinite(textNumber) || Math.abs(textNumber - quantityNumber) > 0.0001) return cleaned;
+  const originalMatch = cleaned.match(/^-?\d[\d,]*(?:\.\d+)?/);
+  if (!originalMatch) return cleaned;
+  const remainder = cleaned.slice(originalMatch[0].length);
+  if (!startsWithQuantityUnit(remainder, unit)) return cleaned;
+  return remainder.replace(/^[\s:;,\-]+/, "").trim() || cleaned;
+}
+
+function normalizedLineTextQuantityParts(text = "", quantity = "", unit = "") {
+  const prefix = leadingQuantityPrefix(text);
+  if (prefix) return { ...prefix, fromTextPrefix: true };
+  return {
+    text: stripLeadingQuantityCountFromLineText(text, quantity, unit),
+    quantity,
+    unit: normalizeUnit(unit),
+    fromTextPrefix: false,
+  };
 }
 
 function neutralizeFormulaText(value = "") {
@@ -531,6 +672,28 @@ function startAnalysisElapsedTimer(startedAt = activeJobStartedAt()) {
   analysisElapsedTimerId = window.setInterval(() => updateAnalysisElapsed(startedAt), 1000);
 }
 
+const GENERIC_FAILURE_MESSAGE = "Failed. Please try again. Contact support if this keeps happening.";
+
+function errorReferenceFrom(data = {}) {
+  if (!data || typeof data !== "object") return "";
+  return String(
+    data.error_reference
+    || data.errorReference
+    || data.result?.error_reference
+    || data.result?.errorReference
+    || ""
+  ).trim();
+}
+
+function genericFailureMessage(data = {}) {
+  const reference = typeof data === "string" ? "" : errorReferenceFrom(data);
+  return reference ? `${GENERIC_FAILURE_MESSAGE} Reference: ${reference}.` : GENERIC_FAILURE_MESSAGE;
+}
+
+function genericFailureMessages(data = {}) {
+  return [genericFailureMessage(data)];
+}
+
 function setAiStatusBanner(tone, title, message, options = {}) {
   if (tone !== "running") stopAnalysisElapsedTimer();
   const elapsedMarkup = options.elapsed
@@ -551,8 +714,8 @@ function showAiRunningBanner(message = "Reading the reference images and prepari
   startAnalysisElapsedTimer(startedAt);
 }
 
-function showAiFailureBanner(message = "AI analysis failed. Try again later.") {
-  const detail = message.replace(/^AI analysis failed\.?\s*/i, "").trim() || "Try again later.";
+function showAiFailureBanner(message = GENERIC_FAILURE_MESSAGE) {
+  const detail = String(message || "").replace(/^AI analysis failed\.?\s*/i, "").trim() || GENERIC_FAILURE_MESSAGE;
   setAiStatusBanner("failure", "AI analysis failed.", detail);
 }
 
@@ -572,7 +735,7 @@ function clearAiFailureBanner() {
   elements.aiFailureBanner.classList.remove("is-running", "is-failure");
   elements.aiFailureBanner.innerHTML = `
     <strong>AI analysis failed.</strong>
-    <span>Try again later.</span>
+    <span>${GENERIC_FAILURE_MESSAGE}</span>
   `;
 }
 
@@ -887,12 +1050,14 @@ function renderSelectedPricingReferenceSummary() {
   const taxText = `${tax.label} ${taxRatePercentText(tax.rate)}%`;
   if (elements.selectedPricingReferenceSummary) {
     elements.selectedPricingReferenceSummary.textContent = reference
-      ? `${reference.label || reference.id}${reference.description ? ` - ${reference.description}` : ""}. Managed in Settings.`
-      : "Select a pricing reference. Managed in Settings.";
+      ? "Managed in Settings."
+      : "Select a pricing reference.";
   }
   if (elements.selectedPricingReferenceTax) elements.selectedPricingReferenceTax.textContent = taxText;
   if (elements.taxLabel) elements.taxLabel.value = tax.label;
   if (elements.taxRate) elements.taxRate.value = taxRatePercentText(tax.rate);
+  updatePricingReferenceDeleteButton();
+  updateOutputHeader();
 }
 
 function todayDateInputValue(date = new Date()) {
@@ -972,17 +1137,21 @@ function normalizeLineItem(item = {}) {
   const priceMode = item.price_mode === "Included" || String(item.display_price || "").toLowerCase() === "included"
     ? "Included"
     : "Priced";
+  const quantityParts = normalizedLineTextQuantityParts(item.description || "", item.quantity ?? "", item.unit || "");
   return {
     section: normalizeCategoryTitle(item.section || ""),
-    quantity: item.quantity ?? "",
-    unit: item.unit || "",
-    description: cleanCustomerQuoteLineText(item.description || ""),
+    quantity: quantityParts.quantity ?? "",
+    unit: quantityParts.unit || "",
+    description: cleanCustomerQuoteLineText(quantityParts.text || ""),
     pricing_keyword: item.pricing_keyword || "",
     display_price: item.display_price || "",
     price_mode: priceMode,
     unit_price_override: item.unit_price_override ?? "",
     catalog_unit_price: item.catalog_unit_price ?? item.unit_price ?? item.sale_unit_price ?? "",
+    catalog_description: cleanCustomerQuoteLineText(item.catalog_description || ""),
+    pricing_reference_description: pricingReferenceLineText(item.pricing_reference_description || ""),
     source_basis_line_id: item.source_basis_line_id || "",
+    status: item.status || "",
   };
 }
 
@@ -1146,6 +1315,7 @@ function wireRichTextEditors() {
 }
 
 function setInputValue(input, value) {
+  if (!input) return;
   input.value = value ?? "";
   syncRichTextEditor(input);
 }
@@ -1229,7 +1399,7 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(company, "name", partial)) setInputValue(elements.quoteCompanyName, company.name);
   if (shouldApply(company, "header_details", partial)) setInputValue(elements.headerDetails, company.header_details);
   if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_label")) {
-    elements.taxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
+    if (elements.taxLabel) elements.taxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
   }
   if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_rate")) {
     setInputValue(elements.taxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
@@ -1321,6 +1491,7 @@ function saveSessionState() {
       basisConfirmed: state.basisConfirmed,
       aiFailed: state.aiFailed,
       draftSource: state.draftSource,
+      lastAnalysisMode: state.lastAnalysisMode,
       activeSidePanel: state.activeSidePanel,
       downloadFile: state.downloadFile,
       pricingMatches: state.pricingMatches,
@@ -1361,22 +1532,19 @@ function restoreSessionState() {
   state.originalAnalysisSnapshot = saved.originalAnalysisSnapshot || null;
   state.basisConfirmed = Boolean(saved.basisConfirmed);
   state.draftSource = saved.draftSource || "";
+  state.lastAnalysisMode = normalizeAnalysisMode(saved.lastAnalysisMode || saved.originalAnalysisSnapshot?.analysis_mode);
   state.aiFailed = Boolean(saved.aiFailed || state.draftSource === "local");
   state.downloadFile = saved.downloadFile || null;
   state.pricingMatches = Array.isArray(saved.pricingMatches) ? saved.pricingMatches : [];
-  state.pricingIssues = Array.isArray(saved.pricingIssues) ? saved.pricingIssues : [];
+  state.pricingIssues = [];
   state.activeJob = saved.activeJob && saved.activeJob.id ? saved.activeJob : null;
   renderFiles();
   renderPricingMatches(state.outputRows.length ? state.outputRows : state.pricingMatches, { fromPricingMatches: !state.outputRows.length && state.pricingMatches.length });
   renderMatchSummary({ pricing_matches: state.pricingMatches });
-  if (state.pricingIssues.length) {
-    renderPricingReviewMessages({ errors: state.pricingIssues, pricing_matches: state.pricingMatches });
-  } else {
-    clearPricingReviewMessages();
-  }
+  clearPricingReviewMessages();
   if (state.aiFailed) {
     clearAiFailedDraftState();
-    renderBasisFailureState("AI analysis failed before a usable quote basis was produced. Start analysis again after checking the local runner connection.");
+    renderBasisFailureState();
   } else if (state.lineItems.length || state.quoteBasisSections.length || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0)) {
     updateQuoteBasisCard(saved.draftSource || "restored");
   } else {
@@ -1386,7 +1554,7 @@ function restoreSessionState() {
   setResultStatus(state.aiFailed ? "No usable AI draft" : state.downloadFile ? "Completed" : "No job yet", state.aiFailed ? "is-bad" : state.downloadFile ? "is-ok" : "");
   setWorkflowStage(saved.workflowStage || (state.images.length ? "ready_to_analyze" : "needs_images"));
   if (state.aiFailed) {
-    showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
+    showAiFailureBanner();
   } else {
     clearAiFailureBanner();
   }
@@ -1395,17 +1563,12 @@ function restoreSessionState() {
   return true;
 }
 
-function safeStorageJson() {
+function clearLegacyLocalCompanyPresets() {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(QUOTE_PRESETS_STORAGE_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
+    window.localStorage.removeItem(LEGACY_QUOTE_PRESETS_STORAGE_KEY);
   } catch {
-    return [];
+    // Ignore storage failures; repo-backed presets still work.
   }
-}
-
-function savePresets(presets) {
-  window.localStorage.setItem(QUOTE_PRESETS_STORAGE_KEY, JSON.stringify(presets));
 }
 
 function selectedPresetId() {
@@ -1436,21 +1599,16 @@ function profilePresetOptionValue(presetId) {
   return `${PROFILE_PRESET_PREFIX}${presetId}`;
 }
 
-function localPresetOptionValue(presetId) {
-  return `${LOCAL_PRESET_PREFIX}${presetId}`;
-}
-
 function presetOptionValue(preset = {}) {
   const presetId = String(preset.id || "").trim();
   if (!presetId) return "";
-  return preset.source === "local" ? localPresetOptionValue(presetId) : profilePresetOptionValue(presetId);
+  return profilePresetOptionValue(presetId);
 }
 
 function defaultPresetOptionValue() {
   const profileDefault = defaultProfilePresetId();
   if (profileDefault) return profilePresetOptionValue(profileDefault);
-  const localPreset = safeStorageJson()[0];
-  return localPreset ? localPresetOptionValue(localPreset.id) : "";
+  return "";
 }
 
 function configuredProfilePresetId() {
@@ -1467,9 +1625,7 @@ function selectedPreset() {
     const preset = profilePresets().find((item) => item.id === presetId);
     return preset ? { ...preset, source: "profile" } : null;
   }
-  const localId = value.startsWith(LOCAL_PRESET_PREFIX) ? value.slice(LOCAL_PRESET_PREFIX.length) : value;
-  const preset = safeStorageJson().find((item) => item.id === localId);
-  return preset ? { ...preset, source: "local" } : null;
+  return null;
 }
 
 function normalizePresetComparisonValue(value) {
@@ -1496,13 +1652,12 @@ function presetValueFromQuoteDetails(savedDetails = {}) {
   const matchesDetails = (preset) => quoteDetailsMatchPreset(savedDetails, preset.details || {});
   const profilePreset = profilePresets().find(matchesDetails);
   if (profilePreset) return profilePresetOptionValue(profilePreset.id);
-  const localPreset = safeStorageJson().find(matchesDetails);
-  return localPreset ? localPresetOptionValue(localPreset.id) : "";
+  return "";
 }
 
 function renderPresetStatus(message = "") {
   if (!elements.presetStatus) return;
-  elements.presetStatus.textContent = message || "Presets are stored locally in this browser and can include the uploaded header logo.";
+  elements.presetStatus.textContent = message || "Database save pending.";
 }
 
 function renderHeaderLogoPreview() {
@@ -1518,7 +1673,6 @@ function renderHeaderLogoPreview() {
 
 function renderPresetOptions() {
   const builtInPresets = profilePresets();
-  const presets = safeStorageJson();
   const selectedValue = state.selectedPresetValue || elements.presetSelect.value || "";
   const defaultPreset = builtInPresets.find((preset) => preset.id === "default");
   const defaultOption = defaultPreset
@@ -1528,17 +1682,12 @@ function renderPresetOptions() {
     .filter((preset) => preset.id !== "default")
     .map((preset) => `<option value="${escapeHtml(profilePresetOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
     .join("");
-  const localOptions = presets
-    .map((preset) => `<option value="${escapeHtml(localPresetOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
-    .join("");
   elements.presetSelect.innerHTML = [
     defaultOption,
     builtInOptions ? `<optgroup label="Profile Presets">${builtInOptions}</optgroup>` : "",
-    localOptions ? `<optgroup label="Saved Company Presets">${localOptions}</optgroup>` : "",
   ].join("");
   const availableValues = new Set([
     ...builtInPresets.map((preset) => profilePresetOptionValue(preset.id)),
-    ...presets.map((preset) => localPresetOptionValue(preset.id)),
   ]);
   state.selectedPresetValue = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
   elements.presetSelect.value = state.selectedPresetValue;
@@ -1548,37 +1697,11 @@ function renderPresetOptions() {
 function updatePresetButtons() {
   const preset = selectedPreset();
   elements.loadPresetButton.disabled = !preset;
-  elements.deletePresetButton.disabled = !preset || preset.source !== "local";
+  elements.deletePresetButton.disabled = true;
 }
 
 function saveCurrentPreset() {
-  const name = elements.presetNameInput.value.trim();
-  if (!name) {
-    renderPresetStatus("Name the preset first, then save it.");
-    elements.presetNameInput.focus();
-    return;
-  }
-  const presets = safeStorageJson();
-  const existingIndex = presets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
-  const preset = {
-    id: existingIndex >= 0 ? presets[existingIndex].id : `preset-${Date.now().toString(36)}`,
-    name,
-    profile_id: currentProfile().id || DEFAULT_PROFILE_ID,
-    details: collectQuoteDetails(),
-    saved_at: new Date().toISOString(),
-  };
-  if (existingIndex >= 0) {
-    presets[existingIndex] = preset;
-  } else {
-    presets.push(preset);
-  }
-  savePresets(presets);
-  renderPresetOptions();
-  state.selectedPresetValue = localPresetOptionValue(preset.id);
-  elements.presetSelect.value = state.selectedPresetValue;
-  updatePresetButtons();
-  syncControlStates();
-  renderPresetStatus(`Saved "${name}" as a local company preset.`);
+  renderPresetStatus("Database save pending.");
 }
 
 function loadSelectedPreset(options = {}) {
@@ -1703,41 +1826,20 @@ function startNewQuote() {
 }
 
 function deleteSelectedPreset() {
-  const value = selectedPresetId();
-  const presetId = value.startsWith(LOCAL_PRESET_PREFIX) ? value.slice(LOCAL_PRESET_PREFIX.length) : value;
-  const presets = safeStorageJson();
-  const preset = presets.find((item) => item.id === presetId);
-  if (!preset) {
-    renderPresetStatus("Choose a saved preset to delete.");
-    return;
-  }
-  savePresets(presets.filter((item) => item.id !== presetId));
-  renderPresetOptions();
-  updatePresetButtons();
-  syncControlStates();
-  renderPresetStatus(`Deleted "${preset.name}".`);
+  renderPresetStatus("Company preset deletion will use the database later. For now, presets come from repo profile templates.");
 }
 
 function renderProfileOptions() {
   if (!elements.profileSelect) return;
-  const references = state.pricingReferences.length ? state.pricingReferences : [];
+  const references = sortedPricingReferencesForDisplay(
+    state.pricingReferences.filter((reference) => String(reference?.source || "bundled") === "bundled")
+  );
   const selectedValue = currentPricingReference() ? pricingReferenceSelectValue(currentPricingReference()) : "";
   const referenceOption = (reference) => {
     const referenceId = String(reference.id || "").trim();
     return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}</option>`;
   };
-  const bundledOptions = references
-    .filter((reference) => reference.source !== "company")
-    .map(referenceOption)
-    .join("");
-  const companyOptions = references
-    .filter((reference) => reference.source === "company")
-    .map(referenceOption)
-    .join("");
-  elements.profileSelect.innerHTML = [
-    bundledOptions,
-    companyOptions ? `<optgroup label="Company Pricing References">${companyOptions}</optgroup>` : "",
-  ].join("");
+  elements.profileSelect.innerHTML = references.map(referenceOption).join("");
   const fallbackReference = currentPricingReference() || defaultPricingReference() || references[0] || null;
   if (fallbackReference) {
     state.pricingReferenceId = fallbackReference.id || "";
@@ -1746,43 +1848,82 @@ function renderProfileOptions() {
   const selectedReference = currentPricingReference();
   elements.profileSelect.value = selectedReference ? pricingReferenceSelectValue(selectedReference) : selectedValue;
   renderSelectedPricingReferenceSummary();
-  renderSettingsSummary();
+  renderPricingReferenceDeleteOptions();
 }
 
-function renderSettingsSummary() {
-  if (!elements.settingsPricingReferencesList) return;
-  elements.settingsPricingReferencesList.innerHTML = state.pricingReferences.length
-    ? state.pricingReferences.map((reference) => {
-      const tax = reference.tax || {};
-      const canDelete = reference.source === "company";
-      return `<div class="settings-list-row"><strong>${escapeHtml(reference.label || reference.id)}</strong><span>${escapeHtml(reference.source || "bundled")}</span><span>${escapeHtml(normalizeTaxLabel(tax.label))} ${escapeHtml(taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE))}%</span><span>${canDelete ? `<button class="secondary-button danger-button" type="button" data-settings-delete-pricing-reference="${escapeHtml(reference.id)}">Delete</button>` : "Bundled"}</span></div>`;
-    }).join("")
-    : "<p>No pricing references loaded.</p>";
+function canManagePricingReferences() {
+  return Boolean(state.permissions?.canManagePricingReferences);
 }
 
-function canManageSettings() {
-  return Boolean(state.permissions?.canManageSettings);
+function pricingReferenceNoAccessReason() {
+  return "You do not have access to manage pricing references.";
+}
+
+function protectedPricingReferenceReason(reference = currentPricingReference()) {
+  if (!reference) return "Select a pricing reference first.";
+  if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
+  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be deleted here.";
+  const referenceId = String(reference.id || "").trim();
+  if (!referenceId) return "Select a pricing reference first.";
+  const profileDefault = String(currentProfile()?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID).trim();
+  if (referenceId === DEFAULT_PRICING_REFERENCE_ID || referenceId === profileDefault) return "Default pricing references cannot be deleted.";
+  return "";
+}
+
+function deletionPricingReference() {
+  const select = elements.deletePricingReferenceSelect;
+  if (!select) return currentPricingReference();
+  const selection = pricingReferenceSelectionFromValue(select.value || "");
+  return state.pricingReferences.find((reference) => (
+    reference.id === selection.pricingReferenceId
+    && pricingReferenceSelectValue(reference).startsWith(`${selection.source || "bundled"}::`)
+  )) || null;
+}
+
+function canDeleteSelectedPricingReference() {
+  return !protectedPricingReferenceReason(deletionPricingReference());
+}
+
+function renderPricingReferenceDeleteOptions() {
+  const select = elements.deletePricingReferenceSelect;
+  if (!select) return;
+  const previousValue = select.value;
+  const references = sortedPricingReferencesForDisplay(
+    state.pricingReferences.filter((reference) => String(reference?.source || "bundled") === "bundled")
+  );
+  select.innerHTML = references.map((reference) => `
+    <option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || reference.id || "Pricing reference")}</option>
+  `).join("");
+  const preferred = references.find((reference) => pricingReferenceSelectValue(reference) === previousValue)
+    || references.find((reference) => !protectedPricingReferenceReason(reference))
+    || references[0]
+    || null;
+  select.value = preferred ? pricingReferenceSelectValue(preferred) : "";
+  updatePricingReferenceDeleteButton();
+}
+
+function updatePricingReferenceDeleteButton() {
+  const button = elements.deletePricingReferenceButton;
+  if (!button) return;
+  if (elements.pricingReferenceDeleteSection) {
+    elements.pricingReferenceDeleteSection.hidden = !canManagePricingReferences();
+  }
+  const reference = deletionPricingReference();
+  const reason = protectedPricingReferenceReason(reference);
+  button.disabled = Boolean(reason);
+  button.title = reason || "Delete this repo pricing reference.";
+  button.setAttribute("aria-disabled", String(button.disabled));
 }
 
 function openSettingsModal() {
-  if (!canManageSettings()) {
-    showBlockedAction("You do not have permission to manage settings.");
-    syncControlStates();
-    return;
-  }
-  renderSettingsSummary();
-  elements.settingsModal.hidden = false;
-  elements.settingsModal.classList.add("is-open");
-}
-
-function closeSettingsModal() {
-  elements.settingsModal.classList.remove("is-open");
-  elements.settingsModal.hidden = true;
+  openPricingReferenceModal();
 }
 
 function pricingReferenceRequiredColumns() {
   return ["section", "description", "unit_hint", "internal_cost", "markup_multiplier"];
 }
+
+const PRICING_REFERENCE_PREVIEW_FIELDS = ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks"];
 
 function normalizeBasisTag(tag = "") {
   const normalized = String(tag || "").trim().toLowerCase();
@@ -1833,7 +1974,12 @@ function splitBasisDecisionText(text = "", defaultTag = "Confirm") {
 
 function normalizeBasisLines(line = "") {
   if (line && typeof line === "object") {
-    const text = cleanCustomerQuoteLineText(line.text || line.line || line.description || "");
+    const quantityParts = normalizedLineTextQuantityParts(
+      line.text || line.line || line.description || "",
+      line.quantity,
+      line.unit
+    );
+    const text = quantityParts.text;
     if (!text) return [];
     const confidence = normalizeConfidence(line.confidence ?? line.confidence_pct);
     const hasCustomPricing = isCustomPricingBasisLine(line);
@@ -1842,9 +1988,11 @@ function normalizeBasisLines(line = "") {
       if (line.id) next.id = String(line.id);
       if (line.source_line_item_id) next.source_line_item_id = String(line.source_line_item_id);
       if (line.pricing_keyword) next.pricing_keyword = String(line.pricing_keyword);
+      if (line.catalog_unit_price !== undefined && line.catalog_unit_price !== null && String(line.catalog_unit_price).trim() !== "") next.catalog_unit_price = line.catalog_unit_price;
       if (line.catalog_description) next.catalog_description = cleanCustomerQuoteLineText(line.catalog_description);
-      if (line.quantity !== undefined && line.quantity !== null && String(line.quantity).trim() !== "") next.quantity = line.quantity;
-      if (line.unit) next.unit = normalizeUnit(line.unit);
+      if (line.pricing_reference_description) next.pricing_reference_description = pricingReferenceLineText(line.pricing_reference_description);
+      if (quantityParts.quantity !== undefined && quantityParts.quantity !== null && String(quantityParts.quantity).trim() !== "") next.quantity = quantityParts.quantity;
+      if (quantityParts.unit) next.unit = quantityParts.unit;
       if (confidence !== null) next.confidence = confidence;
       if (hasCustomPricing || normalizeBasisTag(parsed.tag) === "Custom") next.custom_pricing = true;
       if (line.custom_confirmed) next.custom_confirmed = true;
@@ -1923,6 +2071,8 @@ function normalizeOutputRow(row = {}) {
     price_mode: priceMode,
     unit_price_override: row.unit_price_override ?? "",
     catalog_unit_price: row.catalog_unit_price ?? row.unit_price ?? row.sale_unit_price ?? "",
+    catalog_description: cleanCustomerQuoteLineText(row.catalog_description || ""),
+    pricing_reference_description: pricingReferenceLineText(row.pricing_reference_description || row.reference_description || ""),
     pricing_keyword: row.pricing_keyword || row.keyword || "",
     source_basis_line_id: row.source_basis_line_id || "",
     status: row.status || "",
@@ -1948,7 +2098,6 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
     layout: "normalized-pricing-reference",
     errors,
     warnings,
-    exampleRows: 0,
     canSave: !errors.length && items.length > 0,
   };
 }
@@ -1986,22 +2135,26 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
 }
 
 function setPricingReferenceModalBusyState(busy = false, reason = "") {
-  const disabledTitle = busy ? reason || "Import preview is still being prepared." : "";
+  const canManage = canManagePricingReferences();
+  const disabled = busy || !canManage;
+  const disabledTitle = !canManage ? pricingReferenceNoAccessReason() : busy ? reason || "Import preview is still being prepared." : "";
+  const closeTitle = busy ? reason || "Import preview is still being prepared." : "";
   if (elements.pricingReferenceModal) {
     elements.pricingReferenceModal.classList.toggle("is-busy", busy);
+    elements.pricingReferenceModal.classList.toggle("is-denied", !canManage);
   }
   [elements.pricingReferenceCloseButton, elements.pricingReferenceCancelButton].forEach((button) => {
     if (!button) return;
     button.disabled = busy;
-    button.title = disabledTitle;
+    button.title = closeTitle;
     button.setAttribute("aria-disabled", String(busy));
   });
   if (elements.pricingReferenceFile) {
-    elements.pricingReferenceFile.disabled = busy;
+    elements.pricingReferenceFile.disabled = disabled;
   }
   if (elements.pricingReferenceTemplateButton) {
-    elements.pricingReferenceTemplateButton.setAttribute("aria-disabled", String(busy));
-    elements.pricingReferenceTemplateButton.setAttribute("tabindex", busy ? "-1" : "0");
+    elements.pricingReferenceTemplateButton.setAttribute("aria-disabled", String(disabled));
+    elements.pricingReferenceTemplateButton.setAttribute("tabindex", disabled ? "-1" : "0");
     elements.pricingReferenceTemplateButton.title = disabledTitle;
   }
 }
@@ -2010,14 +2163,32 @@ function setPricingReferenceSaveButtonState(options = {}) {
   const button = elements.pricingReferenceSaveButton;
   if (!button) return;
   const busy = Boolean(options.busy);
-  const canSave = Boolean(options.canSave) && !busy;
-  const disabled = busy || !canSave;
-  const reason = String(options.reason || "").trim();
+  const canManage = canManagePricingReferences();
+  const canSave = canManage && Boolean(options.canSave) && !busy;
+  const disabled = busy || !canManage || !canSave;
+  const reason = canManage ? String(options.reason || "").trim() : pricingReferenceNoAccessReason();
   button.disabled = disabled;
   button.textContent = busy ? "Importing..." : "Save Reference";
   button.title = disabled ? reason : "";
   button.setAttribute("aria-disabled", String(disabled));
   setPricingReferenceModalBusyState(busy, reason);
+}
+
+function setPricingReferenceModalAccessState() {
+  const canManage = canManagePricingReferences();
+  if (elements.pricingReferenceNoAccess) elements.pricingReferenceNoAccess.hidden = canManage;
+  if (elements.pricingReferenceEditorBody) elements.pricingReferenceEditorBody.hidden = !canManage;
+  if (elements.pricingReferenceCancelButton) elements.pricingReferenceCancelButton.textContent = canManage ? "Cancel" : "Back";
+  if (!canManage) {
+    state.pendingPricingReference = null;
+    state.pricingReferenceImportBusy = false;
+    state.pricingReferenceImportToken = "";
+  }
+  setPricingReferenceSaveButtonState({
+    canSave: false,
+    reason: canManage ? pricingReferenceSaveBlockReason(state.pendingPricingReference) : pricingReferenceNoAccessReason(),
+  });
+  return canManage;
 }
 
 function blockPricingReferenceBusyInteraction(event) {
@@ -2055,7 +2226,7 @@ function refreshPricingReferencePreviewValidity(result = state.pendingPricingRef
   const invalid = result.items.flatMap((item) => {
     const warnings = pricingReferenceRowStatus(item);
     if (duplicateIds.has(item.id)) warnings.push("duplicate id");
-    item.warning = warnings.join("; ") || item.warning || "OK";
+    item.warning = warnings.join("; ") || "OK";
     return warnings;
   });
   result.canSave = !invalid.length && result.items.length > 0 && !(result.errors || []).length;
@@ -2067,10 +2238,98 @@ function refreshPricingReferencePreviewValidity(result = state.pendingPricingRef
   return result.canSave;
 }
 
+function pricingReferencePreviewTableRows(result = state.pendingPricingReference) {
+  const items = Array.isArray(result?.items) ? result.items : [];
+  return items.map((item, index) => `
+    <tr data-preview-row="${index}">
+      ${PRICING_REFERENCE_PREVIEW_FIELDS.map((field) => `
+        <td><input class="pricing-preview-input" data-preview-field="${field}" data-preview-row="${index}" value="${escapeHtml(item[field] ?? "")}"></td>
+      `).join("")}
+      <td class="pricing-preview-status ${pricingReferenceStatusClass(item.warning || "OK")}">${escapeHtml(item.warning || "OK")}</td>
+    </tr>
+  `).join("");
+}
+
+function pricingReferenceStatusClass(status = "") {
+  const text = String(status || "").trim().toLowerCase();
+  if (!text || text === "ok") return "is-ok";
+  if (/(required|must|duplicate|missing|invalid|error|failed|empty|positive)/.test(text)) return "is-error";
+  return "is-warn";
+}
+
+function pricingReferenceSaveGuidance(result = state.pendingPricingReference) {
+  if (!result) return "";
+  const reason = pricingReferenceSaveBlockReason(result);
+  return result.canSave
+    ? "Rows are ready to save."
+    : `Fix all flagged problems before saving this reference.${reason ? ` ${reason}` : ""}`;
+}
+
+function pricingReferenceTableSummaryText(result = state.pendingPricingReference) {
+  const items = Array.isArray(result?.items) ? result.items : [];
+  return items.length
+    ? `${items.length} editable pricing row${items.length === 1 ? "" : "s"}. ${pricingReferenceSaveGuidance(result)}`
+    : "Upload a pricing catalog to review editable rows.";
+}
+
+function updatePricingReferenceGuidanceDisplays(result = state.pendingPricingReference) {
+  if (elements.pricingReferenceTableSummary) {
+    elements.pricingReferenceTableSummary.textContent = pricingReferenceTableSummaryText(result);
+  }
+  const guidance = elements.pricingReferencePreview?.querySelector(".pricing-reference-save-guidance");
+  if (guidance) {
+    guidance.textContent = pricingReferenceSaveGuidance(result);
+    guidance.classList.toggle("is-ok", Boolean(result?.canSave));
+    guidance.classList.toggle("is-blocked", !result?.canSave);
+  }
+}
+
+function renderPricingReferenceTableOverlay(result = state.pendingPricingReference) {
+  if (!elements.pricingReferenceTableBody) return;
+  const items = Array.isArray(result?.items) ? result.items : [];
+  updatePricingReferenceGuidanceDisplays(result);
+  elements.pricingReferenceTableBody.innerHTML = items.length
+    ? pricingReferencePreviewTableRows(result)
+    : `<tr><td colspan="7" class="pricing-reference-table-empty">No imported rows to review.</td></tr>`;
+}
+
+function openPricingReferenceTableOverlay() {
+  if (!elements.pricingReferenceTableOverlay || state.pricingReferenceImportBusy) return;
+  renderPricingReferenceTableOverlay(state.pendingPricingReference);
+  elements.pricingReferenceTableOverlay.hidden = false;
+  elements.pricingReferenceTableOverlay.classList.add("is-open");
+  window.setTimeout(() => elements.pricingReferenceTableCloseButton?.focus(), 0);
+}
+
+function closePricingReferenceTableOverlay() {
+  if (!elements.pricingReferenceTableOverlay) return;
+  elements.pricingReferenceTableOverlay.classList.remove("is-open");
+  elements.pricingReferenceTableOverlay.hidden = true;
+}
+
+function handlePricingReferencePreviewInput(event) {
+  const input = event.target.closest("[data-preview-field]");
+  if (!input || !state.pendingPricingReference?.items) return;
+  const rowIndex = Number(input.dataset.previewRow);
+  const field = input.dataset.previewField;
+  if (!Number.isInteger(rowIndex) || !state.pendingPricingReference.items[rowIndex]) return;
+  state.pendingPricingReference.items[rowIndex][field] = input.value;
+  refreshPricingReferencePreviewValidity(state.pendingPricingReference);
+  const row = input.closest("tr");
+  const status = row?.querySelector(".pricing-preview-status");
+  if (status) {
+    const statusText = state.pendingPricingReference.items[rowIndex].warning || "OK";
+    status.textContent = statusText;
+    status.className = `pricing-preview-status ${pricingReferenceStatusClass(statusText)}`;
+  }
+  updatePricingReferenceGuidanceDisplays(state.pendingPricingReference);
+}
+
 function renderPricingReferencePreview(result = null) {
   if (!elements.pricingReferencePreview) return;
   if (!result) {
     elements.pricingReferencePreview.innerHTML = "";
+    renderPricingReferenceTableOverlay(null);
     setPricingReferenceSaveButtonState({ canSave: false, reason: pricingReferenceSaveBlockReason(null) });
     return;
   }
@@ -2100,38 +2359,47 @@ function renderPricingReferencePreview(result = null) {
   const warnings = result.warnings || [];
   const canSave = Boolean(result.canSave);
   const isAiNormalizationState = String(result.layout || "").startsWith("ai-normalization");
+  const displayMessages = errors.length && isAiNormalizationState
+    ? [genericFailureMessage(result)]
+    : errors.concat(warnings);
   const tone = errors.length ? "error" : warnings.length || !canSave ? "warn" : "ok";
-  const title = isAiNormalizationState ? "AI import needs setup" : errors.length ? "Import preview needs review" : canSave ? "Editable import preview" : "Template preview";
+  const title = isAiNormalizationState && errors.length ? "Import preview failed" : isAiNormalizationState ? "AI import needs setup" : errors.length ? "Import preview needs review" : canSave ? "Editable import preview" : "Template preview";
+  const rowCount = result.rowCount ?? result.items.length;
+  const statusLabel = canSave ? "Ready" : errors.length ? "Needs fix" : "Review";
+  const metrics = [
+    ["Layout", result.layout || "normalized pricing reference"],
+    ["Rows detected", rowCount],
+    ...(isAiNormalizationState ? [] : [
+      ["Columns found", found.join(", ") || "None"],
+      ["Columns missing", missing.join(", ") || "None"],
+    ]),
+    ["Skipped rows", result.skipped || 0],
+  ];
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
-    <strong>${title}</strong>
-    <ul>
-      <li>Layout: ${escapeHtml(result.layout || "normalized pricing reference")}</li>
-      <li>Detected row count: ${result.rowCount ?? result.items.length}</li>
-      ${result.exampleRows ? `<li>Example rows ignored: ${result.exampleRows}</li>` : ""}
-      ${isAiNormalizationState ? "" : `<li>Required columns found: ${escapeHtml(found.join(", ") || "None")}</li>`}
-      ${isAiNormalizationState ? "" : `<li>Required columns missing: ${escapeHtml(missing.join(", ") || "None")}</li>`}
-      <li>Skipped rows count: ${result.skipped || 0}</li>
-    </ul>
-    ${errors.concat(warnings).map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
-    ${result.items.length ? `
-      <div class="pricing-reference-preview-table-wrap">
-        <table class="pricing-reference-preview-table">
-          <thead><tr><th>section</th><th>description</th><th>unit_hint</th><th>internal_cost</th><th>markup_multiplier</th><th>remarks</th><th>warning/status</th></tr></thead>
-          <tbody>
-            ${result.items.map((item, index) => `
-              <tr data-preview-row="${index}">
-                ${["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks"].map((field) => `
-                  <td><input class="pricing-preview-input" data-preview-field="${field}" data-preview-row="${index}" value="${escapeHtml(item[field] ?? "")}"></td>
-                `).join("")}
-                <td class="pricing-preview-status">${escapeHtml(item.warning || "OK")}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
+    <div class="pricing-reference-preview-header">
+      <div>
+        <span class="pricing-reference-preview-kicker">Import check</span>
+        <strong class="pricing-reference-preview-title">${escapeHtml(title)}</strong>
       </div>
-    ` : ""}
+      <span class="pricing-reference-preview-status-badge">${escapeHtml(statusLabel)}</span>
+    </div>
+    <div class="pricing-reference-preview-metrics">
+      ${metrics.map(([label, value]) => `
+        <div class="pricing-reference-preview-metric">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+    ${displayMessages.length ? `<div class="pricing-reference-preview-messages">${displayMessages.map((message) => `<p>${escapeHtml(message)}</p>`).join("")}</div>` : ""}
+    <p class="pricing-reference-save-guidance ${canSave ? "is-ok" : "is-blocked"}">${escapeHtml(pricingReferenceSaveGuidance(result))}</p>
+    ${result.items.length ? `<button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review ${result.items.length} Row${result.items.length === 1 ? "" : "s"}</button>` : ""}
   `;
+  renderPricingReferenceTableOverlay(result);
+  if (result.items.length && elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
+    openPricingReferenceTableOverlay();
+  }
   setPricingReferenceSaveButtonState({
     canSave,
     busy: state.pricingReferenceImportBusy,
@@ -2168,13 +2436,14 @@ async function validatePricingReferenceFile(file) {
   if (ok) return data;
   return {
     ...pricingReferenceValidationResult([], [], 0, file.name),
-    errors: data.errors || ["Pricing-reference validation failed."],
+    errors: genericFailureMessages(data),
+    error_reference: errorReferenceFrom(data),
   };
 }
 
 async function downloadPricingReferenceTemplate(event) {
   event.preventDefault();
-  if (state.pricingReferenceImportBusy) {
+  if (state.pricingReferenceImportBusy || !canManagePricingReferences()) {
     return;
   }
   state.pendingPricingReference = null;
@@ -2203,15 +2472,18 @@ function openPricingReferenceModal() {
   if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
   resetPricingReferenceTaxInputs();
   renderPricingReferencePreview(null);
+  renderPricingReferenceDeleteOptions();
   elements.pricingReferenceModal.hidden = false;
   elements.pricingReferenceModal.classList.add("is-open");
-  window.setTimeout(() => elements.pricingReferenceName?.focus(), 0);
+  const canManage = setPricingReferenceModalAccessState();
+  window.setTimeout(() => (canManage ? elements.pricingReferenceName : elements.pricingReferenceCancelButton)?.focus(), 0);
 }
 
 function closePricingReferenceModal() {
   if (state.pricingReferenceImportBusy) {
     return;
   }
+  closePricingReferenceTableOverlay();
   elements.pricingReferenceModal.classList.remove("is-open");
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
@@ -2221,6 +2493,13 @@ function closePricingReferenceModal() {
 
 async function savePricingReferenceFromModal(event) {
   event.preventDefault();
+  if (!canManagePricingReferences()) {
+    setPricingReferenceSaveButtonState({
+      canSave: false,
+      reason: pricingReferenceNoAccessReason(),
+    });
+    return;
+  }
   if (state.pricingReferenceImportBusy) {
     setPricingReferenceSaveButtonState({
       busy: true,
@@ -2236,54 +2515,68 @@ async function savePricingReferenceFromModal(event) {
     renderPricingReferencePreview(result || pricingReferenceValidationResult([], [], 0, ""));
     return;
   }
+  const previousPricingReferenceId = state.pricingReferenceId;
+  const previousPricingReferenceSource = state.pricingReferenceSource;
   const { ok, data } = await postJson("/api/settings/pricing-references", {
-    id: safeId(name, `company-ref-${Date.now().toString(36)}`),
+    id: safeId(name, `pricing-ref-${Date.now().toString(36)}`),
     label: name,
     description: `Imported from ${result.sourceName || "settings upload"}`,
     tax,
     items: result.items,
   });
   if (!ok) {
-    renderPricingReferencePreview({ ...result, errors: data.errors || ["Settings save failed."] });
+    renderPricingReferencePreview({ ...result, errors: genericFailureMessages(data), error_reference: errorReferenceFrom(data) });
     return;
   }
   await loadProfiles();
-  state.pricingReferenceId = data.pricing_reference?.id || state.pricingReferenceId;
-  state.pricingReferenceSource = data.pricing_reference?.source || "company";
+  state.pricingReferenceId = previousPricingReferenceId;
+  state.pricingReferenceSource = previousPricingReferenceSource;
   syncSelectedPricingReference();
   renderProfileOptions();
-  clearGeneratedQuoteState();
   closePricingReferenceModal();
   syncControlStates();
 }
 
-async function deleteCompanyPricingReference(referenceId) {
-  const reference = state.pricingReferences.find((item) => item.id === referenceId && item.source === "company");
+async function deleteRepoPricingReference(referenceId) {
+  const reference = state.pricingReferences.find((item) => item.id === referenceId && String(item.source || "bundled") === "bundled");
   if (!reference) return;
-  const confirmed = window.confirm(`Delete company pricing reference "${reference.label || reference.id}"?`);
+  const reason = protectedPricingReferenceReason(reference);
+  if (reason) {
+    updatePricingReferenceDeleteButton();
+    return;
+  }
+  const label = reference.label || reference.id;
+  const confirmed = window.prompt(`Type ${label} to delete this pricing reference.`) === label;
   if (!confirmed) return;
   const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
     method: "DELETE",
     headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
   }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
   if (!ok) {
+    window.alert(genericFailureMessages(data).join("\n"));
+    updatePricingReferenceDeleteButton();
     return;
   }
-  await loadProfiles();
-  if (state.pricingReferenceId === reference.id && state.pricingReferenceSource === "company") {
-    state.pricingReferenceId = "";
-    state.pricingReferenceSource = "";
-    syncSelectedPricingReference();
+  state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : state.pricingReferences);
+  if (state.pricingReferenceId === reference.id) {
+    const fallback = defaultPricingReference() || state.pricingReferences[0] || null;
+    state.pricingReferenceId = fallback?.id || "";
+    state.pricingReferenceSource = fallback ? pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallback)).source : "";
+    clearGeneratedQuoteState();
   }
+  syncSelectedPricingReference();
   renderProfileOptions();
-  clearGeneratedQuoteState();
+  renderPricingReferenceDeleteOptions();
   syncControlStates();
 }
 
 async function deleteSelectedPricingReference() {
-  const selected = currentPricingReference();
-  if (!selected || selected.source !== "company") return;
-  await deleteCompanyPricingReference(selected.id);
+  const selected = deletionPricingReference();
+  if (!selected || !canDeleteSelectedPricingReference()) {
+    updatePricingReferenceDeleteButton();
+    return;
+  }
+  await deleteRepoPricingReference(selected.id);
 }
 
 async function loadProfiles() {
@@ -2311,6 +2604,7 @@ function clearGeneratedQuoteState() {
   state.basisConfirmed = false;
   state.aiFailed = false;
   state.draftSource = "";
+  state.lastAnalysisMode = "standard";
   state.activeJob = null;
   state.originalAnalysisSnapshot = null;
   renderBasisEmptyState();
@@ -2386,9 +2680,10 @@ function buildPayload(options = {}) {
     pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
     pricing_reference: pricingReference ? {
       ...pricingReference,
-      source: pricingReference.source === "company" ? "company" : pricingReference.source === "local" ? "local" : "bundled",
+      source: "bundled",
       tax: pricingReference.tax || selectedPricingReferenceTax(),
-    } : { id: state.pricingReferenceId || "", source: state.pricingReferenceSource || "bundled", tax: selectedPricingReferenceTax() },
+    } : { id: state.pricingReferenceId || "", source: "bundled", tax: selectedPricingReferenceTax() },
+    analysis_mode: normalizeAnalysisMode(options.analysisMode || state.pendingAnalysisMode),
     generator_label: generator.label,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES),
     confirmed: true,
@@ -2485,36 +2780,13 @@ function pricingMatchStatus(row = {}) {
   return String(status || "").trim().toLowerCase();
 }
 
-function pricingRowNeedsReview(row = {}) {
-  const status = pricingMatchStatus(row);
-  const amount = String(row.amount || "").trim();
-  if (["unmatched", "ambiguous", "matched-from-ambiguous", "custom", "needs-pricing"].includes(status)) return true;
-  return status === "manual-display" && (!amount || amount.toLowerCase() === "manual display price");
-}
-
-function pricingIssueForRow(row = {}) {
-  if (!pricingRowNeedsReview(row)) return "";
-  const description = row.description || "Pricing row";
-  const status = pricingMatchStatus(row);
-  if (status === "manual-display") return `Manual display pricing required: ${description} / enter a display price, choose a catalog keyword, or remove this line.`;
-  if (status === "custom" || status === "needs-pricing") return `Manual pricing required: ${description} / enter a unit price, choose a catalog keyword, or remove this line.`;
-  if (status === "matched-from-ambiguous") return `Ambiguous pricing: ${description} / confirm selected catalog match.`;
-  if (status === "ambiguous") return `Ambiguous pricing: ${description} / choose a catalog match.`;
-  return `Unmatched pricing: ${description} / choose a catalog match or remove from quote.`;
-}
-
-function pricingReviewIssues(result = {}) {
-  const errorIssues = extractPricingIssues(result.errors || []);
-  const rowIssues = (result.pricing_matches || []).map(pricingIssueForRow).filter(Boolean);
-  return [...new Set([...errorIssues, ...rowIssues])];
-}
-
 function pricingStatusLabel(status = "") {
   const labels = {
     matched: "Catalog match",
     "matched-from-ambiguous": "Ambiguous match selected",
     ambiguous: "Ambiguous match",
     "manual-display": "Manual display price",
+    "quantity-review": "Quantity needs review",
     custom: "Custom manual price",
     "needs-pricing": "Needs pricing",
     unmatched: "Unmatched",
@@ -2554,7 +2826,7 @@ function recalculateOutputRow(row = {}) {
   const quantity = numberOrNull(row.quantity);
   const priceMode = row.price_mode === "Included" ? "Included" : "Priced";
   const unitPrice = effectiveOutputUnitPrice({ ...row, price_mode: priceMode });
-  const hasUsablePrice = unitPrice !== null && unitPrice > 0;
+  const hasUsablePrice = unitPrice !== null && unitPrice >= 0;
   return {
     ...row,
     price_mode: priceMode,
@@ -2632,6 +2904,76 @@ function outputRowAllowedByBasis(row = {}) {
   return hasReviewedBasis ? matched && allowed : !matched || allowed;
 }
 
+function matchingAllowedBasisLineForOutputRow(row = {}) {
+  const reviewedSections = normalizeQuoteBasisSections(state.quoteBasisSections);
+  const hasReviewedBasis = reviewedSections.some((section) => (section.lines || []).length > 0);
+  if (!hasReviewedBasis) return null;
+  const sourceId = String(row.source_basis_line_id || "").trim();
+  for (const section of reviewedSections) {
+    for (const line of (section.lines || [])) {
+      if (!basisLineAllowsOutput(line)) continue;
+      const lineIds = [line.id, line.source_line_item_id].map((value) => String(value || "").trim()).filter(Boolean);
+      const sourceMatch = sourceId && lineIds.includes(sourceId);
+      const keywordMatch = row.pricing_keyword && line.pricing_keyword && String(row.pricing_keyword) === String(line.pricing_keyword);
+      const sectionTitle = section.title || section.id || "";
+      if (sourceId && lineIds.length && !sourceMatch) continue;
+      const textMatch = outputRowCoversBasisLine(row, line.text || "", sectionTitle)
+        || outputRowCoversBasisLine(row, line.catalog_description || "", sectionTitle);
+      if (sourceMatch || keywordMatch || textMatch) return line;
+    }
+  }
+  return null;
+}
+
+function inheritBasisOutputFields(row = {}) {
+  const line = matchingAllowedBasisLineForOutputRow(row);
+  if (!line) return row;
+  const next = { ...row };
+  if (line.quantity !== undefined && line.quantity !== null && String(line.quantity).trim() !== "") {
+    next.quantity = line.quantity;
+  }
+  if (normalizeUnit(line.unit || "")) {
+    next.unit = normalizeUnit(line.unit);
+  }
+  if (!next.source_basis_line_id && (line.id || line.source_line_item_id)) {
+    next.source_basis_line_id = line.id || line.source_line_item_id;
+  }
+  if ((next.catalog_unit_price === "" || next.catalog_unit_price === null || next.catalog_unit_price === undefined) && line.catalog_unit_price !== undefined && line.catalog_unit_price !== null && String(line.catalog_unit_price).trim() !== "") {
+    next.catalog_unit_price = line.catalog_unit_price;
+  }
+  if (!next.catalog_description && line.catalog_description) {
+    next.catalog_description = line.catalog_description;
+  }
+  if (!next.pricing_reference_description && line.pricing_reference_description) {
+    next.pricing_reference_description = line.pricing_reference_description;
+  }
+  return normalizeOutputRow(next);
+}
+
+function outputRowDedupeKey(row = {}) {
+  const sourceId = String(row.source_basis_line_id || "").trim();
+  if (sourceId) return `source:${sourceId}`;
+  return [
+    sectionTitleKey(row.section),
+    outputComparableText(row.description),
+    String(row.pricing_keyword || "").trim(),
+    String(row.quantity || "").trim(),
+    normalizeUnit(row.unit || ""),
+  ].join("|");
+}
+
+function dedupeOutputRows(rows = []) {
+  const seen = new Set();
+  const deduped = [];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const key = outputRowDedupeKey(row);
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    deduped.push(row);
+  });
+  return deduped;
+}
+
 function includedBasisOutputRows(existingRows = []) {
   const rows = [];
   basisSections(state.quoteBasisSections).forEach((section) => {
@@ -2653,6 +2995,9 @@ function includedBasisOutputRows(existingRows = []) {
         unit: normalizeUnit(line.unit || (isBoothSizeInfo ? "lot" : "")),
         price_mode: isBoothSizeInfo ? "Included" : "Priced",
         unit_price_override: "",
+        catalog_unit_price: line.catalog_unit_price ?? "",
+        catalog_description: line.catalog_description || "",
+        pricing_reference_description: line.pricing_reference_description || "",
         pricing_keyword: line.pricing_keyword || "",
         source_basis_line_id: line.id || line.source_line_item_id || "",
         status: customPricing ? "custom" : "needs-pricing",
@@ -2672,8 +3017,11 @@ function outputRowFromLineItem(item = {}) {
     price_mode: normalized.price_mode,
     unit_price_override: normalized.unit_price_override || "",
     catalog_unit_price: normalized.catalog_unit_price || "",
+    catalog_description: normalized.catalog_description || "",
+    pricing_reference_description: normalized.pricing_reference_description || "",
     pricing_keyword: normalized.pricing_keyword,
     source_basis_line_id: normalized.source_basis_line_id,
+    status: normalized.status || "",
   });
 }
 
@@ -2693,17 +3041,25 @@ function outputQuantityPartsFromPricingMatch(row = {}) {
 
 function outputRowFromPricingMatch(row = {}) {
   const status = pricingMatchStatus(row);
-  const unitPrice = row.unit_price || row.unit_price_override || "";
-  const amount = String(row.amount || "").trim();
+  const amount = String(row.amount ?? "").trim();
   const quantityParts = outputQuantityPartsFromPricingMatch(row);
+  const manualDisplayAmount = status === "manual-display" ? numberOrNull(amount) : null;
+  const quantity = numberOrNull(quantityParts.quantity);
+  const manualDisplayUnitPrice = manualDisplayAmount !== null
+    ? (quantity !== null && quantity > 0 ? Math.round((manualDisplayAmount / quantity) * 100) / 100 : manualDisplayAmount)
+    : "";
+  const unitPrice = manualDisplayAmount !== null ? manualDisplayUnitPrice : row.unit_price || row.unit_price_override || "";
+  const referenceDescription = pricingReferenceLineText(row.pricing_reference_description || row.catalog_description || "");
   return normalizeOutputRow({
     section: row.section,
-    description: row.catalog_description || row.description,
+    description: cleanCustomerQuoteLineText(row.description || row.catalog_description || ""),
     quantity: quantityParts.quantity,
     unit: quantityParts.unit,
     price_mode: status === "included" ? "Included" : "Priced",
-    unit_price_override: status === "manual-price" ? unitPrice : "",
-    catalog_unit_price: status === "manual-price" ? "" : unitPrice,
+    unit_price_override: status === "manual-price" || status === "manual-display" ? unitPrice : "",
+    catalog_unit_price: status === "manual-price" || status === "manual-display" ? "" : unitPrice,
+    catalog_description: row.catalog_description || "",
+    pricing_reference_description: referenceDescription,
     pricing_keyword: row.keyword || row.pricing_keyword || "",
     source_basis_line_id: row.source_basis_line_id || "",
     status: row.status,
@@ -2798,7 +3154,7 @@ function ensureOutputRowsFromLineItems() {
 
 function refreshOutputRowsFromLineItems() {
   const generatedRows = state.lineItems.map(outputRowFromLineItem);
-  const allowedRows = generatedRows.filter(outputRowAllowedByBasis);
+  const allowedRows = dedupeOutputRows(generatedRows.filter(outputRowAllowedByBasis).map(inheritBasisOutputFields));
   state.outputRows = sortOutputRows([...allowedRows, ...includedBasisOutputRows(allowedRows)]);
 }
 
@@ -2842,13 +3198,12 @@ function outputRowsValid(rows = state.outputRows) {
       const unitPrice = numberOrNull(row.unit_price_override);
       const catalogUnitPrice = numberOrNull(row.catalog_unit_price);
       const unitPriceKind = unitPriceEditKind(row.unit_price_override);
-      const hasPricingKeyword = Boolean(String(row.pricing_keyword || "").trim());
       if (unitPriceKind === "invalid") {
         errors.push(`${label}: Unit price must be a number or Included.`);
-      } else if (unitPrice !== null && unitPrice <= 0) {
-        errors.push(`${label}: Unit price must be greater than 0.`);
-      } else if (!hasPricingKeyword && unitPrice === null && catalogUnitPrice === null) {
-        errors.push(`${label}: Unit price or pricing keyword is required.`);
+      } else if (unitPrice !== null && unitPrice < 0) {
+        errors.push(`${label}: Unit price must be 0 or greater.`);
+      } else if (unitPrice === null && catalogUnitPrice === null) {
+        errors.push(`${label}: Unit price is required.`);
       }
     }
   });
@@ -2884,7 +3239,7 @@ function rowNeedsManualInput(row = {}) {
   const hasPricingKeyword = Boolean(String(row.pricing_keyword || "").trim());
   const amountMissing = outputCellDisplayValue(row, "amount") === "???";
   if (quantity === null || quantity <= 0) return true;
-  if (unitPrice === null || unitPrice <= 0) return true;
+  if (unitPrice === null || unitPrice < 0) return true;
   if (!hasPricingKeyword && numberOrNull(row.unit_price_override) === null) return true;
   return amountMissing;
 }
@@ -2906,6 +3261,36 @@ function formatSubtotalValue(stats = {}) {
   const total = Number(stats.total || 0);
   const totalText = `SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return stats.totalPending ? `${totalText} + ???` : totalText;
+}
+
+function outputPricingSourceLabel() {
+  const reference = currentPricingReference();
+  if (!reference) return "Pricing reference";
+  return reference.label || "Pricing reference";
+}
+
+function outputHeaderStatus(rows = state.outputRows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return { label: "Draft", className: "is-empty" };
+  const stats = matchSummaryStats(safeRows);
+  return stats.needsManualInput > 0
+    ? { label: "Needs pricing", className: "is-warn" }
+    : { label: "Ready", className: "is-ok" };
+}
+
+function updateOutputHeader(rows = state.outputRows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const status = outputHeaderStatus(safeRows);
+  if (elements.outputStatusPill) {
+    elements.outputStatusPill.textContent = status.label;
+    elements.outputStatusPill.className = `output-status-pill ${status.className}`;
+  }
+  if (elements.outputSourceLabel) {
+    elements.outputSourceLabel.textContent = `Source: ${outputPricingSourceLabel()}`;
+  }
+  if (elements.outputTotalLines) {
+    elements.outputTotalLines.textContent = `Total lines: ${safeRows.length}`;
+  }
 }
 
 function renderMatchSummary(result = {}) {
@@ -2952,6 +3337,7 @@ function renderPricingMatches(rows = [], options = {}) {
   state.outputRows = sortOutputRows(state.outputRows);
   if (elements.outputSortMode) elements.outputSortMode.value = state.outputSortMode;
   const outputRows = state.outputRows;
+  updateOutputHeader(outputRows);
   elements.pricingTableWrap.hidden = !outputRows.length;
   elements.pricingEmptyState.hidden = Boolean(outputRows.length) || Boolean(elements.pricingReviewMessages.innerHTML.trim());
   if (!outputRows.length) {
@@ -2984,95 +3370,6 @@ function clearPricingReviewMessages() {
   const pricingText = (elements.pricingMatchesBody.textContent || "").trim();
   const hasRows = Boolean(pricingText) && !/No pricing matches yet/i.test(pricingText);
   elements.pricingEmptyState.hidden = hasRows;
-}
-
-function extractPricingIssues(errors = []) {
-  return errors
-    .map((error) => String(error || "").trim())
-    .filter((error) => /^(Unmatched pricing:|Ambiguous pricing:|Manual display pricing required:)/i.test(error))
-    .map((error) => error.replace(/^-?\s*/, ""));
-}
-
-function pricingIssueDescription(issue = "") {
-  return String(issue)
-    .replace(/^Unmatched pricing:\s*/i, "")
-    .replace(/^Ambiguous pricing:\s*/i, "")
-    .replace(/^Manual display pricing required:\s*/i, "")
-    .split(" / keyword ")[0]
-    .split(" / enter a display price")[0]
-    .split(". Candidate matches:")[0]
-    .trim();
-}
-
-function findLineItemIndexForPricingIssue(issue = "") {
-  const description = pricingIssueDescription(issue).toLowerCase();
-  return state.lineItems.findIndex((item) => {
-    const itemDescription = String(item.description || "").toLowerCase();
-    return itemDescription === description || itemDescription.includes(description) || description.includes(itemDescription);
-  });
-}
-
-async function handlePricingChoice(action, issue) {
-  if (state.isGenerating) return;
-  const index = findLineItemIndexForPricingIssue(issue);
-  if (index < 0) {
-    return;
-  }
-
-  const item = state.lineItems[index];
-  if (action === "remove_line") {
-    const [removed] = state.lineItems.splice(index, 1);
-    await handleGenerate();
-    return;
-  }
-
-  if (action === "manual_price") {
-    const manualPrice = window.prompt("Manual display price", item.display_price || "");
-    if (!manualPrice || !manualPrice.trim()) return;
-    item.display_price = manualPrice.trim();
-    await handleGenerate();
-    return;
-  }
-
-  if (action === "nearest_keyword") {
-    const keyword = window.prompt("Pricing keyword to try", item.pricing_keyword || item.description);
-    if (!keyword || !keyword.trim()) return;
-    item.pricing_keyword = keyword.trim();
-    item.display_price = "";
-    await handleGenerate();
-  }
-}
-
-function renderPricingReviewMessages(result = {}) {
-  const issues = pricingReviewIssues(result);
-  state.pricingIssues = issues;
-  if (!issues.length) {
-    elements.pricingReviewMessages.innerHTML = (result.errors || ["Pricing needs review."])
-      .map((message) => `<div class="message warn">${escapeHtml(message)}</div>`)
-      .join("");
-    elements.pricingEmptyState.hidden = true;
-    return;
-  }
-
-  elements.pricingReviewMessages.innerHTML = `
-    <div class="message warn">
-      <strong>I could not confidently price ${issues.length} item${issues.length === 1 ? "" : "s"}.</strong>
-      Review these choices before treating the quotation as final.
-    </div>
-    <div class="pricing-review-list">
-      ${issues.map((issue, index) => `
-        <div class="pricing-review-card">
-          <strong>${escapeHtml(issue)}</strong>
-          <div class="pricing-review-actions">
-            <button class="secondary-button" type="button" data-pricing-action="nearest_keyword" data-pricing-issue="${escapeHtml(issue)}">Use nearest match</button>
-            <button class="secondary-button" type="button" data-pricing-action="manual_price" data-pricing-issue="${escapeHtml(issue)}">Manual display price</button>
-            <button class="secondary-button" type="button" data-pricing-action="remove_line" data-pricing-issue="${escapeHtml(issue)}">Remove from quote</button>
-          </div>
-        </div>
-      `).join("")}
-    </div>
-  `;
-  elements.pricingEmptyState.hidden = true;
 }
 
 function handleOutputRowEdit(event) {
@@ -3216,7 +3513,7 @@ function renderBasisEmptyState(message = "Load images, complete Customer and Quo
   `;
 }
 
-function renderBasisFailureState(message = "AI analysis failed before a usable quote basis was produced. Check the local runner connection, then start analysis again.") {
+function renderBasisFailureState(message = GENERIC_FAILURE_MESSAGE) {
   elements.basisReviewSurface.innerHTML = `
     <div class="basis-empty-state basis-empty-state-error">
       <strong>AI analysis did not complete</strong>
@@ -3290,10 +3587,19 @@ function basisChatLineContext(line = {}) {
   return `${tag}: ${text}`.trim();
 }
 
+function hasPricingReferenceDescription(line = {}) {
+  return Boolean(pricingReferenceLineText(line.pricing_reference_description || ""));
+}
+
 function basisLinePillLabel(line = {}) {
   const tag = normalizeBasisTag(line.tag);
   if (isPendingAiProposalLine(line)) return "AI Confirm";
+  if (tag === "Confirm" && !hasPricingReferenceDescription(line)) return "AI Confirm";
   return basisTagLabel(tag);
+}
+
+function basisLineAcceptsAsAiProposal(line = {}) {
+  return isCustomPricingBasisLine(line) || !hasPricingReferenceDescription(line);
 }
 
 function basisConfidenceLabel(line = {}) {
@@ -3317,46 +3623,49 @@ function renderBasisConfirmSummary(sections = state.quoteBasisSections) {
 }
 
 function basisCatalogReferenceTitle(line = {}) {
-  const catalogDescription = cleanCustomerQuoteLineText(line.catalog_description || "");
-  const keyword = String(line.pricing_keyword || "").trim();
-  if (!catalogDescription && !keyword) return "";
-  return `Pricing reference: ${catalogDescription || keyword}`;
+  const referenceDescription = pricingReferenceLineText(line.pricing_reference_description || "");
+  return referenceDescription ? `Pricing reference: ${referenceDescription}` : "";
 }
 
 function basisLineTitle(line = {}) {
-  const text = String(line.text || "").trim();
-  const source = basisCatalogReferenceTitle(line);
-  return source ? `${text}\n${source}` : text;
+  return basisCatalogReferenceTitle(line);
 }
 
 function basisPillTitle(line = {}, tag = "") {
-  return basisCatalogReferenceTitle(line) || basisTagLabel(tag);
+  return basisCatalogReferenceTitle(line);
 }
 
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
   const customPricing = isCustomPricingBasisLine(line);
   const pendingAiProposal = isPendingAiProposalLine(line);
+  const pillLabel = basisLinePillLabel(line);
+  const acceptsAsAiProposal = basisLineAcceptsAsAiProposal(line);
   const quantityLabel = basisQuantityDisplayLabel(line);
   const confidenceLabel = basisConfidenceLabel(line);
+  const pillTitle = basisPillTitle(line, tag);
+  const lineTitle = basisLineTitle(line);
+  const pillTitleAttribute = pillTitle ? ` title="${escapeHtml(pillTitle)}"` : "";
+  const lineTitleAttribute = lineTitle ? ` title="${escapeHtml(lineTitle)}"` : "";
   const rowClasses = [
     "basis-line-row",
     `basis-line-${tag.toLowerCase()}`,
     customPricing ? "basis-line-custom-priced" : "",
     pendingAiProposal ? "basis-line-custom-confirm" : "",
+    pillLabel === "AI Confirm" ? "basis-line-ai-confirm" : "",
   ].filter(Boolean).join(" ");
-  const primaryAction = customPricing
+  const primaryAction = acceptsAsAiProposal
     ? `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Custom" aria-label="Accept this AI proposal" title="Accept AI proposal">&#x2713;</button>`
     : `<button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Include" aria-label="Mark this line as included" title="Mark included">&#x2713;</button>`;
   return `
     <li class="${escapeHtml(rowClasses)}">
       <span class="basis-line-icon" aria-hidden="true"></span>
       <span class="basis-line-meta">
-        <span class="basis-line-pill" title="${escapeHtml(basisPillTitle(line, tag))}">${escapeHtml(basisLinePillLabel(line))}</span>
+        <span class="basis-line-pill"${pillTitleAttribute}>${escapeHtml(pillLabel)}</span>
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
         <span class="basis-quantity-pill">${escapeHtml(quantityLabel)}</span>
       </span>
-      <span class="basis-line-text" title="${escapeHtml(basisLineTitle(line))}">${escapeHtml(line.text)}</span>
+      <span class="basis-line-text"${lineTitleAttribute}>${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
@@ -3401,7 +3710,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
     return `
       <div class="basis-empty-state basis-empty-state-error">
         <strong>AI analysis did not complete</strong>
-        <p>Remote AI did not return a usable quote basis. Start analysis again after checking the local runner connection.</p>
+        <p>${GENERIC_FAILURE_MESSAGE}</p>
       </div>
     `;
   }
@@ -3414,11 +3723,12 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <div class="quote-basis-title-row">
             <h3>Quote Basis</h3>
             <span>${escapeHtml(statusText)}</span>
+            ${analysisModeBadge()}
           </div>
-          <p>${aiFailed ? "AI analysis failed. Try again later. A local starter draft is shown for reference only." : "Please review the AI takeoff and revise individual lines where needed."}</p>
+          <p>${aiFailed ? GENERIC_FAILURE_MESSAGE : "Please review the AI takeoff and revise individual lines where needed."}</p>
         </div>
         <div class="quote-basis-source">
-          <span>${aiFailed ? "Source: Local fallback only" : "Source: Koncept Pricing Catalog"}</span>
+          <span>${aiFailed ? "Source: Local fallback only" : `Source: ${escapeHtml(outputPricingSourceLabel())}`}</span>
           <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(sections)))}</strong>
         </div>
       </div>
@@ -3464,7 +3774,7 @@ function retagBasisLine(sectionId, lineIndex, nextTag) {
   const index = Number(lineIndex);
   if (!section || !section.lines[index]) return;
   const currentLine = section.lines[index];
-  const resolvedTag = requestedTag === "Include" && isCustomPricingBasisLine(currentLine) ? "Custom" : requestedTag;
+  const resolvedTag = requestedTag === "Include" && basisLineAcceptsAsAiProposal(currentLine) ? "Custom" : requestedTag;
   const customPricing = isCustomPricingBasisLine(currentLine) || resolvedTag === "Custom";
   const customConfirmed = customPricing && ["Include", "Custom"].includes(requestedTag);
   section.lines[index] = {
@@ -3489,9 +3799,8 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   let changed = false;
   section.lines = (section.lines || []).map((line) => {
     const currentTag = normalizeBasisTag(line.tag);
-    if (currentTag !== "Confirm" && !isPendingAiProposalLine(line)) return line;
-    const customPricing = isCustomPricingBasisLine(line);
-    const resolvedTag = customPricing && nextTag === "Include" ? "Custom" : nextTag;
+    const resolvedTag = nextTag === "Include" && basisLineAcceptsAsAiProposal(line) ? "Custom" : nextTag;
+    const customPricing = isCustomPricingBasisLine(line) || resolvedTag === "Custom";
     const customConfirmed = customPricing && nextTag === "Include";
     if (currentTag === resolvedTag && (!customPricing || Boolean(line.custom_confirmed) === customConfirmed)) return line;
     changed = true;
@@ -3583,9 +3892,11 @@ function proposalLineDelta(proposal) {
   return {
     currentTag: normalizeBasisTag(currentLine.tag),
     currentConfidence: normalizeConfidence(currentLine.confidence ?? currentLine.confidence_pct),
+    currentPricingReferenceDescription: currentLine.pricing_reference_description || "",
     currentText: currentLine.text,
     nextTag: normalizeBasisTag(nextLine.tag),
     nextConfidence: normalizeConfidence(nextLine.confidence ?? nextLine.confidence_pct),
+    nextPricingReferenceDescription: nextLine.pricing_reference_description || "",
     nextText: nextLine.text,
   };
 }
@@ -3621,11 +3932,11 @@ function renderBasisChatProposalCard(proposal, changedFields = []) {
       <div class="basis-chat-compare">
         <div class="basis-chat-compare-card">
           <span>Current</span>
-          <p><strong>${escapeHtml(basisLinePillLabel({ tag: delta.currentTag, confidence: delta.currentConfidence }))}</strong> ${escapeHtml(delta.currentText)}</p>
+          <p><strong>${escapeHtml(basisLinePillLabel({ tag: delta.currentTag, confidence: delta.currentConfidence, pricing_reference_description: delta.currentPricingReferenceDescription }))}</strong> ${escapeHtml(delta.currentText)}</p>
         </div>
         <div class="basis-chat-compare-card is-proposed">
           <span>Proposed</span>
-          <p><strong>${escapeHtml(basisLinePillLabel({ tag: delta.nextTag, confidence: delta.nextConfidence }))}</strong> ${escapeHtml(delta.nextText)}</p>
+          <p><strong>${escapeHtml(basisLinePillLabel({ tag: delta.nextTag, confidence: delta.nextConfidence, pricing_reference_description: delta.nextPricingReferenceDescription }))}</strong> ${escapeHtml(delta.nextText)}</p>
         </div>
       </div>
     ` : `
@@ -3647,18 +3958,10 @@ function setBasisChatProposal(proposal) {
 }
 
 function basisChatFriendlyError(messages = []) {
-  const list = Array.isArray(messages) ? messages : [messages];
-  const text = list.map((message) => String(message || "").trim()).filter(Boolean).join(" ");
-  if (/not configured|api[_\s-]?key/i.test(text)) {
-    return "AI editing is not set up yet. Add the AI key, then try again.";
+  if (messages && typeof messages === "object" && !Array.isArray(messages)) {
+    return genericFailureMessage(messages);
   }
-  if (/503|high demand|timeout|timed out|temporar/i.test(text)) {
-    return "The AI service is busy right now. Please wait a moment and try again.";
-  }
-  if (/replacement line|usable proposal|usable answer|did not return|invalid json|json/i.test(text)) {
-    return "I could not update that line from this message. Try a shorter instruction like \"change 10W to 20W\".";
-  }
-  return "I could not complete that change. Try a shorter, more specific instruction.";
+  return genericFailureMessage();
 }
 
 function setBasisChatBusy(isBusy) {
@@ -3690,6 +3993,8 @@ function openBasisChatOverlay(scope = "line", options = {}) {
   const quantityLabel = basisQuantityLabel(line);
   const displayQuantityLabel = basisQuantityDisplayLabel(line);
   const confidenceLabel = basisConfidenceLabel(line);
+  const selectedTagTitle = basisPillTitle(line, tag);
+  const selectedTagTitleAttribute = selectedTagTitle ? ` title="${escapeHtml(selectedTagTitle)}"` : "";
   state.basisChat.line = basisChatLineContext(line);
   state.basisChat.quantity = line.quantity ?? state.basisChat.quantity ?? "";
   state.basisChat.unit = normalizeUnit(line.unit || state.basisChat.unit || "");
@@ -3698,7 +4003,7 @@ function openBasisChatOverlay(scope = "line", options = {}) {
     <span class="basis-chat-context-label">${escapeHtml(basisFieldLabel(state.basisChat.sectionId))}</span>
     <span class="basis-chat-selected-line">
       <span class="basis-chat-selected-meta">
-        <strong class="basis-chat-selected-tag ${escapeHtml(tagClass)}" title="${escapeHtml(basisTagLabel(tag))}">${escapeHtml(basisLinePillLabel(line))}</strong>
+        <strong class="basis-chat-selected-tag ${escapeHtml(tagClass)}"${selectedTagTitleAttribute}>${escapeHtml(basisLinePillLabel(line))}</strong>
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
       </span>
       <span class="basis-chat-selected-body">
@@ -3843,14 +4148,14 @@ async function buildAiBasisChatResponse(text) {
     const started = await startJob("basis_chat", basisChatPayload(text));
     if (!started.ok) {
       removeBasisChatTyping(typingMessage);
-      appendBasisChatMessage("assistant", basisChatFriendlyError(started.data.errors));
+      appendBasisChatMessage("assistant", basisChatFriendlyError(started.data));
       return { errorDisplayed: true };
     }
     const polled = await pollJob(started.data.job_id);
     const data = polled.data.result || {};
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       removeBasisChatTyping(typingMessage);
-      appendBasisChatMessage("assistant", basisChatFriendlyError(data.errors || polled.data.errors));
+      appendBasisChatMessage("assistant", basisChatFriendlyError(data || polled.data));
       return { errorDisplayed: true };
     }
     if (data.proposal) {
@@ -3901,7 +4206,7 @@ async function handleBasisChatSubmit(event) {
   }
   if (aiResult?.errorDisplayed) return;
 
-  appendBasisChatMessage("assistant", "I could not update the basis from that message. Try a shorter, more specific instruction.");
+  appendBasisChatMessage("assistant", GENERIC_FAILURE_MESSAGE);
 }
 
 function applyBasisChatProposal() {
@@ -4016,6 +4321,19 @@ function applyDraftLineItems(lineItems = []) {
   state.outputErrors = [];
 }
 
+async function refreshLineItemsFromServer() {
+  if (!state.lineItems.length) return true;
+  const { ok, data } = await postJson("/api/line-items/normalize", {
+    ...buildPayload(),
+    line_items: state.lineItems.map(normalizeLineItem),
+  });
+  if (!ok || !Array.isArray(data.line_items)) return false;
+  state.lineItems = data.line_items.map(normalizeLineItem);
+  state.outputRows = [];
+  state.outputErrors = [];
+  return true;
+}
+
 function captureOriginalAnalysisSnapshot(data = {}) {
   const sections = normalizeQuoteBasisSections(data.quote_basis_sections || data.quote_basis || state.quoteBasisSections);
   state.originalAnalysisSnapshot = {
@@ -4024,6 +4342,7 @@ function captureOriginalAnalysisSnapshot(data = {}) {
     line_items: state.lineItems.map(normalizeLineItem),
     boothDimensions: { ...state.boothDimensions },
     source: data.source || state.draftSource || "",
+    analysis_mode: normalizeAnalysisMode(data.analysis_mode || state.lastAnalysisMode),
     warnings: Array.isArray(data.warnings) ? [...data.warnings] : [],
   };
 }
@@ -4145,8 +4464,8 @@ function showAiFailedDraftState(data = {}) {
   clearAiFailedDraftState();
   state.aiFailed = true;
   state.draftSource = data.source || "local";
-  const warningText = Array.isArray(data.warnings) && data.warnings.length ? data.warnings.join(" ") : "";
-  const message = warningText || "Remote AI did not return a usable quote basis. Start analysis again after checking the local runner connection.";
+  state.lastAnalysisMode = normalizeAnalysisMode(data.analysis_mode || state.lastAnalysisMode);
+  const message = genericFailureMessage(data);
   setWorkflowStage("basis_review");
   showAiFailureBanner(message);
   renderBasisFailureState(message);
@@ -4161,6 +4480,7 @@ function resetQuoteBasisToOriginal() {
   state.quoteBasis = cloneQuoteBasis(snapshot.quote_basis || quoteBasisFromSections(state.quoteBasisSections));
   state.lineItems = Array.isArray(snapshot.line_items) ? snapshot.line_items.map(normalizeLineItem) : [];
   state.boothDimensions = normalizeBoothDimensions(snapshot.boothDimensions || state.boothDimensions);
+  state.lastAnalysisMode = normalizeAnalysisMode(snapshot.analysis_mode || state.lastAnalysisMode);
   state.outputRows = [];
   state.originalOutputRows = [];
   state.outputErrors = [];
@@ -4174,17 +4494,19 @@ function resetQuoteBasisToOriginal() {
   syncControlStates();
 }
 
-function resetOutputDraft() {
+async function resetOutputDraft() {
   if (state.isAnalysisRunning || state.isGenerating || !state.originalOutputRows.length) return;
   state.outputRows = snapshotOutputRows(state.originalOutputRows);
   state.lineItems = outputRowsToLineItems();
+  const refreshed = await refreshLineItemsFromServer();
+  if (refreshed) refreshOutputRowsFromLineItems();
   state.outputErrors = [];
   state.downloadFile = null;
   setDownloadFiles([]);
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(outputRowsValid().errors);
-  setResultStatus("Output reset to confirmed basis", "is-warn");
+  setResultStatus(refreshed ? "Output reset to confirmed basis" : "Pricing refresh unavailable", "is-warn");
   syncControlStates();
 }
 
@@ -4209,7 +4531,7 @@ async function postJson(url, payload) {
         fetch_failed: true,
         page_unloading: state.isPageUnloading,
         message: error.message || String(error),
-        errors: ["Local server connection failed. Make sure the local runner is still open, then retry."],
+        errors: genericFailureMessages(),
       },
     };
   }
@@ -4220,7 +4542,7 @@ async function postJson(url, payload) {
   } catch {
     data = {
       status: "failed",
-      errors: ["Local server returned a non-JSON response. Refresh the app and retry."],
+      errors: genericFailureMessages(),
     };
   }
   if (!response.ok) {
@@ -4245,7 +4567,7 @@ async function getJson(url, options = {}) {
         fetch_failed: true,
         page_unloading: state.isPageUnloading,
         message,
-        errors: ["Local server connection failed. Make sure the local runner is still open, then retry."],
+        errors: genericFailureMessages(),
       },
     };
   }
@@ -4256,7 +4578,7 @@ async function getJson(url, options = {}) {
   } catch {
     data = {
       status: "failed",
-      errors: ["Local server returned a non-JSON response. Refresh the app and retry."],
+      errors: genericFailureMessages(),
     };
   }
   if (!response.ok) {
@@ -4303,7 +4625,7 @@ async function pollJob(jobId, onStatus) {
     if (FINAL_JOB_STATUSES.has(data.status)) return { ok: true, data };
     await delay(900);
   }
-  return { ok: false, data: { status: "failed", errors: ["Job was not created."] } };
+  return { ok: false, data: { status: "failed", errors: genericFailureMessages() } };
 }
 
 function isInterruptedJobPoll(polled) {
@@ -4313,12 +4635,12 @@ function isInterruptedJobPoll(polled) {
 function handleInterruptedJobPoll(jobType = "draft") {
   if (jobType === "draft") {
     state.isAnalysisRunning = false;
-    showAiFailureBanner("Local server connection was interrupted. Refresh this app to resume the active AI analysis job.");
+    showAiFailureBanner();
     setWorkflowStage("analyzing");
   } else {
     state.isGenerating = false;
     setResultStatus("Connection interrupted", "is-warn");
-    renderMessages(["Local server connection was interrupted. Refresh this app to resume the active Excel job."], "error");
+    renderMessages(genericFailureMessages(), "error");
   }
   syncControlStates();
 }
@@ -4355,10 +4677,10 @@ function syncControlStates() {
     ? (state.isAnalysisRunning ? "Analysis is running." : "Quotation generation is running.")
     : "";
   if (elements.settingsButton) {
-    const canManage = canManageSettings();
-    elements.settingsButton.hidden = !canManage;
-    elements.settingsButton.disabled = busy || !canManage;
-    elements.settingsButton.title = canManage ? "" : "You do not have permission to manage settings.";
+    const canManage = canManagePricingReferences();
+    elements.settingsButton.hidden = false;
+    elements.settingsButton.disabled = busy;
+    elements.settingsButton.title = canManage ? "New pricing reference" : pricingReferenceNoAccessReason();
     elements.settingsButton.setAttribute("aria-disabled", String(elements.settingsButton.disabled));
   }
   updateSidePanelNav();
@@ -4367,6 +4689,9 @@ function syncControlStates() {
 
 async function handleDraftBasis(options = {}) {
   if (state.isAnalysisRunning) return;
+  const analysisMode = normalizeAnalysisMode(options.analysisMode || state.pendingAnalysisMode);
+  state.pendingAnalysisMode = analysisMode;
+  const runningMessage = analysisRunningMessage(analysisMode);
   const hasFeedback = Boolean(state.pendingFeedback.trim()) || options.finalAfterClarifications;
   const analysisRequestedAt = new Date().toISOString();
 
@@ -4389,14 +4714,16 @@ async function handleDraftBasis(options = {}) {
   state.isAnalysisRunning = true;
   state.aiFailed = false;
   state.draftSource = "";
+  state.lastAnalysisMode = analysisMode;
   clearAiFailureBanner();
   setWorkflowStage("analyzing");
-  showAiRunningBanner("Reading the reference images and preparing the quote basis. Please wait.", analysisRequestedAt);
+  showAiRunningBanner(runningMessage, analysisRequestedAt);
   clearBasisReviewSurface();
   setSidePanel("basis", { force: true });
   syncControlStates();
 
   const started = await startJob("draft", buildPayload({
+    analysisMode,
     includeBoothDimensions: state.boothDimensions.dimension_source !== "default",
     includeDraftContext: hasFeedback,
   }));
@@ -4408,14 +4735,14 @@ async function handleDraftBasis(options = {}) {
     if (wasBlocked) {
       showAiBlockedBanner(errors.join(" "));
     } else {
-      showAiFailureBanner("Try again later.");
+      showAiFailureBanner(genericFailureMessage(started.data));
     }
     syncControlStates();
     return;
   }
   const startedAt = started.data.created_at || analysisRequestedAt;
   state.activeJob = { id: started.data.job_id, type: "draft", startedAt };
-  showAiRunningBanner("Reading the reference images and preparing the quote basis. Please wait.", startedAt);
+  showAiRunningBanner(runningMessage, startedAt);
   saveSessionState();
 
   const polled = await pollJob(started.data.job_id);
@@ -4434,7 +4761,7 @@ async function handleDraftBasis(options = {}) {
     if (wasBlocked) {
       showAiBlockedBanner(errors.join(" "));
     } else {
-      showAiFailureBanner("Try again later.");
+      showAiFailureBanner(genericFailureMessage(polled.data.result || polled.data));
     }
     syncControlStates();
     return;
@@ -4462,6 +4789,7 @@ async function handleDraftBasis(options = {}) {
   applyDraftLineItems(data.line_items || []);
   state.boothDimensions = normalizeBoothDimensions(data.project || state.boothDimensions);
   state.draftSource = data.source || "";
+  state.lastAnalysisMode = normalizeAnalysisMode(data.analysis_mode || analysisMode);
   captureOriginalAnalysisSnapshot(data);
   state.aiFailed = false;
   setWorkflowStage("basis_review");
@@ -4480,7 +4808,7 @@ async function confirmBasis() {
     return;
   }
   if (state.aiFailed) {
-    showAiFailureBanner("Try again later. Regenerate analysis before confirming the quote basis.");
+    showAiFailureBanner();
     return;
   }
   if (!state.lineItems.length) {
@@ -4494,6 +4822,7 @@ async function confirmBasis() {
     syncControlStates();
     return;
   }
+  const refreshed = await refreshLineItemsFromServer();
   state.basisConfirmed = true;
   refreshOutputRowsFromLineItems();
   state.originalOutputRows = snapshotOutputRows(state.outputRows);
@@ -4501,7 +4830,7 @@ async function confirmBasis() {
   setWorkflowStage("completed");
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
-  setResultStatus("Ready for pricing review", "is-warn");
+  setResultStatus(refreshed ? "Ready for pricing review" : "Pricing refresh unavailable", "is-warn");
   renderOutputValidationMessages(outputRowsValid().errors);
   setSidePanel("output", { force: true });
   syncControlStates();
@@ -4529,7 +4858,7 @@ async function handleGenerate() {
   }
   if (state.aiFailed) {
     setWorkflowStage("basis_review");
-    showAiFailureBanner("Try again later. Regenerate analysis before generating Excel.");
+    showAiFailureBanner();
     syncControlStates();
     return;
   }
@@ -4558,7 +4887,7 @@ async function handleGenerate() {
     state.isGenerating = false;
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
     setResultStatus(started.data.status || "Failed", "is-bad");
-    renderMessages(started.data.errors || ["Generation failed."], "error");
+    renderMessages(started.data.status === "blocked" ? (started.data.errors || ["Generation blocked."]) : genericFailureMessages(started.data), "error");
     syncControlStates();
     return;
   }
@@ -4578,7 +4907,8 @@ async function handleGenerate() {
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
     setResultStatus(data.status || "Failed", "is-bad");
-    renderMessages(data.errors || ["Generation failed."], "error");
+    const blocked = polled.data.status === "blocked" || data.status === "blocked";
+    renderMessages(blocked ? (data.errors || ["Generation blocked."]) : genericFailureMessages(data || polled.data), "error");
     if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
     renderMatchSummary(data);
     syncControlStates();
@@ -4586,12 +4916,12 @@ async function handleGenerate() {
   }
 
   const needsPricingReview = polled.data.status === "needs_review"
-    || data.status === "needs_confirmation"
-    || pricingReviewIssues(data).length > 0;
+    || data.status === "needs_confirmation";
   if (needsPricingReview) {
     setWorkflowStage("completed");
     setResultStatus("Needs pricing review", "is-warn");
-    renderPricingReviewMessages(data);
+    renderMessages([]);
+    clearPricingReviewMessages();
     setSidePanel("output", { force: true });
     setDownloadFiles([]);
     if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
@@ -4639,7 +4969,7 @@ async function resumeSavedJob() {
 
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       setWorkflowStage("ready_to_analyze");
-      showAiFailureBanner("Try again later.");
+      showAiFailureBanner(genericFailureMessage(polled.data.result || polled.data));
       syncControlStates();
       return;
     }
@@ -4685,7 +5015,8 @@ async function resumeSavedJob() {
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
       setWorkflowStage("details_review");
       setResultStatus(data.status || "Failed", "is-bad");
-      renderMessages(data.errors || ["Generation failed."], "error");
+      const blocked = polled.data.status === "blocked" || data.status === "blocked";
+      renderMessages(blocked ? (data.errors || ["Generation blocked."]) : genericFailureMessages(data || polled.data), "error");
       if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
       renderMatchSummary(data);
       syncControlStates();
@@ -4693,12 +5024,12 @@ async function resumeSavedJob() {
     }
 
     const needsPricingReview = polled.data.status === "needs_review"
-      || data.status === "needs_confirmation"
-      || pricingReviewIssues(data).length > 0;
+      || data.status === "needs_confirmation";
     if (needsPricingReview) {
-      setWorkflowStage("pricing_review");
+      setWorkflowStage("completed");
       setResultStatus("Needs pricing review", "is-warn");
-      renderPricingReviewMessages(data);
+      renderMessages([]);
+      clearPricingReviewMessages();
       setSidePanel("output", { force: true });
       setDownloadFiles([]);
     } else {
@@ -4732,16 +5063,20 @@ async function checkHealth() {
   }
 }
 
-function requestStartAnalysis() {
+function requestStartAnalysis(mode = "standard") {
   const reason = startAnalysisBlockReason();
   if (reason) {
     showBlockedAction(reason);
     syncControlStates();
     return;
   }
+  state.pendingAnalysisMode = normalizeAnalysisMode(mode);
   elements.analysisConfirmModal.hidden = false;
   elements.analysisConfirmModal.classList.add("is-open");
-  window.setTimeout(() => elements.analysisConfirmStartButton?.focus(), 0);
+  const focusTarget = state.pendingAnalysisMode === "high_accuracy"
+    ? elements.analysisConfirmHighAccuracyButton
+    : elements.analysisConfirmStartButton;
+  window.setTimeout(() => focusTarget?.focus(), 0);
 }
 
 function closeAnalysisConfirmModal() {
@@ -4749,9 +5084,9 @@ function closeAnalysisConfirmModal() {
   elements.analysisConfirmModal.hidden = true;
 }
 
-function confirmStartAnalysis() {
+function confirmStartAnalysis(mode = state.pendingAnalysisMode) {
   closeAnalysisConfirmModal();
-  handleDraftBasis();
+  handleDraftBasis({ analysisMode: normalizeAnalysisMode(mode) });
 }
 
 function isSensitiveChatRequest(normalizedText) {
@@ -4843,11 +5178,13 @@ function updateSidePanelNav() {
   elements.resetImagesButton.hidden = state.activeSidePanel !== "images";
   elements.clearCustomerButton.hidden = state.activeSidePanel !== "customer";
   elements.clearQuoteCompanyButton.hidden = state.activeSidePanel !== "quote_company";
+  elements.analyseAgainButton.hidden = state.activeSidePanel !== "basis";
   elements.resetQuoteBasisButton.hidden = state.activeSidePanel !== "basis";
   elements.resetOutputButton.hidden = state.activeSidePanel !== "output";
   elements.resetImagesButton.disabled = busy || !state.images.length;
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
+  elements.analyseAgainButton.disabled = busy || !state.images.length;
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
   elements.resetOutputButton.disabled = busy || !state.originalOutputRows.length;
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {
@@ -5041,12 +5378,12 @@ function wireEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (!elements.basisChatOverlay.hidden) {
+      if (elements.pricingReferenceTableOverlay && !elements.pricingReferenceTableOverlay.hidden) {
+        closePricingReferenceTableOverlay();
+      } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
         closePricingReferenceModal();
-      } else if (elements.settingsModal && !elements.settingsModal.hidden) {
-        closeSettingsModal();
       } else if (!elements.analysisConfirmModal.hidden) {
         closeAnalysisConfirmModal();
       }
@@ -5056,15 +5393,9 @@ function wireEvents() {
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
   elements.settingsButton?.addEventListener("click", openSettingsModal);
-  elements.settingsCloseButton?.addEventListener("click", closeSettingsModal);
-  elements.settingsModal?.addEventListener("click", (event) => {
-    if (event.target.matches("[data-settings-close]")) closeSettingsModal();
-    const deleteButton = event.target.closest("[data-settings-delete-pricing-reference]");
-    if (deleteButton) deleteCompanyPricingReference(deleteButton.dataset.settingsDeletePricingReference);
-  });
-  elements.settingsNewPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.newPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
+  elements.deletePricingReferenceSelect?.addEventListener("change", updatePricingReferenceDeleteButton);
   elements.deletePricingReferenceButton?.addEventListener("click", deleteSelectedPricingReference);
   elements.outputSortMode?.addEventListener("change", () => { state.outputSortMode = elements.outputSortMode.value; renderPricingMatches(state.outputRows); renderMatchSummary({ pricing_matches: state.outputRows }); syncControlStates(); });
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
@@ -5097,7 +5428,7 @@ function wireEvents() {
     } catch (error) {
       result = {
         ...pricingReferenceValidationResult([], [], 0, file.name),
-        errors: [`Pricing-reference validation failed: ${error.message || String(error)}`],
+        errors: genericFailureMessages(),
       };
     }
     if (state.pricingReferenceImportToken !== importToken) return;
@@ -5106,16 +5437,15 @@ function wireEvents() {
     renderPricingReferencePreview(result);
   });
   elements.pricingReferencePreview?.addEventListener("input", (event) => {
-    const input = event.target.closest("[data-preview-field]");
-    if (!input || !state.pendingPricingReference?.items) return;
-    const rowIndex = Number(input.dataset.previewRow);
-    const field = input.dataset.previewField;
-    if (!Number.isInteger(rowIndex) || !state.pendingPricingReference.items[rowIndex]) return;
-    state.pendingPricingReference.items[rowIndex][field] = input.value;
-    refreshPricingReferencePreviewValidity(state.pendingPricingReference);
-    const row = input.closest("tr");
-    const status = row?.querySelector(".pricing-preview-status");
-    if (status) status.textContent = state.pendingPricingReference.items[rowIndex].warning || "OK";
+    handlePricingReferencePreviewInput(event);
+  });
+  elements.pricingReferencePreview?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-pricing-reference-table-open]")) openPricingReferenceTableOverlay();
+  });
+  elements.pricingReferenceTableBody?.addEventListener("input", handlePricingReferencePreviewInput);
+  elements.pricingReferenceTableCloseButton?.addEventListener("click", closePricingReferenceTableOverlay);
+  elements.pricingReferenceTableOverlay?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-pricing-reference-table-close]")) closePricingReferenceTableOverlay();
   });
   elements.pricingReferenceCancelButton.addEventListener("click", closePricingReferenceModal);
   elements.pricingReferenceCloseButton.addEventListener("click", closePricingReferenceModal);
@@ -5124,7 +5454,8 @@ function wireEvents() {
     if (event.target.closest("[data-pricing-reference-close]")) closePricingReferenceModal();
   });
   elements.analysisConfirmCancelButton.addEventListener("click", closeAnalysisConfirmModal);
-  elements.analysisConfirmStartButton.addEventListener("click", confirmStartAnalysis);
+  elements.analysisConfirmStartButton.addEventListener("click", () => confirmStartAnalysis("standard"));
+  elements.analysisConfirmHighAccuracyButton.addEventListener("click", () => confirmStartAnalysis("high_accuracy"));
   elements.analysisConfirmModal.addEventListener("click", (event) => {
     if (event.target.closest("[data-analysis-confirm-close]")) closeAnalysisConfirmModal();
   });
@@ -5135,6 +5466,10 @@ function wireEvents() {
   elements.pricingMatchesBody.addEventListener("focusout", handleOutputEditorCommit);
   elements.pricingMatchesBody.addEventListener("change", handleOutputEditorCommit);
   elements.resetImagesButton.addEventListener("click", resetImagesDraft);
+  elements.analyseAgainButton.addEventListener("click", () => {
+    state.pendingFeedback = "";
+    requestStartAnalysis("standard");
+  });
   elements.resetQuoteBasisButton.addEventListener("click", resetQuoteBasisToOriginal);
   elements.resetOutputButton.addEventListener("click", resetOutputDraft);
   elements.presetSelect.addEventListener("change", () => {
@@ -5171,7 +5506,7 @@ function wireEvents() {
     elements.dateLabel,
     elements.taxLabel,
     elements.taxRate,
-  ].forEach((input) => {
+  ].filter(Boolean).forEach((input) => {
     input.addEventListener("input", syncControlStates);
     input.addEventListener("change", syncControlStates);
   });
@@ -5200,11 +5535,6 @@ function wireEvents() {
   elements.basisReviewSurface.addEventListener("click", handleQuoteBasisClick);
   elements.pricingMatchesBody.addEventListener("input", handleOutputRowEdit);
   elements.pricingMatchesBody.addEventListener("change", handleOutputRowEdit);
-  elements.pricingReviewMessages.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-pricing-action]");
-    if (!button || button.disabled) return;
-    handlePricingChoice(button.dataset.pricingAction, button.dataset.pricingIssue);
-  });
 }
 
 function setInitialValues() {
@@ -5231,6 +5561,7 @@ function setInitialValues() {
 
 async function boot() {
   wireEvents();
+  clearLegacyLocalCompanyPresets();
   try {
     await initializeSession();
     await loadProfiles();

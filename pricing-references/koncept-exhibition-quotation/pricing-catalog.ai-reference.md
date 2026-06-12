@@ -199,45 +199,45 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
-- **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
-- **Unit hint:** m length
+- **Item:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
+- **Unit hint:** nos
 - **Remarks:** INFORMATION COUNTER; PAINTED
-- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in painted finished and laminated top as per design proposal m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable information counter nos; wooden construct in painted finished and laminated top as per design proposal nos
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
-- **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
-- **Unit hint:** m length
+- **Item:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
+- **Unit hint:** nos
 - **Remarks:** INFORMATION COUNTER; FULL LAMINATED
-- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in laminated finished as per design proposal m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable information counter nos; wooden construct in laminated finished as per design proposal nos
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal
-- **Unit hint:** m length
+- **Unit hint:** nos
 - **Remarks:** COUNTER; PAINTED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter m length; wooden construct in painted finished and laminated top as per design proposal m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter nos; wooden construct in painted finished and laminated top as per design proposal nos
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal
-- **Unit hint:** m length
+- **Unit hint:** nos
 - **Remarks:** COUNTER; FULL LAMINATED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter m length; wooden construct in laminated finished as per design proposal m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter nos; wooden construct in laminated finished as per design proposal nos
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal
-- **Unit hint:** m length
+- **Unit hint:** nos
 - **Remarks:** COUNTER WITH GLASS TOP; PAINTED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; COUNTER WITH GLASS TOP; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top m length; wooden construct in painted finished and laminated top as per design proposal m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; COUNTER WITH GLASS TOP; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top nos; wooden construct in painted finished and laminated top as per design proposal nos
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-laminated-finished-as-per-design-proposal
 
 - **Item:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal
-- **Unit hint:** m length
+- **Unit hint:** nos
 - **Remarks:** COUNTER; FULL LAMINATED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top m length; wooden construct in laminated finished as per design proposal m length
+- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top nos; wooden construct in laminated finished as per design proposal nos
 
 ### counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m
 

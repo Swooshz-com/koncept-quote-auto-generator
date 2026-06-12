@@ -687,18 +687,18 @@
       ],
       "extra_values": [],
       "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
-      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
-      "unit_hint": "m length",
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+      "unit_hint": "nos",
       "aliases": [
-        "m length x 1m height x 0.5m Width lockable information counter",
-        "x 1m height x 0.5m Width lockable information counter",
+        "nos. of 1m length x 1m height x 0.5m Width lockable information counter",
+        "1m length x 1m height x 0.5m Width lockable information counter",
         "wooden construct in painted finished and laminated top as per design proposal",
         "INFORMATION COUNTER",
         "PAINTED",
-        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
-        "x 1m height x 0.5m Width lockable information counter m length",
-        "wooden construct in painted finished and laminated top as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable information counter nos",
+        "wooden construct in painted finished and laminated top as per design proposal nos"
       ],
       "sale_unit_price": 1200.0
     },
@@ -715,18 +715,18 @@
       ],
       "extra_values": [],
       "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
-      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
-      "unit_hint": "m length",
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+      "unit_hint": "nos",
       "aliases": [
-        "m length x 1m height x 0.5m Width lockable information counter",
-        "x 1m height x 0.5m Width lockable information counter",
+        "nos. of 1m length x 1m height x 0.5m Width lockable information counter",
+        "1m length x 1m height x 0.5m Width lockable information counter",
         "wooden construct in laminated finished as per design proposal",
         "INFORMATION COUNTER",
         "FULL LAMINATED",
-        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
-        "x 1m height x 0.5m Width lockable information counter m length",
-        "wooden construct in laminated finished as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable information counter nos",
+        "wooden construct in laminated finished as per design proposal nos"
       ],
       "sale_unit_price": 1800.0
     },
@@ -744,7 +744,7 @@
       "extra_values": [],
       "id": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
-      "unit_hint": "m length",
+      "unit_hint": "nos",
       "aliases": [
         "nos. of 1m length x 1m height x 0.5m Width lockable counter",
         "1m length x 1m height x 0.5m Width lockable counter",
@@ -753,8 +753,8 @@
         "PAINTED",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable counter m length",
-        "wooden construct in painted finished and laminated top as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable counter nos",
+        "wooden construct in painted finished and laminated top as per design proposal nos"
       ],
       "sale_unit_price": 1200.0
     },
@@ -772,7 +772,7 @@
       "extra_values": [],
       "id": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
-      "unit_hint": "m length",
+      "unit_hint": "nos",
       "aliases": [
         "nos. of 1m length x 1m height x 0.5m Width lockable counter",
         "1m length x 1m height x 0.5m Width lockable counter",
@@ -781,8 +781,8 @@
         "FULL LAMINATED",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable counter m length",
-        "wooden construct in laminated finished as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable counter nos",
+        "wooden construct in laminated finished as per design proposal nos"
       ],
       "sale_unit_price": 1800.0
     },
@@ -800,7 +800,7 @@
       "extra_values": [],
       "id": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal",
-      "unit_hint": "m length",
+      "unit_hint": "nos",
       "aliases": [
         "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "1m length x 1m height x 0.5m Width lockable counter with glass display top",
@@ -809,8 +809,8 @@
         "PAINTED",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable counter with glass display top m length",
-        "wooden construct in painted finished and laminated top as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top nos",
+        "wooden construct in painted finished and laminated top as per design proposal nos"
       ],
       "sale_unit_price": 1800.0
     },
@@ -828,7 +828,7 @@
       "extra_values": [],
       "id": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-laminated-finished-as-per-design-proposal",
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal",
-      "unit_hint": "m length",
+      "unit_hint": "nos",
       "aliases": [
         "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "1m length x 1m height x 0.5m Width lockable counter with glass display top",
@@ -837,8 +837,8 @@
         "FULL LAMINATED",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable counter with glass display top m length",
-        "wooden construct in laminated finished as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top nos",
+        "wooden construct in laminated finished as per design proposal nos"
       ],
       "sale_unit_price": 2100.0
     },
