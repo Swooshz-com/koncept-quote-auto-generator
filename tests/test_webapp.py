@@ -5143,6 +5143,7 @@ assert.strictEqual(state.outputRows[1].price_mode, "Included");
 const fs = require("fs");
 const assert = require("assert");
 const source = fs.readFileSync("webapp/static/app.js", "utf8");
+const normalizedSource = source.replace(/\r\n/g, "\n");
 
 function extractFunction(name) {
   const marker = `function ${name}`;
@@ -5240,8 +5241,8 @@ blockPricingReferenceBusyInteraction(buttonClick);
 assert.strictEqual(prevented, true);
 assert.strictEqual(stopped, true);
 
-assert.ok(source.includes('elements.pricingReferenceModal.addEventListener("click", blockPricingReferenceBusyInteraction, true);'));
-assert.ok(source.includes("setPricingReferenceSaveButtonState({\n      busy: true,\n      reason: \"Import preview is still being prepared.\",\n    });"));
+assert.ok(normalizedSource.includes('elements.pricingReferenceModal.addEventListener("click", blockPricingReferenceBusyInteraction, true);'));
+assert.ok(normalizedSource.includes("setPricingReferenceSaveButtonState({\n      busy: true,\n      reason: \"Import preview is still being prepared.\",\n    });"));
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -5455,19 +5456,19 @@ state.quoteBasisSections = [{
   ],
 }];
 retagBasisSectionConfirmLines("graphics", "Include");
-assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Custom");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
-assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, true);
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, undefined);
 assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
-assert.strictEqual(state.quoteBasis.graphics, "Custom: manual graphic panel\nInclude: standard graphic panel");
+assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel");
 retagBasisSectionConfirmLines("graphics", "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
-assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, false);
-assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Exclude");
-assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nExclude: standard graphic panel");
-assert.ok(rendered >= 4);
-assert.ok(synced >= 4);
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
+assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel");
+assert.ok(rendered >= 3);
+assert.ok(synced >= 3);
 """
         completed = subprocess.run(
             [node, "-e", script],
