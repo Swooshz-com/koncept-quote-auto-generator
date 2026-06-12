@@ -348,6 +348,27 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIn("m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal", ai_reference_markdown)
         self.assertIn("Backwall or any partition; PAINTED", ai_reference_markdown)
 
+    def test_xlsx_catalog_builder_stores_visual_references_next_to_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "pricing-catalog.json"
+
+            catalog = pricing_catalog.build_catalog(
+                ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx",
+                source_label="Quotation-Cost-Template-V1.1.xlsx",
+                out=out,
+            )
+
+            visual_items = [item for item in catalog["items"] if item.get("visual_references")]
+            self.assertGreaterEqual(len(visual_items), 5)
+            first_ref = visual_items[0]["visual_references"][0]
+            self.assertIn("source", first_ref)
+            self.assertIn("path", first_ref)
+            self.assertNotIn("data_url", first_ref)
+            self.assertTrue((out.parent / first_ref["path"]).is_file())
+
+            ai_reference_markdown = pricing_catalog.catalog_to_ai_reference_markdown(catalog)
+            self.assertIn("Visual references:", ai_reference_markdown)
+
     def test_extract_price_rows_reads_json_catalog(self):
         catalog_path = KONCEPT_CATALOG
         rows = quote.extract_price_rows(catalog_path)
