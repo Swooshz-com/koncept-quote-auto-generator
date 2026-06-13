@@ -35,7 +35,7 @@ from xml.etree import ElementTree as ET
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE_DIR = PROJECT_ROOT / "profiles" / "koncept"
-DEFAULT_PRICING_REFERENCE_DIR = PROJECT_ROOT / "pricing-references" / "koncept"
+DEFAULT_PRICING_REFERENCE_DIR = PROJECT_ROOT / "pricing-references" / "koncept-exhibition-quotation"
 DEFAULT_TEMPLATE = DEFAULT_PRICING_REFERENCE_DIR / "pricing-catalog.json"
 DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output"
@@ -292,6 +292,41 @@ def extract_price_rows(template_path: Path) -> list[PriceRow]:
     )
 
 
+PRICE_MATCH_TOKEN_ALIASES = {
+    "aluminium": "aluminum",
+    "bars": "bar",
+    "boxes": "box",
+    "cabinets": "cabinet",
+    "canopy": "fascia",
+    "chairs": "chair",
+    "coves": "cove",
+    "counters": "counter",
+    "downlights": "downlight",
+    "floodlights": "floodlight",
+    "frames": "frame",
+    "graphics": "graphic",
+    "lighting": "light",
+    "panels": "panel",
+    "print": "printed",
+    "planters": "planter",
+    "plants": "plant",
+    "plinths": "counter",
+    "sockets": "socket",
+    "stools": "stool",
+    "tables": "table",
+    "walls": "wall",
+}
+
+
+def price_match_token(value: str) -> str:
+    token = PRICE_MATCH_TOKEN_ALIASES.get(value.lower(), value.lower())
+    if token.endswith("ies") and len(token) > 4:
+        token = f"{token[:-3]}y"
+    elif token.endswith("s") and len(token) > 3 and not token.endswith("ss"):
+        token = token[:-1]
+    return PRICE_MATCH_TOKEN_ALIASES.get(token, token)
+
+
 def tokens(text: str) -> set[str]:
     stop = {
         "and",
@@ -324,36 +359,59 @@ def tokens(text: str) -> set[str]:
         "item",
         "items",
     }
-    result = {t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 1 and t not in stop}
+    result = {
+        price_match_token(t)
+        for t in re.findall(r"[a-z0-9]+", text.lower())
+        if (len(t) > 1 or t.isdigit()) and price_match_token(t) not in stop
+    }
     result.update(t[:-1] for t in list(result) if len(t) > 3 and t.endswith("s"))
     return result
 
 
-def score_price_row(query: str, row: PriceRow) -> int:
+def score_price_row(query: str, row: PriceRow, section: str = "", unit: str = "") -> float:
     query_tokens = tokens(query)
     if not query_tokens:
         return 0
     haystack_values = [row.pricing_id, row.section, row.description, row.remark, row.unit_hint, *row.aliases]
-    haystack = " ".join(haystack_values)
-    row_tokens = tokens(haystack)
-    overlap = len(query_tokens & row_tokens)
     normalized_query = clean_text(query).lower()
-    phrase_bonus = 0
+    section_bonus = 1.5 if clean_text(section).casefold() and clean_text(section).casefold() == clean_text(row.section).casefold() else 0.0
+    normalized_unit = normalize_unit(unit)
+    row_unit = normalize_unit(row.unit_hint)
+    unit_bonus = 3.0 if normalized_unit and row_unit == normalized_unit else 0.0
+    unit_penalty = -1.5 if normalized_unit and row_unit and row_unit != normalized_unit else 0.0
+    best_score = 0.0
     for value in haystack_values:
         normalized_value = clean_text(value).lower()
-        if not normalized_value:
+        value_tokens = tokens(value)
+        if not normalized_value or not value_tokens:
             continue
+        overlap = query_tokens & value_tokens
+        if not overlap:
+            continue
+        phrase_bonus = 0
         if normalized_query == normalized_value:
-            phrase_bonus = max(phrase_bonus, 20)
+            phrase_bonus = 20
         elif normalized_query in normalized_value:
-            phrase_bonus = max(phrase_bonus, 10)
-    return overlap + phrase_bonus
+            phrase_bonus = 10
+        value_ratio = len(overlap) / max(len(value_tokens), 1)
+        query_ratio = len(overlap) / max(min(len(query_tokens), 12), 1)
+        score = (
+            len(overlap) * 2.0
+            + value_ratio * 6.0
+            + query_ratio * 2.0
+            + phrase_bonus
+            + section_bonus
+            + unit_bonus
+            + unit_penalty
+        )
+        best_score = max(best_score, score)
+    return best_score
 
 
-def find_price_match(query: str, price_rows: list[PriceRow]) -> tuple[str, PriceRow | None, list[PriceRow]]:
+def find_price_match(query: str, price_rows: list[PriceRow], section: str = "", unit: str = "") -> tuple[str, PriceRow | None, list[PriceRow]]:
     if not query:
         return "manual-display", None, []
-    scored = [(score_price_row(query, row), row) for row in price_rows]
+    scored = [(score_price_row(query, row, section=section, unit=unit), row) for row in price_rows]
     scored = [(score, row) for score, row in scored if score > 0]
     scored.sort(key=lambda item: (-item[0], item[1].pricing_id, item[1].row_number))
     candidates = [row for _, row in scored[:5]]
@@ -363,7 +421,35 @@ def find_price_match(query: str, price_rows: list[PriceRow]) -> tuple[str, Price
     tied = [row for score, row in scored if score == top_score]
     if len(tied) > 1:
         return "ambiguous", tied[0], tied[:5]
+    if len(scored) > 1 and top_score - scored[1][0] < 0.5:
+        return "ambiguous", candidates[0], candidates
     return "matched", candidates[0], candidates
+
+
+LINEAR_TAKEOFF_UNITS = {"m", "m length", "m run"}
+SUSPICIOUS_LINEAR_STRUCTURE_TERMS = {
+    "canopy",
+    "fascia",
+    "frame",
+    "framed",
+    "overhead",
+    "partition",
+    "perimeter",
+    "portal",
+    "structure",
+    "wall",
+}
+
+
+def suspicious_linear_structure_quantity(section: str, description: str, quantity: float | None, unit: str) -> bool:
+    if quantity is None or abs(quantity - 1.0) > 0.0001:
+        return False
+    if normalize_unit(unit).lower() not in LINEAR_TAKEOFF_UNITS:
+        return False
+    text = f"{section} {description}".lower()
+    if "booth structure" not in text and not any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS):
+        return False
+    return any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS)
 
 
 REQUIRED_TOP_LEVEL = ("company_identity", "quote_date", "client", "project", "line_items")
@@ -400,9 +486,15 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
         unit_price_override = item.get("unit_price_override")
         unit_price_override_num = as_float(unit_price_override, 0.0) if unit_price_override not in (None, "") else None
         query = clean_text(item.get("pricing_keyword") or item.get("description") or "")
-        status, match, candidates = find_price_match(query, price_rows)
+        status, match, candidates = find_price_match(
+            query,
+            price_rows,
+            section=clean_text(item.get("section")),
+            unit=clean_text(item.get("unit")),
+        )
         quantity = item.get("quantity")
         quantity_num = as_float(quantity, 0.0) if quantity not in (None, "") else None
+        normalized_unit = normalize_unit(item.get("unit"))
         amount: float | None = None
         if price_mode == "Included":
             status = "included"
@@ -415,6 +507,10 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             match = None
         elif display_price:
             status = "manual-display"
+        elif suspicious_linear_structure_quantity(clean_text(item.get("section")), clean_text(item.get("description")), quantity_num, normalized_unit):
+            status = "quantity-review"
+            match = None
+            amount = None
         elif status == "matched" or (status == "ambiguous" and allow_ambiguous):
             amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0))
             if status == "ambiguous" and allow_ambiguous:
@@ -423,7 +519,7 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             QuoteLine(
                 section=clean_text(item.get("section")),
                 quantity=quantity_num,
-                unit=normalize_unit(item.get("unit")),
+                unit=normalized_unit,
                 description=clean_text(item.get("description")),
                 pricing_keyword=query,
                 display_price=display_price,
@@ -449,6 +545,11 @@ def confirmation_issues(missing: list[str], lines: list[QuoteLine]) -> list[str]
             issues.append(
                 f"Manual display pricing required: {line.description} / "
                 "enter a display price, choose a catalog keyword, or remove this line"
+            )
+        if line.match_status == "quantity-review":
+            issues.append(
+                f"Quantity needs review: {line.description} / "
+                "confirm measured quantity before pricing"
             )
         if line.match_status == "ambiguous":
             options = "; ".join(
@@ -786,7 +887,7 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
     discount = as_float(brief.get("discount"), 0.0)
     subtotal = max(quote_subtotal(entries) - discount, 0.0)
     tax_rate = quote_tax_rate(brief)
-    tax_amount = round(subtotal * tax_rate) if tax_rate else 0
+    tax_amount = round(subtotal * tax_rate, 2) if tax_rate else 0
     final_total = subtotal + tax_amount
     rows.extend([[], ["", "", "Total", money(subtotal), currency]])
     if discount:
@@ -926,12 +1027,19 @@ def append_ooxml_text_run(
     bold: bool = False,
     italic: bool = False,
     underline: bool = False,
+    font_name: str | None = None,
+    font_size: str | None = None,
 ) -> None:
     run = ET.SubElement(inline, f"{NS_MAIN}r")
     run_props = ET.SubElement(run, f"{NS_MAIN}rPr")
+    if font_name:
+        ET.SubElement(run_props, f"{NS_MAIN}rFont", {"val": font_name})
+        ET.SubElement(run_props, f"{NS_MAIN}family", {"val": "2"})
     ET.SubElement(run_props, f"{NS_MAIN}b").attrib["val"] = "1" if bold else "0"
     if italic:
         ET.SubElement(run_props, f"{NS_MAIN}i")
+    if font_size:
+        ET.SubElement(run_props, f"{NS_MAIN}sz", {"val": font_size})
     if underline:
         ET.SubElement(run_props, f"{NS_MAIN}u")
     text = ET.SubElement(run, f"{NS_MAIN}t")
@@ -967,6 +1075,9 @@ def set_ooxml_rich_text_cell(
     col_number: int,
     runs: list[Any],
     style: str | None = None,
+    *,
+    font_name: str | None = None,
+    font_size: str | None = None,
 ) -> None:
     sheet_data = root.find(f"{NS_MAIN}sheetData")
     if sheet_data is None:
@@ -987,6 +1098,8 @@ def set_ooxml_rich_text_cell(
             bold=run.bold,
             italic=run.italic,
             underline=run.underline,
+            font_name=font_name,
+            font_size=font_size,
         )
 
 
@@ -1209,12 +1322,67 @@ def ensure_regular_font_for_style(styles_root: ET.Element, base_style: str, *, b
     return str(len(fonts) - 1)
 
 
+def ensure_font_for_style(
+    styles_root: ET.Element,
+    base_style: str,
+    *,
+    font_name: str | None = None,
+    font_size: str | None = None,
+) -> str:
+    cell_xfs = styles_root.find(f"{NS_MAIN}cellXfs")
+    fonts = styles_root.find(f"{NS_MAIN}fonts")
+    if cell_xfs is None or fonts is None:
+        raise ValueError("Layout workbook is missing cellXfs or fonts styles.")
+
+    base_font_id = int(cell_xfs[int(base_style)].attrib.get("fontId", "0"))
+    font = copy.deepcopy(fonts[base_font_id])
+    if font_name is not None:
+        name = font.find(f"{NS_MAIN}name")
+        if name is None:
+            name = ET.SubElement(font, f"{NS_MAIN}name")
+        name.attrib["val"] = font_name
+    if font_size is not None:
+        size = font.find(f"{NS_MAIN}sz")
+        if size is None:
+            size = ET.SubElement(font, f"{NS_MAIN}sz")
+        size.attrib["val"] = font_size
+    fonts.append(font)
+    fonts.attrib["count"] = str(len(fonts))
+    return str(len(fonts) - 1)
+
+
+def normalize_arial_style_fonts(styles_root: ET.Element) -> None:
+    fonts = styles_root.find(f"{NS_MAIN}fonts")
+    if fonts is None:
+        raise ValueError("Layout workbook is missing fonts styles.")
+
+    for font in fonts.findall(f"{NS_MAIN}font"):
+        name = font.find(f"{NS_MAIN}name")
+        if name is None or name.attrib.get("val", "").lower() != "arial":
+            continue
+        name.attrib["val"] = "Calibri"
+        size = font.find(f"{NS_MAIN}sz")
+        if size is None:
+            size = ET.SubElement(font, f"{NS_MAIN}sz")
+        size.attrib["val"] = "13"
+
+
 def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     styles_root = ET.fromstring(parts["xl/styles.xml"])
+    normalize_arial_style_fonts(styles_root)
     total_border = append_border(styles_root, top="thin")
     grand_border = append_border(styles_root, top="thin", bottom="double")
     regular_amount_font = ensure_regular_font_for_style(styles_root, "5")
     bold_amount_font = ensure_regular_font_for_style(styles_root, "5", bold=True)
+    small_heading_font = ensure_font_for_style(styles_root, "37", font_name="Calibri", font_size="10")
+    small_number_font = ensure_font_for_style(styles_root, "40", font_name="Calibri", font_size="10")
+    small_body_font = ensure_font_for_style(styles_root, "41", font_name="Calibri", font_size="10")
+    signature_text_font = ensure_font_for_style(styles_root, "2", font_name="Calibri", font_size="10")
+    signature_line_font = ensure_font_for_style(styles_root, "33", font_name="Calibri", font_size="10")
+    client_name_font = ensure_font_for_style(styles_root, "12", font_name="Calibri", font_size="13")
+    client_address_font = ensure_font_for_style(styles_root, "93", font_name="Calibri", font_size="13")
+    client_attention_font = ensure_font_for_style(styles_root, "26", font_name="Calibri", font_size="13")
+    client_title_font = ensure_font_for_style(styles_root, "24", font_name="Calibri", font_size="13")
     style_ids = {
         "quote_date": "98",
         "header_pos": clone_cell_style(styles_root, "23", font_id=ensure_bold_font_for_style(styles_root, "23")),
@@ -1222,7 +1390,10 @@ def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
         "header_service": clone_cell_style(styles_root, "21", font_id=ensure_bold_font_for_style(styles_root, "21"), horizontal="left", vertical="center"),
         "header_estimate": clone_cell_style(styles_root, "87", font_id=ensure_bold_font_for_style(styles_root, "87"), horizontal="right", vertical="center"),
         "header_currency": clone_cell_style(styles_root, "95", font_id=ensure_bold_font_for_style(styles_root, "95"), horizontal="right", vertical="center"),
-        "client_address": clone_cell_style(styles_root, "93", horizontal="left", vertical="center"),
+        "client_name": clone_cell_style(styles_root, "12", font_id=client_name_font),
+        "client_address": clone_cell_style(styles_root, "93", font_id=client_address_font, horizontal="left", vertical="center"),
+        "client_attention": clone_cell_style(styles_root, "26", font_id=client_attention_font),
+        "client_title": clone_cell_style(styles_root, "24", font_id=client_title_font),
         "price_amount": clone_cell_style(styles_root, "5", font_id=regular_amount_font, num_fmt_id="4", horizontal="right", vertical="center"),
         "total_label": clone_cell_style(styles_root, "34", border_id=total_border, horizontal="right", vertical="center"),
         "total_amount": clone_cell_style(styles_root, "5", font_id=bold_amount_font, border_id=total_border, num_fmt_id="4", horizontal="right", vertical="center"),
@@ -1233,6 +1404,11 @@ def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
         "grand_label": clone_cell_style(styles_root, "34", border_id=grand_border, horizontal="right", vertical="center"),
         "grand_amount": clone_cell_style(styles_root, "5", font_id=bold_amount_font, border_id=grand_border, num_fmt_id="4", horizontal="right", vertical="center"),
         "grand_currency": clone_cell_style(styles_root, "84", border_id=grand_border, horizontal="center", vertical="center"),
+        "terms_heading": clone_cell_style(styles_root, "37", font_id=small_heading_font),
+        "terms_number": clone_cell_style(styles_root, "40", font_id=small_number_font),
+        "terms_body": clone_cell_style(styles_root, "41", font_id=small_body_font),
+        "signature_text": clone_cell_style(styles_root, "2", font_id=signature_text_font),
+        "signature_line": clone_cell_style(styles_root, "33", font_id=signature_line_font),
     }
     parts["xl/styles.xml"] = serialize_excel_styles(styles_root)
     return style_ids
@@ -1720,7 +1896,7 @@ def line_amount_value(line: QuoteLine) -> float | None:
         return line.amount
     if line.display_price:
         parsed = as_float(line.display_price, 0.0)
-        return parsed if parsed else None
+        return parsed
     return None
 
 
@@ -2029,13 +2205,14 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     company_name = clean_text(company.get("name"))
     client_address_runs = brief_rich_text_lines(brief, "clientAddress", client.get("address") or [])
     header_line_runs = brief_rich_text_lines(brief, "headerDetails", company.get("header_lines") or [])
+    client_block_rich_text = {"font_name": "Calibri", "font_size": "13"}
 
-    set_ooxml_rich_text_cell(root, 6, 1, brief_rich_text_cell_runs(brief, "clientName", client.get("name", "")), "12")
+    set_ooxml_rich_text_cell(root, 6, 1, brief_rich_text_cell_runs(brief, "clientName", client.get("name", "")), layout_styles["client_name"], **client_block_rich_text)
     for offset, runs in enumerate(client_address_runs[:4], start=7):
-        set_ooxml_rich_text_cell(root, offset, 1, runs, layout_styles["client_address"])
-    set_ooxml_rich_text_cell(root, 11, 1, [RichTextRun("Attention:", bold=True)], "26")
-    set_ooxml_rich_text_cell(root, 12, 2, brief_rich_text_cell_runs(brief, "clientAttention", client.get("attention", ""), fallback_bold=True), "26")
-    set_ooxml_rich_text_cell(root, 13, 2, brief_rich_text_cell_runs(brief, "clientTitle", client.get("title", "")), "24")
+        set_ooxml_rich_text_cell(root, offset, 1, runs, layout_styles["client_address"], **client_block_rich_text)
+    set_ooxml_rich_text_cell(root, 11, 1, [RichTextRun("Attention:", bold=True)], layout_styles["client_attention"], **client_block_rich_text)
+    set_ooxml_rich_text_cell(root, 12, 2, brief_rich_text_cell_runs(brief, "clientAttention", client.get("attention", ""), fallback_bold=True), layout_styles["client_attention"], **client_block_rich_text)
+    set_ooxml_rich_text_cell(root, 13, 2, brief_rich_text_cell_runs(brief, "clientTitle", client.get("title", "")), layout_styles["client_title"], **client_block_rich_text)
     quote_date_runs = brief_quote_date_rich_text_runs(brief)
     if quote_date_runs:
         set_ooxml_rich_text_cell(root, 16, 1, quote_date_runs, layout_styles["quote_date"])
@@ -2092,7 +2269,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     grand_row = total_row + 2
     tax_rate = quote_tax_rate(brief)
     cached_total = sum(formula_cache_amount(entry.get("amount")) for entry in entries)
-    cached_tax = round(cached_total * tax_rate, 0) if tax_rate else 0.0
+    cached_tax = round(cached_total * tax_rate, 2) if tax_rate else 0.0
     cached_grand = cached_total + cached_tax
     set_ooxml_cell(root, total_row, 4, "Total", layout_styles["total_label"])
     set_ooxml_formula(
@@ -2110,7 +2287,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             root,
             gst_row,
             5,
-            f"ROUND(E{total_row}*{tax_rate:.6f},0)",
+            f"ROUND(E{total_row}*{tax_rate:.6f},2)",
             layout_styles["gst_amount"],
             cached_tax,
         )
@@ -2130,18 +2307,19 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     signature = brief.get("signature") if isinstance(brief.get("signature"), dict) else {}
     next_text_row = grand_row + 3
     last_optional_row = 0
+    footer_rich_text = {"font_name": "Calibri", "font_size": "10"}
 
     terms_heading = clean_text(brief.get("terms_heading"))
     payment_terms = brief.get("payment_terms") or []
     payment_term_runs = brief_rich_text_lines(brief, "paymentTerms", payment_terms)
     if terms_heading or payment_terms:
         if terms_heading:
-            set_ooxml_rich_text_cell(root, next_text_row, 1, brief_rich_text_cell_runs(brief, "termsHeading", terms_heading), "37")
+            set_ooxml_rich_text_cell(root, next_text_row, 1, brief_rich_text_cell_runs(brief, "termsHeading", terms_heading), layout_styles["terms_heading"], **footer_rich_text)
             next_text_row += 1
         for index, term in enumerate(payment_terms, start=1):
-            set_ooxml_cell(root, next_text_row, 1, f"{index:.2f}", "40")
+            set_ooxml_cell(root, next_text_row, 1, f"{index:.2f}", layout_styles["terms_number"])
             runs = payment_term_runs[index - 1] if index - 1 < len(payment_term_runs) else [RichTextRun(term)]
-            set_ooxml_rich_text_cell(root, next_text_row, 2, runs, "41")
+            set_ooxml_rich_text_cell(root, next_text_row, 2, runs, layout_styles["terms_body"], **footer_rich_text)
             next_text_row += 1
         last_optional_row = next_text_row - 1
         next_text_row = last_optional_row + 2
@@ -2151,26 +2329,26 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     standard_note_runs = brief_rich_text_lines(brief, "standardNotes", standard_notes)
     if notes_heading or standard_notes:
         if notes_heading:
-            set_ooxml_rich_text_cell(root, next_text_row, 1, brief_rich_text_cell_runs(brief, "notesHeading", notes_heading), "37")
+            set_ooxml_rich_text_cell(root, next_text_row, 1, brief_rich_text_cell_runs(brief, "notesHeading", notes_heading), layout_styles["terms_heading"], **footer_rich_text)
             next_text_row += 1
         for index, note in enumerate(standard_notes, start=1):
-            set_ooxml_cell(root, next_text_row, 1, f"{index:.2f}", "40")
+            set_ooxml_cell(root, next_text_row, 1, f"{index:.2f}", layout_styles["terms_number"])
             runs = standard_note_runs[index - 1] if index - 1 < len(standard_note_runs) else [RichTextRun(note)]
-            set_ooxml_rich_text_cell(root, next_text_row, 2, runs, "41")
+            set_ooxml_rich_text_cell(root, next_text_row, 2, runs, layout_styles["terms_body"], **footer_rich_text)
             next_text_row += 1
         last_optional_row = next_text_row - 1
 
     acceptance_row = last_optional_row + 3 if last_optional_row else next_text_row
-    set_ooxml_rich_text_cell(root, acceptance_row, 2, brief_rich_text_cell_runs(brief, "quoteCompanyName", clean_text(acceptance.get("company_name")) or company_name), "2")
-    set_ooxml_rich_text_cell(root, acceptance_row, 5, brief_rich_text_cell_runs(brief, "acceptanceText", clean_text(acceptance.get("text"))), "2")
-    set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", "33")
-    set_ooxml_cell(root, acceptance_row + 4, 5, "_____________________________________", "33")
-    set_ooxml_rich_text_cell(root, acceptance_row + 5, 2, brief_rich_text_cell_runs(brief, "konceptSignatory", clean_text(signature.get("koncept_signatory"))), "33")
-    set_ooxml_rich_text_cell(root, acceptance_row + 5, 5, brief_rich_text_cell_runs(brief, "personLabel", clean_text(acceptance.get("person_label"))), "33")
-    set_ooxml_rich_text_cell(root, acceptance_row + 6, 2, brief_rich_text_cell_runs(brief, "konceptTitle", clean_text(signature.get("koncept_title"))), "33")
-    set_ooxml_rich_text_cell(root, acceptance_row + 6, 5, brief_rich_text_cell_runs(brief, "stampLabel", clean_text(acceptance.get("stamp_label"))), "33")
-    set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "konceptDateLabel", clean_text(signature.get("koncept_date_label"))), "33")
-    set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), "33")
+    set_ooxml_rich_text_cell(root, acceptance_row, 2, brief_rich_text_cell_runs(brief, "quoteCompanyName", clean_text(acceptance.get("company_name")) or company_name), layout_styles["signature_text"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row, 5, brief_rich_text_cell_runs(brief, "acceptanceText", clean_text(acceptance.get("text"))), layout_styles["signature_text"], **footer_rich_text)
+    set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", layout_styles["signature_line"])
+    set_ooxml_cell(root, acceptance_row + 4, 5, "_____________________________________", layout_styles["signature_line"])
+    set_ooxml_rich_text_cell(root, acceptance_row + 5, 2, brief_rich_text_cell_runs(brief, "konceptSignatory", clean_text(signature.get("koncept_signatory"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 5, 5, brief_rich_text_cell_runs(brief, "personLabel", clean_text(acceptance.get("person_label"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 6, 2, brief_rich_text_cell_runs(brief, "konceptTitle", clean_text(signature.get("koncept_title"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 6, 5, brief_rich_text_cell_runs(brief, "stampLabel", clean_text(acceptance.get("stamp_label"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "konceptDateLabel", clean_text(signature.get("koncept_date_label"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
     last_print_row = acceptance_row + 8
     trim_layout_worksheet(root, last_print_row)
@@ -2393,7 +2571,7 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
 
     subtotal = quote_subtotal(entries)
     tax_rate = quote_tax_rate(brief)
-    tax_amount = round(subtotal * tax_rate) if tax_rate else 0
+    tax_amount = round(subtotal * tax_rate, 2) if tax_rate else 0
     cells[(92, 5)] = subtotal
     if tax_amount:
         cells[(93, 5)] = tax_amount

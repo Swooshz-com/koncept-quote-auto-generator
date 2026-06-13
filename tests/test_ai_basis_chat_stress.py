@@ -136,12 +136,14 @@ def openai_response(payload: dict) -> mock.MagicMock:
 class AIBasisChatStressTest(unittest.TestCase):
     def openai_models(self, name: str) -> str:
         if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
-            return "gpt-draft-mini-test"
+            return "gpt-draft-pro-test"
         if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
-            return "gpt-basis-line-nano-test"
+            return "gpt-basis-line-mini-test"
+        if name == webapp.OPENAI_BASIS_ANSWER_MODEL_ENV_NAME:
+            return "gpt-basis-answer-nano-test"
         return ""
 
-    def test_re_chaos_prompts_start_on_nano_model(self):
+    def test_re_chaos_prompts_start_on_basis_line_model(self):
         for prompt in RE_CHAOS_PROMPTS:
             with self.subTest(prompt=prompt):
                 payload = stress_payload()
@@ -161,13 +163,13 @@ class AIBasisChatStressTest(unittest.TestCase):
                             self.assertNotIn("{", str(exc))
 
                 bodies = [json.loads(call.args[0].data.decode("utf-8")) for call in urlopen.call_args_list]
-                self.assertEqual(bodies[0]["model"], "gpt-basis-line-nano-test")
+                self.assertEqual(bodies[0]["model"], "gpt-basis-line-mini-test")
                 if len(bodies) > 1:
-                    self.assertEqual(bodies[1]["model"], "gpt-draft-mini-test")
+                    self.assertEqual(bodies[1]["model"], "gpt-draft-pro-test")
                 if result:
                     self.assertEqual(result["status"], "answered")
 
-    def test_re_bad_nano_output_retries_once_on_mini_model(self):
+    def test_re_bad_basis_line_output_retries_once_on_draft_model(self):
         payload = stress_payload()
         payload["basis_chat"] = {
             "question": "change 100mm to 150mm",
@@ -184,10 +186,10 @@ class AIBasisChatStressTest(unittest.TestCase):
                 result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
 
         models = [json.loads(call.args[0].data.decode("utf-8"))["model"] for call in urlopen.call_args_list]
-        self.assertEqual(models, ["gpt-basis-line-nano-test", "gpt-draft-mini-test"])
+        self.assertEqual(models, ["gpt-basis-line-mini-test", "gpt-draft-pro-test"])
         self.assertEqual(result["type"], "proposal")
 
-    def test_ask_for_changes_chaos_prompts_use_mini_model(self):
+    def test_ask_for_changes_chaos_prompts_use_answer_or_draft_model(self):
         for prompt in ASK_FOR_CHANGES_CHAOS_PROMPTS:
             with self.subTest(prompt=prompt):
                 payload = stress_payload()
@@ -203,7 +205,10 @@ class AIBasisChatStressTest(unittest.TestCase):
                         result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
 
                 body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
-                self.assertEqual(body["model"], "gpt-draft-mini-test")
+                if webapp.basis_chat_required_intent(payload) == "answer":
+                    self.assertEqual(body["model"], "gpt-basis-answer-nano-test")
+                else:
+                    self.assertEqual(body["model"], "gpt-draft-pro-test")
                 self.assertEqual(result["status"], "answered")
 
     def test_wrong_shape_responses_fail_cleanly_without_mutating_payload(self):

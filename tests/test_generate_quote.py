@@ -13,7 +13,7 @@ from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
-KONCEPT_CATALOG = ROOT / "pricing-references" / "koncept" / "pricing-catalog.json"
+KONCEPT_CATALOG = ROOT / "pricing-references" / "koncept-exhibition-quotation" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LOGO = KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg"
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -87,6 +87,24 @@ def cell_inline_runs(root, ref):
                 run_props is not None and run_props.find(f"{NS_MAIN}u") is not None,
             )
         )
+    return result
+
+
+def cell_inline_run_fonts(root, ref):
+    inline = cell(root, ref).find(f"{NS_MAIN}is")
+    if inline is None:
+        return []
+    result = []
+    for run in inline.findall(f"{NS_MAIN}r"):
+        text = "".join(text_node.text or "" for text_node in run.findall(f"{NS_MAIN}t"))
+        run_props = run.find(f"{NS_MAIN}rPr")
+        font = run_props.find(f"{NS_MAIN}rFont") if run_props is not None else None
+        size = run_props.find(f"{NS_MAIN}sz") if run_props is not None else None
+        result.append((
+            text,
+            font.attrib.get("val") if font is not None else "",
+            size.attrib.get("val") if size is not None else "",
+        ))
     return result
 
 
@@ -200,6 +218,16 @@ def num_fmt_code_for_style(styles_root, style_id):
 def font_color(font):
     color = font.find(f"{NS_MAIN}color")
     return color.attrib if color is not None else {}
+
+
+def font_name(font):
+    name = font.find(f"{NS_MAIN}name")
+    return name.attrib.get("val") if name is not None else ""
+
+
+def font_size(font):
+    size = font.find(f"{NS_MAIN}sz")
+    return size.attrib.get("val") if size is not None else ""
 
 
 def worksheet_formulas(root):
@@ -400,6 +428,44 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match.pricing_id, "graphics.vinyl-printed-graphics")
 
+    def test_catalog_matching_uses_numeric_size_and_explicit_unit_context(self):
+        rows = quote.extract_price_rows(KONCEPT_CATALOG)
+
+        status, match, _ = quote.find_price_match(
+            'LED recess downlight 6"',
+            rows,
+            section="Electrical Fittings ( Excluding connection fees by Organiser)",
+            unit="nos",
+        )
+
+        self.assertEqual(status, "matched")
+        self.assertIsNotNone(match)
+        self.assertEqual(
+            match.pricing_id,
+            "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-6",
+        )
+
+        sqm_status, sqm_match, _ = quote.find_price_match(
+            "Side wall printed graphic panels",
+            rows,
+            section="Graphics",
+            unit="sqm",
+        )
+        nos_status, nos_match, _ = quote.find_price_match(
+            "Side wall printed graphic panels",
+            rows,
+            section="Graphics",
+            unit="nos",
+        )
+
+        self.assertEqual(sqm_status, "matched")
+        self.assertEqual(sqm_match.pricing_id, "graphics.vinyl-printed-graphics")
+        self.assertEqual(nos_status, "matched")
+        self.assertEqual(
+            nos_match.pricing_id,
+            "graphics.digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+        )
+
     def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
@@ -413,6 +479,23 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertTrue(ignorable)
         self.assertEqual([prefix for prefix in ignorable if prefix not in declared], [])
+
+    def test_generated_workbook_normalizes_arial_style_fonts(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        title_font = font_for_style(styles, cell_style(sheet, "A18"))
+        self.assertEqual(font_name(title_font), "Calibri")
+        self.assertEqual(font_size(title_font), "13")
+
+        fonts = styles.find(f"{NS_MAIN}fonts")
+        self.assertEqual([font_size(font) for font in fonts if font_name(font) == "Arial"], [])
 
     def test_layout_workbook_scrubs_customer_visible_template_metadata(self):
         tmp, path = generate_layout_workbook()
@@ -589,6 +672,40 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         )
         self.assertEqual(confirmed_issues, [])
 
+    def test_suspicious_one_metre_structural_rows_require_quantity_review(self):
+        rows = [
+            quote.PriceRow(
+                row_number=1,
+                section="Booth Structure",
+                description="m length top fascia structure at height 3.99m",
+                unit_hint="m length",
+                cost=250,
+                gst_multiplier=1.0,
+                markup=1.5,
+                remark="",
+            )
+        ]
+        brief = {
+            "line_items": [{
+                "section": "Booth Structure",
+                "quantity": 1,
+                "unit": "m",
+                "description": "Top fascia branding structure integrated above the booth perimeter",
+                "pricing_keyword": "top fascia structure",
+            }]
+        }
+
+        [line] = quote.prepare_lines(brief, rows, allow_ambiguous=True)
+        issues = quote.confirmation_issues([], [line])
+
+        self.assertEqual(line.match_status, "quantity-review")
+        self.assertIsNone(line.matched_price)
+        self.assertIsNone(line.amount)
+        self.assertIn(
+            "Quantity needs review: Top fascia branding structure integrated above the booth perimeter / confirm measured quantity before pricing",
+            issues,
+        )
+
     def test_structure_sections_are_itemized_by_default(self):
         lines = [
             quote.QuoteLine(
@@ -694,7 +811,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(cell_value(sheet, "F28"), "SGD")
         self.assertEqual(cell_value(sheet, "F29"), "SGD")
         self.assertEqual(cell_value(sheet, "D92"), "")
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.090000,0)", "SUM(E27:E28)"])
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.090000,2)", "SUM(E27:E28)"])
         self.assertAlmostEqual(float(cell_value(sheet, "E27")), 2400.0)
         self.assertAlmostEqual(float(cell_value(sheet, "E28")), 216.0)
         self.assertAlmostEqual(float(cell_value(sheet, "E29")), 2616.0)
@@ -731,9 +848,56 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(find_cell_ref(sheet, "GST 9%"), "")
         self.assertEqual(find_cell_ref(sheet, "VAT 20%"), "D28")
         self.assertEqual(find_cell_ref(sheet, "Total including VAT"), "D29")
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.200000,0)", "SUM(E27:E28)"])
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.200000,2)", "SUM(E27:E28)"])
         self.assertAlmostEqual(float(cell_value(sheet, "E28")), 480.0)
         self.assertAlmostEqual(float(cell_value(sheet, "E29")), 2880.0)
+
+    def test_layout_tax_rounds_to_cents_not_whole_dollars(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "project_number": "KI-TAX-001",
+            "client": {"name": "Sample Client", "attention": "Alex Tan"},
+            "project": {"title": "Tax Rounding Booth"},
+            "line_items": [],
+            "payment_terms": [],
+            "tax": {"label": "VAT", "rate": 0.5},
+            "company": {
+                "name": "Koncept Image Pte Ltd",
+                "header_lines": ["Koncept Image Pte Limited"],
+                "logo_data_url": logo_data_url(),
+            },
+            "acceptance": {
+                "company_name": "Koncept Image Pte Ltd",
+                "text": "We accept the quotation amount and the terms",
+                "person_label": "Person in charge",
+                "stamp_label": "Company name & stamp",
+                "date_label": "Date:",
+            },
+            "signature": {
+                "koncept_signatory": "Francies Cheng",
+                "koncept_title": "Director",
+                "koncept_date_label": "Date:",
+            },
+        }
+        price = quote.PriceRow(1, "Electrical", "nos. 10W LED Spotlight", "nos", 45, 1.09, 1, "")
+        line = quote.QuoteLine("Electrical", 3, "nos", "10W LED Spotlight", "10W LED Spotlight", "", price, 135, "matched", [])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "quotation.xlsx"
+
+        quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        total_row = quote.parse_cell_ref(find_cell_ref(sheet, "Total"))[0]
+        tax_row = quote.parse_cell_ref(find_cell_ref(sheet, "VAT 50%"))[0]
+        grand_row = quote.parse_cell_ref(find_cell_ref(sheet, "Total including VAT"))[0]
+        self.assertEqual(worksheet_formulas(sheet), [f"SUM(E22:E{total_row - 1})", f"ROUND(E{total_row}*0.500000,2)", f"SUM(E{total_row}:E{tax_row})"])
+        self.assertAlmostEqual(float(cell_value(sheet, f"E{total_row}")), 135.0)
+        self.assertAlmostEqual(float(cell_value(sheet, f"E{tax_row}")), 67.5)
+        self.assertAlmostEqual(float(cell_value(sheet, f"E{grand_row}")), 202.5)
 
     def test_layout_uses_dynamic_print_area_without_forced_extra_pages(self):
         tmp, path = generate_layout_workbook()
@@ -1065,6 +1229,14 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(cell_value(sheet, "A8"), "#02-03 Sample Building")
         self.assertEqual(alignment_for_style(styles, cell_style(sheet, "A7")).attrib.get("horizontal"), "left")
         self.assertEqual(alignment_for_style(styles, cell_style(sheet, "A8")).attrib.get("horizontal"), "left")
+        for ref in ("A6", "A7", "A8"):
+            font = font_for_style(styles, cell_style(sheet, ref))
+            self.assertEqual(font_name(font), "Calibri", ref)
+            self.assertEqual(font_size(font), "13", ref)
+            for text, run_font_name, run_font_size in cell_inline_run_fonts(sheet, ref):
+                if text:
+                    self.assertEqual(run_font_name, "Calibri", ref)
+                    self.assertEqual(run_font_size, "13", ref)
 
     def test_attention_contact_name_and_title_are_split_from_label(self):
         tmp, path = generate_layout_workbook({
@@ -1079,6 +1251,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         with zipfile.ZipFile(path) as zf:
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
 
         self.assertEqual(cell_value(sheet, "A11"), "Attention:")
         self.assertEqual(cell_value(sheet, "B12"), "Melissa Ong")
@@ -1090,6 +1263,14 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(cell_inline_runs(sheet, "A11"), [("Attention:", True, False, False)])
         self.assertEqual(cell_inline_runs(sheet, "B12"), [("Melissa Ong", True, False, False)])
         self.assertEqual(cell_inline_runs(sheet, "B13"), [("Senior Event Producer", False, False, False)])
+        for ref in ("A11", "B12", "B13"):
+            font = font_for_style(styles, cell_style(sheet, ref))
+            self.assertEqual(font_name(font), "Calibri", ref)
+            self.assertEqual(font_size(font), "13", ref)
+            for text, run_font_name, run_font_size in cell_inline_run_fonts(sheet, ref):
+                if text:
+                    self.assertEqual(run_font_name, "Calibri", ref)
+                    self.assertEqual(run_font_size, "13", ref)
 
     def test_quote_date_cell_uses_customer_facing_date_format(self):
         tmp, path = generate_layout_workbook()
@@ -1189,6 +1370,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         with zipfile.ZipFile(path) as zf:
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
             drawing = ET.fromstring(zf.read("xl/drawings/drawing1.xml"))
             drawing_rels = zf.read("xl/drawings/_rels/drawing1.xml.rels").decode("utf-8")
             media_names = set(zf.namelist())
@@ -1206,6 +1388,29 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertTrue(find_cell_ref(sheet, "Customer stamp").startswith("E"))
         self.assertTrue(find_cell_ref(sheet, "Company signed date:").startswith("B"))
         self.assertTrue(find_cell_ref(sheet, "Signed date:").startswith("E"))
+        for expected_text in (
+            "Commercial Terms",
+            "50% deposit",
+            "Editable Notes",
+            "First editable note",
+            "Other Company Pte Ltd",
+            "Accepted by customer",
+            "Morgan Lee",
+            "Sales Lead",
+            "Authorised signer",
+            "Customer stamp",
+            "Company signed date:",
+            "Signed date:",
+        ):
+            ref = find_cell_ref(sheet, expected_text)
+            self.assertTrue(ref, f"Missing generated cell for {expected_text!r}")
+            font = font_for_style(styles, cell_style(sheet, ref))
+            self.assertEqual(font_name(font), "Calibri", expected_text)
+            self.assertEqual(font_size(font), "10", expected_text)
+            for text, run_font_name, run_font_size in cell_inline_run_fonts(sheet, ref):
+                if text:
+                    self.assertEqual(run_font_name, "Calibri", expected_text)
+                    self.assertEqual(run_font_size, "10", expected_text)
 
         paragraphs = [
             "".join(text_node.text or "" for text_node in paragraph.findall(f".//{NS_A}t"))
@@ -1460,7 +1665,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
 
-        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.090000,0)", "SUM(E27:E28)"])
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.090000,2)", "SUM(E27:E28)"])
         self.assertEqual(cell_value(sheet, "A6"), brief["client"]["name"])
         self.assertEqual(cell_value(sheet, "A18"), brief["project"]["title"])
         self.assertEqual(cell_value(sheet, "C22"), line.section)

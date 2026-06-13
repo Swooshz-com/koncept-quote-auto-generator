@@ -35,8 +35,12 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pythonExe = Find-Python -RequestedPath $PythonPath
 $url = "http://${BindHost}:${Port}/"
 $healthUrl = "http://${BindHost}:${Port}/api/health"
-$logPath = Join-Path $repoRoot "webapp-server-$Port.log"
-$errPath = Join-Path $repoRoot "webapp-server-$Port.err.log"
+$logRoot = Join-Path $repoRoot "_logs"
+$serverLogRoot = Join-Path $logRoot "server"
+$logPath = Join-Path $serverLogRoot "webapp-server-$Port.out.log"
+$errPath = Join-Path $serverLogRoot "webapp-server-$Port.err.log"
+
+New-Item -ItemType Directory -Force -Path $serverLogRoot | Out-Null
 
 # Some Windows agent shells expose both Path and PATH. Start-Process can fail
 # when inheriting that duplicate environment dictionary.
