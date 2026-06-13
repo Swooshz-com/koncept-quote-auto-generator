@@ -2539,6 +2539,63 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(input_files[0]["file_data"], "data:application/pdf;base64,JVBERi0xLjQK")
         self.assertEqual(len(uploaded_images), 1)
 
+    def test_ai_requests_send_pdf_only_as_input_file_even_when_type_is_stale(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        payload = valid_payload()
+        payload["images"] = [
+            {
+                "name": "kent-group.pdf",
+                "type": "image/png",
+                "size": 16,
+                "data_url": "data:application/pdf;base64,JVBERi0xLjQK",
+            },
+        ]
+
+        with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+            webapp.request_openai_quote_basis(payload, "sk-test-redacted")
+
+        content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
+        input_files = [item for item in content if item.get("type") == "input_file"]
+        uploaded_images = [item for item in content if item.get("type") == "input_image" and item.get("detail") == "high"]
+        self.assertEqual(len(input_files), 1)
+        self.assertEqual(input_files[0]["filename"], "kent-group.pdf")
+        self.assertEqual(input_files[0]["file_data"], "data:application/pdf;base64,JVBERi0xLjQK")
+        self.assertEqual(uploaded_images, [])
+
+    def test_ai_requests_send_pdf_and_images_with_data_url_mime_precedence(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        payload = valid_payload()
+        payload["images"] = [
+            {
+                "name": "kent-group.pdf",
+                "type": "image/png",
+                "size": 16,
+                "data_url": "data:application/pdf;base64,JVBERi0xLjQK",
+            },
+            {
+                "name": "ref.jpg",
+                "type": "image/jpeg",
+                "size": 4,
+                "data_url": "data:image/jpeg;base64,ZmFrZQ==",
+            },
+        ]
+
+        with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+            webapp.request_openai_quote_basis(payload, "sk-test-redacted")
+
+        content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
+        input_files = [item for item in content if item.get("type") == "input_file"]
+        uploaded_images = [item for item in content if item.get("type") == "input_image" and item.get("detail") == "high"]
+        self.assertEqual(len(input_files), 1)
+        self.assertEqual(input_files[0]["filename"], "kent-group.pdf")
+        self.assertEqual([item["image_url"] for item in uploaded_images], ["data:image/jpeg;base64,ZmFrZQ=="])
+
     def test_openai_request_ignores_local_catalog_visuals(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
@@ -3697,6 +3754,50 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("reference files reached", js)
         self.assertIn("Maximum reference files added", js)
         self.assertIn("imageCapacity", js)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval(["referenceFileType", "isPdfReference", "referenceFileTypeLabel"].map(extractFunction).join("\n"));
+const stalePdf = {
+  name: "quote.pdf",
+  type: "image/png",
+  data_url: "data:application/pdf;base64,JVBERi0xLjQK",
+};
+assert.strictEqual(referenceFileType(stalePdf), "application/pdf");
+assert.strictEqual(isPdfReference(stalePdf), true);
+assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_static_webapp_does_not_offer_pdf_export(self):
         static_dir = ROOT / "webapp" / "static"

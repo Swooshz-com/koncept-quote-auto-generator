@@ -3467,12 +3467,11 @@ def image_limit_error(payload: dict[str, Any]) -> str:
 
 
 def reference_file_mime_type(entry: dict[str, Any]) -> str:
-    mime_type = clean_text(entry.get("type")).lower()
+    data_url = clean_text(entry.get("data_url"))
+    match = re.match(r"data:([^;,]+)", data_url, flags=re.IGNORECASE)
+    mime_type = match.group(1).lower() if match else ""
     if not mime_type:
-        data_url = clean_text(entry.get("data_url"))
-        match = re.match(r"data:([^;,]+)", data_url, flags=re.IGNORECASE)
-        if match:
-            mime_type = match.group(1).lower()
+        mime_type = clean_text(entry.get("type")).lower()
     if not mime_type:
         mime_type = (mimetypes.guess_type(clean_text(entry.get("name")))[0] or "").lower()
     if mime_type == "image/jpg":

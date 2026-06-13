@@ -774,10 +774,10 @@ function isAcceptedReferenceFile(file = {}) {
 }
 
 function referenceFileType(entry = {}) {
-  const type = String(entry.type || "").toLowerCase();
-  if (type) return type;
   const match = String(entry.data_url || "").match(/^data:([^;,]+)/i);
   if (match) return match[1].toLowerCase();
+  const type = String(entry.type || "").toLowerCase();
+  if (type) return type;
   return String(entry.name || "").toLowerCase().endsWith(".pdf") ? "application/pdf" : "image";
 }
 
@@ -794,12 +794,15 @@ async function filesToImageEntries(files, limit = MAX_REFERENCE_IMAGES) {
     Array.from(files)
       .filter(isAcceptedReferenceFile)
       .slice(0, limit)
-      .map(async (file) => ({
-        name: file.name,
-        type: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : ""),
-        size: file.size,
-        data_url: await fileToDataUrl(file),
-      }))
+      .map(async (file) => {
+        const dataUrl = await fileToDataUrl(file);
+        return {
+          name: file.name,
+          type: referenceFileType({ name: file.name, type: file.type, data_url: dataUrl }),
+          size: file.size,
+          data_url: dataUrl,
+        };
+      })
   );
 }
 
