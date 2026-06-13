@@ -54,7 +54,7 @@ PRICING_REFERENCE_TEMPLATE_PATH = PRICING_REFERENCES_ROOT / "_template" / "swoos
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
 DEFAULT_TMP_ROOT = PROJECT_ROOT / "_tmp" / "webapp"
-DEFAULT_LOG_ROOT = DEFAULT_OUTPUT_ROOT / "_logs"
+DEFAULT_LOG_ROOT = PROJECT_ROOT / "_logs" / "app"
 DEFAULT_TAX_LABEL = "GST"
 DEFAULT_TAX_RATE = 0.09
 MISSING_IMAGES_MESSAGE = "Please upload reference images first so I can analyze the design and prepare the quote."
@@ -378,6 +378,21 @@ def is_loggable_event(event_type: str) -> bool:
     return event in ALLOWED_LOG_EVENTS or event.startswith(("error_", "security_", "abuse_"))
 
 
+def log_event_category(event_type: str) -> str:
+    event = log_event_name(event_type)
+    if event.startswith(("security_", "abuse_")):
+        return "security"
+    if event.startswith(("openai_", "basis_chat", "draft", "ai_")):
+        return "ai"
+    if event.startswith("generate_"):
+        return "generation"
+    if event.startswith("client_"):
+        return "client"
+    if event.startswith(("server_", "error_")):
+        return "server"
+    return "app"
+
+
 def sanitize_log_value(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized: dict[str, Any] = {}
@@ -451,7 +466,7 @@ def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | N
     event = log_event_name(event_type)
     if not is_loggable_event(event):
         return False
-    root = log_root or configured_log_root()
+    root = (log_root or configured_log_root()) / log_event_category(event)
     try:
         root.mkdir(parents=True, exist_ok=True)
         now = dt.datetime.now(dt.UTC)
@@ -4430,7 +4445,12 @@ BASIS_CHAT_EDIT_STOPWORDS = {
 def basis_chat_requested_keywords(question: str) -> list[str]:
     keywords: list[str] = []
     seen: set[str] = set()
-    text = clean_text(question).lower()
+    multiline = clean_multiline(question)
+    lines = [line for line in multiline.splitlines() if line]
+    if len(lines) >= 2 and lines[0].startswith(">"):
+        text = clean_text(lines[-1]).lower()
+    else:
+        text = clean_text(question).lower()
     replacement_match = re.search(
         r"\b(?:change|changed|changing|replace|switch|correct)\b.+\b(?:to|with)\b\s+(.+)$",
         text,

@@ -3584,12 +3584,11 @@ function hasPricingReferenceDescription(line = {}) {
 function basisLinePillLabel(line = {}) {
   const tag = normalizeBasisTag(line.tag);
   if (isPendingAiProposalLine(line)) return "AI Confirm";
-  if (tag === "Confirm" && !hasPricingReferenceDescription(line)) return "AI Confirm";
   return basisTagLabel(tag);
 }
 
 function basisLineAcceptsAsAiProposal(line = {}) {
-  return isCustomPricingBasisLine(line) || !hasPricingReferenceDescription(line);
+  return isCustomPricingBasisLine(line);
 }
 
 function basisConfidenceLabel(line = {}) {
@@ -3979,6 +3978,7 @@ function openBasisChatOverlay(scope = "line", options = {}) {
   const line = selectedBasisLine() || parseBasisLine(state.basisChat.line);
   const tag = normalizeBasisTag(line.tag);
   const tagClass = `basis-chat-selected-tag-${tag.toLowerCase()}`;
+  const tagLineClass = `basis-chat-selected-line-${tag.toLowerCase()}`;
   const quantityLabel = basisQuantityLabel(line);
   const displayQuantityLabel = basisQuantityDisplayLabel(line);
   const confidenceLabel = basisConfidenceLabel(line);
@@ -3990,7 +3990,7 @@ function openBasisChatOverlay(scope = "line", options = {}) {
   state.basisChat.quantityLabel = quantityLabel || state.basisChat.quantityLabel || "";
   elements.basisChatContext.innerHTML = `
     <span class="basis-chat-context-label">${escapeHtml(basisFieldLabel(state.basisChat.sectionId))}</span>
-    <span class="basis-chat-selected-line">
+    <span class="basis-chat-selected-line ${escapeHtml(tagLineClass)}">
       <span class="basis-chat-selected-meta">
         <strong class="basis-chat-selected-tag ${escapeHtml(tagClass)}"${selectedTagTitleAttribute}>${escapeHtml(basisLinePillLabel(line))}</strong>
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
@@ -4487,15 +4487,13 @@ async function resetOutputDraft() {
   if (state.isAnalysisRunning || state.isGenerating || !state.originalOutputRows.length) return;
   state.outputRows = snapshotOutputRows(state.originalOutputRows);
   state.lineItems = outputRowsToLineItems();
-  const refreshed = await refreshLineItemsFromServer();
-  if (refreshed) refreshOutputRowsFromLineItems();
   state.outputErrors = [];
   state.downloadFile = null;
   setDownloadFiles([]);
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(outputRowsValid().errors);
-  setResultStatus(refreshed ? "Output reset to confirmed basis" : "Pricing refresh unavailable", "is-warn");
+  setResultStatus("Output reset to confirmed basis", "is-warn");
   syncControlStates();
 }
 

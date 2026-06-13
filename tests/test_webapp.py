@@ -205,6 +205,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("docs/privacy-pdpa-gdpr-baseline.md", body)
         self.assertIn("PDPA", baseline)
         self.assertIn("GDPR", baseline)
+        css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("body.privacy-page {\n  height: auto;\n  min-height: 100vh;\n  overflow: auto;", css)
 
         deploy_env = {
             "APP_MODE": "deploy",
@@ -2844,9 +2846,53 @@ class WebappServerTest(unittest.TestCase):
     def test_basis_chat_requested_keywords_focus_on_replacement_detail(self):
         self.assertEqual(webapp.basis_chat_requested_keywords("change BRASIL to GAY"), ["gay"])
         self.assertEqual(webapp.basis_chat_requested_keywords("change LED spotlight to track light"), ["track", "light"])
+        self.assertEqual(webapp.basis_chat_requested_keywords(">blue, green and yellow\n\nred"), ["red"])
         self.assertEqual(webapp.basis_chat_requested_keywords("7x7"), ["7"])
         self.assertEqual(webapp.basis_chat_requested_keywords("actually 6m x 3m"), ["6m", "3m"])
         self.assertEqual(webapp.basis_chat_required_intent({"basis_chat": {"question": "can this be changed to GAY graphics?", "line": "Custom: BRASIL graphics"}}), "proposal")
+
+    def test_basis_chat_edit_request_allows_arrow_shorthand_replacement(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Floor Design",
+                "lines": [
+                    {
+                        "tag": "Confirm",
+                        "text": "Needle punch carpet in Brazil blue, green and yellow colour zones.",
+                        "confidence": 70,
+                        "quantity": 36,
+                        "unit": "sqm",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": ">blue, green and yellow\n\nred",
+            "field": "floor-design",
+            "line_index": 0,
+            "line": "Confirm: Needle punch carpet in Brazil blue, green and yellow colour zones.",
+            "quantity": 36,
+            "unit": "sqm",
+            "quantity_label": "36 sqm",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "replacement_line": {
+                    "tag": "Confirm",
+                    "text": "Needle punch carpet in Brazil red colour zones.",
+                    "confidence_pct": 70,
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["text"], "Needle punch carpet in Brazil red colour zones.")
+        self.assertEqual(line["quantity"], "36")
+        self.assertEqual(line["unit"], "sqm")
 
     def test_basis_chat_edit_request_rejects_replacement_missing_requested_phrase(self):
         payload = valid_payload()
@@ -3339,7 +3385,17 @@ class WebappServerTest(unittest.TestCase):
             self.assertEqual(webapp.configured_csrf_header_name(), webapp.DEFAULT_CSRF_HEADER_NAME)
             self.assertEqual(webapp.configured_csrf_token(), webapp.PROCESS_CSRF_TOKEN)
 
+    def test_start_webapp_writes_server_logs_under_root_logs_folder(self):
+        script = (ROOT / "scripts" / "start-webapp.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('$logRoot = Join-Path $repoRoot "_logs"', script)
+        self.assertIn('$serverLogRoot = Join-Path $logRoot "server"', script)
+        self.assertIn('"webapp-server-$Port.out.log"', script)
+        self.assertIn('"webapp-server-$Port.err.log"', script)
+        self.assertNotIn('Join-Path $repoRoot "webapp-server-$Port.log"', script)
+
     def test_local_logs_only_privacy_safe_error_security_and_abuse_events(self):
+        self.assertEqual(webapp.DEFAULT_LOG_ROOT, ROOT / "_logs" / "app")
         with tempfile.TemporaryDirectory() as tmp:
             logged_routine = webapp.write_local_log(
                 "chat_message",
@@ -3351,7 +3407,7 @@ class WebappServerTest(unittest.TestCase):
                 log_root=Path(tmp),
             )
             self.assertFalse(logged_routine)
-            self.assertEqual(list(Path(tmp).glob("*.jsonl")), [])
+            self.assertEqual(list(Path(tmp).rglob("*.jsonl")), [])
 
             logged_error = webapp.write_local_log(
                 "client_error",
@@ -3364,9 +3420,11 @@ class WebappServerTest(unittest.TestCase):
                 log_root=Path(tmp),
             )
             self.assertTrue(logged_error)
-            log_text = next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8")
+            log_path = next((Path(tmp) / "client").glob("*.jsonl"))
+            log_text = log_path.read_text(encoding="utf-8")
             log_record = json.loads(log_text)
 
+        self.assertEqual(log_path.parent.name, "client")
         self.assertIn("client_error", log_text)
         self.assertIn("sk-...", log_text)
         self.assertIn("[omitted]", log_text)
@@ -3388,8 +3446,10 @@ class WebappServerTest(unittest.TestCase):
                     log_root=Path(tmp),
                 )
             self.assertTrue(logged)
-            log_record = json.loads(next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8"))
+            log_path = next((Path(tmp) / "generation").glob("*.jsonl"))
+            log_record = json.loads(log_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(log_path.parent.name, "generation")
         self.assertEqual(log_record["log_context"], "actual")
         self.assertFalse(log_record["is_test"])
         self.assertIn("The generated quote has more line items than the preserved Excel layout can fit", log_record["meaning"])
@@ -5004,6 +5064,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-chat-selected-tag {\n  width: var(--basis-status-pill-width);",
             ".basis-chat-selected-line .basis-confidence-pill {\n  width: var(--basis-confidence-pill-width);",
             ".basis-chat-selected-line .basis-chat-selected-quantity {\n  width: var(--basis-quantity-pill-width);",
+            ".basis-chat-selected-line-confirm .basis-confidence-pill,\n.basis-chat-selected-line-confirm .basis-chat-selected-quantity {\n  background: #fff3e0;\n  color: #b45309;\n}",
             ".basis-chat-typing-dots",
             ".basis-chat-message table",
             ".basis-chat-message ul",
@@ -5018,6 +5079,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
 
         self.assertIn("line_index: state.basisChat.lineIndex", js)
         self.assertIn("line: state.basisChat.line", js)
+        self.assertIn("basis-chat-selected-line-${tag.toLowerCase()}", js)
         self.assertIn("elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage", js)
         self.assertNotIn("Rows marked Confirm need a decision", js)
         self.assertNotIn("setBasisReviewStatus", js)
@@ -5192,7 +5254,11 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricing-reference-template-footer", pricing_reference_modal)
         self.assertNotIn("pricing-reference-footer-note", pricing_reference_modal)
         self.assertIn(".pricing-reference-modal-panel .modal-form", css)
+        self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: min(760px, calc(100dvh - 48px));", css)
+        self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: min(760px, calc(100dvh - 48px));\n  max-height: calc(100dvh - 48px);\n  background: #ffffff;", css)
         self.assertIn("grid-template-rows: minmax(0, 1fr) auto;", css)
+        self.assertIn(".pricing-reference-editor-body {\n  display: grid;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px 28px;\n  overflow: auto;\n  scroll-padding-bottom: 28px;\n  background: #ffffff;", css)
+        self.assertIn("scroll-padding-bottom: 28px;", css)
         self.assertIn(".pricing-reference-upload-field {\n  display: grid;", css)
         self.assertIn(".pricing-reference-field-title {\n  color: #2d3b4f;", css)
         self.assertIn(".pricing-reference-upload-field .settings-note {\n  max-width: 62ch;\n  color: #52677e;\n  font-weight: 500;", css)
@@ -6084,15 +6150,15 @@ const inventedKeywordLineHtml = renderBasisLine(
   0
 );
 assert.ok(!inventedKeywordLineHtml.includes("Pricing reference: printed brand fascia graphics with BRASIL artwork"));
-assert.ok(inventedKeywordLineHtml.includes('<span class="basis-line-pill">AI Confirm</span>'));
-assert.ok(inventedKeywordLineHtml.includes("basis-line-ai-confirm"));
-assert.ok(inventedKeywordLineHtml.includes('data-basis-tag="Custom"'));
+assert.ok(inventedKeywordLineHtml.includes('<span class="basis-line-pill">Confirm</span>'));
+assert.ok(!inventedKeywordLineHtml.includes("basis-line-ai-confirm"));
+assert.ok(inventedKeywordLineHtml.includes('data-basis-tag="Include"'));
 assert.ok(inventedKeywordLineHtml.includes('<span class="basis-line-text">printed brand fascia graphics with BRASIL artwork</span>'));
 assert.strictEqual(isCustomPricingBasisLine({ tag: "Exclude", custom_pricing: true }), true);
-assert.strictEqual(basisLineAcceptsAsAiProposal({ tag: "Confirm", text: "invented graphic panel" }), true);
+assert.strictEqual(basisLineAcceptsAsAiProposal({ tag: "Confirm", text: "invented graphic panel" }), false);
 assert.strictEqual(basisLineAcceptsAsAiProposal({ tag: "Confirm", text: "catalog-backed", pricing_reference_description: "sqm vinyl graphics" }), false);
-assert.strictEqual(basisLinePillLabel({ tag: "Confirm" }), "AI Confirm");
-assert.strictEqual(basisLinePillLabel({ tag: "Confirm", confidence: 92 }), "AI Confirm");
+assert.strictEqual(basisLinePillLabel({ tag: "Confirm" }), "Confirm");
+assert.strictEqual(basisLinePillLabel({ tag: "Confirm", confidence: 92 }), "Confirm");
 assert.strictEqual(basisLinePillLabel({ tag: "Confirm", confidence: 92, pricing_reference_description: "sqm 100mm raised platform" }), "Confirm");
 assert.strictEqual(basisLinePillLabel({ tag: "Custom", confidence: 88 }), "AI Confirm");
 assert.strictEqual(basisLinePillLabel({ tag: "Custom", confidence: 88, custom_confirmed: true }), "AI Proposal");
@@ -6163,10 +6229,10 @@ state.quoteBasisSections = [{
   lines: [{ tag: "Confirm", text: "decorative graphic panels with Brasil-themed artwork", quantity: 2, unit: "nos" }],
 }];
 retagBasisLine("graphics", 0, "Include");
-assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Custom");
-assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
-assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, true);
-assert.strictEqual(state.quoteBasis.graphics, "Custom: decorative graphic panels with Brasil-themed artwork");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, false);
+assert.strictEqual(state.quoteBasis.graphics, "Include: decorative graphic panels with Brasil-themed artwork");
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
 
 state.quoteBasisSections = [{
@@ -6183,26 +6249,26 @@ assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Custom");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, true);
 assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
-assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Custom");
-assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_pricing, true);
-assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, true);
-assert.strictEqual(state.quoteBasis.graphics, "Custom: manual graphic panel\nInclude: standard graphic panel\nCustom: invented graphic panel");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_pricing, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasis.graphics, "Custom: manual graphic panel\nInclude: standard graphic panel\nInclude: invented graphic panel");
 retagBasisSectionConfirmLines("graphics", "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, false);
 assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Exclude");
-assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_pricing, true);
-assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, false);
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_pricing, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, undefined);
 assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nExclude: standard graphic panel\nExclude: invented graphic panel");
 retagBasisSectionConfirmLines("graphics", "Include");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Custom");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, true);
 assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
-assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Custom");
-assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, true);
-assert.strictEqual(state.quoteBasis.graphics, "Custom: manual graphic panel\nInclude: standard graphic panel\nCustom: invented graphic panel");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasis.graphics, "Custom: manual graphic panel\nInclude: standard graphic panel\nInclude: invented graphic panel");
 assert.ok(rendered >= 3);
 assert.ok(synced >= 3);
 """
@@ -6484,7 +6550,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
-    def test_static_confirm_basis_reprices_line_items_before_rendering_output(self):
+    def test_static_confirm_basis_reprices_line_items_before_rendering_output_but_reset_uses_snapshot(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
         confirm_body = js.split("async function confirmBasis()", 1)[1].split("async function handleGenerate()", 1)[0]
         reset_body = js.split("async function resetOutputDraft()", 1)[1].split("async function postJson", 1)[0]
@@ -6495,10 +6561,10 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             confirm_body.index("await refreshLineItemsFromServer();"),
             confirm_body.index("refreshOutputRowsFromLineItems();"),
         )
-        self.assertLess(
-            reset_body.index("await refreshLineItemsFromServer();"),
-            reset_body.index("refreshOutputRowsFromLineItems();"),
-        )
+        self.assertIn("state.outputRows = snapshotOutputRows(state.originalOutputRows);", reset_body)
+        self.assertIn("state.lineItems = outputRowsToLineItems();", reset_body)
+        self.assertNotIn("refreshLineItemsFromServer", reset_body)
+        self.assertNotIn("refreshOutputRowsFromLineItems", reset_body)
 
     def test_run_quote_job_never_passes_pdf_mode_to_generator(self):
         payload = valid_payload()

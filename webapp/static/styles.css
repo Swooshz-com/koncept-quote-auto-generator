@@ -2709,6 +2709,30 @@ td input {
   white-space: nowrap;
 }
 
+.basis-chat-selected-line-include .basis-confidence-pill,
+.basis-chat-selected-line-include .basis-chat-selected-quantity {
+  background: #dcf5e8;
+  color: #0d6944;
+}
+
+.basis-chat-selected-line-confirm .basis-confidence-pill,
+.basis-chat-selected-line-confirm .basis-chat-selected-quantity {
+  background: #fff3e0;
+  color: #b45309;
+}
+
+.basis-chat-selected-line-exclude .basis-confidence-pill,
+.basis-chat-selected-line-exclude .basis-chat-selected-quantity {
+  background: #fde8e5;
+  color: #a1382f;
+}
+
+.basis-chat-selected-line-custom .basis-confidence-pill,
+.basis-chat-selected-line-custom .basis-chat-selected-quantity {
+  background: #e7f7fb;
+  color: #0f5f83;
+}
+
 .basis-chat-messages {
   display: grid;
   align-content: start;
@@ -3051,6 +3075,9 @@ td input {
 .pricing-reference-modal-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: min(760px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -3066,8 +3093,10 @@ td input {
   display: grid;
   gap: 14px;
   min-height: 0;
-  padding: 16px 18px 18px;
+  padding: 16px 18px 28px;
   overflow: auto;
+  scroll-padding-bottom: 28px;
+  background: #ffffff;
 }
 
 .pricing-reference-upload-field {
@@ -3129,6 +3158,12 @@ td input {
   min-height: 40px;
   padding: 0 14px;
   font-size: 14px;
+}
+
+body.privacy-page {
+  height: auto;
+  min-height: 100vh;
+  overflow: auto;
 }
 
 .privacy-page {

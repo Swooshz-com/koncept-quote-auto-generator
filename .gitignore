@@ -15,6 +15,7 @@ node_modules/
 playwright-report/
 test-results/
 webapp-server*.log
+_logs/
 
 # Local secrets
 .env

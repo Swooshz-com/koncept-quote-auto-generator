@@ -33,7 +33,7 @@ This baseline covers:
 
 ## Current Local Development Behavior
 
-- The local app stores workflow state in the browser and writes generated files/logs under local repo output directories.
+- The local app stores workflow state in the browser, writes generated files under local repo output directories, and writes diagnostics under the root `_logs` folder.
 - Uploaded images and quote data may be sent to the configured AI provider when analysis is run.
 - Pricing references saved through the local app are stored as repo pricing-reference packs.
 - Error UI should show a short retry/support message with an error reference, while detailed provider errors stay in local logs.

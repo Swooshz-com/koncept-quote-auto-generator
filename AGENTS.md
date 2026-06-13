@@ -24,6 +24,7 @@ Your job is to understand the task, inspect the relevant repo context, make the 
 - Run `scripts/generate_quote.py`; XLSX generation must not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other third-party dependencies.
 - Treat brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Text beginning with `=`, `+`, `-`, or `@` must not become an active XLSX or CSV formula.
 - If required information is missing or pricing is unclear, report it under `Missing / Need Confirmation` or the webapp's pricing review flow.
+- Store local/runtime logs under the repo-root `_logs/` folder only, with typed subfolders such as `_logs/app/`, `_logs/server/`, and `_logs/browser/`. Do not write new logs to the repo root, `logs/`, or `_output/`; keep log contents ignored by git.
 
 Optimise for:
 
