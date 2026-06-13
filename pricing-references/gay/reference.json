@@ -1,0 +1,12 @@
+{
+  "description": "Imported from Quotation-Cost-Template-V1.1.xlsx",
+  "id": "gay",
+  "label": "gay",
+  "pricing_catalog": "pricing-catalog.json",
+  "pricing_reference": "pricing-catalog.ai-reference.md",
+  "saved_at": "2026-06-13T17:10:12.953313Z",
+  "tax": {
+    "label": "VAT",
+    "rate": 0.2
+  }
+}

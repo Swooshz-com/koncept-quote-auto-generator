@@ -1,7 +1,7 @@
 const EMPTY_LINE_ITEMS_MESSAGE = "AI analysis will populate line items here.";
 const DEFAULT_PROFILE_ID = "koncept";
 const DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation";
-const DEFAULT_SAMPLE_ID = "brazil-pavilion";
+const DEFAULT_SAMPLE_ID = "kent-group";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const LEGACY_QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
 const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
@@ -10,6 +10,7 @@ const OUTPUT_SORT_MODES = ["category", "name", "category_name"];
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
+const REFERENCE_FILE_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf,.pdf";
 const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_REFERENCE_IMAGES = 8;
 const DEFAULT_DATE_LABEL = "Date:";
@@ -20,6 +21,19 @@ const DEFAULT_PERSON_LABEL = "Person in charge";
 const DEFAULT_STAMP_LABEL = "Company name & stamp";
 const DEFAULT_TAX_LABEL = "GST";
 const DEFAULT_TAX_RATE = 0.09;
+const DEFAULT_CURRENCY_LABEL = "SGD";
+const CUSTOM_CURRENCY_VALUE = "__CUSTOM__";
+const CURRENCY_OPTIONS = [
+  ["SGD", "Singapore Dollar"],
+  ["AUD", "Australian Dollar"],
+  ["CNY", "Chinese Yuan"],
+  ["EUR", "Euro"],
+  ["GBP", "Pound Sterling"],
+  ["IDR", "Indonesian Rupiah"],
+  ["MYR", "Malaysian Ringgit"],
+  ["THB", "Thai Baht"],
+  ["USD", "US Dollar"],
+];
 const DEFAULT_QUOTE_COMPANY_RICH_TEXT = {
   termsHeading: "<div>Terms &amp; Conditions:</div>",
   notesHeading: "<div>Note:</div>",
@@ -38,12 +52,12 @@ const DEFAULT_BOOTH_DIMENSIONS = {
 
 const QUOTE_COPY = {
   label: "Quotation",
-  intakeSubtitle: "Drop reference images for a real quote, or load the demo fixture for a quick test run.",
-  dropTitle: "Drop reference images to start",
-  dropMeta: `JPG, PNG, or WebP. Up to ${MAX_REFERENCE_IMAGES} references, 12 MB each; files stay local to this runner.`,
-  imageNoun: "reference image",
+  intakeSubtitle: "Drop reference images or PDFs for a real quote, or load the demo fixture for a quick test run.",
+  dropTitle: "Drop reference images or PDFs to start",
+  dropMeta: `JPG, PNG, WebP, or PDF. Up to ${MAX_REFERENCE_IMAGES} references, 12 MB each; files stay local to this runner.`,
+  imageNoun: "reference file",
   analyzeLabel: "Start Analysis",
-  fallbackAction: "review the reference images",
+  fallbackAction: "review the reference files",
 };
 
 const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "output"];
@@ -266,7 +280,10 @@ const elements = {
   settingsButton: qs("#settingsButton"),
   pricingReferenceTaxLabel: qs("#pricingReferenceTaxLabel"),
   pricingReferenceTaxRate: qs("#pricingReferenceTaxRate"),
+  pricingReferenceCurrency: qs("#pricingReferenceCurrency"),
+  pricingReferenceCurrencyCustom: qs("#pricingReferenceCurrencyCustom"),
   selectedPricingReferenceSummary: qs("#selectedPricingReferenceSummary"),
+  selectedPricingReferenceCurrency: qs("#selectedPricingReferenceCurrency"),
   selectedPricingReferenceTax: qs("#selectedPricingReferenceTax"),
   outputSortMode: qs("#outputSortMode"),
   pricingReferenceSaveButton: qs("#pricingReferenceSaveButton"),
@@ -285,7 +302,7 @@ function normalizeAnalysisMode(value) {
 }
 
 function analysisRunningMessage() {
-  return "Reading the reference images and preparing the quote basis. Please wait.";
+  return "Reading the reference files and preparing the quote basis. Please wait.";
 }
 
 function pricingReferenceSelectValue(reference = {}) {
@@ -613,8 +630,8 @@ function updateGeneratorCopy() {
   const atImageLimit = state.images.length >= MAX_REFERENCE_IMAGES;
   if (state.activeSidePanel === "images") elements.sideDrawerSubtitle.textContent = generator.intakeSubtitle;
   elements.dropTitle.textContent = atImageLimit
-    ? "Maximum reference images added"
-    : state.images.length ? "Add more reference images" : generator.dropTitle;
+    ? "Maximum reference files added"
+    : state.images.length ? "Add more reference files" : generator.dropTitle;
   elements.dropMeta.textContent = atImageLimit
     ? `Remove one reference to add another. Maximum ${MAX_REFERENCE_IMAGES} images.`
     : generator.dropMeta;
@@ -699,7 +716,7 @@ function setAiStatusBanner(tone, title, message, options = {}) {
   `;
 }
 
-function showAiRunningBanner(message = "Reading the reference images and preparing the quote basis. Please wait.", startedAt = activeJobStartedAt()) {
+function showAiRunningBanner(message = "Reading the reference files and preparing the quote basis. Please wait.", startedAt = activeJobStartedAt()) {
   setAiStatusBanner("running", "AI analysis running.", message, { elapsed: true });
   startAnalysisElapsedTimer(startedAt);
 }
@@ -750,17 +767,42 @@ function fileToDataUrl(file) {
   });
 }
 
+function isAcceptedReferenceFile(file = {}) {
+  const type = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  return type.startsWith("image/") || type === "application/pdf" || name.endsWith(".pdf");
+}
+
+function referenceFileType(entry = {}) {
+  const match = String(entry.data_url || "").match(/^data:([^;,]+)/i);
+  if (match) return match[1].toLowerCase();
+  const type = String(entry.type || "").toLowerCase();
+  if (type) return type;
+  return String(entry.name || "").toLowerCase().endsWith(".pdf") ? "application/pdf" : "image";
+}
+
+function isPdfReference(entry = {}) {
+  return referenceFileType(entry) === "application/pdf";
+}
+
+function referenceFileTypeLabel(entry = {}) {
+  return isPdfReference(entry) ? "PDF" : (entry.type || "image");
+}
+
 async function filesToImageEntries(files, limit = MAX_REFERENCE_IMAGES) {
   return Promise.all(
     Array.from(files)
-      .filter((file) => file.type.startsWith("image/"))
+      .filter(isAcceptedReferenceFile)
       .slice(0, limit)
-      .map(async (file) => ({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        data_url: await fileToDataUrl(file),
-      }))
+      .map(async (file) => {
+        const dataUrl = await fileToDataUrl(file);
+        return {
+          name: file.name,
+          type: referenceFileType({ name: file.name, type: file.type, data_url: dataUrl }),
+          size: file.size,
+          data_url: dataUrl,
+        };
+      })
   );
 }
 
@@ -798,20 +840,23 @@ function setImageUploadStatus(message = "") {
 }
 
 async function addImagesFromFiles(files) {
-  const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
-  if (!imageFiles.length) return;
-  const capacity = imageCapacity();
-  if (!capacity) {
-    setImageUploadStatus(`Maximum ${MAX_REFERENCE_IMAGES} reference images reached. Remove one before adding more.`);
+  const referenceFiles = Array.from(files).filter(isAcceptedReferenceFile);
+  if (!referenceFiles.length) {
+    if (Array.from(files).length) setImageUploadStatus("Only JPG, PNG, WebP, or PDF files can be added.");
     return;
   }
-  const overflowCount = Math.max(0, imageFiles.length - capacity);
-  const images = await filesToImageEntries(imageFiles, capacity);
+  const capacity = imageCapacity();
+  if (!capacity) {
+    setImageUploadStatus(`Maximum ${MAX_REFERENCE_IMAGES} reference files reached. Remove one before adding more.`);
+    return;
+  }
+  const overflowCount = Math.max(0, referenceFiles.length - capacity);
+  const images = await filesToImageEntries(referenceFiles, capacity);
   if (!images.length) return;
   const { unique, duplicateCount } = uniqueImageEntries(images);
   if (!unique.length) {
-    const duplicateMessage = duplicateCount ? `${duplicateCount} duplicate image${duplicateCount === 1 ? "" : "s"} skipped.` : "";
-    const overflowMessage = overflowCount ? `${overflowCount} image${overflowCount === 1 ? "" : "s"} skipped because the maximum is ${MAX_REFERENCE_IMAGES}.` : "";
+    const duplicateMessage = duplicateCount ? `${duplicateCount} duplicate file${duplicateCount === 1 ? "" : "s"} skipped.` : "";
+    const overflowMessage = overflowCount ? `${overflowCount} file${overflowCount === 1 ? "" : "s"} skipped because the maximum is ${MAX_REFERENCE_IMAGES}.` : "";
     setImageUploadStatus([duplicateMessage, overflowMessage].filter(Boolean).join(" "));
     return;
   }
@@ -819,8 +864,8 @@ async function addImagesFromFiles(files) {
   renderFiles();
   setWorkflowStage("ready_to_analyze");
   const generator = currentGenerator();
-  const duplicateMessage = duplicateCount ? ` ${duplicateCount} duplicate image${duplicateCount === 1 ? "" : "s"} skipped.` : "";
-  const overflowMessage = overflowCount ? ` ${overflowCount} image${overflowCount === 1 ? "" : "s"} skipped because the maximum is ${MAX_REFERENCE_IMAGES}.` : "";
+  const duplicateMessage = duplicateCount ? ` ${duplicateCount} duplicate file${duplicateCount === 1 ? "" : "s"} skipped.` : "";
+  const overflowMessage = overflowCount ? ` ${overflowCount} file${overflowCount === 1 ? "" : "s"} skipped because the maximum is ${MAX_REFERENCE_IMAGES}.` : "";
   setImageUploadStatus(`${unique.length} new ${generator.imageNoun}${unique.length === 1 ? "" : "s"} added.${duplicateMessage}${overflowMessage}`);
   syncControlStates();
 }
@@ -832,7 +877,7 @@ function removeImageAt(index) {
     setWorkflowStage("needs_images");
     setImageUploadStatus("");
   } else {
-    setImageUploadStatus(`${state.images.length} reference image${state.images.length === 1 ? "" : "s"} loaded.`);
+    setImageUploadStatus(`${state.images.length} reference file${state.images.length === 1 ? "" : "s"} loaded.`);
   }
   syncControlStates();
 }
@@ -1022,12 +1067,72 @@ function taxRateFromPercentInput(value, fallback = DEFAULT_TAX_RATE) {
   return Math.min(1, Math.max(0, number / 100));
 }
 
+function normalizeCurrencyLabel(value = DEFAULT_CURRENCY_LABEL) {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
+  if (["S", "SG", "SGD", "SINGAPOREDOLLAR", "SINGAPOREDOLLARS"].includes(normalized)) return "SGD";
+  if (["US", "USD", "USDOLLAR", "USDOLLARS"].includes(normalized)) return "USD";
+  if (["EURO", "EUROS", "EUR"].includes(normalized)) return "EUR";
+  if (["GBP", "POUND", "POUNDS", "STERLING"].includes(normalized)) return "GBP";
+  if (["MYR", "RM", "MALAYSIARINGGIT", "RINGGIT"].includes(normalized)) return "MYR";
+  if (["AUD", "AUSTRALIANDOLLAR", "AUSTRALIANDOLLARS"].includes(normalized)) return "AUD";
+  if (["CNY", "RMB", "YUAN", "RENMINBI"].includes(normalized)) return "CNY";
+  if (["IDR", "RUPIAH"].includes(normalized)) return "IDR";
+  if (["THB", "BAHT"].includes(normalized)) return "THB";
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : DEFAULT_CURRENCY_LABEL;
+}
+
 function selectedPricingReferenceTax() {
   const reference = currentPricingReference();
   return {
     label: normalizeTaxLabel(reference?.tax?.label),
     rate: normalizeTaxRate(reference?.tax?.rate, DEFAULT_TAX_RATE),
   };
+}
+
+function selectedPricingReferenceCurrency() {
+  const reference = currentPricingReference();
+  return normalizeCurrencyLabel(reference?.currency);
+}
+
+function supportedCurrencyLabel(value = DEFAULT_CURRENCY_LABEL) {
+  const normalized = normalizeCurrencyLabel(value);
+  return CURRENCY_OPTIONS.some(([code]) => code === normalized) ? normalized : DEFAULT_CURRENCY_LABEL;
+}
+
+function normalizedCustomCurrencyInput() {
+  return String(elements.pricingReferenceCurrencyCustom?.value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 3);
+}
+
+function customCurrencyInputIsValid() {
+  return /^[A-Z]{3}$/.test(normalizedCustomCurrencyInput());
+}
+
+function setPricingReferenceCurrencyControls(value = DEFAULT_CURRENCY_LABEL) {
+  const normalized = normalizeCurrencyLabel(value);
+  const isSupported = CURRENCY_OPTIONS.some(([code]) => code === normalized);
+  if (elements.pricingReferenceCurrency) {
+    elements.pricingReferenceCurrency.value = isSupported ? normalized : CUSTOM_CURRENCY_VALUE;
+  }
+  if (elements.pricingReferenceCurrencyCustom) {
+    elements.pricingReferenceCurrencyCustom.hidden = isSupported;
+    elements.pricingReferenceCurrencyCustom.required = !isSupported;
+    elements.pricingReferenceCurrencyCustom.value = isSupported ? "" : normalized;
+  }
+}
+
+function syncPricingReferenceCurrencyCustomInput() {
+  const isCustom = elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE;
+  if (!elements.pricingReferenceCurrencyCustom) return;
+  elements.pricingReferenceCurrencyCustom.hidden = !isCustom;
+  elements.pricingReferenceCurrencyCustom.required = isCustom;
+  if (!isCustom) elements.pricingReferenceCurrencyCustom.value = "";
 }
 
 function collectTaxDetails() {
@@ -1037,12 +1142,14 @@ function collectTaxDetails() {
 function renderSelectedPricingReferenceSummary() {
   const reference = currentPricingReference();
   const tax = selectedPricingReferenceTax();
+  const currency = selectedPricingReferenceCurrency();
   const taxText = `${tax.label} ${taxRatePercentText(tax.rate)}%`;
   if (elements.selectedPricingReferenceSummary) {
     elements.selectedPricingReferenceSummary.textContent = reference
       ? "Managed in Settings."
       : "Select a pricing reference.";
   }
+  if (elements.selectedPricingReferenceCurrency) elements.selectedPricingReferenceCurrency.textContent = currency;
   if (elements.selectedPricingReferenceTax) elements.selectedPricingReferenceTax.textContent = taxText;
   if (elements.taxLabel) elements.taxLabel.value = tax.label;
   if (elements.taxRate) elements.taxRate.value = taxRatePercentText(tax.rate);
@@ -1110,16 +1217,21 @@ function renderFiles() {
     return;
   }
   elements.fileList.innerHTML = state.images
-    .map((image, index) => `
-      <div class="file-item">
-        <img class="file-thumb" src="${escapeHtml(image.data_url)}" alt="">
-        <div>
-          <strong>${escapeHtml(image.name)}</strong>
-          <span>${escapeHtml(image.type || "image")} - ${formatBytes(image.size)}</span>
+    .map((image, index) => {
+      const thumb = isPdfReference(image)
+        ? `<span class="file-thumb file-thumb-file" aria-hidden="true">PDF</span>`
+        : `<img class="file-thumb" src="${escapeHtml(image.data_url)}" alt="">`;
+      return `
+        <div class="file-item">
+          ${thumb}
+          <div>
+            <strong>${escapeHtml(image.name)}</strong>
+            <span>${escapeHtml(referenceFileTypeLabel(image))} - ${formatBytes(image.size)}</span>
+          </div>
+          <button class="file-remove" type="button" data-remove-image="${index}" aria-label="Remove ${escapeHtml(image.name)}">x</button>
         </div>
-        <button class="file-remove" type="button" data-remove-image="${index}" aria-label="Remove ${escapeHtml(image.name)}">x</button>
-      </div>
-    `)
+      `;
+    })
     .join("");
 }
 
@@ -1906,6 +2018,7 @@ function updatePricingReferenceDeleteButton() {
 }
 
 function openSettingsModal() {
+  if (!canManagePricingReferences()) return;
   openPricingReferenceModal();
 }
 
@@ -2117,6 +2230,9 @@ function pricingReferenceRowStatus(row = {}) {
 function pricingReferenceSaveBlockReason(result = state.pendingPricingReference) {
   if (state.pricingReferenceImportBusy) return "Import preview is still being prepared.";
   if (!result) return "Upload a pricing catalog file before saving.";
+  if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !customCurrencyInputIsValid()) {
+    return "Enter a 3-letter currency code before saving.";
+  }
   const errors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
   if (errors.length) return errors.join(" ");
   if (!(result.items || []).length) return "Add at least one valid pricing row before saving.";
@@ -2315,7 +2431,7 @@ function handlePricingReferencePreviewInput(event) {
   updatePricingReferenceGuidanceDisplays(state.pendingPricingReference);
 }
 
-function renderPricingReferencePreview(result = null) {
+function renderPricingReferencePreview(result = null, options = {}) {
   if (!elements.pricingReferencePreview) return;
   if (!result) {
     elements.pricingReferencePreview.innerHTML = "";
@@ -2341,6 +2457,12 @@ function renderPricingReferencePreview(result = null) {
     return;
   }
   result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
+  const selectedCurrencyMode = elements.pricingReferenceCurrency?.value;
+  const modalCurrency = pricingReferenceModalCurrency();
+  const currency = selectedCurrencyMode === CUSTOM_CURRENCY_VALUE
+    ? modalCurrency || "Custom"
+    : normalizeCurrencyLabel(result.currency || modalCurrency || DEFAULT_CURRENCY_LABEL);
+  if (options.syncCurrencyControls && result.currency) setPricingReferenceCurrencyControls(result.currency);
   refreshPricingReferencePreviewValidity(result);
   const required = pricingReferenceRequiredColumns();
   const missing = Array.isArray(result.missing) ? result.missing : [];
@@ -2358,6 +2480,7 @@ function renderPricingReferencePreview(result = null) {
   const statusLabel = canSave ? "Ready" : errors.length ? "Needs fix" : "Review";
   const metrics = [
     ["Layout", result.layout || "normalized pricing reference"],
+    ["Currency", currency],
     ["Rows detected", rowCount],
     ...(isAiNormalizationState ? [] : [
       ["Columns found", found.join(", ") || "None"],
@@ -2387,14 +2510,16 @@ function renderPricingReferencePreview(result = null) {
     ${result.items.length ? `<button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review ${result.items.length} Row${result.items.length === 1 ? "" : "s"}</button>` : ""}
   `;
   renderPricingReferenceTableOverlay(result);
-  if (result.items.length && elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
-    openPricingReferenceTableOverlay();
-  }
   setPricingReferenceSaveButtonState({
     canSave,
     busy: state.pricingReferenceImportBusy,
     reason: pricingReferenceSaveBlockReason(result),
   });
+  if (options.scrollIntoView) {
+    window.requestAnimationFrame(() => {
+      elements.pricingReferencePreview?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }
 }
 
 
@@ -2405,9 +2530,16 @@ function pricingReferenceModalTax() {
   };
 }
 
+function pricingReferenceModalCurrency() {
+  const selected = elements.pricingReferenceCurrency?.value;
+  if (selected === CUSTOM_CURRENCY_VALUE) return customCurrencyInputIsValid() ? normalizedCustomCurrencyInput() : "";
+  return supportedCurrencyLabel(selected);
+}
+
 function resetPricingReferenceTaxInputs() {
   if (elements.pricingReferenceTaxLabel) elements.pricingReferenceTaxLabel.value = "GST";
   if (elements.pricingReferenceTaxRate) elements.pricingReferenceTaxRate.value = "9";
+  setPricingReferenceCurrencyControls(DEFAULT_CURRENCY_LABEL);
 }
 
 async function validatePricingReferenceFile(file) {
@@ -2422,6 +2554,8 @@ async function validatePricingReferenceFile(file) {
   const { ok, data } = await postJson("/api/settings/pricing-references/import-preview", {
     filename: file.name,
     data_url: await fileToDataUrl(file),
+    currency: pricingReferenceModalCurrency(),
+    tax: pricingReferenceModalTax(),
   });
   if (ok) return data;
   return {
@@ -2499,9 +2633,11 @@ async function savePricingReferenceFromModal(event) {
   }
   const name = elements.pricingReferenceName.value.trim();
   const tax = pricingReferenceModalTax();
+  const currency = pricingReferenceModalCurrency();
   const result = state.pendingPricingReference;
   const canSave = result?.canSave ?? Boolean(result && !result.errors.length && result.items.length);
-  if (!name || !result || !canSave) {
+  const saveBlockReason = pricingReferenceSaveBlockReason(result);
+  if (!name || !result || !canSave || saveBlockReason) {
     renderPricingReferencePreview(result || pricingReferenceValidationResult([], [], 0, ""));
     return;
   }
@@ -2512,6 +2648,7 @@ async function savePricingReferenceFromModal(event) {
     label: name,
     description: `Imported from ${result.sourceName || "settings upload"}`,
     tax,
+    currency,
     items: result.items,
   });
   if (!ok) {
@@ -2640,7 +2777,7 @@ async function setSampleDetails() {
     applyQuoteDetails(data.details || {}, { partial: true });
     state.images = Array.isArray(data.images) ? data.images.slice(0, MAX_REFERENCE_IMAGES) : [];
     renderFiles();
-    setImageUploadStatus(`${state.images.length} sample reference image${state.images.length === 1 ? "" : "s"} loaded.`);
+    setImageUploadStatus(`${state.images.length} sample reference file${state.images.length === 1 ? "" : "s"} loaded.`);
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
     syncControlStates();
   } finally {
@@ -2672,7 +2809,8 @@ function buildPayload(options = {}) {
       ...pricingReference,
       source: "bundled",
       tax: pricingReference.tax || selectedPricingReferenceTax(),
-    } : { id: state.pricingReferenceId || "", source: "bundled", tax: selectedPricingReferenceTax() },
+      currency: selectedPricingReferenceCurrency(),
+    } : { id: state.pricingReferenceId || "", source: "bundled", tax: selectedPricingReferenceTax(), currency: selectedPricingReferenceCurrency() },
     analysis_mode: normalizeAnalysisMode(options.analysisMode || state.pendingAnalysisMode),
     generator_label: generator.label,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES),
@@ -2719,6 +2857,36 @@ function buildPayload(options = {}) {
   };
 }
 
+function buildLineItemNormalizePayload() {
+  const pricingReference = currentPricingReference();
+  const profileId = resolvedProfileIdForPayload();
+  return {
+    profile_id: profileId,
+    pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
+    pricing_reference: pricingReference ? {
+      id: pricingReference.id || state.pricingReferenceId || "",
+      label: pricingReference.label || "",
+      source: pricingReference.source || "bundled",
+      tax: pricingReference.tax || selectedPricingReferenceTax(),
+      currency: selectedPricingReferenceCurrency(),
+    } : {
+      id: state.pricingReferenceId || "",
+      source: "bundled",
+      tax: selectedPricingReferenceTax(),
+      currency: selectedPricingReferenceCurrency(),
+    },
+    project: {
+      booth_width: state.boothDimensions.booth_width,
+      booth_depth: state.boothDimensions.booth_depth,
+      booth_size: state.boothDimensions.booth_size,
+      dimension_source: state.boothDimensions.dimension_source,
+    },
+    quote_basis: { ...state.quoteBasis, ...quoteBasisFromSections(state.quoteBasisSections) },
+    quote_basis_sections: cloneQuoteBasisSections(state.quoteBasisSections),
+    line_items: state.lineItems.map(normalizeLineItem),
+  };
+}
+
 function setResultStatus(label, tone = "") {
   elements.resultStatus.textContent = label;
   elements.resultStatus.classList.remove("is-ok", "is-warn", "is-bad");
@@ -2741,7 +2909,7 @@ function updateDownloadButton() {
   if (!elements.sideDownloadButton) return;
   const file = state.downloadFile;
   const validation = outputRowsValid();
-  const enabled = state.activeSidePanel === "output" && (validation.valid || Boolean(file && file.url)) && !state.isGenerating;
+  const enabled = state.activeSidePanel === "output" && validation.valid && !state.isGenerating;
   elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
   elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
   elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
@@ -3249,7 +3417,7 @@ function matchSummaryStats(rows = []) {
 
 function formatSubtotalValue(stats = {}) {
   const total = Number(stats.total || 0);
-  const totalText = `SGD ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const totalText = `${selectedPricingReferenceCurrency()} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return stats.totalPending ? `${totalText} + ???` : totalText;
 }
 
@@ -3612,8 +3780,7 @@ function renderBasisConfirmSummary(sections = state.quoteBasisSections) {
 }
 
 function basisCatalogReferenceTitle(line = {}) {
-  const referenceDescription = pricingReferenceLineText(line.pricing_reference_description || "");
-  return referenceDescription ? `Pricing reference: ${referenceDescription}` : "";
+  return "";
 }
 
 function basisLineTitle(line = {}) {
@@ -3652,7 +3819,7 @@ function renderBasisLine(section, line, index) {
       <span class="basis-line-meta">
         <span class="basis-line-pill"${pillTitleAttribute}>${escapeHtml(pillLabel)}</span>
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
-        <span class="basis-quantity-pill">${escapeHtml(quantityLabel)}</span>
+        <span class="basis-quantity-text">${escapeHtml(quantityLabel)}</span>
       </span>
       <span class="basis-line-text"${lineTitleAttribute}>${escapeHtml(line.text)}</span>
       <span class="basis-line-actions">
@@ -3786,17 +3953,16 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   if (!section) return;
   let changed = false;
   section.lines = (section.lines || []).map((line) => {
-    const currentTag = normalizeBasisTag(line.tag);
-    if (currentTag !== "Confirm" && !isPendingAiProposalLine(line)) return line;
     const resolvedTag = nextTag === "Include" && basisLineAcceptsAsAiProposal(line) ? "Custom" : nextTag;
     const customPricing = isCustomPricingBasisLine(line) || resolvedTag === "Custom";
     const customConfirmed = customPricing && nextTag === "Include";
+    const currentTag = normalizeBasisTag(line.tag);
     if (currentTag === resolvedTag && (!customPricing || Boolean(line.custom_confirmed) === customConfirmed)) return line;
     changed = true;
     return {
       ...line,
       tag: resolvedTag,
-      ...(customPricing ? { custom_pricing: true, custom_confirmed: customConfirmed } : {}),
+      ...(customPricing ? { custom_pricing: true, custom_confirmed: customConfirmed } : { custom_confirmed: false }),
     };
   });
   if (!changed) return;
@@ -4275,7 +4441,7 @@ function firstMissingDetailsPanel() {
 function startAnalysisBlockReason() {
   if (state.isAnalysisRunning) return "Analysis is already running.";
   if (state.isGenerating) return "Quotation generation is already running.";
-  if (!state.images.length) return "Add at least one reference image before starting analysis.";
+  if (!state.images.length) return "Add at least one reference file before starting analysis.";
   return customerDetailsBlockReason("Complete Customer details before starting analysis")
     || quoteCompanyDetailsBlockReason("Complete Quote Company details before starting analysis");
 }
@@ -4313,10 +4479,7 @@ function applyDraftLineItems(lineItems = []) {
 
 async function refreshLineItemsFromServer() {
   if (!state.lineItems.length) return true;
-  const { ok, data } = await postJson("/api/line-items/normalize", {
-    ...buildPayload(),
-    line_items: state.lineItems.map(normalizeLineItem),
-  });
+  const { ok, data } = await postJson("/api/line-items/normalize", buildLineItemNormalizePayload());
   if (!ok || !Array.isArray(data.line_items)) return false;
   state.lineItems = data.line_items.map(normalizeLineItem);
   state.outputRows = [];
@@ -4667,8 +4830,8 @@ function syncControlStates() {
   if (elements.settingsButton) {
     const canManage = canManagePricingReferences();
     elements.settingsButton.hidden = false;
-    elements.settingsButton.disabled = busy;
-    elements.settingsButton.title = canManage ? "New pricing reference" : pricingReferenceNoAccessReason();
+    elements.settingsButton.disabled = busy || !canManage;
+    elements.settingsButton.title = canManage ? "Pricing reference settings" : pricingReferenceNoAccessReason();
     elements.settingsButton.setAttribute("aria-disabled", String(elements.settingsButton.disabled));
   }
   updateSidePanelNav();
@@ -5091,7 +5254,7 @@ function isSensitiveChatRequest(normalizedText) {
 
 function sidePanelBlockReason(panelName) {
   if (panelName === "images") return "";
-  if (!state.images.length) return "Add reference images before opening this step.";
+  if (!state.images.length) return "Add reference files before opening this step.";
   if (panelName === "quote_company") {
     return customerDetailsBlockReason("Complete Customer details before opening Quote Company");
   }
@@ -5284,6 +5447,9 @@ function wireEvents() {
   if (elements.pricingReferenceFile) {
     elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;
   }
+  if (elements.imageInput) {
+    elements.imageInput.accept = REFERENCE_FILE_ACCEPT;
+  }
   window.addEventListener("pagehide", markPageUnloading);
   window.addEventListener("beforeunload", markPageUnloading);
   elements.imageInput.addEventListener("change", async (event) => {
@@ -5419,7 +5585,35 @@ function wireEvents() {
     if (state.pricingReferenceImportToken !== importToken) return;
     state.pendingPricingReference = result;
     state.pricingReferenceImportBusy = false;
-    renderPricingReferencePreview(result);
+    renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
+  });
+  elements.pricingReferenceCurrency?.addEventListener("change", () => {
+    syncPricingReferenceCurrencyCustomInput();
+    if (state.pendingPricingReference) {
+      state.pendingPricingReference.currency = pricingReferenceModalCurrency();
+      renderPricingReferencePreview(state.pendingPricingReference);
+    }
+  });
+  elements.pricingReferenceCurrencyCustom?.addEventListener("input", () => {
+    const normalizedValue = normalizedCustomCurrencyInput();
+    if (elements.pricingReferenceCurrencyCustom.value !== normalizedValue) {
+      elements.pricingReferenceCurrencyCustom.value = normalizedValue;
+    }
+    if (state.pendingPricingReference) {
+      state.pendingPricingReference.currency = pricingReferenceModalCurrency();
+      renderPricingReferencePreview(state.pendingPricingReference);
+      return;
+    }
+    setPricingReferenceSaveButtonState({
+      canSave: !pricingReferenceSaveBlockReason(state.pendingPricingReference),
+      reason: pricingReferenceSaveBlockReason(state.pendingPricingReference),
+    });
+  });
+  elements.pricingReferenceTaxLabel?.addEventListener("change", () => {
+    if (state.pendingPricingReference) state.pendingPricingReference.tax = pricingReferenceModalTax();
+  });
+  elements.pricingReferenceTaxRate?.addEventListener("input", () => {
+    if (state.pendingPricingReference) state.pendingPricingReference.tax = pricingReferenceModalTax();
   });
   elements.pricingReferencePreview?.addEventListener("input", (event) => {
     handlePricingReferencePreviewInput(event);

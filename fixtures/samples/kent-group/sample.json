@@ -1,0 +1,37 @@
+{
+  "id": "kent-group",
+  "label": "Kent Group Demo",
+  "description": "Sample customer, project, and reference images for quick testing.",
+  "profile_id": "koncept",
+  "pricing_reference_id": "koncept-exhibition-quotation",
+  "images": [
+    "Screenshot 2026-06-13 172852.png",
+    "Screenshot 2026-06-13 172901.png",
+    "Screenshot 2026-06-13 172907.png",
+    "Screenshot 2026-06-13 172916.png",
+    "Screenshot 2026-06-13 172930.png",
+    "Screenshot 2026-06-13 172937.png",
+    "Screenshot 2026-06-13 172945.png",
+    "Screenshot 2026-06-13 172951.png"
+  ],
+  "details": {
+    "client": {
+      "name": "Kent Group",
+      "attention": "Kent Group Team",
+      "title": "Project Team",
+      "address": "Singapore"
+    },
+    "project": {
+      "title": "RE: Kent Group Exhibition Booth"
+    },
+    "project_number": "KI-SAMPLE-001",
+    "rich_text": {
+      "clientName": "<div><strong>Kent Group</strong></div>",
+      "clientAttention": "<div><strong>Kent Group Team</strong></div>",
+      "clientTitle": "<div>Project Team</div>",
+      "clientAddress": "<div>Singapore</div>",
+      "projectTitle": "<div><strong>RE: Kent Group Exhibition Booth</strong></div>",
+      "projectNumber": "<div>KI-SAMPLE-001</div>"
+    }
+  }
+}
