@@ -243,6 +243,7 @@ Do not run live n8n, Docker, import/export, sync, activation, execution, publish
 - Do not expose internal cost, GST, markup, or supplier notes in customer-facing output unless the user explicitly asks.
 - Do not generate PDFs by default. Treat `quotation.xlsx` as the formatted customer-ready master output; Excel-only output is the default webapp behavior.
 - Run `scripts/generate_quote.py`; XLSX generation must not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other third-party dependencies.
+- Fix product behavior dynamically from data, schema contracts, prompts, validators, and general algorithms. Do not hardcode demo/customer/sample-specific branches, aliases, pricing matches, UI states, or one-off keyword plasters that only make a known fixture pass; if a narrow exception is unavoidable, document why it is data-backed and add regression coverage for the general rule.
 - Treat brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Text beginning with `=`, `+`, `-`, or `@` must not become an active XLSX or CSV formula.
 - If required information is missing or pricing is unclear, report it under `Missing / Need Confirmation` or the webapp's pricing review flow.
 - Store local/runtime logs under the repo-root `_logs/` folder only, with typed subfolders such as `_logs/app/`, `_logs/server/`, and `_logs/browser/`. Do not write new logs to the repo root, `logs/`, or `_output/`; keep log contents ignored by git.
