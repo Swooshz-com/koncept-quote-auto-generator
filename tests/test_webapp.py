@@ -19,7 +19,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
-KONCEPT_PRICING_REFERENCE = ROOT / "pricing-references" / "koncept"
+KONCEPT_PRICING_REFERENCE = ROOT / "pricing-references" / "koncept-exhibition-quotation"
 KONCEPT_CATALOG = KONCEPT_PRICING_REFERENCE / "pricing-catalog.json"
 KONCEPT_AI_REFERENCE = KONCEPT_PRICING_REFERENCE / "pricing-catalog.ai-reference.md"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
@@ -52,7 +52,7 @@ def valid_payload():
             }
         ],
         "profile_id": "koncept",
-        "pricing_reference_id": "koncept",
+        "pricing_reference_id": "koncept-exhibition-quotation",
         "confirmed": True,
         "quote_date": "2026-06-06",
         "project_number": "KI-WEB-001",
@@ -191,6 +191,40 @@ class LocalRunnerServer:
 
 
 class WebappServerTest(unittest.TestCase):
+    def test_privacy_page_is_available_and_points_to_repo_baseline(self):
+        baseline = (ROOT / "docs" / "privacy-pdpa-gdpr-baseline.md").read_text(encoding="utf-8")
+        self.assertIn("Production implementation", baseline)
+        self.assertIn("must conform to this baseline", baseline)
+
+        with LocalRunnerServer() as runner:
+            response = urllib.request.urlopen(f"{runner.base_url}/privacy", timeout=3)
+            body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("Swooshz Quote Generator Privacy Notice", body)
+        self.assertIn("docs/privacy-pdpa-gdpr-baseline.md", body)
+        self.assertIn("PDPA", baseline)
+        self.assertIn("GDPR", baseline)
+        css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("body.privacy-page {\n  height: auto;\n  min-height: 100vh;\n  overflow: auto;", css)
+
+        deploy_env = {
+            "APP_MODE": "deploy",
+            "AUTH_REQUIRED": "true",
+            "SESSION_SECRET": "test-session-secret-with-enough-entropy",
+            "OIDC_ISSUER_URL": "https://issuer.example",
+            "OIDC_CLIENT_ID": "client-id",
+            "OIDC_CLIENT_SECRET": "client-secret",
+            "OIDC_REDIRECT_URI": "https://quote.example/callback",
+        }
+        with mock.patch.dict(os.environ, deploy_env, clear=True):
+            with LocalRunnerServer() as runner:
+                response = urllib.request.urlopen(f"{runner.base_url}/privacy", timeout=3)
+                body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("Privacy Notice", body)
+
     def test_validate_generation_payload_requires_images_before_generation(self):
         payload = valid_payload()
         payload["images"] = []
@@ -398,9 +432,9 @@ class WebappServerTest(unittest.TestCase):
         })
 
         self.assertEqual(items[0]["unit"], "sqm")
-        self.assertEqual(items[0]["description"], "sqm needle punch carpet in colour")
+        self.assertEqual(items[0]["description"], "sqm needle-punch carpet and sqm printed floor panel")
 
-    def test_normalize_line_items_uses_exact_catalog_text_and_price_metadata(self):
+    def test_normalize_line_items_preserves_customer_text_and_price_metadata(self):
         items = webapp.normalize_line_items({
             "profile_id": "koncept",
             "line_items": [
@@ -416,11 +450,227 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(items[0]["section"], "Floor Design")
         self.assertEqual(items[0]["unit"], "sqm")
-        self.assertEqual(items[0]["description"], "sqm needle punch carpet in colour")
+        self.assertEqual(items[0]["description"], "AI paraphrased green carpet wording")
+        self.assertEqual(items[0]["catalog_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(items[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
         self.assertEqual(items[0]["catalog_unit_price"], 10.5)
         self.assertNotIn("unit_price_override", items[0])
 
-    def test_normalize_ai_draft_rewrites_catalog_backed_basis_lines_to_rag_text(self):
+    def test_normalize_line_items_infers_catalog_match_from_high_analysis_description(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": 36,
+                    "unit": "sqm",
+                    "description": "100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+                    "pricing_keyword": "",
+                }
+            ],
+        })
+
+        self.assertEqual(items[0]["pricing_keyword"], "floor-design.100mm-raised-platform-with-aluminum-edging")
+        self.assertEqual(items[0]["catalog_unit_price"], 60.0)
+        self.assertEqual(items[0]["unit"], "sqm")
+        self.assertEqual(items[0]["description"], "100mm raised platform with aluminium edging for full 6m x 6m booth footprint.")
+
+    def test_normalize_line_items_uses_numeric_size_tokens_for_catalog_inference(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "quantity": 12,
+                    "unit": "nos",
+                    "description": 'LED recess downlight 6"',
+                    "pricing_keyword": "",
+                }
+            ],
+        })
+
+        self.assertEqual(
+            items[0]["pricing_keyword"],
+            "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-6",
+        )
+        self.assertEqual(items[0]["catalog_unit_price"], 52.5)
+
+    def test_normalize_line_items_uses_explicit_unit_to_choose_graphics_catalog_match(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "Graphics",
+                    "quantity": 2,
+                    "unit": "sqm",
+                    "description": "Side wall printed graphic panels",
+                    "pricing_keyword": "",
+                },
+                {
+                    "section": "Graphics",
+                    "quantity": 2,
+                    "unit": "nos",
+                    "description": "Side wall printed graphic panels",
+                    "pricing_keyword": "",
+                },
+            ],
+        })
+
+        self.assertEqual(items[0]["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(items[0]["unit"], "sqm")
+        self.assertEqual(
+            items[1]["pricing_keyword"],
+            "graphics.digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+        )
+        self.assertEqual(items[1]["unit"], "nos")
+
+    def test_normalize_line_items_prices_generic_render_descriptions_with_section_context(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "Booth Structure",
+                    "quantity": 6,
+                    "unit": "nos",
+                    "description": "Vertical support pillars in painted finish",
+                    "pricing_keyword": "",
+                },
+                {
+                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "quantity": 12,
+                    "unit": "nos",
+                    "description": "LED recess downlights integrated into the canopy soffit",
+                    "pricing_keyword": "",
+                },
+                {
+                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "quantity": 6,
+                    "unit": "nos",
+                    "description": "LED spotlight fixtures for canopy and fascia lighting",
+                    "pricing_keyword": "",
+                },
+            ],
+        })
+
+        self.assertEqual(items[0]["pricing_keyword"], "booth-structure.vertical-support-pillars-in-painted-finished")
+        self.assertEqual(items[0]["catalog_unit_price"], 675.0)
+        self.assertEqual(items[1]["pricing_keyword"], "")
+        self.assertNotIn("catalog_unit_price", items[1])
+        self.assertEqual(
+            items[2]["pricing_keyword"],
+            "electrical-fittings-excluding-connection-fees-by-organiser.10w-led-spotlight",
+        )
+        self.assertEqual(items[2]["catalog_unit_price"], 45.0)
+
+    def test_normalize_line_items_flags_suspicious_one_metre_structural_match_without_price(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "Booth Structure",
+                    "quantity": 1,
+                    "unit": "m",
+                    "description": "custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish in green, blue, and yellow",
+                    "pricing_keyword": "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+                }
+            ],
+        })
+
+        self.assertEqual(items[0]["status"], "quantity-review")
+        self.assertEqual(items[0]["unit"], "m length")
+        self.assertEqual(items[0]["pricing_keyword"], "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
+        self.assertNotIn("catalog_unit_price", items[0])
+
+    def test_normalize_line_items_prices_repo_reference_without_sale_unit_price(self):
+        reference = {
+            "schema_version": 1,
+            "currency": "SGD",
+            "items": [
+                {
+                    "id": "floor-design-raised-platform",
+                    "section": "Floor Design",
+                    "reference_section": "Floor Design",
+                    "description": "sqm 100mm raised platform with aluminum edging",
+                    "unit_hint": "sqm",
+                    "internal_cost": 40,
+                    "markup_multiplier": 1.5,
+                    "aliases": ["raised platform"],
+                }
+            ],
+        }
+        metadata = {
+            "id": "repo-no-sale",
+            "label": "Repo No Sale",
+            "pricing_catalog": "pricing-catalog.json",
+            "pricing_reference": "pricing-catalog.ai-reference.md",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ref_dir = Path(tmp) / "repo-no-sale"
+            ref_dir.mkdir()
+            (ref_dir / "reference.json").write_text(json.dumps(metadata), encoding="utf-8")
+            (ref_dir / "pricing-catalog.json").write_text(json.dumps(reference), encoding="utf-8")
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                items = webapp.normalize_line_items({
+                    "pricing_reference_id": "repo-no-sale",
+                    "line_items": [
+                        {
+                            "section": "Floor Design",
+                            "quantity": 36,
+                            "unit": "sqm",
+                            "description": "100mm raised platform with aluminum edging across the full booth footprint",
+                            "pricing_keyword": "",
+                        }
+                    ],
+                })
+
+        self.assertEqual(items[0]["pricing_keyword"], "floor-design-raised-platform")
+        self.assertEqual(items[0]["catalog_unit_price"], 60.0)
+
+    def test_normalize_line_items_uses_catalog_description_unit_when_unit_hint_is_missing(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "quantity": 30,
+                    "unit": "nos",
+                    "description": "LED strip lighting for cove and edge illumination around fascia and feature frames.",
+                    "pricing_keyword": "",
+                }
+            ],
+        })
+
+        self.assertEqual(
+            items[0]["pricing_keyword"],
+            "electrical-fittings-excluding-connection-fees-by-organiser.led-strip-light-for-coves",
+        )
+        self.assertEqual(items[0]["unit"], "m run")
+        self.assertEqual(items[0]["catalog_unit_price"], 42.0)
+
+    def test_normalize_line_items_treats_1m_counters_as_each_not_linear_metre(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "COUNTERS AND CABINETS",
+                    "quantity": 2,
+                    "unit": "m",
+                    "description": "Branded 1m lockable information counters with painted green, blue and yellow finish and laminated top.",
+                    "pricing_keyword": "",
+                }
+            ],
+        })
+
+        self.assertEqual(
+            items[0]["pricing_keyword"],
+            "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+        )
+        self.assertEqual(items[0]["quantity"], 2.0)
+        self.assertEqual(items[0]["unit"], "nos")
+        self.assertEqual(items[0]["catalog_unit_price"], 1200.0)
+
+    def test_normalize_ai_draft_preserves_customer_text_with_catalog_metadata(self):
         parsed = {
             "quote_basis_sections": [
                 {
@@ -447,9 +697,14 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Floor Design")
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "sqm needle punch carpet in colour")
+        self.assertEqual(lines[0]["text"], "AI paraphrased green carpet wording")
+        self.assertEqual(lines[0]["catalog_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(lines[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
+        self.assertEqual(lines[0]["catalog_unit_price"], 10.5)
         self.assertEqual(lines[1]["text"], "Use a 6m x 6m booth footprint for area takeoff.")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm needle punch carpet in colour")
+        self.assertEqual(draft["line_items"][0]["description"], "AI paraphrased green carpet wording")
+        self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "m2 needle punch carpet in colour")
 
     def test_normalize_ai_draft_appends_missing_catalog_backed_basis_lines(self):
         parsed = {
@@ -487,6 +742,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(
             [line["text"] for line in lines],
             [
+                "AI paraphrased green carpet wording",
+                "AI paraphrased raised platform wording",
+            ],
+        )
+        self.assertEqual(
+            [line["catalog_description"] for line in lines],
+            [
                 "sqm needle punch carpet in colour",
                 "sqm 100mm raised platform with aluminum edging",
             ],
@@ -494,6 +756,96 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual([line["tag"] for line in lines], ["Confirm", "Confirm"])
         self.assertIsNone(lines[0].get("confidence"))
         self.assertEqual(lines[1].get("confidence"), 50)
+
+    def test_normalize_ai_draft_strips_duplicated_quantity_prefix_from_basis_text(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "floor-design",
+                    "title": "Floor Design",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "36 sqm 100mm raised platform with aluminum edging",
+                            "quantity": 36,
+                            "unit": "sqm",
+                            "confidence_pct": 78,
+                        },
+                        {
+                            "tag": "Confirm",
+                            "text": "100mm raised platform detail edge",
+                            "quantity": 100,
+                            "unit": "sqm",
+                            "confidence_pct": 70,
+                        },
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": 36,
+                    "unit": "sqm",
+                    "description": "36 sqm 100mm raised platform with aluminum edging",
+                    "pricing_keyword": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(lines[0]["text"], "100mm raised platform with aluminum edging")
+        self.assertEqual(lines[1]["text"], "100mm raised platform detail edge")
+        self.assertEqual(draft["line_items"][0]["description"], "100mm raised platform with aluminum edging")
+
+    def test_normalize_ai_draft_trusts_leading_item_count_before_dimensions(self):
+        counter_text = (
+            "2 nos. of 1m length x 1m height x 0.5m Width lockable counter; "
+            "wooden construct in laminated finished as per design proposal"
+        )
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "counters-and-cabinets",
+                    "title": "COUNTERS AND CABINETS",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": counter_text,
+                            "quantity": 1,
+                            "unit": "m",
+                            "confidence_pct": 71,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "COUNTERS AND CABINETS",
+                    "quantity": 1,
+                    "unit": "m",
+                    "description": counter_text,
+                    "pricing_keyword": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["quantity"], 2.0)
+        self.assertEqual(line["unit"], "nos")
+        self.assertEqual(
+            line["text"],
+            "1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+        )
+        self.assertEqual(draft["line_items"][0]["quantity"], 2.0)
+        self.assertEqual(draft["line_items"][0]["unit"], "nos")
+        self.assertEqual(
+            draft["line_items"][0]["description"],
+            "1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+        )
 
     def test_normalize_ai_draft_moves_catalog_backfilled_lines_to_pricing_section(self):
         parsed = {
@@ -679,7 +1031,86 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["text"], "Custom printed graphic panels for front and side feature walls")
         self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(line["pricing_reference_description"], "m2 of vinyl printed graphics")
         self.assertNotIn("custom_pricing", line)
+
+    def test_normalize_ai_draft_preserves_basis_text_when_line_item_is_catalog_text(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "graphics",
+                    "title": "Graphics",
+                    "lines": [
+                        {
+                            "id": "graphics-brand-fascia",
+                            "tag": "Confirm",
+                            "text": "printed brand fascia graphics with BRASIL artwork",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 90,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Graphics",
+                    "quantity": 1,
+                    "unit": "sqm",
+                    "description": "sqm of vinyl printed graphics",
+                    "pricing_keyword": "graphics.vinyl-printed-graphics",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(len(lines), 1)
+        line = lines[0]
+        self.assertEqual(line["text"], "printed brand fascia graphics with BRASIL artwork")
+        self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(line["pricing_reference_description"], "m2 of vinyl printed graphics")
+
+    def test_normalize_ai_draft_does_not_copy_invented_keyword_into_catalog_metadata(self):
+        text = "printed brand fascia graphics with BRASIL artwork"
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "graphics",
+                    "title": "Graphics",
+                    "lines": [
+                        {
+                            "id": "graphics-brand-fascia",
+                            "tag": "Confirm",
+                            "text": text,
+                            "pricing_keyword": text,
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 90,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Graphics",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": text,
+                    "pricing_keyword": text,
+                    "source_basis_line_id": "graphics-brand-fascia",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["text"], text)
+        self.assertNotIn("catalog_description", line)
+        self.assertNotIn("pricing_reference_description", line)
 
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
         parsed = {
@@ -711,6 +1142,37 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(draft["line_items"][-1]["description"], "AI row 19")
         self.assertEqual(draft["quote_basis_sections"][0]["lines"][0]["tag"], "Confirm")
         self.assertEqual(draft["quote_basis_sections"][0]["lines"][0]["confidence"], 91)
+
+    def test_normalize_ai_draft_moves_catalog_matched_basis_line_to_catalog_section(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "av-equipment-rental-items",
+                    "title": "AV Equipment Rental Items",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "White Eames replica chairs for meeting area seating",
+                            "quantity": 16,
+                            "unit": "nos",
+                            "confidence_pct": 70,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {
+            "profile_id": "koncept",
+            "pricing_reference_id": "koncept-exhibition-quotation",
+        })
+
+        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Furniture Rental")
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["text"], "White Eames replica chairs for meeting area seating")
+        self.assertEqual(line["pricing_keyword"], "furniture-rental.eames-replica-chair-white")
+        self.assertEqual(line["catalog_description"], "nos. Eames Replica Chair (White)")
 
     def test_normalize_ai_draft_splits_embedded_basis_decisions_for_review(self):
         parsed = {
@@ -799,8 +1261,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('"pricing_reference_sections"', prompt)
         self.assertIn("confidence_pct", prompt)
         self.assertIn("Use tag Confirm for catalog-backed lines", prompt)
+        self.assertIn("omit that leading count/unit from quote_basis_sections line text and line_items.description", prompt)
         self.assertIn("pricing catalog controls price, unit, section, and pricing_keyword", prompt)
         self.assertIn("customer-facing wording may be clearer than the catalog row", prompt)
+        self.assertIn("Never use quantity 1 with unit m or m length for measured structural runs", prompt)
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
         self.assertNotIn("2 to 4 short lines", prompt)
         self.assertNotIn("Assumption:", prompt)
@@ -977,6 +1441,20 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
         self.assertEqual(result["items"][0]["aliases"], ["painted wall", "white wall"])
 
+    def test_pricing_reference_upload_prefers_description_unit_over_conflicting_hint(self):
+        raw = (
+            "section,description,unit_hint,internal_cost,markup_multiplier,aliases\n"
+            "COUNTERS AND CABINETS,nos. of 1m length x 1m height x 0.5m Width lockable counter,m length,800,1.5,lockable counter\n"
+        ).encode("utf-8")
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "conflicting-unit.csv",
+            "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["rowCount"], 1)
+        self.assertEqual(result["items"][0]["unit_hint"], "nos")
+
     def test_pricing_reference_import_stitches_multirow_description_remarks_and_keeps_rigging(self):
         raw = (
             "section,description,unit_hint,internal_cost,markup_multiplier,remarks,aliases\n"
@@ -1046,8 +1524,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_v11_pricing_workbook_import_is_deterministic_and_skips_ai(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
-        with mock.patch.object(webapp, "request_openai_pricing_catalog_import") as openai_import, \
-                mock.patch.object(webapp, "request_gemini_pricing_catalog_import") as gemini_import:
+        with mock.patch.object(webapp, "request_openai_pricing_catalog_import") as openai_import:
             result = webapp.pricing_reference_import_preview({
                 "filename": "Quotation-Cost-Template-V1.1.xlsx",
                 "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
@@ -1056,7 +1533,6 @@ class WebappServerTest(unittest.TestCase):
             })
 
         openai_import.assert_not_called()
-        gemini_import.assert_not_called()
         self.assertEqual(result["layout"], "v1.1-pricing-workbook")
         self.assertEqual(result["errors"], [])
         self.assertGreater(result["rowCount"], 20)
@@ -1296,7 +1772,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertRegex(html, r'/static/styles\.css\?v=\d+')
         self.assertRegex(html, r'/static/app\.js\?v=\d+')
 
-    def test_pricing_reference_template_upload_ignores_example_rows(self):
+    def test_pricing_reference_template_upload_accepts_seed_rows(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         result = webapp.validate_pricing_reference_upload({
             "filename": "swooshz-pricing-reference-template.xlsx",
@@ -1306,10 +1782,10 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["layout"], "normalized-pricing-reference")
-        self.assertEqual(result["rowCount"], 0)
-        self.assertGreaterEqual(result["exampleRows"], 2)
-        self.assertFalse(result["canSave"])
-        self.assertIn("Replace the example rows", " ".join(result["warnings"]))
+        self.assertEqual(result["rowCount"], len(webapp.PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS))
+        self.assertTrue(result["canSave"])
+        self.assertNotIn("exampleRows", result)
+        self.assertNotIn("example", " ".join(result["warnings"]).lower())
 
     def test_non_template_pricing_reference_upload_is_rejected(self):
         raw = minimal_pricing_reference_xlsx(["old_id", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
@@ -1389,6 +1865,18 @@ class WebappServerTest(unittest.TestCase):
         self.assertFalse(response["permissions"]["canManageSettings"])
         self.assertFalse(response["permissions"]["canManagePricingReferences"])
 
+    def test_user_type_env_simulates_prod_permissions(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "USER #ADMIN"}, clear=True):
+            user_permissions = webapp.current_permissions()
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "ADMIN"}, clear=True):
+            admin_permissions = webapp.current_permissions()
+
+        self.assertEqual(user_permissions["role"], "operator")
+        self.assertTrue(user_permissions["canGenerateQuote"])
+        self.assertFalse(user_permissions["canManagePricingReferences"])
+        self.assertEqual(admin_permissions["role"], "admin")
+        self.assertTrue(admin_permissions["canManagePricingReferences"])
+
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
         payload["company"]["header_details"] = "Line one<br>Line two<br><br>Line four"
@@ -1409,12 +1897,19 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_LAYOUT_RULES)
         self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
         self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
-        pricing_pack = webapp.load_pricing_reference_pack("koncept")
+        pricing_pack = webapp.load_pricing_reference_pack("koncept-exhibition-quotation")
         self.assertEqual(pricing_pack.pricing_catalog_path, KONCEPT_CATALOG)
         self.assertEqual(pricing_pack.pricing_reference_path, KONCEPT_AI_REFERENCE)
         self.assertTrue((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
-        self.assertEqual(webapp.list_pricing_references()[0]["id"], "koncept")
+        pricing_references = webapp.list_pricing_references()
+        pricing_references_by_id = {item["id"]: item for item in pricing_references}
+        self.assertEqual(pricing_references_by_id["koncept-exhibition-quotation"]["label"], "Koncept Exhibition Quotation")
+        self.assertEqual(
+            [item["label"] for item in pricing_references],
+            sorted([item["label"] for item in pricing_references], key=str.casefold),
+        )
+        self.assertEqual([item["id"] for item in pricing_references].count("koncept-exhibition-quotation"), 1)
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertTrue(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["company_details"]["keep_logo_and_details_inside_print_area"])
@@ -1553,6 +2048,16 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(job["result"]["source"], "local")
         self.assertTrue(job["result"]["ai_failed"])
 
+    def test_create_draft_job_failed_result_includes_error_reference(self):
+        with mock.patch.object(webapp, "draft_quote_basis", side_effect=webapp.OpenAIAnalysisError("provider exploded")):
+            created = webapp.create_job("draft", valid_payload())
+            job = wait_for_job(created["job_id"])
+
+        self.assertEqual(job["status"], "failed")
+        self.assertRegex(job["error_reference"], r"^ERR-[0-9A-F]{8}$")
+        self.assertEqual(job["result"]["error_reference"], job["error_reference"])
+        self.assertIn("provider exploded", job["errors"][0])
+
     def test_draft_quote_basis_uses_openai_key_from_env_file(self):
         payload = valid_payload()
         ai_draft = {
@@ -1631,7 +2136,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("brazil-feature-wall", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
-        self.assertEqual(result["line_items"][0]["description"], "sqm needle punch carpet in colour")
+        self.assertEqual(result["line_items"][0]["description"], "sqm green carpet across pavilion footprint")
+        self.assertEqual(result["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
 
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):
         payload = valid_payload()
@@ -1650,56 +2156,23 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["line_items"][0]["quantity"], 12.0)
         self.assertIn("Remote AI is not configured", "\n".join(result["warnings"]))
         self.assertIn("OPENAI_API_KEY", "\n".join(result["warnings"]))
-        self.assertIn("GEMINI_API_KEY", "\n".join(result["warnings"]))
         write_log.assert_called()
         self.assertEqual(write_log.call_args.args[0], "ai_draft_remote_unconfigured")
         request.assert_not_called()
 
-    def test_draft_quote_basis_uses_gemini_fallback_when_openai_fails(self):
-        ai_draft = {
-            "quote_basis_sections": [
-                {
-                    "id": "surfaces",
-                    "title": "Surfaces / Structures",
-                    "lines": [
-                        {"tag": "Confirm", "text": "Gemini surfaces", "confidence_pct": 87},
-                    ],
-                },
-                {
-                    "id": "graphics",
-                    "title": "Graphics / Signage",
-                    "lines": [
-                        {"tag": "Confirm", "text": "Gemini vinyl graphics", "confidence_pct": 86},
-                    ],
-                }
-            ],
-            "line_items": [
-                {
-                    "section": "Graphics",
-                    "quantity": "12",
-                    "unit": "sqm",
-                    "description": "Gemini vinyl graphics",
-                    "pricing_keyword": "vinyl printed graphics",
-                }
-            ],
-        }
+    def test_draft_quote_basis_uses_local_fallback_when_openai_fails(self):
         keys = {
             webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
-            webapp.GEMINI_API_KEY_ENV_NAME: "gemini-test-redacted",
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
             with mock.patch.object(webapp, "write_local_log"):
                 with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")):
-                    with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=ai_draft) as gemini:
-                        result = webapp.draft_quote_basis(valid_payload())
+                    result = webapp.draft_quote_basis(valid_payload())
 
-        self.assertEqual(result["source"], "gemini")
-        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces")
-        self.assertNotIn("counters", result["quote_basis"])
-        self.assertEqual(result["line_items"][0]["description"], "Gemini vinyl graphics")
-        self.assertIn("OpenAI failed", result["warnings"][0])
-        gemini.assert_called_once_with(valid_payload(), "gemini-test-redacted")
+        self.assertEqual(result["source"], "local")
+        self.assertTrue(result["ai_failed"])
+        self.assertIn("OpenAI failed", "\n".join(result["provider_errors"]))
 
     def test_draft_quote_basis_rejects_empty_ai_basis_instead_of_padding_defaults(self):
         payload = valid_payload()
@@ -1707,50 +2180,41 @@ class WebappServerTest(unittest.TestCase):
         empty_draft = {"quote_basis": {}, "quote_basis_sections": [], "line_items": []}
         keys = {
             webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
-            webapp.GEMINI_API_KEY_ENV_NAME: "gemini-test-redacted",
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
             with mock.patch.object(webapp, "write_local_log") as write_log:
                 with mock.patch.object(webapp, "request_openai_quote_basis", return_value=empty_draft):
-                    with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=empty_draft):
-                        result = webapp.draft_quote_basis(payload)
+                    result = webapp.draft_quote_basis(payload)
 
         logged_events = [call.args[0] for call in write_log.call_args_list]
         self.assertIn("openai_draft_failed", logged_events)
-        self.assertIn("gemini_draft_failed", logged_events)
         self.assertIn("ai_draft_fallback_used", logged_events)
         self.assertEqual(result["source"], "local")
         self.assertTrue(result["ai_failed"])
         self.assertIn("OpenAI returned no usable quote basis", "\n".join(result["provider_errors"]))
-        self.assertIn("Gemini fallback returned no usable quote basis", "\n".join(result["provider_errors"]))
 
     def test_draft_quote_basis_uses_local_fallback_when_remote_ai_fails(self):
         payload = valid_payload()
         payload["line_items"] = []
         keys = {
             webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
-            webapp.GEMINI_API_KEY_ENV_NAME: "gemini-test-redacted",
         }
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
             with mock.patch.object(webapp, "write_local_log"):
                 with mock.patch.object(webapp, "request_openai_quote_basis", side_effect=webapp.OpenAIAnalysisError("OpenAI failed")) as openai:
-                    with mock.patch.object(webapp, "request_gemini_quote_basis", side_effect=webapp.OpenAIAnalysisError("Gemini failed")) as gemini:
-                        result = webapp.draft_quote_basis(payload)
+                    result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "local")
         self.assertEqual(result["status"], "drafted")
         self.assertTrue(result["ai_failed"])
         self.assertIn("OpenAI failed", "\n".join(result["provider_errors"]))
-        self.assertIn("Gemini failed", "\n".join(result["provider_errors"]))
         self.assertIn("OpenAI failed", "\n".join(result["warnings"]))
-        self.assertIn("Gemini failed", "\n".join(result["warnings"]))
         self.assertGreaterEqual(len(result["line_items"]), 3)
         self.assertEqual(result["line_items"][0]["quantity"], 36.0)
         self.assertEqual(result["line_items"][0]["pricing_keyword"], "floor-design.needle-punch-carpet-in-colour")
         openai.assert_called_once_with(payload, "sk-test-redacted")
-        gemini.assert_called_once_with(payload, "gemini-test-redacted")
 
     def test_draft_quote_basis_rewrites_default_booth_size_as_confirm_line(self):
         payload = valid_payload()
@@ -1819,48 +2283,6 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Confirm", joined_sections)
         self.assertNotIn("Include: Booth size defaults to 6m x 6m", platform_basis)
 
-    def test_gemini_draft_keeps_default_booth_size_confirm_when_ai_returns_numeric_default_dimensions(self):
-        payload = valid_payload()
-        payload["project"].pop("booth_width", None)
-        payload["project"].pop("booth_depth", None)
-        payload["project"]["title"] = "RE: Demo Booth"
-        ai_draft = {
-            "quote_basis_sections": [
-                {
-                    "id": "platform",
-                    "title": "Platform / Flooring",
-                    "lines": [
-                        {"tag": "Include", "text": "Booth size defaults to 6m x 6m for area-based quantities.", "confidence_pct": 50},
-                        {"tag": "Confirm", "text": "Needle punch carpet in colour", "confidence_pct": 90},
-                    ],
-                }
-            ],
-            "project": {"booth_width": 6, "booth_depth": 6},
-            "line_items": [
-                {
-                    "section": "Floor Design",
-                    "quantity": "36",
-                    "unit": "sqm",
-                    "description": "Needle punch carpet in colour",
-                    "pricing_keyword": "needle punch carpet in colour",
-                }
-            ],
-        }
-        keys = {
-            webapp.OPENAI_API_KEY_ENV_NAME: "",
-            webapp.GEMINI_API_KEY_ENV_NAME: "gemini-test-redacted",
-        }
-
-        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
-            with mock.patch.object(webapp, "request_gemini_quote_basis", return_value=ai_draft):
-                result = webapp.draft_quote_basis(payload)
-
-        platform_basis = result["quote_basis"]["platform"]
-        self.assertEqual(result["source"], "gemini")
-        self.assertEqual(result["project"]["dimension_source"], "default")
-        self.assertIn("Confirm: Booth size defaults to 6m x 6m", platform_basis)
-        self.assertNotIn("Include: Booth size defaults to 6m x 6m", platform_basis)
-
     def test_openai_request_body_omits_temperature_for_default_model(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
@@ -1917,6 +2339,27 @@ class WebappServerTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], "gpt-custom-model")
 
+    def test_openai_request_ignores_high_accuracy_mode_and_uses_draft_model(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        payload = valid_payload()
+        payload["analysis_mode"] = "high_accuracy"
+
+        def dotenv(name):
+            if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
+                return "gpt-5.5-test"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                webapp.request_openai_quote_basis(payload, "sk-test-redacted")
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["model"], "gpt-5.5-test")
+
     def test_openai_request_timeout_uses_env_with_longer_default(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
@@ -1932,7 +2375,7 @@ class WebappServerTest(unittest.TestCase):
             with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
                 webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
 
-        self.assertEqual(webapp.OPENAI_REQUEST_TIMEOUT_SECONDS, 90)
+        self.assertEqual(webapp.OPENAI_REQUEST_TIMEOUT_SECONDS, 1800)
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 123)
 
     def test_openai_prompt_requests_quote_takeoff_depth(self):
@@ -2023,7 +2466,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(catalog_images)
         self.assertIn("Internal catalog reference images follow", json.dumps(content))
 
-    def test_openai_request_appends_internal_catalog_visuals_when_available(self):
+    def test_openai_request_ignores_local_catalog_visuals(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({"quote_basis": {}, "line_items": []})
@@ -2050,9 +2493,9 @@ class WebappServerTest(unittest.TestCase):
             webapp.request_openai_quote_basis(payload, "sk-test-redacted")
 
         content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
-        self.assertIn("Internal catalog reference images follow", content[-2]["text"])
-        self.assertEqual(content[-1]["detail"], "low")
-        self.assertEqual(content[-1]["image_url"], "data:image/png;base64,ZmFrZS1jaGFpcg==")
+        serialized = json.dumps(content)
+        self.assertIn("Internal catalog reference images follow", serialized)
+        self.assertNotIn("data:image/png;base64,ZmFrZS1jaGFpcg==", serialized)
 
     def test_openai_request_resolves_bundled_catalog_visual_paths(self):
         response = mock.MagicMock()
@@ -2172,42 +2615,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("upstream connect error", message)
         self.assertIn("temporary upstream timeout", message)
 
-    def test_gemini_request_uses_inline_images_and_json_response_mode(self):
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [
-                            {
-                                "text": json.dumps({
-                                    "quote_basis_sections": [
-                                        {
-                                            "id": "surfaces",
-                                            "title": "Surfaces / Structures",
-                                            "lines": [{"tag": "Confirm", "text": "Gemini surfaces", "confidence_pct": 87}],
-                                        }
-                                    ],
-                                    "line_items": [],
-                                })
-                            }
-                        ]
-                    }
-                }
-            ]
-        }).encode("utf-8")
+    def test_openai_socket_timeout_is_not_retried(self):
+        with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=TimeoutError("timed out")) as urlopen:
+            with mock.patch.object(webapp.time, "sleep") as sleep:
+                with self.assertRaises(webapp.OpenAIAnalysisError) as error:
+                    webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
 
-        with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
-            result = webapp.request_gemini_quote_basis(valid_payload(), "gemini-test-redacted")
-
-        request = urlopen.call_args.args[0]
-        body = json.loads(request.data.decode("utf-8"))
-        parts = body["contents"][0]["parts"]
-        self.assertEqual(request.get_header("X-goog-api-key"), "gemini-test-redacted")
-        self.assertEqual(body["generationConfig"]["responseMimeType"], "application/json")
-        self.assertEqual(parts[1]["inline_data"]["mime_type"], "image/jpeg")
-        self.assertEqual(parts[1]["inline_data"]["data"], "ZmFrZS1pbWFnZQ==")
-        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces")
+        self.assertEqual(urlopen.call_count, 1)
+        sleep.assert_not_called()
+        self.assertIn("network timeout", str(error.exception))
 
     def test_basis_chat_prompt_requires_structured_ai_response(self):
         payload = valid_payload()
@@ -2239,6 +2655,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("whether the selected line is included", prompt)
         self.assertIn("under 70 words", prompt)
         self.assertIn("Preserve selected_basis_quantity and selected_basis_unit unless the operator explicitly asks to change quantity", prompt)
+        self.assertIn("set replacement_line.quantity and replacement_line.unit instead of prefixing the sentence with the quantity", prompt)
         self.assertIn('"selected_basis_quantity_label": "12 sqm"', prompt)
         self.assertIn('"selected_basis_quantity": "12"', prompt)
         self.assertIn('"selected_basis_unit": "sqm"', prompt)
@@ -2360,6 +2777,48 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["unit"], "nos")
         self.assertNotIn("5x", line["text"].lower())
 
+    def test_basis_chat_replacement_moves_prefixed_quantity_into_quantity_field(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Furniture Rental",
+                "lines": [
+                    {
+                        "tag": "Confirm",
+                        "text": "white molded dining chairs",
+                        "quantity": 12,
+                        "unit": "nos",
+                        "confidence_pct": 90,
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "change from 12 to 14 chairs",
+            "field": "furniture-rental",
+            "line_index": 0,
+            "line": "Confirm: white molded dining chairs",
+            "quantity": 12,
+            "unit": "nos",
+            "quantity_label": "12 nos",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "message": "Update chair quantity.",
+                "replacement_line": {
+                    "text": "14 nos. white molded dining chairs",
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["text"], "white molded dining chairs")
+        self.assertEqual(str(line["quantity"]), "14")
+        self.assertEqual(line["unit"], "nos")
+
     def test_basis_chat_edit_request_rejects_plain_answer(self):
         payload = valid_payload()
         payload["quote_basis_sections"] = [
@@ -2387,9 +2846,53 @@ class WebappServerTest(unittest.TestCase):
     def test_basis_chat_requested_keywords_focus_on_replacement_detail(self):
         self.assertEqual(webapp.basis_chat_requested_keywords("change BRASIL to GAY"), ["gay"])
         self.assertEqual(webapp.basis_chat_requested_keywords("change LED spotlight to track light"), ["track", "light"])
+        self.assertEqual(webapp.basis_chat_requested_keywords(">blue, green and yellow\n\nred"), ["red"])
         self.assertEqual(webapp.basis_chat_requested_keywords("7x7"), ["7"])
         self.assertEqual(webapp.basis_chat_requested_keywords("actually 6m x 3m"), ["6m", "3m"])
         self.assertEqual(webapp.basis_chat_required_intent({"basis_chat": {"question": "can this be changed to GAY graphics?", "line": "Custom: BRASIL graphics"}}), "proposal")
+
+    def test_basis_chat_edit_request_allows_arrow_shorthand_replacement(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Floor Design",
+                "lines": [
+                    {
+                        "tag": "Confirm",
+                        "text": "Needle punch carpet in Brazil blue, green and yellow colour zones.",
+                        "confidence": 70,
+                        "quantity": 36,
+                        "unit": "sqm",
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": ">blue, green and yellow\n\nred",
+            "field": "floor-design",
+            "line_index": 0,
+            "line": "Confirm: Needle punch carpet in Brazil blue, green and yellow colour zones.",
+            "quantity": 36,
+            "unit": "sqm",
+            "quantity_label": "36 sqm",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "replacement_line": {
+                    "tag": "Confirm",
+                    "text": "Needle punch carpet in Brazil red colour zones.",
+                    "confidence_pct": 70,
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["text"], "Needle punch carpet in Brazil red colour zones.")
+        self.assertEqual(line["quantity"], "36")
+        self.assertEqual(line["unit"], "sqm")
 
     def test_basis_chat_edit_request_rejects_replacement_missing_requested_phrase(self):
         payload = valid_payload()
@@ -2684,7 +3187,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(sections[-1]["title"], "Graphics")
         self.assertEqual(sections[-1]["lines"][0]["tag"], "Confirm")
 
-    def test_openai_basis_chat_uses_basis_line_model_env(self):
+    def test_openai_basis_chat_answer_uses_answer_model_env(self):
         payload = valid_payload()
         payload["basis_chat"] = {
             "question": "what does this mean?",
@@ -2698,8 +3201,10 @@ class WebappServerTest(unittest.TestCase):
         }).encode("utf-8")
 
         def dotenv(name):
+            if name == webapp.OPENAI_BASIS_ANSWER_MODEL_ENV_NAME:
+                return "gpt-basis-answer-test"
             if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
-                return "gpt-basis-line-test"
+                return "gpt-basis-line-mini-test"
             return ""
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
@@ -2708,7 +3213,7 @@ class WebappServerTest(unittest.TestCase):
 
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
-        self.assertEqual(body["model"], "gpt-basis-line-test")
+        self.assertEqual(body["model"], "gpt-basis-answer-test")
         self.assertEqual(body["max_output_tokens"], 1200)
         self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
 
@@ -2744,7 +3249,9 @@ class WebappServerTest(unittest.TestCase):
             if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
                 return "gpt-draft-mini-test"
             if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
-                return "gpt-basis-line-nano-test"
+                return "gpt-basis-line-mini-test"
+            if name == webapp.OPENAI_BASIS_ANSWER_MODEL_ENV_NAME:
+                return "gpt-basis-answer-nano-test"
             return ""
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
@@ -2756,7 +3263,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["model"], "gpt-draft-mini-test")
         self.assertEqual(result["type"], "proposal")
 
-    def test_openai_line_basis_chat_retries_with_draft_model_after_invalid_nano_output(self):
+    def test_openai_line_basis_chat_retries_with_draft_model_after_invalid_basis_line_output(self):
         payload = valid_payload()
         payload["basis_chat"] = {
             "question": "change 100mm to 150mm",
@@ -2788,7 +3295,9 @@ class WebappServerTest(unittest.TestCase):
             if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
                 return "gpt-draft-mini-test"
             if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
-                return "gpt-basis-line-nano-test"
+                return "gpt-basis-line-mini-test"
+            if name == webapp.OPENAI_BASIS_ANSWER_MODEL_ENV_NAME:
+                return "gpt-basis-answer-nano-test"
             return ""
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
@@ -2797,7 +3306,7 @@ class WebappServerTest(unittest.TestCase):
 
         first_body = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
         second_body = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
-        self.assertEqual(first_body["model"], "gpt-basis-line-nano-test")
+        self.assertEqual(first_body["model"], "gpt-basis-line-mini-test")
         self.assertEqual(second_body["model"], "gpt-draft-mini-test")
         platform_section = next(section for section in result["proposal"]["quote_basis_sections"] if section["id"] == "platform")
         next_line = platform_section["lines"][0]
@@ -2824,7 +3333,9 @@ class WebappServerTest(unittest.TestCase):
             if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
                 return "gpt-draft-mini-test"
             if name == webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME:
-                return "gpt-basis-line-nano-test"
+                return "gpt-basis-line-mini-test"
+            if name == webapp.OPENAI_BASIS_ANSWER_MODEL_ENV_NAME:
+                return "gpt-basis-answer-nano-test"
             return ""
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
@@ -2834,90 +3345,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(urlopen.call_count, 1)
         body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
-        self.assertEqual(body["model"], "gpt-basis-line-nano-test")
+        self.assertEqual(body["model"], "gpt-basis-line-mini-test")
         self.assertIn("HTTP 401", str(context.exception))
-
-    def test_gemini_basis_chat_uses_basis_line_model_env(self):
-        payload = valid_payload()
-        payload["basis_chat"] = {
-            "question": "what does this mean?",
-            "field": "platform",
-            "line_index": 0,
-            "line": "Confirm: 100mm raised platform.",
-        }
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [
-                {"content": {"parts": [{"text": json.dumps({"intent": "answer", "answer": "- **Meaning:** Platform height."})}]}}
-            ]
-        }).encode("utf-8")
-
-        def dotenv(name):
-            if name == webapp.GEMINI_BASIS_LINE_MODEL_ENV_NAME:
-                return "gemini-basis-line-test"
-            return ""
-
-        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
-            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
-                result = webapp.request_gemini_basis_chat(payload, "gemini-test-redacted")
-
-        request = urlopen.call_args.args[0]
-        body = json.loads(request.data.decode("utf-8"))
-        self.assertIn("/gemini-basis-line-test:generateContent", request.full_url)
-        self.assertEqual(body["generationConfig"]["responseMimeType"], "application/json")
-        self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
-
-    def test_gemini_whole_basis_chat_uses_draft_model_env(self):
-        payload = valid_payload()
-        payload["basis_chat"] = {
-            "question": "include all lighting and electrical lines",
-            "scope": "quote",
-            "field": "",
-            "line_index": -1,
-            "line": "",
-        }
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [
-                            {
-                                "text": json.dumps({
-                                    "intent": "proposal",
-                                    "proposal": {
-                                        "quote_basis_sections": [
-                                            {
-                                                "id": "lighting-and-electrical",
-                                                "title": "Lighting and Electrical",
-                                                "lines": [
-                                                    {"tag": "Include", "text": "Standard 13A sockets and LED lighting only."},
-                                                ],
-                                            },
-                                        ],
-                                    },
-                                })
-                            }
-                        ]
-                    }
-                }
-            ]
-        }).encode("utf-8")
-
-        def dotenv(name):
-            if name == webapp.GEMINI_DRAFT_MODEL_ENV_NAME:
-                return "gemini-draft-test"
-            if name == webapp.GEMINI_BASIS_LINE_MODEL_ENV_NAME:
-                return "gemini-basis-line-test"
-            return ""
-
-        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
-            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
-                result = webapp.request_gemini_basis_chat(payload, "gemini-test-redacted")
-
-        request = urlopen.call_args.args[0]
-        self.assertIn("/gemini-draft-test:generateContent", request.full_url)
-        self.assertEqual(result["type"], "proposal")
 
     def test_basis_chat_without_provider_does_not_use_local_fallback(self):
         with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
@@ -2926,119 +3355,18 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIn("AI basis chat is not configured", str(context.exception))
 
-    def test_gemini_request_uses_model_from_env(self):
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [
-                {"content": {"parts": [{"text": json.dumps({"quote_basis": {}, "line_items": []})}]}}
-            ]
-        }).encode("utf-8")
-
-        with mock.patch.object(webapp, "read_dotenv_value", return_value="gemini-custom-model"):
-            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
-                webapp.request_gemini_quote_basis(valid_payload(), "gemini-test-redacted")
-
-        request = urlopen.call_args.args[0]
-        self.assertIn("/gemini-custom-model:generateContent", request.full_url)
-
-    def test_gemini_transient_http_error_is_retried_once(self):
-        http_error = webapp.urllib.error.HTTPError(
-            url=f"{webapp.GEMINI_GENERATE_CONTENT_BASE_URL}/model:generateContent",
-            code=503,
-            msg="Service Unavailable",
-            hdrs={},
-            fp=io.BytesIO(b'{"error":{"message":"backend timeout"}}'),
-        )
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [
-                            {
-                                "text": json.dumps({
-                                    "quote_basis_sections": [
-                                        {
-                                            "id": "surfaces",
-                                            "title": "Surfaces / Structures",
-                                            "lines": [{"tag": "Confirm", "text": "Gemini surfaces after retry", "confidence_pct": 87}],
-                                        }
-                                    ],
-                                    "line_items": [],
-                                })
-                            }
-                        ]
-                    }
-                }
-            ]
-        }).encode("utf-8")
-
-        with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[http_error, response]) as urlopen:
-            with mock.patch.object(webapp.time, "sleep") as sleep:
-                result = webapp.request_gemini_quote_basis(valid_payload(), "gemini-test-redacted")
-
-        self.assertEqual(urlopen.call_count, 2)
-        sleep.assert_called_once()
-        self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: Gemini surfaces after retry")
-
-    def test_gemini_transient_http_error_message_explains_retry(self):
-        http_error = webapp.urllib.error.HTTPError(
-            url=f"{webapp.GEMINI_GENERATE_CONTENT_BASE_URL}/model:generateContent",
-            code=503,
-            msg="Service Unavailable",
-            hdrs={},
-            fp=io.BytesIO(b'{"error":{"message":"backend timeout"}}'),
-        )
-
-        with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=http_error):
-            with mock.patch.object(webapp.time, "sleep"):
-                with self.assertRaises(webapp.OpenAIAnalysisError) as error:
-                    webapp.request_gemini_quote_basis(valid_payload(), "gemini-test-redacted")
-
-        message = str(error.exception)
-        self.assertIn("Gemini fallback failed with HTTP 503", message)
-        self.assertIn("backend timeout", message)
-        self.assertIn("temporary upstream timeout", message)
-
-    def test_gemini_empty_response_gets_provider_specific_error(self):
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [{"content": {"parts": []}}],
-        }).encode("utf-8")
-
-        with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response):
-            with self.assertRaises(webapp.OpenAIAnalysisError) as error:
-                webapp.request_gemini_quote_basis(valid_payload(), "gemini-test-redacted")
-
-        self.assertEqual(str(error.exception), "Gemini fallback did not return analysis text.")
-
-    def test_gemini_invalid_json_gets_provider_specific_error(self):
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "candidates": [{"content": {"parts": [{"text": "not json"}]}}],
-        }).encode("utf-8")
-
-        with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response):
-            with self.assertRaises(webapp.OpenAIAnalysisError) as error:
-                webapp.request_gemini_quote_basis(valid_payload(), "gemini-test-redacted")
-
-        self.assertEqual(str(error.exception), "Gemini fallback returned invalid JSON.")
-
     def test_safe_error_messages_redacts_keys_headers_and_env_assignments(self):
         messages = webapp.safe_error_messages([
             "OPENAI_API_KEY=sk-proj-secret123",
-            "GEMINI_API_KEY=AIzaSecretValue1234567890",
             "Authorization: Bearer sk-test-secret456",
             "plain error",
         ])
 
         joined = "\n".join(messages)
         self.assertIn("OPENAI_API_KEY=sk-...", joined)
-        self.assertIn("GEMINI_API_KEY=AIza...", joined)
         self.assertIn("Authorization: Bearer sk-...", joined)
         self.assertIn("plain error", joined)
         self.assertNotIn("sk-proj-secret123", joined)
-        self.assertNotIn("AIzaSecretValue1234567890", joined)
         self.assertNotIn("sk-test-secret456", joined)
 
     def test_local_runner_csrf_config_uses_env_with_safe_fallbacks(self):
@@ -3057,7 +3385,17 @@ class WebappServerTest(unittest.TestCase):
             self.assertEqual(webapp.configured_csrf_header_name(), webapp.DEFAULT_CSRF_HEADER_NAME)
             self.assertEqual(webapp.configured_csrf_token(), webapp.PROCESS_CSRF_TOKEN)
 
+    def test_start_webapp_writes_server_logs_under_root_logs_folder(self):
+        script = (ROOT / "scripts" / "start-webapp.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('$logRoot = Join-Path $repoRoot "_logs"', script)
+        self.assertIn('$serverLogRoot = Join-Path $logRoot "server"', script)
+        self.assertIn('"webapp-server-$Port.out.log"', script)
+        self.assertIn('"webapp-server-$Port.err.log"', script)
+        self.assertNotIn('Join-Path $repoRoot "webapp-server-$Port.log"', script)
+
     def test_local_logs_only_privacy_safe_error_security_and_abuse_events(self):
+        self.assertEqual(webapp.DEFAULT_LOG_ROOT, ROOT / "_logs" / "app")
         with tempfile.TemporaryDirectory() as tmp:
             logged_routine = webapp.write_local_log(
                 "chat_message",
@@ -3069,7 +3407,7 @@ class WebappServerTest(unittest.TestCase):
                 log_root=Path(tmp),
             )
             self.assertFalse(logged_routine)
-            self.assertEqual(list(Path(tmp).glob("*.jsonl")), [])
+            self.assertEqual(list(Path(tmp).rglob("*.jsonl")), [])
 
             logged_error = webapp.write_local_log(
                 "client_error",
@@ -3082,9 +3420,11 @@ class WebappServerTest(unittest.TestCase):
                 log_root=Path(tmp),
             )
             self.assertTrue(logged_error)
-            log_text = next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8")
+            log_path = next((Path(tmp) / "client").glob("*.jsonl"))
+            log_text = log_path.read_text(encoding="utf-8")
             log_record = json.loads(log_text)
 
+        self.assertEqual(log_path.parent.name, "client")
         self.assertIn("client_error", log_text)
         self.assertIn("sk-...", log_text)
         self.assertIn("[omitted]", log_text)
@@ -3106,8 +3446,10 @@ class WebappServerTest(unittest.TestCase):
                     log_root=Path(tmp),
                 )
             self.assertTrue(logged)
-            log_record = json.loads(next(Path(tmp).glob("*.jsonl")).read_text(encoding="utf-8"))
+            log_path = next((Path(tmp) / "generation").glob("*.jsonl"))
+            log_record = json.loads(log_path.read_text(encoding="utf-8"))
 
+        self.assertEqual(log_path.parent.name, "generation")
         self.assertEqual(log_record["log_context"], "actual")
         self.assertFalse(log_record["is_test"])
         self.assertIn("The generated quote has more line items than the preserved Excel layout can fit", log_record["meaning"])
@@ -3115,7 +3457,6 @@ class WebappServerTest(unittest.TestCase):
     def test_basis_chat_failure_events_are_loggable(self):
         for event in (
             "openai_basis_chat_failed",
-            "gemini_basis_chat_failed",
             "basis_chat_failed",
             "basis_chat_worker_failed",
         ):
@@ -3311,8 +3652,6 @@ class WebappServerTest(unittest.TestCase):
             "stampLabel",
             "konceptDateLabel",
             "dateLabel",
-            "taxLabel",
-            "taxRate",
             "sideWorkspace",
             "sideDrawerTitle",
             "sideDrawerSubtitle",
@@ -3367,12 +3706,19 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('id="sampleDetailsButton" disabled', html)
         self.assertNotIn("sample-start-card", html)
         self.assertIn("renderMatchSummary", js)
-        self.assertIn("QUOTE_PRESETS_STORAGE_KEY", js)
+        self.assertIn("LEGACY_QUOTE_PRESETS_STORAGE_KEY", js)
+        self.assertIn("clearLegacyLocalCompanyPresets", js)
         self.assertIn("loadProfiles", js)
         self.assertIn("/api/profiles", js)
         self.assertIn("function handleProfileSelectionChange", js)
         self.assertIn("clearGeneratedQuoteState();", js)
         self.assertIn("Quote Pricing Reference", html)
+        self.assertIn("Repo catalog", html)
+        self.assertIn('class="pricing-reference-copy"', html)
+        self.assertIn('class="pricing-reference-source-badge">Repo catalog</span>', html)
+        self.assertIn('id="selectedPricingReferenceSummary">Managed in Settings.</p>', html)
+        self.assertIn('? "Managed in Settings."', js)
+        self.assertNotIn("Required before moving to Quote Company. Managed in Settings.", html)
         self.assertNotIn("Quote type", html)
         self.assertNotIn("Quote type changed", js)
         self.assertNotIn('id="imageCount"', html)
@@ -3386,7 +3732,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn(f"Profile/{forbidden_source_term}", js)
         self.assertNotIn(f"{forbidden_source_term} context", html)
         self.assertNotIn(f"({forbidden_source_term})", js)
-        self.assertIn("Presets are stored locally in this browser and can include the uploaded header logo.", html)
+        self.assertIn("Profile template", html)
+        self.assertIn("Database save pending.", html)
+        self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
         self.assertNotIn("preset-skip-note", css)
@@ -3400,15 +3748,17 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("selectedPresetValue: state.selectedPresetValue", js)
         self.assertIn("collectTaxDetails()", js)
         self.assertIn("tax: collectTaxDetails()", js)
-        self.assertIn('id="taxLabel"', html)
-        self.assertIn('id="taxRate"', html)
+        self.assertNotIn("Tax is owned by the selected Pricing Reference", html)
+        self.assertNotIn('id="taxLabel"', html)
+        self.assertNotIn('id="taxRate"', html)
+        self.assertIn("if (elements.taxLabel) elements.taxLabel.value", js)
         self.assertIn('defaultPreset = builtInPresets.find((preset) => preset.id === "default")', js)
         self.assertIn("defaultOption", js)
         self.assertIn('.filter((preset) => preset.id !== "default")', js)
         self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Presets">'))
-        self.assertIn('`<optgroup label="Saved Company Presets">', js)
+        self.assertNotIn("Saved Company Presets", js)
         self.assertNotIn("Profile Pricing References", js)
-        self.assertIn('`<optgroup label="Company Pricing References">', js)
+        self.assertNotIn("Company Pricing References", js)
         self.assertNotIn("Clear Customer", html)
         self.assertNotIn("Reset Quote Company", html)
         self.assertIn("clearCustomerDetails", js)
@@ -3419,6 +3769,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('renderPresetStatus("Quote-company defaults reset to the selected company preset.")', js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
+        self.assertIn('id="deletePresetButton" hidden', html)
+        self.assertIn('class="company-preset-control-group company-preset-save-group" aria-disabled="true"', html)
+        self.assertIn('id="presetNameInput" type="text" placeholder="Database save pending" disabled', html)
+        self.assertIn('id="savePresetButton" disabled', html)
+        self.assertIn(">Save Profile</button>", html)
+        self.assertNotIn('class="company-preset-control-group" hidden', html)
         self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageIntake"'))
         self.assertLess(html.index('id="clearCustomerButton"'), html.index('id="customerDetailsPanel"'))
         self.assertLess(html.index('id="clearQuoteCompanyButton"'), html.index('id="quoteCompanyPanel"'))
@@ -3487,8 +3843,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn(".topbar-action.is-active", css)
         self.assertIn(".panel-clear-button", css)
         self.assertIn(".pricing-reference-panel", css)
+        self.assertIn(".pricing-reference-source-badge", css)
+        self.assertIn(".pricing-reference-heading", css)
         self.assertIn(".pricing-reference-controls", css)
         self.assertIn(".pricing-reference-controls .settings-button-row", css)
+        self.assertIn("align-items: start;", css)
         self.assertIn(".company-preset-panel", css)
         self.assertIn(".company-preset-controls", css)
         self.assertNotIn(".quote-company-toolbar", css)
@@ -3497,7 +3856,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
         self.assertIn("function resetImagesDraft", js)
         self.assertIn("state.images = [];", js)
-        self.assertIn("Save Current", html)
+        self.assertIn('id="savePresetButton"', html)
+        self.assertIn('renderPresetStatus("Database save pending.")', js)
+        self.assertIn(".company-preset-source-badge", css)
+        self.assertIn(".company-preset-save-group", css)
+        self.assertIn(".company-preset-save-group .primary-button:disabled", css)
+        self.assertIn("background: #edf3f8;", css)
         self.assertIn("Download Excel", html)
         self.assertNotIn("Download Quotation", html)
         self.assertNotIn("Use Download Quotation in the Output footer.", js)
@@ -3565,9 +3929,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("/api/session", js)
         self.assertIn("initializeSession", js)
         self.assertIn("state.permissions = { ...state.permissions, ...data.permissions };", js)
-        self.assertIn("canManageSettings", js)
-        self.assertIn("You do not have permission to manage settings.", js)
-        self.assertIn("elements.settingsButton.hidden = !canManage;", js)
+        self.assertIn("canManagePricingReferences", js)
+        self.assertIn("You do not have access to manage pricing references.", js)
+        self.assertIn("elements.settingsButton.hidden = false;", js)
         self.assertIn("overflow-wrap: anywhere", css)
         self.assertIn("AI analysis failed.", html)
         self.assertIn("showAiFailureBanner", js)
@@ -3814,9 +4178,9 @@ function syncRichTextSources() {
 const DEFAULT_PROFILE_ID = "koncept";
 const state = {
   profileId: "koncept",
-  pricingReferenceId: "koncept",
+  pricingReferenceId: "koncept-exhibition-quotation",
   profiles: [{ id: "koncept", label: "Koncept" }],
-  pricingReferences: [{ id: "koncept", label: "Koncept", profile_id: "koncept" }],
+  pricingReferences: [{ id: "koncept-exhibition-quotation", label: "Koncept", profile_id: "koncept" }],
   images: [],
   headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
   isAnalysisRunning: false,
@@ -3995,8 +4359,8 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn("Local server connection failed", js)
-        self.assertIn("Local server returned a non-JSON response", js)
+        self.assertIn("GENERIC_FAILURE_MESSAGE", js)
+        self.assertIn("Contact support if this keeps happening", js)
         self.assertIn("isPageUnloading", js)
         self.assertIn("page_unloading", js)
         self.assertIn("maxFetchFailures = 4", js)
@@ -4004,7 +4368,8 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         self.assertIn("return { ok, data, aborted: true }", js)
         self.assertIn("isInterruptedJobPoll", js)
         self.assertIn("handleInterruptedJobPoll", js)
-        self.assertIn("Refresh this app to resume the active AI analysis job.", js)
+        self.assertNotIn("Local server connection failed", js)
+        self.assertNotIn("Local server returned a non-JSON response", js)
         self.assertIn('window.addEventListener("pagehide", markPageUnloading)', js)
 
     def test_match_summary_counts_only_exact_catalog_matches_as_confident(self):
@@ -4057,15 +4422,12 @@ function extractFunction(name) {
 eval(extractFunction("pricingMatchStatus"));
 eval(extractFunction("pricingStatusLabel"));
 eval(extractFunction("numberOrNull"));
-function cleanCustomerQuoteLineText(value = "") {
-  return String(value || "").trim().replace(/\s+/g, " ");
-}
 function normalizeCategoryTitle(value = "") {
   return String(value || "").trim();
 }
-function normalizeUnit(value = "") {
-  return String(value || "").trim();
-}
+eval(extractFunction("normalizeUnit"));
+eval(extractFunction("cleanCustomerQuoteLineText"));
+eval(extractFunction("pricingReferenceLineText"));
 function outputCellDisplayValue(row, field) {
   if (field === "amount") return row.amount === "" || row.amount === undefined || row.amount === null ? "???" : String(row.amount);
   return String(row[field] || "");
@@ -4073,6 +4435,8 @@ function outputCellDisplayValue(row, field) {
 eval(extractFunction("effectiveOutputUnitPrice"));
 eval(extractFunction("recalculateOutputRow"));
 eval(extractFunction("normalizeOutputRow"));
+eval(extractFunction("unitPriceEditKind"));
+eval(extractFunction("outputRowsValid"));
 eval(extractFunction("outputQuantityPartsFromPricingMatch"));
 eval(extractFunction("outputRowFromPricingMatch"));
 eval(extractFunction("rowNeedsManualInput"));
@@ -4102,18 +4466,46 @@ assert.strictEqual(effectiveOutputUnitPrice({ catalog_unit_price: "10.50", unit_
 assert.strictEqual(pendingStats.needsManualInput, 1);
 assert.strictEqual(pendingStats.totalPending, true);
 assert.strictEqual(formatSubtotalValue(pendingStats), "SGD 378.00 + ???");
+const zeroManualRow = recalculateOutputRow({
+  price_mode: "Priced",
+  description: "Manual zero price",
+  quantity: 2,
+  unit: "nos",
+  unit_price_override: "0",
+  catalog_unit_price: "",
+  pricing_keyword: "",
+});
+assert.strictEqual(zeroManualRow.amount, 0);
+assert.strictEqual(rowNeedsManualInput(zeroManualRow), false);
+assert.deepStrictEqual(outputRowsValid([zeroManualRow]), { valid: true, errors: [] });
 assert.strictEqual(formatSubtotalValue({ total: 6480, totalPending: false }), "SGD 6,480.00");
 const multiwordUnitRow = outputRowFromPricingMatch({
   status: "matched",
   section: "Booth Structure",
-  description: "Partition wall",
+  description: "Customer-friendly partition wall",
+  catalog_description: "m2 raw pricing reference line",
   quantity: "18 m length",
   unit_price: "270.00",
   amount: "4860.00",
 });
+assert.strictEqual(multiwordUnitRow.description, "Customer-friendly partition wall");
+assert.strictEqual(multiwordUnitRow.catalog_description, "sqm raw pricing reference line");
+assert.strictEqual(multiwordUnitRow.pricing_reference_description, "m2 raw pricing reference line");
 assert.strictEqual(multiwordUnitRow.quantity, "18");
 assert.strictEqual(multiwordUnitRow.unit, "m length");
 assert.strictEqual(multiwordUnitRow.amount, 4860);
+const manualDisplayZeroRow = outputRowFromPricingMatch({
+  status: "manual-display",
+  section: "COUNTERS AND CABINETS",
+  description: "Custom curved front display counters",
+  quantity: "2 nos",
+  amount: "0",
+});
+assert.strictEqual(manualDisplayZeroRow.quantity, "2");
+assert.strictEqual(manualDisplayZeroRow.unit, "nos");
+assert.strictEqual(manualDisplayZeroRow.unit_price_override, 0);
+assert.strictEqual(manualDisplayZeroRow.amount, 0);
+assert.strictEqual(rowNeedsManualInput(manualDisplayZeroRow), false);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -4269,6 +4661,7 @@ assert.strictEqual(formatElapsedDuration(3661000), "1:01:01");
             "pricing_reference_id",
             "pricingReferenceSelectValue",
             "pricingReferenceSelectionFromValue",
+            "mergePricingReferences",
             "resolvedProfileIdForPayload",
         ):
             self.assertIn(expected, js)
@@ -4299,7 +4692,14 @@ function extractFunction(name) {
 }
 
 const DEFAULT_PROFILE_ID = "koncept";
-const DEFAULT_PRICING_REFERENCE_ID = "koncept";
+const DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation";
+const rawPricingReferences = [
+    { id: "shared", label: "Shared A", source: "bundled" },
+    { id: "unique", label: "Unique", source: "bundled" },
+    { id: "local-one", label: "Local One", source: "local" },
+    { id: "koncept-exhibition-quotation", label: "Bundled Koncept", source: "bundled" },
+    { id: "koncept-exhibition-quotation", label: "Company Koncept", source: "company" },
+];
 const state = {
   profileId: "other",
   pricingReferenceId: "",
@@ -4309,17 +4709,12 @@ const state = {
     { id: "koncept", label: "Koncept", default_pricing_reference: "shared" },
     { id: "other", label: "Other Profile", default_pricing_reference: "unique" },
   ],
-  pricingReferences: [
-    { id: "shared", label: "Shared A", source: "bundled" },
-    { id: "unique", label: "Unique", source: "bundled" },
-    { id: "local-one", label: "Local One", source: "local" },
-    { id: "koncept", label: "Bundled Koncept", source: "bundled" },
-    { id: "koncept", label: "Company Koncept", source: "company" },
-  ],
+  pricingReferences: [],
 };
 eval([
   "pricingReferenceSelectValue",
   "pricingReferenceSelectionFromValue",
+  "mergePricingReferences",
   "currentPricingReference",
   "currentProfile",
   "defaultPricingReference",
@@ -4327,25 +4722,28 @@ eval([
   "syncSelectedPricingReference",
 ].map(extractFunction).join("\n"));
 
-assert.strictEqual(pricingReferenceSelectValue(state.pricingReferences[2]), "local::local-one");
+state.pricingReferences = mergePricingReferences(rawPricingReferences);
+assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Bundled Koncept"]);
+
+assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[2]), "local::local-one");
 const selection = pricingReferenceSelectionFromValue("local::local-one");
 state.pricingReferenceId = selection.pricingReferenceId;
 state.pricingReferenceSource = selection.source;
 syncSelectedPricingReference();
 assert.strictEqual(state.profileId, "other");
-assert.strictEqual(state.pricingReferenceId, "local-one");
-assert.strictEqual(currentPricingReference().label, "Local One");
+assert.strictEqual(state.pricingReferenceId, "unique");
+assert.strictEqual(currentPricingReference().label, "Unique");
 assert.strictEqual(currentProfile().id, "other");
 assert.strictEqual(resolvedProfileIdForPayload(), "other");
 
-const bundledKoncept = pricingReferenceSelectionFromValue("bundled::koncept");
+const bundledKoncept = pricingReferenceSelectionFromValue("bundled::koncept-exhibition-quotation");
 state.pricingReferenceId = bundledKoncept.pricingReferenceId;
 state.pricingReferenceSource = bundledKoncept.source;
 assert.strictEqual(currentPricingReference().label, "Bundled Koncept");
-const companyKoncept = pricingReferenceSelectionFromValue("company::koncept");
+const companyKoncept = pricingReferenceSelectionFromValue("company::koncept-exhibition-quotation");
 state.pricingReferenceId = companyKoncept.pricingReferenceId;
 state.pricingReferenceSource = companyKoncept.source;
-assert.strictEqual(currentPricingReference().label, "Company Koncept");
+assert.strictEqual(currentPricingReference(), null);
 
 state.profileId = "koncept";
 state.pricingReferenceId = "";
@@ -4572,6 +4970,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "line_index",
             "Tell me what to change. I will draft the full replacement sentence for approval before applying it.",
             "basisLinePillLabel",
+            "basisLineAcceptsAsAiProposal",
             "basisConfidenceLabel",
             "Confirm",
             "AI Proposal",
@@ -4617,6 +5016,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             "break-inside: avoid",
             ".basis-line-icon::before",
             ".basis-line-custom-priced",
+            ".basis-line-ai-confirm",
             ".basis-line-include .basis-line-text",
             ".basis-line-include .basis-confidence-pill",
             ".basis-line-include .basis-quantity-pill",
@@ -4664,6 +5064,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-chat-selected-tag {\n  width: var(--basis-status-pill-width);",
             ".basis-chat-selected-line .basis-confidence-pill {\n  width: var(--basis-confidence-pill-width);",
             ".basis-chat-selected-line .basis-chat-selected-quantity {\n  width: var(--basis-quantity-pill-width);",
+            ".basis-chat-selected-line-confirm .basis-confidence-pill,\n.basis-chat-selected-line-confirm .basis-chat-selected-quantity {\n  background: #fff3e0;\n  color: #b45309;\n}",
             ".basis-chat-typing-dots",
             ".basis-chat-message table",
             ".basis-chat-message ul",
@@ -4678,6 +5079,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
 
         self.assertIn("line_index: state.basisChat.lineIndex", js)
         self.assertIn("line: state.basisChat.line", js)
+        self.assertIn("basis-chat-selected-line-${tag.toLowerCase()}", js)
         self.assertIn("elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage", js)
         self.assertNotIn("Rows marked Confirm need a decision", js)
         self.assertNotIn("setBasisReviewStatus", js)
@@ -4726,6 +5128,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("basis-quantity-pill", js)
         self.assertIn("flex: 0 0 var(--basis-legend-pill-width);", css)
         self.assertIn(".basis-line-custom-confirm .basis-line-text {\n  color: #16405d;\n  font-weight: 500;\n}", css)
+        self.assertIn(".basis-line-ai-confirm .basis-line-pill,\n.basis-line-ai-confirm .basis-confidence-pill,\n.basis-line-ai-confirm .basis-quantity-pill {\n  background: #e7f7fb;\n  color: #0f5f83;\n}", css)
         self.assertIn(".basis-line-include .basis-quantity-pill {\n  background: #dcf5e8;\n  color: #0d6944;\n}", css)
         self.assertIn(".basis-line-confirm .basis-quantity-pill {\n  background: #fff3e0;\n  color: #b45309;\n}", css)
         self.assertIn(".basis-line-custom .basis-quantity-pill {\n  background: #e9f0ff;\n  color: #1d4f91;\n}", css)
@@ -4794,8 +5197,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn('value="manual"', html)
         self.assertIn('value="category_name" selected', html)
         self.assertIn("source_basis_line_id", js)
-        self.assertIn('source: pricingReference.source === "company" ? "company" : pricingReference.source === "local" ? "local" : "bundled"', js)
-        self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
+        self.assertIn('source: "bundled"', js)
+        self.assertNotIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
         generate_body = js.split("async function handleGenerate()", 1)[1].split("async function resumeSavedJob", 1)[0]
@@ -4808,11 +5211,26 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn('id="newPricingReferenceButton"', customer_panel)
         self.assertNotIn('id="deletePricingReferenceButton"', customer_panel)
         self.assertIn("Settings", html)
-        self.assertIn("settingsModal", html)
-        self.assertIn("settingsNewPricingReferenceButton", html)
+        self.assertNotIn("settingsModal", html)
+        self.assertNotIn("settingsNewPricingReferenceButton", html)
+        self.assertNotIn("Permissions / Role info", html)
+        self.assertIn("pricingReferenceNoAccess", html)
+        self.assertIn("pricingReferenceEditorBody", html)
+        self.assertIn("openSettingsModal", js)
+        save_reference_body = js.split("async function savePricingReferenceFromModal", 1)[1].split("async function deleteRepoPricingReference", 1)[0]
+        self.assertIn("const previousPricingReferenceId = state.pricingReferenceId;", save_reference_body)
+        self.assertIn("const previousPricingReferenceSource = state.pricingReferenceSource;", save_reference_body)
+        self.assertIn("state.pricingReferenceId = previousPricingReferenceId;", save_reference_body)
+        self.assertIn("state.pricingReferenceSource = previousPricingReferenceSource;", save_reference_body)
+        self.assertNotIn("clearGeneratedQuoteState();", save_reference_body)
         self.assertIn("pricingReferenceTaxLabel", html)
         self.assertIn("pricingReferenceTaxRate", html)
-        self.assertIn("data-settings-delete-pricing-reference", js)
+        self.assertIn("pricingReferenceDeleteSection", html)
+        self.assertIn("deletePricingReferenceSelect", html)
+        self.assertIn("Delete Reference", html)
+        self.assertIn("deleteRepoPricingReference", js)
+        self.assertIn("protectedPricingReferenceReason", js)
+        self.assertNotIn("data-settings-delete-pricing-reference", js)
         self.assertIn('accept=".xlsx,.csv,.md"', html)
         self.assertNotIn('accept=".xlsx,.csv,.json"', html)
         self.assertIn('const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";', js)
@@ -4824,12 +5242,74 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("downloadPricingReferenceTemplate", js)
         self.assertIn("Pricing catalog upload", html)
         self.assertIn("Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.", html)
-        self.assertIn("Template is optional for clean manual entry.", html)
-        self.assertIn("pricing-reference-preview-table", js)
+        self.assertNotIn("Optional starter file for clean manual entry.", html)
+        pricing_reference_modal = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
+        self.assertLess(pricing_reference_modal.index("Existing repo references"), pricing_reference_modal.index("Pricing catalog upload"))
+        self.assertLess(pricing_reference_modal.index("Pricing catalog upload"), pricing_reference_modal.index("Pricing reference name"))
+        self.assertLess(pricing_reference_modal.index("Pricing reference name"), pricing_reference_modal.index("Tax label"))
+        self.assertLess(pricing_reference_modal.index("Tax rate (%)"), pricing_reference_modal.index("Download Template"))
+        self.assertIn("pricing-reference-upload-field", pricing_reference_modal)
+        self.assertIn("pricing-reference-upload-field pricing-reference-delete-section", pricing_reference_modal)
+        self.assertIn("pricing-reference-field-title", pricing_reference_modal)
+        self.assertIn("pricing-reference-template-footer", pricing_reference_modal)
+        self.assertNotIn("pricing-reference-footer-note", pricing_reference_modal)
+        self.assertIn(".pricing-reference-modal-panel .modal-form", css)
+        self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: min(760px, calc(100dvh - 48px));", css)
+        self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: min(760px, calc(100dvh - 48px));\n  max-height: calc(100dvh - 48px);\n  background: #ffffff;", css)
+        self.assertIn("grid-template-rows: minmax(0, 1fr) auto;", css)
+        self.assertIn(".pricing-reference-editor-body {\n  display: grid;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px 28px;\n  overflow: auto;\n  scroll-padding-bottom: 28px;\n  background: #ffffff;", css)
+        self.assertIn("scroll-padding-bottom: 28px;", css)
+        self.assertIn(".pricing-reference-upload-field {\n  display: grid;", css)
+        self.assertIn(".pricing-reference-field-title {\n  color: #2d3b4f;", css)
+        self.assertIn(".pricing-reference-upload-field .settings-note {\n  max-width: 62ch;\n  color: #52677e;\n  font-weight: 500;", css)
+        self.assertIn("box-shadow: 0 8px 20px rgba(15, 35, 58, 0.08);", css)
+        self.assertIn(".pricing-reference-editor-body > .tax-settings-grid {\n  margin-top: 4px;", css)
+        self.assertIn(".pricing-reference-delete-section", css)
+        self.assertIn("border-color: #f7d7d4;", css)
+        self.assertIn("background: #fffdfd;", css)
+        self.assertIn(".pricing-reference-delete-section .pricing-reference-field-title {\n  color: #8f2b2b;", css)
+        self.assertIn("grid-template-columns: minmax(320px, 1fr) auto;", css)
+        self.assertIn(".pricing-reference-delete-controls .compact-control {\n  margin: 0;\n  width: 100%;", css)
+        self.assertIn(".pricing-reference-delete-button {\n  min-width: 138px;\n  min-height: 40px;", css)
+        self.assertIn(".secondary-button.danger-button", css)
+        self.assertIn(".modal-actions.pricing-reference-modal-actions {\n  display: grid;", css)
+        self.assertIn("border-top: 1px solid var(--line-subtle);", css)
+        self.assertIn(".pricing-template-download {\n  min-width: 172px;\n  min-height: 48px;", css)
+        self.assertIn("border-color: #7aa9e6;", css)
+        self.assertIn("background: linear-gradient(180deg, #f7fbff, #e4f0ff);", css)
+        self.assertIn("color: #0b3b76;", css)
+        self.assertIn(".pricing-template-download:hover:not(:disabled):not([aria-disabled=\"true\"])", css)
+        self.assertIn("background: #dbeafe;", css)
+        self.assertIn(".pricing-reference-template-footer .pricing-template-download,\n.pricing-reference-action-buttons .secondary-button,\n.pricing-reference-action-buttons .primary-button {\n  min-height: 48px;", css)
+        self.assertIn(".modal-actions.pricing-reference-modal-actions {\n    grid-template-columns: 1fr;", css)
+        self.assertIn(".pricing-reference-action-buttons .primary-button", css)
+        self.assertIn("pricing-reference-preview-table", html)
+        self.assertIn("pricingReferenceTableOverlay", html)
+        self.assertIn("pricingReferenceTableBody", html)
+        self.assertIn("Review Imported Rows", html)
+        self.assertIn("openPricingReferenceTableOverlay", js)
+        self.assertIn("pricing-reference-table-open", js)
+        self.assertIn(".pricing-reference-table-panel", css)
+        self.assertIn(".pricing-reference-table-wrap", css)
+        self.assertIn("pricingReferenceStatusClass", js)
+        self.assertIn("updatePricingReferenceGuidanceDisplays", js)
+        self.assertIn("pricing-reference-preview-metrics", js)
+        self.assertIn(".pricing-reference-preview-status-badge", css)
+        self.assertIn("Fix all flagged problems before saving this reference.", js)
+        self.assertIn("openPricingReferenceTableOverlay();", js)
+        self.assertIn("pricing-reference-col-description", html)
+        self.assertIn("pricing-reference-col-remarks", html)
+        self.assertIn(".pricing-preview-status.is-ok", css)
+        self.assertIn(".pricing-preview-status.is-warn", css)
+        self.assertIn(".pricing-preview-status.is-error", css)
+        self.assertIn(".pricing-reference-col-description", css)
+        self.assertIn(".pricing-reference-col-remarks", css)
         self.assertIn('String(result.layout || "") === "importing"', js)
         self.assertIn("Preparing import preview", js)
         self.assertIn("Please wait", js)
         self.assertIn("pricing-reference-import-overlay", js)
+        self.assertNotIn("Example rows ignored", js)
+        self.assertNotIn("exampleRows", js)
         self.assertIn("visual_references: Array.isArray(item.visual_references)", js)
         self.assertIn(".pricing-reference-preview.importing", css)
         self.assertIn(".pricing-reference-import-overlay", css)
@@ -4838,9 +5318,14 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".output-unit-price-editor", css)
         self.assertIn(".output-unit-price-cell", css)
         self.assertIn(".output-unit-price-content", css)
-        self.assertIn(".output-col-description { width: 37%; }", css)
+        self.assertIn(".output-col-description { width: 32%; }", css)
         self.assertIn(".output-col-unit-price { width: 13%; }", css)
-        self.assertIn(".output-col-actions { width: 9%; }", css)
+        self.assertIn(".output-col-actions { width: 13%; }", css)
+        self.assertIn(".output-match-table th:nth-child(3),", css)
+        self.assertIn(".output-match-table th:nth-child(6),", css)
+        self.assertIn(".output-match-table td:nth-child(6) .output-cell-input,", css)
+        self.assertIn(".output-match-table .output-unit-price-editor {\n  text-align: center;\n  justify-content: center;", css)
+        self.assertNotIn(".output-match-table th:nth-child(n+3),", css)
 
     def test_static_confirm_basis_rebuilds_output_from_current_basis_decisions(self):
         static_dir = ROOT / "webapp" / "static"
@@ -4873,10 +5358,10 @@ function extractFunction(name) {
 }
 
 const state = {
-  pricingReferenceId: "koncept",
+  pricingReferenceId: "koncept-exhibition-quotation",
   pricingReferenceSource: "",
   pricingReferences: [
-    { id: "koncept", items: [{ section: "Graphics" }] },
+    { id: "koncept-exhibition-quotation", items: [{ section: "Graphics" }] },
   ],
   quoteBasisSections: [{
     id: "graphics",
@@ -4932,6 +5417,15 @@ eval([
   "exactPricingReferenceSectionTitle",
   "normalizeQuoteBasisTitle",
   "cleanCustomerQuoteLineText",
+  "pricingReferenceLineText",
+  "leadingNumber",
+  "formatQuantityNumber",
+  "normalizeQuantityPrefixUnit",
+  "leadingQuantityPrefix",
+  "quantityUnitAliases",
+  "startsWithQuantityUnit",
+  "stripLeadingQuantityCountFromLineText",
+  "normalizedLineTextQuantityParts",
   "normalizeBasisTag",
   "isCustomPricingBasisLine",
   "isPendingAiProposalLine",
@@ -4952,6 +5446,10 @@ eval([
   "outputRowCoversBasisEntry",
   "basisLineAllowsOutput",
   "outputRowAllowedByBasis",
+  "matchingAllowedBasisLineForOutputRow",
+  "inheritBasisOutputFields",
+  "outputRowDedupeKey",
+  "dedupeOutputRows",
   "includedBasisOutputRows",
   "outputRowFromLineItem",
   "sortOutputRows",
@@ -4986,6 +5484,94 @@ assert.deepStrictEqual(duplicateBoomRows.map((row) => row.source_basis_line_id),
 assert.strictEqual(includedBasisOutputRows([duplicateBoomRows[0]]).length, 1);
 state.quoteBasisSections = originalBasisSections;
 
+state.quoteBasisSections = [{
+  id: "floor-design",
+  title: "Floor Design",
+  lines: [{
+    id: "raised-platform",
+    tag: "Include",
+    text: "100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+    quantity: 36,
+    unit: "sqm",
+    pricing_keyword: "floor-design.100mm-raised-platform-with-aluminum-edging",
+    catalog_unit_price: 60,
+    catalog_description: "sqm 100mm raised platform with aluminum edging",
+    pricing_reference_description: "m2 100mm raised platform with aluminum edging",
+  }],
+}];
+state.lineItems = [];
+state.outputRows = [];
+refreshOutputRowsFromLineItems();
+assert.strictEqual(state.outputRows.length, 1);
+assert.strictEqual(state.outputRows[0].catalog_unit_price, 60);
+assert.strictEqual(state.outputRows[0].amount, 2160);
+state.quoteBasisSections = originalBasisSections;
+
+state.quoteBasisSections = [{
+  id: "booth-structure",
+  title: "Booth Structure",
+  lines: [{
+    id: "custom-arch",
+    tag: "Custom",
+    text: "custom decorative arch portals and curved trim detailing in branded blue, green, and yellow finish",
+    quantity: 1,
+    unit: "lot",
+    custom_pricing: true,
+    custom_confirmed: true,
+  }],
+}];
+state.lineItems = [{
+  section: "Booth Structure",
+  description: "custom decorative arch portals and curved trim detailing in branded blue, green, and yellow finish",
+  quantity: "",
+  unit: "",
+  pricing_keyword: "",
+  catalog_unit_price: "",
+}];
+state.outputRows = [];
+refreshOutputRowsFromLineItems();
+assert.strictEqual(state.outputRows.length, 1);
+assert.strictEqual(String(state.outputRows[0].quantity), "1");
+assert.strictEqual(state.outputRows[0].unit, "lot");
+assert.strictEqual(state.outputRows[0].amount, "");
+state.quoteBasisSections = originalBasisSections;
+
+state.quoteBasisSections = [{
+  id: "graphics",
+  title: "Graphics",
+  lines: [{
+    id: "brasil-header-graphics",
+    tag: "Include",
+    text: "Large branded header graphics with BRASIL lettering on the pavilion fascia",
+    quantity: 2,
+    unit: "sqm",
+    pricing_keyword: "graphics.vinyl-printed-graphics",
+    catalog_unit_price: 60,
+  }],
+}];
+state.lineItems = [{
+  section: "Graphics",
+  description: "Large branded header graphics with BRASIL lettering on the pavilion fascia",
+  quantity: 1,
+  unit: "sqm",
+  pricing_keyword: "graphics.vinyl-printed-graphics",
+  catalog_unit_price: 60,
+}, {
+  section: "Graphics",
+  description: "Large branded header graphics with BRASIL lettering on the pavilion fascia",
+  quantity: 1,
+  unit: "sqm",
+  pricing_keyword: "graphics.vinyl-printed-graphics",
+  catalog_unit_price: 60,
+}];
+state.outputRows = [];
+refreshOutputRowsFromLineItems();
+assert.strictEqual(state.outputRows.length, 1);
+assert.strictEqual(String(state.outputRows[0].quantity), "2");
+assert.strictEqual(state.outputRows[0].unit, "sqm");
+assert.strictEqual(state.outputRows[0].amount, 120);
+state.quoteBasisSections = originalBasisSections;
+
 refreshOutputRowsFromLineItems();
 assert.deepStrictEqual(
   state.outputRows.map((row) => row.description),
@@ -5011,17 +5597,31 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".output-edit-cell:hover", css)
         self.assertIn(".company-preset-panel .settings-note", css)
         self.assertIn(".pricing-reference-control-group", css)
-        self.assertIn("grid-template-columns: minmax(220px, 320px) minmax(260px, 1fr);", css)
+        self.assertIn("grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 320px) minmax(220px, 320px);", css)
+        self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
+        self.assertIn(".pricing-reference-control-group,\n.company-preset-control-group {\n  grid-column: 2;", css)
+        self.assertIn(".company-preset-save-group {\n  grid-column: 3;", css)
+        self.assertIn(".pricing-reference-panel .settings-note {\n  align-self: start;\n  padding-top: 0;", css)
         self.assertIn("padding: 12px 28px 28px;", css)
         self.assertIn('/api/settings/pricing-references/import-preview', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)
         self.assertIn("analysisConfirmModal", html)
+        self.assertNotIn("analysisConfirmHighAccuracyButton", html)
+        self.assertNotIn("Run High Accuracy", html)
+        self.assertIn("Run Analysis", html)
+        self.assertIn("analysis_mode: normalizeAnalysisMode", js)
+        self.assertIn("analyseAgainButton", html)
+        self.assertIn("Analyse Again", html)
+        self.assertIn("lastAnalysisMode", js)
+        self.assertNotIn("analysis-mode-badge", css)
+        self.assertIn('requestStartAnalysis("standard")', js)
+        self.assertNotIn("data-analysis-rerun", js)
         self.assertIn("AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?", html)
         self.assertIn(".modal-panel > .modal-actions", css)
         self.assertIn(".analysis-confirm-panel > .modal-actions", css)
-        self.assertIn("flex-wrap: wrap;", css)
-        self.assertIn("min-width: 156px;", css)
+        self.assertNotIn(".secondary-button.ai-mode-button", css)
+        self.assertIn(".secondary-button.panel-analyse-button", css)
         self.assertIn("max-height: min(88dvh, 720px);", css)
         self.assertIn("z-index: 100;", css)
 
@@ -5172,27 +5772,42 @@ const saveButton = {
   removeAttribute(name) { delete this.attributes[name]; },
 };
 const closeButton = { disabled: false, title: "", attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
-const cancelButton = { disabled: false, title: "", attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
+const cancelButton = { disabled: false, textContent: "", title: "", attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
 const fileInput = { disabled: false };
 const templateButton = { title: "", attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this.attributes[name]; } };
+const noAccessPanel = { hidden: true };
+const editorBody = { hidden: false };
 const modalClassList = {
   values: new Set(),
   toggle(name, enabled) { if (enabled) this.values.add(name); else this.values.delete(name); },
   contains(name) { return this.values.has(name); },
 };
-const state = { pricingReferenceImportBusy: false };
+const state = {
+  pricingReferenceImportBusy: false,
+  pricingReferenceImportToken: "",
+  pendingPricingReference: null,
+  permissions: { canManagePricingReferences: true },
+};
 const elements = {
   pricingReferenceSaveButton: saveButton,
   pricingReferenceCloseButton: closeButton,
   pricingReferenceCancelButton: cancelButton,
   pricingReferenceTemplateButton: templateButton,
   pricingReferenceFile: fileInput,
+  pricingReferenceNoAccess: noAccessPanel,
+  pricingReferenceEditorBody: editorBody,
   pricingReferenceModal: { classList: modalClassList },
 };
+function pricingReferenceSaveBlockReason() {
+  return "Upload a pricing catalog file before saving.";
+}
 
 eval([
+  "canManagePricingReferences",
+  "pricingReferenceNoAccessReason",
   "setPricingReferenceModalBusyState",
   "setPricingReferenceSaveButtonState",
+  "setPricingReferenceModalAccessState",
   "blockPricingReferenceBusyInteraction",
 ].map(extractFunction).join("\n"));
 
@@ -5224,6 +5839,25 @@ assert.strictEqual(fileInput.disabled, false);
 assert.strictEqual(templateButton.attributes["aria-disabled"], "false");
 assert.strictEqual(templateButton.attributes.tabindex, "0");
 assert.strictEqual(modalClassList.contains("is-busy"), false);
+assert.strictEqual(modalClassList.contains("is-denied"), false);
+
+state.permissions.canManagePricingReferences = false;
+setPricingReferenceModalAccessState();
+assert.strictEqual(noAccessPanel.hidden, false);
+assert.strictEqual(editorBody.hidden, true);
+assert.strictEqual(cancelButton.textContent, "Back");
+assert.strictEqual(saveButton.disabled, true);
+assert.strictEqual(saveButton.title, "You do not have access to manage pricing references.");
+assert.strictEqual(fileInput.disabled, true);
+assert.strictEqual(templateButton.attributes["aria-disabled"], "true");
+assert.strictEqual(modalClassList.contains("is-denied"), true);
+
+state.permissions.canManagePricingReferences = true;
+setPricingReferenceModalAccessState();
+assert.strictEqual(noAccessPanel.hidden, true);
+assert.strictEqual(editorBody.hidden, false);
+assert.strictEqual(cancelButton.textContent, "Cancel");
+assert.strictEqual(modalClassList.contains("is-denied"), false);
 
 let prevented = false;
 let stopped = false;
@@ -5243,6 +5877,102 @@ assert.strictEqual(stopped, true);
 
 assert.ok(normalizedSource.includes('elements.pricingReferenceModal.addEventListener("click", blockPricingReferenceBusyInteraction, true);'));
 assert.ok(normalizedSource.includes("setPricingReferenceSaveButtonState({\n      busy: true,\n      reason: \"Import preview is still being prepared.\",\n    });"));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_row_status_clears_after_edit(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const saveButton = {
+  disabled: false,
+  textContent: "",
+  title: "",
+  attributes: {},
+  setAttribute(name, value) { this.attributes[name] = value; },
+};
+const state = {
+  pricingReferenceImportBusy: false,
+  permissions: { canManagePricingReferences: true },
+  pendingPricingReference: {
+    items: [{
+      section: "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+      description: "Coffee/ Tea and supplies for 100 people per day",
+      unit_hint: "",
+      internal_cost: "150",
+      markup_multiplier: "1.5",
+      remarks: "COFFEE PER DAY",
+      warning: "unit_hint required",
+    }],
+    errors: [],
+  },
+};
+const classList = { toggle() {} };
+const elements = {
+  pricingReferenceSaveButton: saveButton,
+  pricingReferenceModal: { classList },
+  pricingReferenceCloseButton: { setAttribute() {} },
+  pricingReferenceCancelButton: { setAttribute() {} },
+  pricingReferenceFile: {},
+  pricingReferenceTemplateButton: { setAttribute() {} },
+};
+
+eval([
+  "safeId",
+  "basisDisplayTitle",
+  "normalizeUnit",
+  "normalizeCategoryTitle",
+  "cleanCustomerQuoteLineText",
+  "neutralizeFormulaText",
+  "numberOrNull",
+  "canManagePricingReferences",
+  "pricingReferenceNoAccessReason",
+  "pricingReferenceRowStatus",
+  "pricingReferenceSaveBlockReason",
+  "sortPricingReferencePreviewItems",
+  "normalizePricingReferencePreviewItem",
+  "setPricingReferenceModalBusyState",
+  "setPricingReferenceSaveButtonState",
+  "refreshPricingReferencePreviewValidity",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(state.pendingPricingReference.items[0].warning, "unit_hint required");
+state.pendingPricingReference.items[0].unit_hint = "nos";
+assert.strictEqual(refreshPricingReferencePreviewValidity(state.pendingPricingReference), true);
+assert.strictEqual(state.pendingPricingReference.items[0].warning, "OK");
+assert.strictEqual(state.pendingPricingReference.canSave, true);
+assert.strictEqual(saveButton.disabled, false);
+assert.strictEqual(saveButton.title, "");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -5290,10 +6020,10 @@ function extractFunction(name) {
 }
 
 const state = {
-  pricingReferenceId: "koncept",
+  pricingReferenceId: "koncept-exhibition-quotation",
   pricingReferenceSource: "",
   pricingReferences: [
-    { id: "koncept", items: [{ section: "Floor Design" }] },
+    { id: "koncept-exhibition-quotation", items: [{ section: "Floor Design" }] },
   ],
   quoteBasisSections: [
     {
@@ -5332,6 +6062,15 @@ eval([
   "exactPricingReferenceSectionTitle",
   "normalizeQuoteBasisTitle",
   "cleanCustomerQuoteLineText",
+  "pricingReferenceLineText",
+  "leadingNumber",
+  "formatQuantityNumber",
+  "normalizeQuantityPrefixUnit",
+  "leadingQuantityPrefix",
+  "quantityUnitAliases",
+  "startsWithQuantityUnit",
+  "stripLeadingQuantityCountFromLineText",
+  "normalizedLineTextQuantityParts",
   "normalizeBasisTag",
   "isCustomPricingBasisLine",
   "isPendingAiProposalLine",
@@ -5343,7 +6082,10 @@ eval([
   "basisSections",
   "unresolvedConfirmLines",
   "basisConfirmBlockReason",
+  "outputComparableText",
   "basisTagLabel",
+  "hasPricingReferenceDescription",
+  "basisLineAcceptsAsAiProposal",
             "basisLinePillLabel",
             "basisQuantityText",
             "basisQuantityDisplayLabel",
@@ -5371,19 +6113,53 @@ assert.strictEqual(exactReferenceSections[0].title, "Floor Design");
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
 const customLine = normalizeBasisLines({ tag: "Custom", text: "Manual graphics." })[0];
 assert.strictEqual(customLine.custom_pricing, true);
+assert.strictEqual(stripLeadingQuantityCountFromLineText("36 sqm 100mm raised platform with aluminum edging", 36, "sqm"), "100mm raised platform with aluminum edging");
+assert.strictEqual(stripLeadingQuantityCountFromLineText("100mm raised platform with aluminum edging", 100, "sqm"), "100mm raised platform with aluminum edging");
+const quantityPrefixedLine = normalizeBasisLines({
+  tag: "Confirm",
+  text: "36 sqm 100mm raised platform with aluminum edging",
+  quantity: 36,
+  unit: "sqm",
+})[0];
+assert.strictEqual(quantityPrefixedLine.text, "100mm raised platform with aluminum edging");
 const catalogBackedLine = normalizeBasisLines({
   tag: "Confirm",
   text: "Custom printed graphic panels for front and side feature walls",
   pricing_keyword: "graphics.vinyl-printed-graphics",
   catalog_description: "sqm of vinyl printed graphics",
+  pricing_reference_description: "m2 of vinyl printed graphics",
 })[0];
 assert.strictEqual(catalogBackedLine.pricing_keyword, "graphics.vinyl-printed-graphics");
 assert.strictEqual(catalogBackedLine.catalog_description, "sqm of vinyl printed graphics");
-assert.strictEqual(basisCatalogReferenceTitle(catalogBackedLine), "Pricing reference: sqm of vinyl printed graphics");
-assert.ok(basisLineTitle(catalogBackedLine).includes("Pricing reference: sqm of vinyl printed graphics"));
+assert.strictEqual(catalogBackedLine.pricing_reference_description, "m2 of vinyl printed graphics");
+assert.strictEqual(basisCatalogReferenceTitle(catalogBackedLine), "Pricing reference: m2 of vinyl printed graphics");
+assert.strictEqual(basisLineTitle(catalogBackedLine), "Pricing reference: m2 of vinyl printed graphics");
+assert.strictEqual(basisPillTitle(catalogBackedLine, "Confirm"), "Pricing reference: m2 of vinyl printed graphics");
+const inventedKeywordLine = normalizeBasisLines({
+  tag: "Confirm",
+  text: "printed brand fascia graphics with BRASIL artwork",
+  pricing_keyword: "printed brand fascia graphics with BRASIL artwork",
+  catalog_description: "printed brand fascia graphics with BRASIL artwork",
+})[0];
+assert.strictEqual(basisCatalogReferenceTitle(inventedKeywordLine), "");
+assert.strictEqual(basisLineTitle(inventedKeywordLine), "");
+assert.strictEqual(basisPillTitle(inventedKeywordLine, "Confirm"), "");
+const inventedKeywordLineHtml = renderBasisLine(
+  { id: "graphics", title: "Graphics" },
+  inventedKeywordLine,
+  0
+);
+assert.ok(!inventedKeywordLineHtml.includes("Pricing reference: printed brand fascia graphics with BRASIL artwork"));
+assert.ok(inventedKeywordLineHtml.includes('<span class="basis-line-pill">Confirm</span>'));
+assert.ok(!inventedKeywordLineHtml.includes("basis-line-ai-confirm"));
+assert.ok(inventedKeywordLineHtml.includes('data-basis-tag="Include"'));
+assert.ok(inventedKeywordLineHtml.includes('<span class="basis-line-text">printed brand fascia graphics with BRASIL artwork</span>'));
 assert.strictEqual(isCustomPricingBasisLine({ tag: "Exclude", custom_pricing: true }), true);
+assert.strictEqual(basisLineAcceptsAsAiProposal({ tag: "Confirm", text: "invented graphic panel" }), false);
+assert.strictEqual(basisLineAcceptsAsAiProposal({ tag: "Confirm", text: "catalog-backed", pricing_reference_description: "sqm vinyl graphics" }), false);
 assert.strictEqual(basisLinePillLabel({ tag: "Confirm" }), "Confirm");
 assert.strictEqual(basisLinePillLabel({ tag: "Confirm", confidence: 92 }), "Confirm");
+assert.strictEqual(basisLinePillLabel({ tag: "Confirm", confidence: 92, pricing_reference_description: "sqm 100mm raised platform" }), "Confirm");
 assert.strictEqual(basisLinePillLabel({ tag: "Custom", confidence: 88 }), "AI Confirm");
 assert.strictEqual(basisLinePillLabel({ tag: "Custom", confidence: 88, custom_confirmed: true }), "AI Proposal");
 assert.strictEqual(basisConfidenceLabel({ tag: "Confirm", confidence: 92 }), "92%");
@@ -5397,7 +6173,7 @@ const summaryHtml = renderBasisConfirmSummary(state.quoteBasisSections);
 assert.strictEqual(summaryHtml, "");
 const lineHtml = renderBasisLine(
   { id: "platform", title: "Flooring / Platform" },
-  { tag: "Confirm", text: "sqm 100mm raised platform with aluminum edging", confidence: 92, quantity: 36, unit: "sqm" },
+  { tag: "Confirm", text: "sqm 100mm raised platform with aluminum edging", confidence: 92, quantity: 36, unit: "sqm", pricing_reference_description: "sqm 100mm raised platform with aluminum edging" },
   0
 );
 assert.ok(lineHtml.includes(">Confirm</span>"));
@@ -5411,7 +6187,7 @@ const catalogLineHtml = renderBasisLine(
   catalogBackedLine,
   0
 );
-assert.ok(catalogLineHtml.includes("Pricing reference: sqm of vinyl printed graphics"));
+assert.ok(catalogLineHtml.includes("Pricing reference: m2 of vinyl printed graphics"));
 state.quoteBasisSections[0].lines[1].tag = "Include";
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), []);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
@@ -5450,9 +6226,22 @@ assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
 state.quoteBasisSections = [{
   id: "graphics",
   title: "Graphics / Signage",
+  lines: [{ tag: "Confirm", text: "decorative graphic panels with Brasil-themed artwork", quantity: 2, unit: "nos" }],
+}];
+retagBasisLine("graphics", 0, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, false);
+assert.strictEqual(state.quoteBasis.graphics, "Include: decorative graphic panels with Brasil-themed artwork");
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
+
+state.quoteBasisSections = [{
+  id: "graphics",
+  title: "Graphics / Signage",
   lines: [
     { tag: "Exclude", text: "manual graphic panel", custom_pricing: true },
-    { tag: "Confirm", text: "standard graphic panel" },
+    { tag: "Confirm", text: "standard graphic panel", pricing_reference_description: "sqm standard graphic panel" },
+    { tag: "Confirm", text: "invented graphic panel" },
   ],
 }];
 retagBasisSectionConfirmLines("graphics", "Include");
@@ -5460,13 +6249,26 @@ assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, undefined);
 assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
-assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_pricing, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel\nInclude: invented graphic panel");
 retagBasisSectionConfirmLines("graphics", "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, undefined);
 assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
-assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_pricing, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel\nInclude: invented graphic panel");
+retagBasisSectionConfirmLines("graphics", "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
+assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasisSections[0].lines[1].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].tag, "Include");
+assert.strictEqual(state.quoteBasisSections[0].lines[2].custom_confirmed, undefined);
+assert.strictEqual(state.quoteBasis.graphics, "Exclude: manual graphic panel\nInclude: standard graphic panel\nInclude: invented graphic panel");
 assert.ok(rendered >= 3);
 assert.ok(synced >= 3);
 """
@@ -5518,8 +6320,11 @@ const helperNames = [
   "basisQuantityDisplayLabel",
   "basisChatLineContext",
   "basisChatPayload",
+  "errorReferenceFrom",
+  "genericFailureMessage",
   "basisChatFriendlyError",
 ];
+const GENERIC_FAILURE_MESSAGE = "Failed. Please try again. Contact support if this keeps happening.";
 eval(helperNames.map(extractFunction).join("\n"));
 
 assert.strictEqual(basisDisplayTitle("Flooring & Platform - Quote Basis To Confirm"), "Flooring & Platform");
@@ -5559,7 +6364,11 @@ const friendlyError = basisChatFriendlyError([
 ]);
 assert.strictEqual(
   friendlyError,
-  "I could not update that line from this message. Try a shorter instruction like \"change 10W to 20W\"."
+  "Failed. Please try again. Contact support if this keeps happening."
+);
+assert.strictEqual(
+  basisChatFriendlyError({ error_reference: "ERR-1234ABCD" }),
+  "Failed. Please try again. Contact support if this keeps happening. Reference: ERR-1234ABCD."
 );
 assert.ok(!/AI basis chat|JSON|replacement line/i.test(friendlyError));
 assert.ok(source.includes("line_index: state.basisChat.lineIndex"));
@@ -5576,6 +6385,35 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_output_header_matches_quote_basis_structure(self):
+        static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('class="assistant-output quote-basis-card output-card"', html)
+        self.assertIn('class="quote-basis-header output-page-header"', html)
+        self.assertIn('id="outputStatusPill"', html)
+        self.assertIn('id="outputSourceLabel"', html)
+        self.assertIn('id="outputTotalLines"', html)
+        self.assertIn("Source: Pricing reference", html)
+        self.assertNotIn("Source: Koncept Pricing Catalog", html)
+        self.assertIn("function updateOutputHeader", js)
+        self.assertIn("function outputHeaderStatus", js)
+        self.assertIn('return reference.label || "Pricing reference";', js)
+        self.assertIn(".output-page-header", css)
+        self.assertIn(".output-status-pill.is-ok", css)
+        self.assertIn(".side-workspace .assistant-output .message-list:empty", css)
+        self.assertIn("width: min(100%, var(--workspace-content-width));", css)
+        self.assertIn("width: auto;", css)
+        self.assertIn(".output-col-description { width: 32%; }", css)
+        self.assertIn("margin: 0 0 12px;", css)
+        output_header_css = css.split(".output-page-header .output-title-row h3", 1)[1].split(".quote-basis-title-row .output-status-pill", 1)[0]
+        self.assertIn("font-size: 18px;", output_header_css)
+        self.assertIn("font-size: 12px;", output_header_css)
+        self.assertIn("font-size: 13px;", output_header_css)
+        self.assertIn("font-size: 15px;", output_header_css)
+
     def test_static_chat_blocks_secret_and_internal_prompt_requests(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
@@ -5589,32 +6427,28 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
             self.assertIn(expected, js)
         self.assertNotIn("OPENAI_API_KEY", js)
 
-    def test_static_output_pricing_review_is_guided_instead_of_raw_error_dump(self):
+    def test_static_output_pricing_review_action_block_is_removed(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
-        pricing_review_body = js.split("function renderPricingReviewMessages", 1)[1].split("function handleOutputRowEdit", 1)[0]
 
-        for expected in (
-            "renderPricingReviewMessages",
-            "handlePricingChoice",
+        for removed in (
+            "function renderPricingReviewMessages",
+            "function handlePricingChoice",
             "data-pricing-action",
             "nearest_keyword",
             "manual_price",
             "remove_line",
             "I could not confidently price",
             "Use nearest match",
-            "Manual display price",
             "Remove from quote",
             "Manual display pricing required",
             "enter a display price",
         ):
-            self.assertIn(expected, js)
-        self.assertNotIn("mark_included", pricing_review_body)
-        self.assertNotIn("Mark included", pricing_review_body)
+            self.assertNotIn(removed, js)
 
         self.assertNotIn('renderMessages(data.errors || ["Pricing needs review."], "error")', js)
 
-    def test_static_pricing_review_maps_manual_display_confirmation_rows(self):
+    def test_static_unresolved_pricing_stays_as_pending_output_row(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
@@ -5643,29 +6477,68 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const state = {
-  lineItems: [
-    {
-      section: "Furniture Rental",
-      description: "Round cafe tables for seating clusters",
-      pricing_keyword: "",
-      display_price: "",
-    },
-  ],
-};
+const state = {};
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+function normalizeCategoryTitle(value = "") {
+  return String(value || "").trim();
+}
 eval([
-  "extractPricingIssues",
-  "pricingIssueDescription",
-  "findLineItemIndexForPricingIssue",
+  "normalizeUnit",
+  "cleanCustomerQuoteLineText",
+  "pricingReferenceLineText",
+  "leadingNumber",
+  "formatQuantityNumber",
+  "normalizeQuantityPrefixUnit",
+  "leadingQuantityPrefix",
+  "quantityUnitAliases",
+  "startsWithQuantityUnit",
+  "stripLeadingQuantityCountFromLineText",
+  "normalizedLineTextQuantityParts",
+  "normalizeLineItem",
+  "numberOrNull",
+  "unitPriceEditKind",
+  "effectiveOutputUnitPrice",
+  "formatAmount",
+  "recalculateOutputRow",
+  "normalizeOutputRow",
+  "outputRowFromLineItem",
+  "outputCellDisplayValue",
+  "outputRowsValid",
+  "rowNeedsManualInput",
+  "matchSummaryStats",
+  "formatSubtotalValue",
 ].map(extractFunction).join("\n"));
 
-const errors = [
-  "Manual display pricing required: Round cafe tables for seating clusters / enter a display price, choose a catalog keyword, or remove this line",
-];
-const issues = extractPricingIssues(errors);
-assert.deepStrictEqual(issues, errors);
-assert.strictEqual(pricingIssueDescription(issues[0]), "Round cafe tables for seating clusters");
-assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
+const row = outputRowFromLineItem({
+  section: "Booth Structure",
+  description: "custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish",
+  quantity: 1,
+  unit: "m length",
+  pricing_keyword: "booth-structure.single-side-partition-wall-at-height-2-4m",
+  status: "quantity-review",
+});
+assert.strictEqual(row.status, "quantity-review");
+assert.strictEqual(row.catalog_unit_price, "");
+assert.strictEqual(row.amount, "");
+assert.strictEqual(outputCellDisplayValue(row, "unit_price_override"), "???");
+assert.strictEqual(outputCellDisplayValue(row, "amount"), "???");
+assert.strictEqual(rowNeedsManualInput(row), true);
+assert.deepStrictEqual(outputRowsValid([row]), {
+  valid: false,
+  errors: ["Row 1: Unit price is required."],
+});
+const stats = matchSummaryStats([row]);
+assert.strictEqual(stats.needsManualInput, 1);
+assert.strictEqual(stats.pricedRows, 0);
+assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -5676,6 +6549,22 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_confirm_basis_reprices_line_items_before_rendering_output_but_reset_uses_snapshot(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        confirm_body = js.split("async function confirmBasis()", 1)[1].split("async function handleGenerate()", 1)[0]
+        reset_body = js.split("async function resetOutputDraft()", 1)[1].split("async function postJson", 1)[0]
+
+        self.assertIn("async function refreshLineItemsFromServer", js)
+        self.assertIn('postJson("/api/line-items/normalize"', js)
+        self.assertLess(
+            confirm_body.index("await refreshLineItemsFromServer();"),
+            confirm_body.index("refreshOutputRowsFromLineItems();"),
+        )
+        self.assertIn("state.outputRows = snapshotOutputRows(state.originalOutputRows);", reset_body)
+        self.assertIn("state.lineItems = outputRowsToLineItems();", reset_body)
+        self.assertNotIn("refreshLineItemsFromServer", reset_body)
+        self.assertNotIn("refreshOutputRowsFromLineItems", reset_body)
 
     def test_run_quote_job_never_passes_pdf_mode_to_generator(self):
         payload = valid_payload()
@@ -5772,13 +6661,12 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         item = reference["items"][0]
         self.assertEqual(item["visual_references"], [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}])
         self.assertNotIn("visual_references", json.dumps(webapp.public_company_pricing_reference(reference)))
-        images = webapp.catalog_visual_image_entries_for_payload({
+        items = webapp.local_pricing_reference_items({
             "pricing_reference": {"source": "local", "items": reference["items"]},
-        })
-        self.assertEqual(images[0]["data_url"], data_url)
-        self.assertIn("Eames Replica Chair", images[0]["label"])
+        }, limit=None)
+        self.assertEqual(items[0]["visual_references"][0]["data_url"], data_url)
 
-    def test_public_company_reference_still_resolves_catalog_server_side(self):
+    def test_public_company_reference_is_not_quote_selectable_server_side(self):
         company_item = {
             "id": "company-ref-row",
             "section": "Graphics",
@@ -5802,16 +6690,134 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
                     "pricing_reference": public_reference,
                 })
 
-        self.assertEqual(rows, [{
-            "id": "company-ref-row",
-            "section": "Graphics",
-            "unit_hint": "sqm",
-            "description": "Company saved graphics",
-            "remarks": [],
-            "aliases": [],
-        }])
+        self.assertTrue(rows)
+        self.assertNotIn("company-ref-row", {row["id"] for row in rows})
+        self.assertNotIn("Company saved graphics", {row["description"] for row in rows})
 
-    def test_profiles_api_redacts_company_pricing_reference_for_viewer(self):
+    def test_save_pricing_reference_pack_writes_repo_reference_files_and_images(self):
+        data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
+        reference = webapp.normalize_pricing_reference_payload({
+            "id": "repo-ref",
+            "label": "Repo Ref",
+            "description": "Imported from test workbook.",
+            "tax": {"label": "GST", "rate": 0.09},
+            "items": [{
+                "id": "chair-row",
+                "section": "Furniture Rental",
+                "description": "nos. Eames Replica Chair (White)",
+                "unit_hint": "nos",
+                "internal_cost": 30,
+                "markup_multiplier": 1.5,
+                "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
+            }],
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                saved = webapp.save_pricing_reference_pack(reference)
+                reference_dir = Path(tmp) / "repo-ref"
+                metadata = json.loads((reference_dir / "reference.json").read_text(encoding="utf-8"))
+                catalog = json.loads((reference_dir / "pricing-catalog.json").read_text(encoding="utf-8"))
+                ai_reference = (reference_dir / "pricing-catalog.ai-reference.md").read_text(encoding="utf-8")
+                pack = webapp.load_pricing_reference_pack("repo-ref")
+                rows = webapp.pricing_catalog_prompt_rows_for_payload({
+                    "pricing_reference_id": "repo-ref",
+                    "pricing_reference": {"id": "repo-ref", "source": "bundled"},
+                })
+                visual_path = catalog["items"][0]["visual_references"][0]["path"]
+                visual_exists = (reference_dir / visual_path).exists()
+
+        self.assertEqual(saved["source"], "bundled")
+        self.assertEqual(saved["label"], "Repo Ref")
+        self.assertEqual(metadata["label"], "Repo Ref")
+        self.assertEqual(metadata["pricing_catalog"], "pricing-catalog.json")
+        self.assertEqual(metadata["pricing_reference"], "pricing-catalog.ai-reference.md")
+        self.assertEqual(catalog["currency"], "SGD")
+        self.assertIn("source_catalog: pricing-catalog.json", ai_reference)
+        self.assertIn("nos. Eames Replica Chair (White)", ai_reference)
+        self.assertIn("pricing-catalog-images/", ai_reference)
+        self.assertEqual(catalog["items"][0]["description"], "nos. Eames Replica Chair (White)")
+        self.assertTrue(visual_path.startswith("pricing-catalog-images/"))
+        self.assertTrue(visual_exists)
+        self.assertEqual(pack.public_summary()["label"], "Repo Ref")
+        self.assertEqual(rows[0]["description"], "nos. Eames Replica Chair (White)")
+
+    def test_pricing_reference_save_endpoint_writes_repo_pack(self):
+        payload = {
+            "id": "endpoint-ref",
+            "label": "Endpoint Ref",
+            "tax": {"label": "GST", "rate": 0.09},
+            "items": [{
+                "id": "row-1",
+                "section": "Graphics",
+                "description": "Printed graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 10,
+                "markup_multiplier": 2,
+            }],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                        request = urllib.request.Request(
+                            f"{runner.base_url}/api/settings/pricing-references",
+                            data=json.dumps(payload).encode("utf-8"),
+                            headers={
+                                "Content-Type": "application/json",
+                                session["csrf_header"]: session["csrf_token"],
+                            },
+                            method="POST",
+                        )
+                        response = urllib.request.urlopen(request, timeout=3)
+                        body = json.loads(response.read().decode("utf-8"))
+                metadata = json.loads((Path(tmp) / "endpoint-ref" / "reference.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(body["status"], "saved")
+        self.assertEqual(body["pricing_reference"]["source"], "bundled")
+        self.assertEqual(metadata["label"], "Endpoint Ref")
+
+    def test_pricing_reference_delete_endpoint_removes_repo_pack(self):
+        reference = webapp.normalize_pricing_reference_payload({
+            "id": "delete-me-ref",
+            "label": "Delete Me Ref",
+            "tax": {"label": "GST", "rate": 0.09},
+            "items": [{
+                "id": "row-1",
+                "section": "Graphics",
+                "description": "Printed graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 10,
+                "markup_multiplier": 2,
+            }],
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                        request = urllib.request.Request(
+                            f"{runner.base_url}/api/settings/pricing-references/delete-me-ref",
+                            headers={session["csrf_header"]: session["csrf_token"]},
+                            method="DELETE",
+                        )
+                        response = urllib.request.urlopen(request, timeout=3)
+                        body = json.loads(response.read().decode("utf-8"))
+                reference_dir_exists = (Path(tmp) / "delete-me-ref").exists()
+
+        self.assertEqual(body["status"], "deleted")
+        self.assertFalse(reference_dir_exists)
+        self.assertNotIn("delete-me-ref", {item["id"] for item in body["pricing_references"]})
+
+    def test_pricing_reference_delete_blocks_default_pack(self):
+        with self.assertRaisesRegex(ValueError, "Default pricing references cannot be deleted"):
+            webapp.delete_pricing_reference_pack(webapp.DEFAULT_PRICING_REFERENCE_ID)
+
+    def test_profiles_api_omits_legacy_company_pricing_references(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = webapp.CompanyConfigStore(Path(tmp))
             store.save_pricing_reference("default", {
@@ -5833,12 +6839,11 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
                         response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
                         payload = json.loads(response.read().decode("utf-8"))
 
-        company_reference = next(item for item in payload["pricing_references"] if item["id"] == "company-ref" and item["source"] == "company")
-        serialized = json.dumps(company_reference)
-        self.assertEqual(company_reference["item_count"], 1)
-        self.assertNotIn("items", company_reference)
+        serialized = json.dumps(payload["pricing_references"])
+        self.assertNotIn("company-ref", serialized)
+        self.assertNotIn("Company Ref", serialized)
         self.assertNotIn("internal_cost", serialized)
-        self.assertNotIn("markup_multiplier", serialized)
+        self.assertTrue(all(item.get("source") == "bundled" for item in payload["pricing_references"]))
 
     def test_settings_read_endpoints_require_management_permission(self):
         paths = ["/api/settings", "/api/settings/pricing-references", "/api/settings/profiles"]
@@ -5868,7 +6873,7 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         brief = webapp.payload_to_brief(payload)
         self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
 
-    def test_pricing_reference_source_controls_catalog_collision(self):
+    def test_pricing_reference_source_ignores_legacy_company_collision(self):
         company_item = {
             "id": "company-collision-row",
             "section": "Company Collision",
@@ -5880,15 +6885,15 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         with tempfile.TemporaryDirectory() as tmp:
             store = webapp.CompanyConfigStore(Path(tmp))
             store.save_pricing_reference("default", {
-                "id": "koncept",
+                "id": "koncept-exhibition-quotation",
                 "label": "Company Koncept",
                 "tax": {"label": "VAT", "rate": 0.2},
                 "items": [company_item],
             })
             with mock.patch.object(webapp, "company_config_store", return_value=store):
                 bundled_payload = {
-                    "pricing_reference_id": "koncept",
-                    "pricing_reference": {"id": "koncept", "source": "bundled"},
+                    "pricing_reference_id": "koncept-exhibition-quotation",
+                    "pricing_reference": {"id": "koncept-exhibition-quotation", "source": "bundled"},
                 }
                 bundled_rows = webapp.pricing_catalog_prompt_rows_for_payload(bundled_payload)
                 self.assertTrue(bundled_rows)
@@ -5896,18 +6901,11 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
                 self.assertNotIn("Company-only collision catalogue item", {row["description"] for row in bundled_rows})
 
                 company_payload = {
-                    "pricing_reference_id": "koncept",
-                    "pricing_reference": {"id": "koncept", "source": "company"},
+                    "pricing_reference_id": "koncept-exhibition-quotation",
+                    "pricing_reference": {"id": "koncept-exhibition-quotation", "source": "company"},
                 }
                 company_rows = webapp.pricing_catalog_prompt_rows_for_payload(company_payload)
-                self.assertEqual(company_rows, [{
-                    "id": "company-collision-row",
-                    "section": "Company Collision",
-                    "unit_hint": "nos",
-                    "description": "Company-only collision catalogue item",
-                    "remarks": [],
-                    "aliases": [],
-                }])
+                self.assertEqual(company_rows, bundled_rows)
 
     def test_deploy_generate_response_omits_local_paths_and_raw_process_output(self):
         payload = valid_payload()
@@ -5955,14 +6953,12 @@ assert.strictEqual(findLineItemIndexForPricingIssue(issues[0]), 0);
         self.assertIn("errorDisplayed: true", js)
         self.assertIn("if (aiResult?.errorDisplayed) return;", js)
 
-    def test_static_escape_closes_topmost_settings_modal_first(self):
+    def test_static_escape_closes_pricing_reference_modal_without_settings_hub(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
         escape_handler = js.split('document.addEventListener("keydown"', 1)[1].split("elements.sampleDetailsButton", 1)[0]
 
-        self.assertLess(
-            escape_handler.index("elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden"),
-            escape_handler.index("elements.settingsModal && !elements.settingsModal.hidden"),
-        )
+        self.assertIn("elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden", escape_handler)
+        self.assertNotIn("settingsModal", escape_handler)
 
     def test_static_repeated_clarification_blockers_keep_clarification_ui(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")

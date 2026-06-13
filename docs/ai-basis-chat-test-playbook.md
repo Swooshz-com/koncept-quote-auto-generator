@@ -12,14 +12,14 @@ This playbook covers:
 
 - `Re`: per-line basis revision.
 - `Ask For Changes`: whole-basis question and edit flow.
-- AI response parsing for OpenAI and Gemini fallback.
+- AI response parsing for OpenAI.
 - Quote basis proposal preview, apply, discard, and retry behavior.
 - User-facing error handling when AI returns malformed or unusable JSON.
 
 ## Model Routing
 
-- `Re` selected-line edits use the basis-line model first: `OPENAI_BASIS_LINE_MODEL` / `GEMINI_BASIS_LINE_MODEL`.
-- If selected-line output is malformed or cannot be normalized, retry once on the draft model: `OPENAI_DRAFT_MODEL` / `GEMINI_DRAFT_MODEL`.
+- `Re` selected-line edits use the basis-line model first: `OPENAI_BASIS_LINE_MODEL`.
+- If selected-line output is malformed or cannot be normalized, retry once on the draft model: `OPENAI_DRAFT_MODEL`.
 - `Ask For Changes` whole-basis chats use the draft model immediately.
 - Provider/network/auth failures should not be hidden as model-quality failures.
 
