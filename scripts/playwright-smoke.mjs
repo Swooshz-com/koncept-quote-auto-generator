@@ -127,16 +127,21 @@ async function main() {
     }
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
+    await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
+    const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
+      buttons.map((button) => button.textContent?.trim() || "")
+    ));
+    if (restoredActiveRailTexts.length !== 1 || restoredActiveRailTexts[0] !== "Quote Company") {
+      throw new Error(`Expected refresh to restore Quote Company panel, found ${JSON.stringify(restoredActiveRailTexts)}.`);
+    }
+    const restoredFileCount = await page.locator("#fileList .file-item").count();
+    if (restoredFileCount !== 8) {
+      throw new Error(`Expected refresh to preserve 8 sample reference files, found ${restoredFileCount}.`);
+    }
     const restoredPresetValue = await page.locator("#presetSelect").inputValue();
     if (restoredPresetValue !== "profile:koncept-image-default") {
       throw new Error(`Expected refresh to preserve company preset, found ${restoredPresetValue}.`);
     }
-    await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
-    await page.locator("#sampleDetailsButton").click();
-    await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
-    await page.locator('.rail-button[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
-    await page.locator('.rail-button[data-side-panel="quote_company"]').click();
-    await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const presetSelectBox = await page.locator("#presetSelect").boundingBox();
     if (!presetSelectBox || presetSelectBox.width < 200) {
       throw new Error("Company preset dropdown is unexpectedly narrow.");
