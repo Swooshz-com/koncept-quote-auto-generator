@@ -191,6 +191,13 @@ class LocalRunnerServer:
 
 
 class WebappServerTest(unittest.TestCase):
+    def test_job_request_limit_covers_documented_reference_upload_capacity(self):
+        max_reference_bytes = webapp.MAX_REFERENCE_IMAGES * max(webapp.MAX_IMAGE_BYTES, webapp.MAX_PDF_BYTES)
+        base64_bytes = ((max_reference_bytes + 2) // 3) * 4
+
+        self.assertGreaterEqual(webapp.request_body_limit("/api/jobs"), base64_bytes + 2 * 1024 * 1024)
+        self.assertEqual(webapp.request_body_limit("/api/settings/pricing-references/import-preview"), webapp.MAX_REQUEST_BYTES)
+
     def test_privacy_page_is_available_and_generic_pdpa_gdpr_notice(self):
         baseline = (ROOT / "docs" / "privacy-pdpa-gdpr-baseline.md").read_text(encoding="utf-8")
         self.assertIn("Production implementation", baseline)

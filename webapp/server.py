@@ -63,6 +63,7 @@ MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
+MAX_JOB_REQUEST_BYTES = (((MAX_REFERENCE_IMAGES * max(MAX_IMAGE_BYTES, MAX_PDF_BYTES)) + 2) // 3) * 4 + 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
 MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES = 8 * 1024 * 1024
@@ -302,6 +303,10 @@ class RequestBodyError(ValueError):
     def __init__(self, message: str, status: int = 400) -> None:
         super().__init__(message)
         self.status = status
+
+
+def request_body_limit(path: str) -> int:
+    return MAX_JOB_REQUEST_BYTES if urlparse(path).path == "/api/jobs" else MAX_REQUEST_BYTES
 
 
 def safe_stderr(message: str) -> None:
@@ -6593,7 +6598,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
             raise RequestBodyError("Request body is required.")
-        if length > MAX_REQUEST_BYTES:
+        if length > request_body_limit(self.path):
             raise RequestBodyError("Request body is too large for the local runner.", status=413)
         raw = self.rfile.read(length)
         try:
