@@ -57,9 +57,11 @@ DEFAULT_TMP_ROOT = PROJECT_ROOT / "_tmp" / "webapp"
 DEFAULT_LOG_ROOT = PROJECT_ROOT / "_logs" / "app"
 DEFAULT_TAX_LABEL = "GST"
 DEFAULT_TAX_RATE = 0.09
+DEFAULT_CURRENCY_LABEL = "SGD"
 MISSING_IMAGES_MESSAGE = "Please upload reference images first so I can analyze the design and prepare the quote."
 MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
+MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
 MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
@@ -189,6 +191,7 @@ POST_RATE_LIMITS = {
     "/api/jobs": 30,
     "/api/draft": 15,
     "/api/generate": 15,
+    "/api/line-items/normalize": 30,
     "/api/log": 180,
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
@@ -766,6 +769,77 @@ def quote_tax_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {"label": label, "rate": normalize_tax_rate(rate_source)}
 
 
+def normalize_currency_label(value: Any) -> str:
+    text = clean_text(value).upper()
+    text = re.sub(r"[^A-Z]", "", text)
+    if text in {"S", "SG", "SGD", "SINGAPOREDOLLAR", "SINGAPOREDOLLARS"}:
+        return "SGD"
+    if text in {"US", "USD", "USDOLLAR", "USDOLLARS", "UNITEDSTATESDOLLAR", "UNITEDSTATESDOLLARS"}:
+        return "USD"
+    if text in {"EURO", "EUROS", "EUR"}:
+        return "EUR"
+    if text in {"GBP", "POUND", "POUNDS", "STERLING"}:
+        return "GBP"
+    if text in {"MYR", "RM", "MALAYSIARINGGIT", "RINGGIT"}:
+        return "MYR"
+    if text in {"AUD", "AUSTRALIANDOLLAR", "AUSTRALIANDOLLARS"}:
+        return "AUD"
+    if text in {"CNY", "RMB", "YUAN", "RENMINBI"}:
+        return "CNY"
+    if text in {"IDR", "RUPIAH"}:
+        return "IDR"
+    if text in {"THB", "BAHT"}:
+        return "THB"
+    if re.fullmatch(r"[A-Z]{3}", text):
+        return text
+    return DEFAULT_CURRENCY_LABEL
+
+
+def detected_currency_label(value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    patterns = (
+        (r"(?i)\bSGD\b|S\$|\bSingapore\s+dollars?\b", "SGD"),
+        (r"(?i)\bUSD\b|US\$|\bUS\s+dollars?\b|\bUnited\s+States\s+dollars?\b", "USD"),
+        (r"(?i)\bEUR\b|€|\beuros?\b", "EUR"),
+        (r"(?i)\bGBP\b|£|\bpounds?\b|\bsterling\b", "GBP"),
+        (r"(?i)\bMYR\b|\bRM\s*\d|\bMalaysian\s+ringgit\b|\bringgit\b", "MYR"),
+        (r"(?i)\bAUD\b|\bAustralian\s+dollars?\b", "AUD"),
+        (r"(?i)\bCNY\b|\bRMB\b|\byuan\b|\brenminbi\b", "CNY"),
+        (r"(?i)\bIDR\b|\brupiah\b", "IDR"),
+        (r"(?i)\bTHB\b|\bbaht\b", "THB"),
+    )
+    for pattern, currency in patterns:
+        if re.search(pattern, text):
+            return currency
+    return ""
+
+
+def detect_currency_from_rows(headers: list[str], rows: list[dict[str, Any]]) -> str:
+    parts = [*headers]
+    for row in rows[:80]:
+        if isinstance(row, dict):
+            parts.extend(clean_text(value) for value in row.values())
+    return detected_currency_label(" ".join(parts))
+
+
+def display_description_from_catalog_reference(reference_text: Any, ai_text: Any) -> str:
+    reference = clean_customer_quote_line_text(reference_text)
+    detail = clean_customer_quote_line_text(ai_text)
+    if not reference:
+        return detail
+    if not detail:
+        return reference
+    reference_key = re.sub(r"[^a-z0-9]+", " ", reference.casefold()).strip()
+    detail_key = re.sub(r"[^a-z0-9]+", " ", detail.casefold()).strip()
+    if not detail_key or detail_key == reference_key or detail_key in reference_key:
+        return reference
+    if reference_key and reference_key in detail_key:
+        return detail
+    return f"{reference} - {detail}"
+
+
 def format_dimension(value: float) -> str:
     if float(value).is_integer():
         return str(int(value))
@@ -795,9 +869,6 @@ def booth_dimensions_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     width = parse_float_or_none(project.get("booth_width") or payload.get("booth_width"))
     depth = parse_float_or_none(project.get("booth_depth") or payload.get("booth_depth"))
     source = "analysis"
-    if width is None or depth is None:
-        width, depth = parse_booth_dimensions_from_text(project.get("title") or payload.get("project_title"))
-        source = "quotation_title"
     if width is None or depth is None:
         width, depth = parse_booth_dimensions_from_text(project.get("booth_size") or payload.get("booth_size"))
         source = "booth_size"
@@ -2225,6 +2296,7 @@ def pricing_reference_import_preview_from_v11_workbook(raw: bytes, filename: str
         row.pop("_source_row", None)
     result = validate_pricing_reference_rows(rows, list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
     result["layout"] = "v1.1-pricing-workbook"
+    result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows) or DEFAULT_CURRENCY_LABEL
     if result.get("errors") == ["Missing required columns: section, description, unit_hint, internal_cost, markup_multiplier."]:
         result["errors"] = []
     return result
@@ -2240,6 +2312,10 @@ def rows_from_csv_bytes(raw: bytes) -> tuple[list[str], list[dict[str, Any]]]:
         if any(clean_text(value) for value in row.values()):
             rows.append(row)
     return headers, rows
+
+
+def markdown_text_from_bytes(raw: bytes) -> str:
+    return raw.decode("utf-8-sig", errors="replace")[:MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES]
 
 
 def pricing_reference_template_sheet_xml(rows: list[list[str]], *, hide_internal_id: bool = False) -> str:
@@ -2402,6 +2478,7 @@ def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, An
         "label": sanitize_formula_text(payload.get("label")) or reference_id,
         "description": sanitize_formula_text(payload.get("description")),
         "tax": normalized_tax_config(payload.get("tax")),
+        "currency": normalize_currency_label(payload.get("currency")),
         "schema_version": 1,
         "items": items,
         "saved_at": utc_timestamp(),
@@ -2437,12 +2514,13 @@ def pricing_reference_catalog_payload(reference: dict[str, Any]) -> dict[str, An
     items = sorted_pricing_reference_items(items)
     return {
         "schema_version": int(parse_pricing_number(reference.get("schema_version")) or 1),
-        "currency": clean_text(reference.get("currency")) or "SGD",
+        "currency": normalize_currency_label(reference.get("currency")),
         "items": items,
     }
 
 
 def pricing_reference_catalog_ai_markdown(catalog: dict[str, Any], catalog_name: str = "pricing-catalog.json") -> str:
+    currency = normalize_currency_label(catalog.get("currency"))
     lines = [
         "---",
         "title: Pricing Catalog AI Reference",
@@ -2476,7 +2554,7 @@ def pricing_reference_catalog_ai_markdown(catalog: dict[str, Any], catalog_name:
         ])
         sale_unit_price = pricing_reference_sale_unit_price(item)
         if sale_unit_price is not None:
-            lines.append(f"- **Sale unit price:** SGD {sale_unit_price:.2f}")
+            lines.append(f"- **Sale unit price:** {currency} {sale_unit_price:.2f}")
         remarks = [clean_text(value) for value in item.get("remarks", []) if clean_text(value)] if isinstance(item.get("remarks"), list) else []
         if remarks:
             lines.append(f"- **Remarks:** {'; '.join(remarks)}")
@@ -2504,6 +2582,7 @@ def pricing_reference_pack_config(reference: dict[str, Any]) -> dict[str, Any]:
         "pricing_catalog": "pricing-catalog.json",
         "pricing_reference": "pricing-catalog.ai-reference.md",
         "tax": normalized_tax_config(reference.get("tax")),
+        "currency": normalize_currency_label(reference.get("currency")),
         "saved_at": clean_text(reference.get("saved_at")) or utc_timestamp(),
     }
 
@@ -2575,14 +2654,10 @@ def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
     permissions = current_permissions()
     if permissions.get(permission):
         return True, permissions
-    return False, {"status": "blocked", "errors": ["You do not have permission to manage these settings."], "permissions": permissions}
+    return False, {"status": "blocked", "errors": ["You do not have permission to perform this action."], "permissions": permissions}
 
 
 AI_PRICING_IMPORT_NOT_CONFIGURED = "AI pricing catalog import is not configured for the selected AI provider. Configure the selected provider API key, then upload the messy pricing file again. The template remains optional for clean manual entry."
-
-
-def markdown_text_from_bytes(raw: bytes) -> str:
-    return raw.decode("utf-8-sig", errors="replace")[:MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES]
 
 
 def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2630,7 +2705,8 @@ def pricing_reference_section_names_for_payload(payload: dict[str, Any]) -> list
 def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dict[str, Any]) -> str:
     sections = pricing_reference_section_names()
     return (
-        "Normalize an uploaded pricing catalog into Swooshz pricing reference rows. Return only JSON with an items array. "
+        "Normalize an uploaded pricing catalog into Swooshz pricing reference rows. Return only JSON with currency and an items array. "
+        "Set currency to a visible three-letter currency code such as SGD, USD, EUR, GBP, MYR, AUD, CNY, IDR, or THB when the source makes it clear; omit it when unclear. "
         "Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, and warning/status when useful. "
         "Identify continuation rows and stitch them into the previous item; do not drop continuation description or remarks. "
         "Do not merge independent priced rows. Preserve short technical rows such as nos. rigging point for Overhead Structure or Aluminium Box Truss. "
@@ -2691,6 +2767,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
     raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
     result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
     result["layout"] = "ai-normalized-pricing-reference"
+    result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
     return result
 
 
@@ -2698,8 +2775,10 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
     filename = clean_text(payload.get("filename"))
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     tax = normalized_tax_config(payload.get("tax"))
+    currency = normalize_currency_label(payload.get("currency"))
     if extension in {"csv", "xlsx"}:
         result = validate_pricing_reference_upload(payload)
+        detected_currency = clean_text(result.get("currency"))
         if result.get("canSave"):
             result["layout"] = "normalized-pricing-reference"
         elif result.get("missing"):
@@ -2710,19 +2789,24 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
                     if v11_result.get("canSave"):
                         result = v11_result
                         result["tax"] = tax
+                        result["currency"] = clean_text(result.get("currency")) or currency
                         result["saved"] = False
                         return result
                 if extension == "csv":
                     headers, rows = rows_from_csv_bytes(raw)
                 else:
                     headers, rows = rows_from_xlsx_bytes(raw)
+                detected_currency = detect_currency_from_rows(headers, rows)
                 result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": pricing_reference_rows_for_ai(headers, rows)}, tax)
             except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
                 result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
+        result["currency"] = detected_currency or clean_text(result.get("currency")) or currency
     elif extension == "md":
         try:
             raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
-            result = ai_pricing_reference_import_preview(filename, {"markdown": markdown_text_from_bytes(raw)}, tax)
+            markdown = markdown_text_from_bytes(raw)
+            result = ai_pricing_reference_import_preview(filename, {"markdown": markdown}, tax)
+            result["currency"] = detected_currency_label(markdown) or clean_text(result.get("currency")) or currency
         except ValueError as exc:
             result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
     else:
@@ -2730,6 +2814,7 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
             "errors": ["Upload a .xlsx, .csv, or .md pricing reference file."],
         }
     result["tax"] = tax
+    result["currency"] = normalize_currency_label(result.get("currency") or currency)
     result["saved"] = False
     return result
 
@@ -2749,6 +2834,7 @@ def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]
             headers, rows = rows_from_xlsx_bytes(raw)
         normalized_result = validate_pricing_reference_rows(rows, headers, filename)
         normalized_result["layout"] = "normalized-pricing-reference"
+        normalized_result["currency"] = detect_currency_from_rows(headers, rows) or DEFAULT_CURRENCY_LABEL
         if normalized_result["errors"] and normalized_result["missing"]:
             normalized_result["errors"].append(
                 "Workbook layout was not recognized as a normalized pricing reference. Use the New Pricing Reference import flow with AI enabled for messy files, or download the optional template for clean manual entry."
@@ -3179,6 +3265,7 @@ class PricingReferencePack:
             "label": clean_text(self.config.get("label")) or self.id or "Pricing Reference",
             "description": clean_text(self.config.get("description")),
             "tax": normalized_tax_config(self.config.get("tax")),
+            "currency": normalize_currency_label(self.config.get("currency")),
             "source": "bundled",
         }
 
@@ -3283,6 +3370,7 @@ def public_company_pricing_reference(reference: dict[str, Any]) -> dict[str, Any
         "label": clean_text(reference.get("label")) or safe_resource_id(reference.get("id"), ""),
         "description": clean_text(reference.get("description")),
         "tax": normalized_tax_config(reference.get("tax")),
+        "currency": normalize_currency_label(reference.get("currency")),
         "item_count": len(items),
         "source": "company",
     }
@@ -3361,14 +3449,35 @@ def image_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
     images = payload.get("images")
     if not isinstance(images, list):
         return []
-    return [image for image in images if isinstance(image, dict) and clean_text(image.get("name"))]
+    entries: list[dict[str, Any]] = []
+    for image in images:
+        if not isinstance(image, dict) or not clean_text(image.get("name")):
+            continue
+        mime_type = reference_file_mime_type(image)
+        if mime_type.startswith("image/") or mime_type == "application/pdf":
+            entries.append(image)
+    return entries
 
 
 def image_limit_error(payload: dict[str, Any]) -> str:
     count = len(image_entries(payload))
     if count > MAX_REFERENCE_IMAGES:
-        return f"Please upload no more than {MAX_REFERENCE_IMAGES} reference images."
+        return f"Please upload no more than {MAX_REFERENCE_IMAGES} reference files."
     return ""
+
+
+def reference_file_mime_type(entry: dict[str, Any]) -> str:
+    mime_type = clean_text(entry.get("type")).lower()
+    if not mime_type:
+        data_url = clean_text(entry.get("data_url"))
+        match = re.match(r"data:([^;,]+)", data_url, flags=re.IGNORECASE)
+        if match:
+            mime_type = match.group(1).lower()
+    if not mime_type:
+        mime_type = (mimetypes.guess_type(clean_text(entry.get("name")))[0] or "").lower()
+    if mime_type == "image/jpg":
+        return "image/jpeg"
+    return mime_type
 
 
 CATALOG_INFERENCE_STOP_WORDS = {
@@ -3536,6 +3645,7 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         display_price = clean_text(raw.get("display_price"))
         pricing_keyword = clean_text(raw.get("pricing_keyword"))
+        pricing_keyword_was_explicit = bool(pricing_keyword)
         catalog_item = catalog_lookup.get(pricing_keyword)
         if not catalog_item:
             catalog_item = infer_catalog_item_for_line_item(raw, catalog_lookup)
@@ -3550,8 +3660,13 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             else ((catalog_item_unit_hint(catalog_item) or raw_unit) if catalog_item else raw_unit)
         )
         raw_description = clean_customer_quote_line_text(quantity_parts["text"])
+        catalog_reference_description = clean_text(catalog_item.get("pricing_reference_description")) if catalog_item else ""
         catalog_description = clean_customer_quote_line_text(catalog_item.get("description")) if catalog_item else ""
-        description = raw_description or catalog_description
+        description = (
+            display_description_from_catalog_reference(catalog_reference_description or catalog_description, raw_description or catalog_description)
+            if catalog_item
+            else raw_description
+        )
         price_mode = clean_text(raw.get("price_mode")).title()
         raw_unit_price_override = clean_text(raw.get("unit_price_override"))
         if raw_unit_price_override == "Included":
@@ -3582,7 +3697,7 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             item["catalog_description"] = catalog_description
         if catalog_item and clean_text(catalog_item.get("pricing_reference_description")):
             item["pricing_reference_description"] = clean_text(catalog_item.get("pricing_reference_description"))
-        if line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"]):
+        if not pricing_keyword_was_explicit and line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"]):
             item["status"] = "quantity-review"
             item.pop("catalog_unit_price", None)
         if not item["source_basis_line_id"]:
@@ -4202,8 +4317,9 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Each section must include id, title, and lines. Each line must include tag, text, confidence_pct, quantity, unit, and source_line_item_id when available. "
         "quote_basis_sections line text and line_items.description are customer-facing quotation text. Do not include provenance, reasoning, analysis, or source phrases such as taken from quotation title, visible in image, as seen in render, AI detected, assumed from, likely, appears to be, from reference image, or suggested by image. Put analysis reasons only in analysis_findings, clarification questions, or internal notes. "
         "Use quote_basis_sections as the operator review surface for the same pricing sentences that will become output rows. "
-        "When a pricing_catalog item applies, the pricing catalog controls price, unit, section, and pricing_keyword, but customer-facing wording may be clearer than the catalog row. "
-        "Keep the quote_basis_sections line text and line_items.description customer-friendly while setting pricing_keyword exactly to the matching catalog id. "
+        "When a pricing_catalog item applies, the pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording. "
+        "Set pricing_keyword exactly to the matching catalog id and begin quote_basis_sections line text and line_items.description with the catalog item's exact description. "
+        "If visible AI-specific detail does not fit that exact catalog description, add it after the exact catalog description as a short suffix. "
         "When visible or requested scope is not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can fill the price manually. "
         "Use tag Confirm for catalog-backed lines that still need the operator's include/exclude decision. "
         "Use confidence_pct as an integer from 0 to 100 to show how strongly the uploaded images and quote context support that line. "
@@ -4214,8 +4330,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "When a line begins with a count and unit such as 2 nos., 14 nos., 36 sqm, or 1 lot, put the number in quantity and the unit in unit, then omit that leading count/unit from quote_basis_sections line text and line_items.description. "
         "Never use quantity 1 with unit m or m length for measured structural runs such as booth structure, fascia, walls, partitions, portals, frames, or canopies unless the exact measured length is explicitly provided by the quote context. If a structural run is visible but not measurable, use unit lot with empty pricing_keyword for manual pricing, or ask a blocking clarification question when the measured quantity is required. "
         "The JSON must also include a project object with booth_width and booth_depth as numbers in metres. "
-        "First extract booth dimensions from the quotation title when it clearly states a size such as 6m x 6m. "
-        "If the title does not clearly state dimensions, infer booth_width and booth_depth from the uploaded images. "
+        "Do not derive booth dimensions from the quotation title. Use explicit booth-size fields in Quote context JSON when supplied; otherwise infer booth_width and booth_depth from the uploaded images or reference PDFs. "
         "If dimensions are still unclear, use a reasonable default booth size instead of leaving dimensions empty. "
         "When dimensions use a default booth size, that default must appear as a Confirm line in quote_basis_sections, never as Include. "
         "Use those dimensions for area-based quantities and quote-basis wording. "
@@ -4897,19 +5012,22 @@ def quote_basis_sections_with_catalog_exact_lines(
             if has_catalog_reference:
                 line.pop("custom_pricing", None)
                 line.pop("custom_confirmed", None)
-        catalog_description = clean_customer_quote_line_text(
-            item.get("catalog_description") or (item.get("description") if has_catalog_reference else "")
+        catalog_reference_description = clean_text(
+            item.get("pricing_reference_description")
+            or item.get("catalog_description")
+            or (item.get("description") if has_catalog_reference else "")
         )
+        catalog_description = clean_customer_quote_line_text(catalog_reference_description)
         if catalog_description:
             line["catalog_description"] = catalog_description
-        pricing_reference_description = clean_text(item.get("pricing_reference_description"))
+        pricing_reference_description = catalog_reference_description
         if pricing_reference_description:
             line["pricing_reference_description"] = pricing_reference_description
         catalog_unit_price = parse_float_or_none(item.get("catalog_unit_price") or item.get("sale_unit_price"))
         if catalog_unit_price is not None:
             line["catalog_unit_price"] = catalog_unit_price
-        display_description = clean_customer_quote_line_text(item.get("description"))
-        if replace_text and (was_custom or not item_description_is_reference_text(item)) and (display_description or catalog_description):
+        display_description = display_description_from_catalog_reference(catalog_description, item.get("description"))
+        if replace_text and (display_description or catalog_description):
             line["text"] = display_description or catalog_description
         if item.get("quantity") not in (None, ""):
             line["quantity"] = item.get("quantity")
@@ -5415,7 +5533,16 @@ def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
     content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
     for image in image_entries(payload)[:MAX_REFERENCE_IMAGES]:
         data_url = clean_text(image.get("data_url"))
-        if data_url:
+        if not data_url:
+            continue
+        mime_type = reference_file_mime_type(image)
+        if mime_type == "application/pdf":
+            content.append({
+                "type": "input_file",
+                "filename": safe_segment(clean_text(image.get("name")) or "reference.pdf", "reference.pdf"),
+                "file_data": data_url,
+            })
+        elif mime_type.startswith("image/"):
             content.append({"type": "input_image", "image_url": data_url, "detail": "high"})
     catalog_visuals = catalog_visual_image_entries_for_payload(payload)
     catalog_visual_prompt = catalog_visual_prompt_text(catalog_visuals)
@@ -5722,7 +5849,9 @@ def save_uploaded_images(images: list[dict[str, Any]], job_dir: Path) -> list[di
         if data_url:
             encoded = data_url.split(",", 1)[1] if "," in data_url else data_url
             raw = base64.b64decode(encoded, validate=True)
-            if len(raw) > MAX_IMAGE_BYTES:
+            mime_type = reference_file_mime_type(image)
+            max_bytes = MAX_PDF_BYTES if mime_type == "application/pdf" else MAX_IMAGE_BYTES
+            if len(raw) > max_bytes:
                 raise ValueError(f"{source_name} is larger than the local upload limit.")
             path.write_bytes(raw)
             size = len(raw)
@@ -5775,12 +5904,12 @@ def file_data_url(path: Path) -> str:
 
 def sample_dir(sample_id: str) -> Path:
     root = samples_root()
-    resolved_id = safe_resource_id(sample_id, "brazil-pavilion")
+    resolved_id = safe_resource_id(sample_id, "kent-group")
     path = root / resolved_id
     try:
         path.resolve().relative_to(root.resolve())
     except ValueError:
-        return root / "brazil-pavilion"
+        return root / "kent-group"
     return path
 
 
@@ -6236,6 +6365,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/line-items/normalize":
+            allowed, error = require_permission("canGenerateQuote")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
             self.send_json({"status": "normalized", "line_items": normalize_line_items(payload)})
             return
 
