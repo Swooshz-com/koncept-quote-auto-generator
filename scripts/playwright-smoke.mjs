@@ -118,8 +118,8 @@ async function main() {
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#sampleDetailsButton").click();
     await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
-    await page.locator('[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
-    await page.locator('[data-side-panel="quote_company"]').click();
+    await page.locator('.rail-button[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
+    await page.locator('.rail-button[data-side-panel="quote_company"]').click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const samplePresetValue = await page.locator("#presetSelect").inputValue();
     if (samplePresetValue !== "profile:koncept-image-default") {
@@ -127,19 +127,22 @@ async function main() {
     }
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
-    await page.locator('[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
-    await page.locator('[data-side-panel="quote_company"]').click();
-    await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const restoredPresetValue = await page.locator("#presetSelect").inputValue();
     if (restoredPresetValue !== "profile:koncept-image-default") {
       throw new Error(`Expected refresh to preserve company preset, found ${restoredPresetValue}.`);
     }
+    await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
+    await page.locator("#sampleDetailsButton").click();
+    await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+    await page.locator('.rail-button[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
+    await page.locator('.rail-button[data-side-panel="quote_company"]').click();
+    await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const presetSelectBox = await page.locator("#presetSelect").boundingBox();
     if (!presetSelectBox || presetSelectBox.width < 200) {
       throw new Error("Company preset dropdown is unexpectedly narrow.");
     }
-    await page.locator('[data-side-panel="customer"]:not([disabled])').waitFor({ timeout: 15000 });
-    await page.locator('[data-side-panel="customer"]').click();
+    await page.locator('.rail-button[data-side-panel="customer"]:not([disabled])').waitFor({ timeout: 15000 });
+    await page.locator('.rail-button[data-side-panel="customer"]').click();
     await page.mouse.move(4, 4);
     await page.locator("#customerDetailsPanel").waitFor({ state: "visible" });
     await page.locator(".workspace-pane-scroll").evaluate((element) => {
@@ -152,6 +155,11 @@ async function main() {
     const pricingTaxText = await page.locator("#selectedPricingReferenceTax").innerText();
     if (!/GST|VAT/i.test(pricingTaxText)) {
       throw new Error(`Unexpected pricing reference tax badge: ${pricingTaxText}`);
+    }
+    const pricingCurrencyBox = await page.locator("#selectedPricingReferenceCurrency").boundingBox();
+    const pricingTaxBox = await page.locator("#selectedPricingReferenceTax").boundingBox();
+    if (!pricingCurrencyBox || !pricingTaxBox || pricingCurrencyBox.width < 70 || pricingTaxBox.width < 70) {
+      throw new Error(`Pricing reference pills are unexpectedly narrow: ${JSON.stringify({ pricingCurrencyBox, pricingTaxBox })}`);
     }
     const selectedPricingValue = await page.locator("#profileSelect").inputValue();
     if (!selectedPricingValue) {
@@ -167,7 +175,7 @@ async function main() {
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
     await page.locator("#settingsButton").click();
     await page.locator("#pricingReferenceModal").waitFor({ state: "visible" });
-    await page.getByRole("heading", { name: "New Pricing Reference" }).waitFor();
+    await page.getByRole("heading", { name: "Pricing Reference Settings" }).waitFor();
     await page.keyboard.press("Escape");
     await page.locator("#pricingReferenceModal").waitFor({ state: "hidden" });
     await page.locator("#quoteDate").waitFor({ state: "visible" });

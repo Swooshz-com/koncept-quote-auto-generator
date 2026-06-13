@@ -9,53 +9,56 @@
   </head>
   <body class="privacy-page">
     <main class="privacy-shell">
-      <header class="privacy-hero">
-        <a class="privacy-back-link" href="/">Back to Quote Generator</a>
-        <p class="workspace-pane-eyebrow">Privacy Notice</p>
-        <h1>Swooshz Quote Generator Privacy Notice</h1>
-        <p>This notice explains how the app handles quotation data, uploaded booth images, AI analysis, logs, and support diagnostics.</p>
-      </header>
+      <article class="privacy-notice-card">
+        <header class="privacy-hero">
+          <a class="privacy-back-link" href="/">Back to Quote Generator</a>
+          <p class="workspace-pane-eyebrow">Privacy Notice</p>
+          <h1>Swooshz Quote Generator Privacy Notice</h1>
+          <p>This notice explains how personal data may be collected, used, disclosed, stored, and protected when you use the Swooshz Quote Generator.</p>
+        </header>
 
-      <section class="privacy-section">
-        <h2>Repository Baseline</h2>
-        <p>Production behavior must conform to <strong>docs/privacy-pdpa-gdpr-baseline.md</strong>. This page is the user-facing notice; the repo baseline is the engineering source of truth for future production work.</p>
-      </section>
+        <div class="privacy-section-list">
+          <details class="privacy-section" open>
+            <summary>Personal Data We May Collect</summary>
+            <p>We may collect information you provide when preparing quotations, including names, job titles, company names, addresses, project details, uploaded reference files, quotation content, and related communications.</p>
+          </details>
 
-      <section class="privacy-section">
-        <h2>Data We Process</h2>
-        <ul>
-          <li>Uploaded booth render/reference images used for AI quote-basis analysis.</li>
-          <li>Customer, project, quotation, company header, payment term, note, and signature fields entered in the app.</li>
-          <li>Pricing references, imported catalog rows, aliases, tax settings, and profile presets managed by admins.</li>
-          <li>Generated quote basis rows, pricing review rows, quotation spreadsheets, and related output files.</li>
-          <li>Usage, status, and error diagnostics needed to operate, secure, and support the app.</li>
-        </ul>
-      </section>
+          <details class="privacy-section" open>
+            <summary>How We Use Personal Data</summary>
+            <p>We use personal data to prepare quotations, manage customer and project records, provide requested services, respond to enquiries, improve our workflow, maintain security, and comply with legal or regulatory obligations.</p>
+          </details>
 
-      <section class="privacy-section">
-        <h2>AI Provider Processing</h2>
-        <p>When you run analysis, uploaded images and relevant quote context may be sent to the configured AI provider. The provider, model, analysis mode, image count, status, and usage/cost details should be logged per user in production when available.</p>
-      </section>
+          <details class="privacy-section" open>
+            <summary>Disclosure Of Personal Data</summary>
+            <p>We may disclose personal data to service providers, contractors, professional advisers, authorities, or other parties where necessary for quotation preparation, service delivery, business operations, legal compliance, or protection of rights.</p>
+          </details>
 
-      <section class="privacy-section">
-        <h2>Local Development Behavior</h2>
-        <p>In the local app, generated files are written under local repo output folders and support logs are written under the root _logs folder. Pricing references saved through the settings flow are stored as repo pricing-reference packs. Local role permissions may be simulated with environment settings.</p>
-      </section>
+          <details class="privacy-section" open>
+            <summary>Cross-Border Transfers</summary>
+            <p>Where personal data is transferred outside your country, we will take reasonable steps to ensure that the receiving party provides a standard of protection consistent with applicable PDPA, GDPR, or other relevant privacy laws.</p>
+          </details>
 
-      <section class="privacy-section">
-        <h2>Security And Logs</h2>
-        <p>User-facing errors should stay short: failed, please try again, and contact support if the issue keeps happening. Detailed diagnostics belong in server-side logs with a support-safe error reference. Logs must not expose secrets, API keys, Authorization headers, cookies, raw images, stack traces, or unnecessary customer text.</p>
-      </section>
+          <details class="privacy-section" open>
+            <summary>Retention</summary>
+            <p>We retain personal data only for as long as reasonably necessary for the purposes described in this notice, unless a longer retention period is required or permitted by law.</p>
+          </details>
 
-      <section class="privacy-section">
-        <h2>Your Rights And Requests</h2>
-        <p>In production, users should be able to request access, correction, deletion, export, restriction/objection, or withdrawal of consent where applicable under PDPA, GDPR, or other relevant privacy laws. Support contact and retention periods must be finalized before external launch.</p>
-      </section>
+          <details class="privacy-section" open>
+            <summary>Security</summary>
+            <p>We use reasonable administrative, technical, and organisational measures to protect personal data against unauthorised access, collection, use, disclosure, copying, modification, disposal, or similar risks.</p>
+          </details>
 
-      <section class="privacy-section">
-        <h2>Production Readiness</h2>
-        <p>Before external launch, the live deployment needs authenticated user/account partitioning, role-based access, retention/deletion jobs, AI provider/sub-processor review, cross-border transfer review, support workflows, and legal review of this notice.</p>
-      </section>
+          <details class="privacy-section" open>
+            <summary>Your Rights</summary>
+            <p>Depending on applicable law, you may request access, correction, deletion, restriction, portability, objection, or withdrawal of consent for personal data we hold about you.</p>
+          </details>
+
+          <details class="privacy-section" open>
+            <summary>Contact</summary>
+            <p>For privacy questions or requests, contact the organisation responsible for the quotation or service relationship.</p>
+          </details>
+        </div>
+      </article>
     </main>
   </body>
 </html>

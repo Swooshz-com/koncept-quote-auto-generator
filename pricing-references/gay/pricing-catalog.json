@@ -1,0 +1,2393 @@
+{
+  "currency": "SGD",
+  "items": [
+    {
+      "aliases": [
+        "nos. 42\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "42\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "TV",
+        "AV Equipment Rental Items 42\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "42\u201d LED TV Monitor (With Speaker \u2013 Full HD) nos"
+      ],
+      "description": "nos. 42\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+      "id": "av-equipment-rental-items-nos-42-led-tv-monitor-with-speaker-full-hd",
+      "internal_cost": 300.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "AV Equipment Rental Items",
+      "remarks": [
+        "TV"
+      ],
+      "sale_unit_price": 450.0,
+      "section": "AV Equipment Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 55\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "55\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "TV",
+        "AV Equipment Rental Items 55\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "55\u201d LED TV Monitor (With Speaker \u2013 Full HD) nos"
+      ],
+      "description": "nos. 55\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+      "id": "av-equipment-rental-items-nos-55-led-tv-monitor-with-speaker-full-hd",
+      "internal_cost": 450.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "AV Equipment Rental Items",
+      "remarks": [
+        "TV"
+      ],
+      "sale_unit_price": 675.0,
+      "section": "AV Equipment Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 65\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "65\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "TV",
+        "AV Equipment Rental Items 65\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "65\u201d LED TV Monitor (With Speaker \u2013 Full HD) nos"
+      ],
+      "description": "nos. 65\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+      "id": "av-equipment-rental-items-nos-65-led-tv-monitor-with-speaker-full-hd",
+      "internal_cost": 650.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "AV Equipment Rental Items",
+      "remarks": [
+        "TV"
+      ],
+      "sale_unit_price": 975.0,
+      "section": "AV Equipment Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 85\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "85\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "TV",
+        "AV Equipment Rental Items 85\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+        "85\u201d LED TV Monitor (With Speaker \u2013 Full HD) nos"
+      ],
+      "description": "nos. 85\u201d LED TV Monitor (With Speaker \u2013 Full HD)",
+      "id": "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+      "internal_cost": 1500.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "AV Equipment Rental Items",
+      "remarks": [
+        "TV"
+      ],
+      "sale_unit_price": 2250.0,
+      "section": "AV Equipment Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "Acrylic System Partition",
+        "Octanorm",
+        "Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "1mW x 2.5mH System Profile partition with clear acrylic panel m length"
+      ],
+      "description": "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
+      "id": "booth-structure-m-length-1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel",
+      "internal_cost": 185.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Acrylic System Partition",
+        "Octanorm"
+      ],
+      "sale_unit_price": 277.5,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length double side partition wall at height 2.4m",
+        "wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 2.4m",
+        "Double sided partition",
+        "LAMINATE",
+        "Booth Structure double side partition wall at height 2.4m",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
+      "id": "booth-structure-m-length-double-side-partition-wall-at-height-2-4m-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 560.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Double sided partition",
+        "LAMINATE"
+      ],
+      "sale_unit_price": 840.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length double side partition wall at height 2.4m",
+        "wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 2.4m",
+        "Double sided partition",
+        "PAINTED",
+        "Booth Structure double side partition wall at height 2.4m",
+        "wooden construct in painted finished as per design proposal m length"
+      ],
+      "description": "m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
+      "id": "booth-structure-m-length-double-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 360.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Double sided partition",
+        "PAINTED"
+      ],
+      "sale_unit_price": 540.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length double side partition wall at height 2.5m for meeting room",
+        "wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 2.5m for meeting room",
+        "Partition for meeting room",
+        "LAMINATE",
+        "Booth Structure double side partition wall at height 2.5m for meeting room",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal",
+      "id": "booth-structure-m-length-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 560.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Partition for meeting room",
+        "LAMINATE"
+      ],
+      "sale_unit_price": 840.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length double side partition wall at height 2.5m for meeting room",
+        "wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 2.5m for meeting room",
+        "Partition for meeting room",
+        "PAINTED",
+        "Booth Structure double side partition wall at height 2.5m for meeting room",
+        "wooden construct in painted finished as per design proposal m length"
+      ],
+      "description": "m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal",
+      "id": "booth-structure-m-length-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 360.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Partition for meeting room",
+        "PAINTED"
+      ],
+      "sale_unit_price": 540.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length double side partition wall at height 4m",
+        "wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 4m",
+        "Double sided partition",
+        "LAMINATE",
+        "Booth Structure double side partition wall at height 4m",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length double side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
+      "id": "booth-structure-m-length-double-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 850.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Double sided partition",
+        "LAMINATE"
+      ],
+      "sale_unit_price": 1275.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length double side partition wall at height 4m",
+        "wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 4m",
+        "Double sided partition",
+        "PAINTED",
+        "Booth Structure double side partition wall at height 4m",
+        "wooden construct in painted finished as per design proposal m length"
+      ],
+      "description": "m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
+      "id": "booth-structure-m-length-double-side-partition-wall-at-height-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 580.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Double sided partition",
+        "PAINTED"
+      ],
+      "sale_unit_price": 870.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length single side partition wall at height 2.4m",
+        "wooden construct in laminated finished as per design proposal",
+        "single side partition wall at height 2.4m",
+        "Backwall or any partition",
+        "LAMINATED",
+        "Booth Structure single side partition wall at height 2.4m",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
+      "id": "booth-structure-m-length-single-side-partition-wall-at-height-2-4m-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 280.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Backwall or any partition",
+        "LAMINATED"
+      ],
+      "sale_unit_price": 420.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length single side partition wall at height 2.4m",
+        "wooden construct in painted finished as per design proposal",
+        "single side partition wall at height 2.4m",
+        "Backwall or any partition",
+        "PAINTED",
+        "Booth Structure single side partition wall at height 2.4m",
+        "wooden construct in painted finished as per design proposal m length"
+      ],
+      "description": "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
+      "id": "booth-structure-m-length-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 180.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Backwall or any partition",
+        "PAINTED"
+      ],
+      "sale_unit_price": 270.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length single side partition wall at height 4m",
+        "wooden construct in laminated finished as per design proposal",
+        "single side partition wall at height 4m",
+        "Backwall or any partition",
+        "LAMINATED",
+        "Booth Structure single side partition wall at height 4m",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length single side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
+      "id": "booth-structure-m-length-single-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 480.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Backwall or any partition",
+        "LAMINATED"
+      ],
+      "sale_unit_price": 720.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length single side partition wall at height 4m",
+        "wooden construct in painted finished as per design proposal",
+        "single side partition wall at height 4m",
+        "Backwall or any partition",
+        "PAINTED",
+        "Booth Structure single side partition wall at height 4m",
+        "wooden construct in painted finished as per design proposal m length"
+      ],
+      "description": "m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
+      "id": "booth-structure-m-length-single-side-partition-wall-at-height-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 360.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Backwall or any partition",
+        "PAINTED"
+      ],
+      "sale_unit_price": 540.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length top fascia structure at height 3.99m",
+        "wooden construct in laminated finished as per design proposal",
+        "top fascia structure at height 3.99m",
+        "Top Booth Structure",
+        "LAMINATED",
+        "Booth Structure top fascia structure at height 3.99m",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
+      "id": "booth-structure-m-length-top-fascia-structure-at-height-3-99m-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 450.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Top Booth Structure",
+        "LAMINATED"
+      ],
+      "sale_unit_price": 675.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length top fascia structure at height 3.99m",
+        "wooden construct in painted finished as per design proposal",
+        "top fascia structure at height 3.99m",
+        "Top Booth Structure",
+        "PAINTED",
+        "Booth Structure top fascia structure at height 3.99m",
+        "wooden construct in painted finished as per design proposal m length"
+      ],
+      "description": "m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
+      "id": "booth-structure-m-length-top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 250.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Top Booth Structure",
+        "PAINTED"
+      ],
+      "sale_unit_price": 375.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length x 2.5m height glass partition",
+        "x 2.5m height glass partition",
+        "GLASS PARTITION",
+        "Booth Structure x 2.5m height glass partition",
+        "x 2.5m height glass partition m length"
+      ],
+      "description": "m length x 2.5m height glass partition",
+      "id": "booth-structure-m-length-x-2-5m-height-glass-partition",
+      "internal_cost": 820.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "GLASS PARTITION"
+      ],
+      "sale_unit_price": 1230.0,
+      "section": "Booth Structure",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "nos. planter box in laminated finished",
+        "planter box in laminated finished",
+        "PLANT BOX",
+        "PAINTED",
+        "Booth Structure planter box in laminated finished",
+        "planter box in laminated finished nos"
+      ],
+      "description": "nos. planter box in laminated finished",
+      "id": "booth-structure-nos-planter-box-in-laminated-finished",
+      "internal_cost": 550.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "PLANT BOX",
+        "PAINTED"
+      ],
+      "sale_unit_price": 825.0,
+      "section": "Booth Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. planter box in painted finished",
+        "planter box in painted finished",
+        "PLANT BOX",
+        "PAINTED",
+        "Booth Structure planter box in painted finished",
+        "planter box in painted finished nos"
+      ],
+      "description": "nos. planter box in painted finished",
+      "id": "booth-structure-nos-planter-box-in-painted-finished",
+      "internal_cost": 350.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "PLANT BOX",
+        "PAINTED"
+      ],
+      "sale_unit_price": 525.0,
+      "section": "Booth Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. vertical support pillars in laminated finished",
+        "vertical support pillars in laminated finished",
+        "Support pillar",
+        "LAMINATED",
+        "Booth Structure vertical support pillars in laminated finished",
+        "vertical support pillars in laminated finished nos"
+      ],
+      "description": "nos. vertical support pillars in laminated finished",
+      "id": "booth-structure-nos-vertical-support-pillars-in-laminated-finished",
+      "internal_cost": 850.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Support pillar",
+        "LAMINATED"
+      ],
+      "sale_unit_price": 1275.0,
+      "section": "Booth Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. vertical support pillars in painted finished",
+        "vertical support pillars in painted finished",
+        "Support pillar",
+        "PAINTED",
+        "Booth Structure vertical support pillars in painted finished",
+        "vertical support pillars in painted finished nos"
+      ],
+      "description": "nos. vertical support pillars in painted finished",
+      "id": "booth-structure-nos-vertical-support-pillars-in-painted-finished",
+      "internal_cost": 450.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Support pillar",
+        "PAINTED"
+      ],
+      "sale_unit_price": 675.0,
+      "section": "Booth Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. wooden construct low partition ready in laminated finished",
+        "wooden construct low partition ready in laminated finished",
+        "Low dividing Partition",
+        "LAMINATED",
+        "Booth Structure wooden construct low partition ready in laminated finished",
+        "wooden construct low partition ready in laminated finished nos"
+      ],
+      "description": "nos. wooden construct low partition ready in laminated finished",
+      "id": "booth-structure-nos-wooden-construct-low-partition-ready-in-laminated-finished",
+      "internal_cost": 280.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Low dividing Partition",
+        "LAMINATED"
+      ],
+      "sale_unit_price": 420.0,
+      "section": "Booth Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. wooden construct low partition ready in painted finished",
+        "wooden construct low partition ready in painted finished",
+        "Low dividing Partition",
+        "PAINTED",
+        "Booth Structure wooden construct low partition ready in painted finished",
+        "wooden construct low partition ready in painted finished nos"
+      ],
+      "description": "nos. wooden construct low partition ready in painted finished",
+      "id": "booth-structure-nos-wooden-construct-low-partition-ready-in-painted-finished",
+      "internal_cost": 180.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Booth Structure",
+      "remarks": [
+        "Low dividing Partition",
+        "PAINTED"
+      ],
+      "sale_unit_price": 270.0,
+      "section": "Booth Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "Coffee/ Tea and supplies for 100 people per day",
+        "Coffee",
+        "Tea and supplies for 100 people per day",
+        "COFFEE PER DAY",
+        "Coffee / Tea (Subject to approval by Venue owner and Organiser) Coffee/ Tea and supplies for 100 people per day"
+      ],
+      "description": "Coffee/ Tea and supplies for 100 people per day",
+      "id": "coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day",
+      "internal_cost": 150.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+      "remarks": [
+        "COFFEE PER DAY"
+      ],
+      "sale_unit_price": 225.0,
+      "section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "Water cooler and heating equipment for 3 gallons",
+        "DRINKING WATER",
+        "Coffee / Tea (Subject to approval by Venue owner and Organiser) Water cooler and heating equipment for 3 gallons"
+      ],
+      "description": "Water cooler and heating equipment for 3 gallons",
+      "id": "coffee-tea-subject-to-approval-by-venue-owner-and-organiser-water-cooler-and-heating-equipment-for-3-gallons",
+      "internal_cost": 250.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+      "remarks": [
+        "DRINKING WATER"
+      ],
+      "sale_unit_price": 375.0,
+      "section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "m length x 1m height x 0.5m Width lockable information counter",
+        "wooden construct in laminated finished as per design proposal",
+        "x 1m height x 0.5m Width lockable information counter",
+        "INFORMATION COUNTER",
+        "FULL LAMINATED",
+        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
+        "wooden construct in laminated finished as per design proposal m length"
+      ],
+      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+      "id": "counters-and-cabinets-m-length-x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 1200.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "INFORMATION COUNTER",
+        "FULL LAMINATED"
+      ],
+      "sale_unit_price": 1800.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "m length x 1m height x 0.5m Width lockable information counter",
+        "wooden construct in painted finished and laminated top as per design proposal",
+        "x 1m height x 0.5m Width lockable information counter",
+        "INFORMATION COUNTER",
+        "PAINTED",
+        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
+        "wooden construct in painted finished and laminated top as per design proposal m length"
+      ],
+      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+      "id": "counters-and-cabinets-m-length-x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+      "internal_cost": 800.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "INFORMATION COUNTER",
+        "PAINTED"
+      ],
+      "sale_unit_price": 1200.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "m length"
+    },
+    {
+      "aliases": [
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "COUNTER",
+        "FULL LAMINATED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "wooden construct in laminated finished as per design proposal nos"
+      ],
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal",
+      "id": "counters-and-cabinets-nos-of-1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 1400.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "COUNTER",
+        "FULL LAMINATED"
+      ],
+      "sale_unit_price": 2100.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "COUNTER WITH GLASS TOP",
+        "PAINTED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "wooden construct in painted finished and laminated top as per design proposal nos"
+      ],
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal",
+      "id": "counters-and-cabinets-nos-of-1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+      "internal_cost": 1200.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "COUNTER WITH GLASS TOP",
+        "PAINTED"
+      ],
+      "sale_unit_price": 1800.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter",
+        "wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter",
+        "COUNTER",
+        "FULL LAMINATED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter",
+        "wooden construct in laminated finished as per design proposal nos"
+      ],
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+      "id": "counters-and-cabinets-nos-of-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 1200.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "COUNTER",
+        "FULL LAMINATED"
+      ],
+      "sale_unit_price": 1800.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter",
+        "wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter",
+        "COUNTER",
+        "PAINTED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter",
+        "wooden construct in painted finished and laminated top as per design proposal nos"
+      ],
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
+      "id": "counters-and-cabinets-nos-of-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+      "internal_cost": 800.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "COUNTER",
+        "PAINTED"
+      ],
+      "sale_unit_price": 1200.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "Professional Engineer Endorsement for structure above 4m",
+        "PE",
+        "COUNTERS AND CABINETS Professional Engineer Endorsement for structure above 4m"
+      ],
+      "description": "Professional Engineer Endorsement for structure above 4m",
+      "id": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+      "internal_cost": 800.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "COUNTERS AND CABINETS",
+      "remarks": [
+        "PE"
+      ],
+      "sale_unit_price": 1200.0,
+      "section": "COUNTERS AND CABINETS",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "m. run LED bar for backlit graphics",
+        "LED bar for backlit graphics",
+        "LED BAR",
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics",
+        "LED bar for backlit graphics m run"
+      ],
+      "description": "m. run LED bar for backlit graphics",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-m-run-led-bar-for-backlit-graphics",
+      "internal_cost": 40.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "LED BAR"
+      ],
+      "sale_unit_price": 60.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "m run"
+    },
+    {
+      "aliases": [
+        "m. run LED strip light for coves",
+        "LED strip light for coves",
+        "LED STRIPS",
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves",
+        "LED strip light for coves m run"
+      ],
+      "description": "m. run LED strip light for coves",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-m-run-led-strip-light-for-coves",
+      "internal_cost": 28.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "LED STRIPS"
+      ],
+      "sale_unit_price": 42.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "m run"
+    },
+    {
+      "aliases": [
+        "no. single line drawing for DB box",
+        "single line drawing for DB box",
+        "Single Line Drawing",
+        "Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box",
+        "single line drawing for DB box nos"
+      ],
+      "description": "no. single line drawing for DB box",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-no-single-line-drawing-for-db-box",
+      "internal_cost": 400.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "Single Line Drawing"
+      ],
+      "sale_unit_price": 600.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 10W Arm LED Spotlight",
+        "10W Arm LED Spotlight",
+        "ARM SPOTLIGHT",
+        "Electrical Fittings ( Excluding connection fees by Organiser) 10W Arm LED Spotlight",
+        "10W Arm LED Spotlight nos"
+      ],
+      "description": "nos. 10W Arm LED Spotlight",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-10w-arm-led-spotlight",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "ARM SPOTLIGHT"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 10W LED Spotlight",
+        "10W LED Spotlight",
+        "SPOTLIGHT",
+        "Electrical Fittings ( Excluding connection fees by Organiser) 10W LED Spotlight",
+        "10W LED Spotlight nos"
+      ],
+      "description": "nos. 10W LED Spotlight",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-10w-led-spotlight",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "SPOTLIGHT"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 12,
+          "anchor_row": 130,
+          "path": "pricing-catalog-images/image3.png",
+          "source": "xl/media/image3.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use)",
+        "13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use)",
+        "13Amp",
+        "230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use)",
+        "POWERPOINT",
+        "Electrical Fittings ( Excluding connection fees by Organiser) 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use)",
+        "13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use) nos"
+      ],
+      "description": "nos. 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use)",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-13amp-230v-sp-50hz-ac-socket-with-24hrs-supply-max-800w-not-for-lighting-use",
+      "internal_cost": 180.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "POWERPOINT"
+      ],
+      "sale_unit_price": 270.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 150W HQI Floodlight",
+        "150W HQI Floodlight",
+        "HQI Floodlight",
+        "Electrical Fittings ( Excluding connection fees by Organiser) 150W HQI Floodlight",
+        "150W HQI Floodlight nos"
+      ],
+      "description": "nos. 150W HQI Floodlight",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-150w-hqi-floodlight",
+      "internal_cost": 70.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "HQI Floodlight"
+      ],
+      "sale_unit_price": 105.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 70W LED Arm Floodlight",
+        "70W LED Arm Floodlight",
+        "ARM Flood light",
+        "Electrical Fittings ( Excluding connection fees by Organiser) 70W LED Arm Floodlight",
+        "70W LED Arm Floodlight nos"
+      ],
+      "description": "nos. 70W LED Arm Floodlight",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-70w-led-arm-floodlight",
+      "internal_cost": 70.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "ARM Flood light"
+      ],
+      "sale_unit_price": 105.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 12,
+          "anchor_row": 134,
+          "path": "pricing-catalog-images/image1.png",
+          "source": "xl/media/image1.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. LED recess downlight 3\"",
+        "LED recess downlight 3\"",
+        "Downlight",
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 3\"",
+        "LED recess downlight 3\" nos"
+      ],
+      "description": "nos. LED recess downlight 3\"",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-led-recess-downlight-3",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "Downlight"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. LED recess downlight 6\"",
+        "LED recess downlight 6\"",
+        "Downlight",
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 6\"",
+        "LED recess downlight 6\" nos"
+      ],
+      "description": "nos. LED recess downlight 6\"",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-led-recess-downlight-6",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "Downlight"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 12,
+          "anchor_row": 139,
+          "path": "pricing-catalog-images/image2.png",
+          "source": "xl/media/image2.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use)",
+        "nos.13Amp",
+        "230V SP 50Hz AC Socket (Max 800W) (Not for lighting use)",
+        "POWERPOINT",
+        "Electrical Fittings ( Excluding connection fees by Organiser) nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use)",
+        "nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) nos"
+      ],
+      "description": "nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use)",
+      "id": "electrical-fittings-excluding-connection-fees-by-organiser-nos-13amp-230v-sp-50hz-ac-socket-max-800w-not-for-lighting-use",
+      "internal_cost": 95.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "remarks": [
+        "POWERPOINT"
+      ],
+      "sale_unit_price": 142.5,
+      "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "sqm 100mm raised platform with aluminum edging",
+        "100mm raised platform with aluminum edging",
+        "Platform ONLY",
+        "Floor Design 100mm raised platform with aluminum edging",
+        "100mm raised platform with aluminum edging sqm"
+      ],
+      "description": "sqm 100mm raised platform with aluminum edging",
+      "id": "floor-design-sqm-100mm-raised-platform-with-aluminum-edging",
+      "internal_cost": 40.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Floor Design",
+      "remarks": [
+        "Platform ONLY"
+      ],
+      "sale_unit_price": 60.0,
+      "section": "Floor Design",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "sqm 2mm PVC flooring on raised platform",
+        "2mm PVC flooring on raised platform",
+        "PVC",
+        "Floor Design 2mm PVC flooring on raised platform",
+        "2mm PVC flooring on raised platform sqm"
+      ],
+      "description": "sqm 2mm PVC flooring on raised platform",
+      "id": "floor-design-sqm-2mm-pvc-flooring-on-raised-platform",
+      "internal_cost": 40.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Floor Design",
+      "remarks": [
+        "PVC"
+      ],
+      "sale_unit_price": 60.0,
+      "section": "Floor Design",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "sqm needle punch carpet in colour",
+        "needle punch carpet in colour",
+        "needle punch",
+        "Floor Design needle punch carpet in colour",
+        "needle punch carpet in colour sqm"
+      ],
+      "description": "sqm needle punch carpet in colour",
+      "id": "floor-design-sqm-needle-punch-carpet-in-colour",
+      "internal_cost": 7.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Floor Design",
+      "remarks": [
+        "needle punch"
+      ],
+      "sale_unit_price": 10.5,
+      "section": "Floor Design",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "sqm needle velour carpet in colour",
+        "needle velour carpet in colour",
+        "velour",
+        "Floor Design needle velour carpet in colour",
+        "needle velour carpet in colour sqm"
+      ],
+      "description": "sqm needle velour carpet in colour",
+      "id": "floor-design-sqm-needle-velour-carpet-in-colour",
+      "internal_cost": 19.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Floor Design",
+      "remarks": [
+        "velour"
+      ],
+      "sale_unit_price": 28.5,
+      "section": "Floor Design",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "sqm white laminated flooring on raised platform",
+        "white laminated flooring on raised platform",
+        "white laminate",
+        "Floor Design white laminated flooring on raised platform",
+        "white laminated flooring on raised platform sqm"
+      ],
+      "description": "sqm white laminated flooring on raised platform",
+      "id": "floor-design-sqm-white-laminated-flooring-on-raised-platform",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Floor Design",
+      "remarks": [
+        "white laminate"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Floor Design",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "sqm wood grain laminated flooring on raised platform",
+        "wood grain laminated flooring on raised platform",
+        "wood grain laminate",
+        "Floor Design wood grain laminated flooring on raised platform",
+        "wood grain laminated flooring on raised platform sqm"
+      ],
+      "description": "sqm wood grain laminated flooring on raised platform",
+      "id": "floor-design-sqm-wood-grain-laminated-flooring-on-raised-platform",
+      "internal_cost": 50.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Floor Design",
+      "remarks": [
+        "wood grain laminate"
+      ],
+      "sale_unit_price": 75.0,
+      "section": "Floor Design",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "nos. Aluminum Bistro Table (Round)",
+        "Aluminum Bistro Table (Round)",
+        "BISTRO TABLE HIGH",
+        "Furniture Rental Aluminum Bistro Table (Round)",
+        "Aluminum Bistro Table (Round) nos"
+      ],
+      "description": "nos. Aluminum Bistro Table (Round)",
+      "id": "furniture-rental-nos-aluminum-bistro-table-round",
+      "internal_cost": 75.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "BISTRO TABLE HIGH"
+      ],
+      "sale_unit_price": 112.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 193,
+          "path": "pricing-catalog-images/image23.png",
+          "source": "xl/media/image23.png"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 194,
+          "path": "pricing-catalog-images/image24.png",
+          "source": "xl/media/image24.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Aluminum Bistro Table (Square)",
+        "Aluminum Bistro Table (Square)",
+        "BISTRO TABLE HIGH",
+        "Furniture Rental Aluminum Bistro Table (Square)",
+        "Aluminum Bistro Table (Square) nos"
+      ],
+      "description": "nos. Aluminum Bistro Table (Square)",
+      "id": "furniture-rental-nos-aluminum-bistro-table-square",
+      "internal_cost": 75.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "BISTRO TABLE HIGH"
+      ],
+      "sale_unit_price": 112.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Aluminum Bistro Table (Square)",
+        "Aluminum Bistro Table (Square)",
+        "BISTRO TABLE HIGH",
+        "Furniture Rental Aluminum Bistro Table (Square)",
+        "Aluminum Bistro Table (Square) nos"
+      ],
+      "description": "nos. Aluminum Bistro Table (Square)",
+      "id": "furniture-rental-nos-aluminum-bistro-table-square-2",
+      "internal_cost": 75.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "BISTRO TABLE HIGH"
+      ],
+      "sale_unit_price": 112.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 198,
+          "path": "pricing-catalog-images/image25.jpg",
+          "source": "xl/media/image25.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Bistro Chairs",
+        "Bistro Chairs",
+        "Bistro Low Chair",
+        "Furniture Rental Bistro Chairs",
+        "Bistro Chairs nos"
+      ],
+      "description": "nos. Bistro Chairs",
+      "id": "furniture-rental-nos-bistro-chairs",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bistro Low Chair"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 152,
+          "path": "pricing-catalog-images/image5.png",
+          "source": "xl/media/image5.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Chair With Cushion",
+        "Chair With Cushion",
+        "Bistro Low Chair",
+        "Furniture Rental Chair With Cushion",
+        "Chair With Cushion nos"
+      ],
+      "description": "nos. Chair With Cushion",
+      "id": "furniture-rental-nos-chair-with-cushion",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bistro Low Chair"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 160,
+          "path": "pricing-catalog-images/image7.png",
+          "source": "xl/media/image7.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Conference Chair",
+        "Conference Chair",
+        "Conference chairs",
+        "Furniture Rental Conference Chair",
+        "Conference Chair nos"
+      ],
+      "description": "nos. Conference Chair",
+      "id": "furniture-rental-nos-conference-chair",
+      "internal_cost": 55.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Conference chairs"
+      ],
+      "sale_unit_price": 82.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Don White Bar Stool",
+        "Don White Bar Stool",
+        "Bar Stool",
+        "Furniture Rental Don White Bar Stool",
+        "Don White Bar Stool nos"
+      ],
+      "description": "nos. Don White Bar Stool",
+      "id": "furniture-rental-nos-don-white-bar-stool",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 14,
+          "anchor_row": 176,
+          "path": "pricing-catalog-images/image15.jpg",
+          "source": "xl/media/image15.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Eames Replica Chair (White)",
+        "Eames Replica Chair (White)",
+        "Bistro Low Chair",
+        "Furniture Rental Eames Replica Chair (White)",
+        "Eames Replica Chair (White) nos"
+      ],
+      "description": "nos. Eames Replica Chair (White)",
+      "id": "furniture-rental-nos-eames-replica-chair-white",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bistro Low Chair"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 155,
+          "path": "pricing-catalog-images/image4.png",
+          "source": "xl/media/image4.png"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 156,
+          "path": "pricing-catalog-images/image6.png",
+          "source": "xl/media/image6.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Eames-Style Bar Stool (Replica)",
+        "Eames-Style Bar Stool (Replica)",
+        "Bar Stool",
+        "Furniture Rental Eames-Style Bar Stool (Replica)",
+        "Eames-Style Bar Stool (Replica) nos"
+      ],
+      "description": "nos. Eames-Style Bar Stool (Replica)",
+      "id": "furniture-rental-nos-eames-style-bar-stool-replica",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 14,
+          "anchor_row": 169,
+          "path": "pricing-catalog-images/image11.jpg",
+          "source": "xl/media/image11.jpeg"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 170,
+          "path": "pricing-catalog-images/image12.jpg",
+          "source": "xl/media/image12.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Eames-Style Replica Arm Chair (Black)",
+        "Eames-Style Replica Arm Chair (Black)",
+        "Bistro Low Chair",
+        "Furniture Rental Eames-Style Replica Arm Chair (Black)",
+        "Eames-Style Replica Arm Chair (Black) nos"
+      ],
+      "description": "nos. Eames-Style Replica Arm Chair (Black)",
+      "id": "furniture-rental-nos-eames-style-replica-arm-chair-black",
+      "internal_cost": 50.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bistro Low Chair"
+      ],
+      "sale_unit_price": 75.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 162,
+          "path": "pricing-catalog-images/image8.png",
+          "source": "xl/media/image8.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Faux Leather Black Chair Twin Seating",
+        "Faux Leather Black Chair Twin Seating",
+        "SOFA chairs",
+        "Furniture Rental Faux Leather Black Chair Twin Seating",
+        "Faux Leather Black Chair Twin Seating nos"
+      ],
+      "description": "nos. Faux Leather Black Chair Twin Seating",
+      "id": "furniture-rental-nos-faux-leather-black-chair-twin-seating",
+      "internal_cost": 125.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "SOFA chairs"
+      ],
+      "sale_unit_price": 187.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 12,
+          "anchor_row": 187,
+          "path": "pricing-catalog-images/image20.png",
+          "source": "xl/media/image20.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. High Top Table White",
+        "High Top Table White",
+        "BISTRO TABLE HIGH",
+        "Furniture Rental High Top Table White",
+        "High Top Table White nos"
+      ],
+      "description": "nos. High Top Table White",
+      "id": "furniture-rental-nos-high-top-table-white",
+      "internal_cost": 75.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "BISTRO TABLE HIGH"
+      ],
+      "sale_unit_price": 112.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 191,
+          "path": "pricing-catalog-images/image22.png",
+          "source": "xl/media/image22.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Jay White Bar Stool with high back rest",
+        "Jay White Bar Stool with high back rest",
+        "Bar Stool",
+        "Furniture Rental Jay White Bar Stool with high back rest",
+        "Jay White Bar Stool with high back rest nos"
+      ],
+      "description": "nos. Jay White Bar Stool with high back rest",
+      "id": "furniture-rental-nos-jay-white-bar-stool-with-high-back-rest",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 14,
+          "anchor_row": 173,
+          "path": "pricing-catalog-images/image13.jpg",
+          "source": "xl/media/image13.jpeg"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 174,
+          "path": "pricing-catalog-images/image14.jpg",
+          "source": "xl/media/image14.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Juliette Bar Stool",
+        "Juliette Bar Stool",
+        "Bar Stool",
+        "Furniture Rental Juliette Bar Stool",
+        "Juliette Bar Stool nos"
+      ],
+      "description": "nos. Juliette Bar Stool",
+      "id": "furniture-rental-nos-juliette-bar-stool",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 183,
+          "path": "pricing-catalog-images/image18.png",
+          "source": "xl/media/image18.png"
+        },
+        {
+          "anchor_col": 14,
+          "anchor_row": 184,
+          "path": "pricing-catalog-images/image19.png",
+          "source": "xl/media/image19.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. low Lidas Chair",
+        "low Lidas Chair",
+        "Bistro Low Chair",
+        "Furniture Rental low Lidas Chair",
+        "low Lidas Chair nos"
+      ],
+      "description": "nos. low Lidas Chair",
+      "id": "furniture-rental-nos-low-lidas-chair",
+      "internal_cost": 30.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bistro Low Chair"
+      ],
+      "sale_unit_price": 45.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 157,
+          "path": "pricing-catalog-images/image5-2.png",
+          "source": "xl/media/image5.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Max White Bar Stool",
+        "Max White Bar Stool",
+        "Bar Stool",
+        "Furniture Rental Max White Bar Stool",
+        "Max White Bar Stool nos"
+      ],
+      "description": "nos. Max White Bar Stool",
+      "id": "furniture-rental-nos-max-white-bar-stool",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Modular Faux Leather White Sofa per unit",
+        "Modular Faux Leather White Sofa per unit",
+        "SOFA SEATS",
+        "Furniture Rental Modular Faux Leather White Sofa per unit",
+        "Modular Faux Leather White Sofa per unit nos"
+      ],
+      "description": "nos. Modular Faux Leather White Sofa per unit",
+      "id": "furniture-rental-nos-modular-faux-leather-white-sofa-per-unit",
+      "internal_cost": 75.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "SOFA SEATS"
+      ],
+      "sale_unit_price": 112.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 190,
+          "path": "pricing-catalog-images/image21.jpg",
+          "source": "xl/media/image21.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Opel replica chairs (white)",
+        "Opel replica chairs (white)",
+        "Seating chair",
+        "Furniture Rental Opel replica chairs (white)",
+        "Opel replica chairs (white) nos"
+      ],
+      "description": "nos. Opel replica chairs (white)",
+      "id": "furniture-rental-nos-opel-replica-chairs-white",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Seating chair"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 166,
+          "path": "pricing-catalog-images/image10.png",
+          "source": "xl/media/image10.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Roudy Bar Stool (Black)",
+        "Roudy Bar Stool (Black)",
+        "Bar Stool",
+        "Furniture Rental Roudy Bar Stool (Black)",
+        "Roudy Bar Stool (Black) nos"
+      ],
+      "description": "nos. Roudy Bar Stool (Black)",
+      "id": "furniture-rental-nos-roudy-bar-stool-black",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 179,
+          "path": "pricing-catalog-images/image16.jpg",
+          "source": "xl/media/image16.jpeg"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 180,
+          "path": "pricing-catalog-images/image17.png",
+          "source": "xl/media/image17.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Roudy Bar Stool (White)",
+        "Roudy Bar Stool (White)",
+        "Bar Stool",
+        "Furniture Rental Roudy Bar Stool (White)",
+        "Roudy Bar Stool (White) nos"
+      ],
+      "description": "nos. Roudy Bar Stool (White)",
+      "id": "furniture-rental-nos-roudy-bar-stool-white",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Round Glass Low Table (90cm)",
+        "Round Glass Low Table (90cm)",
+        "GLASS ROUNDTABLE LOW",
+        "Furniture Rental Round Glass Low Table (90cm)",
+        "Round Glass Low Table (90cm) nos"
+      ],
+      "description": "nos. Round Glass Low Table (90cm)",
+      "id": "furniture-rental-nos-round-glass-low-table-90cm",
+      "internal_cost": 45.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "GLASS ROUNDTABLE LOW"
+      ],
+      "sale_unit_price": 67.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Saffron Bar Stool (Black)",
+        "Saffron Bar Stool (Black)",
+        "Bar Stool",
+        "Furniture Rental Saffron Bar Stool (Black)",
+        "Saffron Bar Stool (Black) nos"
+      ],
+      "description": "nos. Saffron Bar Stool (Black)",
+      "id": "furniture-rental-nos-saffron-bar-stool-black",
+      "internal_cost": 35.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Bar Stool"
+      ],
+      "sale_unit_price": 52.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. seating chair (grey)",
+        "seating chair (grey)",
+        "Seating chair",
+        "Furniture Rental seating chair (grey)",
+        "seating chair (grey) nos"
+      ],
+      "description": "nos. seating chair (grey)",
+      "id": "furniture-rental-nos-seating-chair-grey",
+      "internal_cost": 25.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Seating chair"
+      ],
+      "sale_unit_price": 37.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 164,
+          "path": "pricing-catalog-images/image9.jpg",
+          "source": "xl/media/image9.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. white folding chairs",
+        "white folding chairs",
+        "Folding Chair",
+        "Furniture Rental white folding chairs",
+        "white folding chairs nos"
+      ],
+      "description": "nos. white folding chairs",
+      "id": "furniture-rental-nos-white-folding-chairs",
+      "internal_cost": 8.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "Folding Chair"
+      ],
+      "sale_unit_price": 12.0,
+      "section": "Furniture Rental",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. White Tulip Table (60cm)",
+        "White Tulip Table (60cm)",
+        "ROUNDTABLE LOW",
+        "Furniture Rental White Tulip Table (60cm)",
+        "White Tulip Table (60cm) nos"
+      ],
+      "description": "nos. White Tulip Table (60cm)",
+      "id": "furniture-rental-nos-white-tulip-table-60cm",
+      "internal_cost": 45.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Furniture Rental",
+      "remarks": [
+        "ROUNDTABLE LOW"
+      ],
+      "sale_unit_price": 67.5,
+      "section": "Furniture Rental",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 200,
+          "path": "pricing-catalog-images/image26.png",
+          "source": "xl/media/image26.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. 2D backlit logo",
+        "2D backlit logo",
+        "Backlit Lettering",
+        "Graphics 2D backlit logo",
+        "2D backlit logo nos"
+      ],
+      "description": "nos. 2D backlit logo",
+      "id": "graphics-nos-2d-backlit-logo",
+      "internal_cost": 200.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "Backlit Lettering"
+      ],
+      "sale_unit_price": 300.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 3D backlit logo",
+        "3D backlit logo",
+        "Backlit Logo",
+        "Graphics 3D backlit logo",
+        "3D backlit logo nos"
+      ],
+      "description": "nos. 3D backlit logo",
+      "id": "graphics-nos-3d-backlit-logo",
+      "internal_cost": 350.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "Backlit Logo"
+      ],
+      "sale_unit_price": 525.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 3D vinyl logo on foam",
+        "3D vinyl logo on foam",
+        "3D cut-out logo",
+        "Graphics 3D vinyl logo on foam",
+        "3D vinyl logo on foam nos"
+      ],
+      "description": "nos. 3D vinyl logo on foam",
+      "id": "graphics-nos-3d-vinyl-logo-on-foam",
+      "internal_cost": 150.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "3D cut-out logo"
+      ],
+      "sale_unit_price": 225.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. die-cut vinyl logo including lettering",
+        "die-cut vinyl logo including lettering",
+        "3D cut-out lettering",
+        "NOTE: Per set max 2m long",
+        "Graphics die-cut vinyl logo including lettering",
+        "die-cut vinyl logo including lettering nos"
+      ],
+      "description": "nos. die-cut vinyl logo including lettering",
+      "id": "graphics-nos-die-cut-vinyl-logo-including-lettering",
+      "internal_cost": 50.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "3D cut-out lettering",
+        "NOTE: Per set max 2m long"
+      ],
+      "sale_unit_price": 75.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. digital print graphic mounted directly onto system panels",
+        "(Size 950mmL x 2340mmH)",
+        "digital print graphic mounted directly onto system panels",
+        "For Shell Scheme",
+        "Graphics digital print graphic mounted directly onto system panels",
+        "(Size 950mmL x 2340mmH) nos"
+      ],
+      "description": "nos. digital print graphic mounted directly onto system panels; (Size 950mmL x 2340mmH)",
+      "id": "graphics-nos-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+      "internal_cost": 100.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "For Shell Scheme"
+      ],
+      "sale_unit_price": 150.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. poster print on foam for exhibitor wall at approx. 1mL x 1.2mH",
+        "poster print on foam for exhibitor wall at approx. 1mL x 1.2mH",
+        "POSTER on foam",
+        "Graphics poster print on foam for exhibitor wall at approx. 1mL x 1.2mH",
+        "poster print on foam for exhibitor wall at approx. 1mL x 1.2mH nos"
+      ],
+      "description": "nos. poster print on foam for exhibitor wall at approx. 1mL x 1.2mH",
+      "id": "graphics-nos-poster-print-on-foam-for-exhibitor-wall-at-approx-1ml-x-1-2mh",
+      "internal_cost": 60.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "POSTER on foam"
+      ],
+      "sale_unit_price": 90.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos.seamless wall graphic on flex foam",
+        "(Size 3000mmL x 2500mmH)",
+        "For Shell Scheme",
+        "Graphics nos.seamless wall graphic on flex foam",
+        "(Size 3000mmL x 2500mmH) nos"
+      ],
+      "description": "nos.seamless wall graphic on flex foam; (Size 3000mmL x 2500mmH)",
+      "id": "graphics-nos-seamless-wall-graphic-on-flex-foam-size-3000mml-x-2500mmh",
+      "internal_cost": 360.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "For Shell Scheme"
+      ],
+      "sale_unit_price": 540.0,
+      "section": "Graphics",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "sets of 3D backlit lettering",
+        "3D backlit lettering",
+        "Backlit Lettering",
+        "NOTE: Per set max 2m long",
+        "Graphics 3D backlit lettering",
+        "3D backlit lettering set"
+      ],
+      "description": "sets of 3D backlit lettering",
+      "id": "graphics-sets-of-3d-backlit-lettering",
+      "internal_cost": 400.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "Backlit Lettering",
+        "NOTE: Per set max 2m long"
+      ],
+      "sale_unit_price": 600.0,
+      "section": "Graphics",
+      "unit_hint": "set"
+    },
+    {
+      "aliases": [
+        "sets of 3D vinyl lettering on foam",
+        "3D vinyl lettering on foam",
+        "3D cut-out lettering",
+        "NOTE: Per set max 2m long",
+        "Graphics 3D vinyl lettering on foam",
+        "3D vinyl lettering on foam set"
+      ],
+      "description": "sets of 3D vinyl lettering on foam",
+      "id": "graphics-sets-of-3d-vinyl-lettering-on-foam",
+      "internal_cost": 160.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "3D cut-out lettering",
+        "NOTE: Per set max 2m long"
+      ],
+      "sale_unit_price": 240.0,
+      "section": "Graphics",
+      "unit_hint": "set"
+    },
+    {
+      "aliases": [
+        "sqm of vinyl printed graphics",
+        "vinyl printed graphics",
+        "Printed Graphics on wall",
+        "Graphics vinyl printed graphics",
+        "vinyl printed graphics sqm"
+      ],
+      "description": "sqm of vinyl printed graphics",
+      "id": "graphics-sqm-of-vinyl-printed-graphics",
+      "internal_cost": 40.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "Printed Graphics on wall"
+      ],
+      "sale_unit_price": 60.0,
+      "section": "Graphics",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "sqm of vinyl printed graphics on flex foam",
+        "vinyl printed graphics on flex foam",
+        "Printed Graphics on foam",
+        "Graphics vinyl printed graphics on flex foam",
+        "vinyl printed graphics on flex foam sqm"
+      ],
+      "description": "sqm of vinyl printed graphics on flex foam",
+      "id": "graphics-sqm-of-vinyl-printed-graphics-on-flex-foam",
+      "internal_cost": 48.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Graphics",
+      "remarks": [
+        "Printed Graphics on foam"
+      ],
+      "sale_unit_price": 72.0,
+      "section": "Graphics",
+      "unit_hint": "sqm"
+    },
+    {
+      "aliases": [
+        "Lot. rental of Boom Lift for Rigging (Mandatory charge per booth)",
+        "Boom Lift for Rigging (Mandatory charge per booth)",
+        "BOOM LIFT ONLY FOR EXPO",
+        "Hanging Structure Boom Lift for Rigging (Mandatory charge per booth)",
+        "Boom Lift for Rigging (Mandatory charge per booth) lot"
+      ],
+      "description": "Lot. rental of Boom Lift for Rigging (Mandatory charge per booth)",
+      "id": "hanging-structure-lot-rental-of-boom-lift-for-rigging-mandatory-charge-per-booth",
+      "internal_cost": 500.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "BOOM LIFT ONLY FOR EXPO"
+      ],
+      "sale_unit_price": 750.0,
+      "section": "Hanging Structure",
+      "unit_hint": "lot"
+    },
+    {
+      "aliases": [
+        "m rental of 300mm x 300mm Aluminium Box Truss",
+        "TRUSS",
+        "Hanging Structure m rental of 300mm x 300mm Aluminium Box Truss"
+      ],
+      "description": "m rental of 300mm x 300mm Aluminium Box Truss",
+      "id": "hanging-structure-m-rental-of-300mm-x-300mm-aluminium-box-truss",
+      "internal_cost": 90.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "TRUSS"
+      ],
+      "sale_unit_price": 135.0,
+      "section": "Hanging Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "m run of hanging structure x 1m height",
+        "aluminum profile construct in fabric finished as per design proposal",
+        "Including fabric print",
+        "hanging structure x 1m height",
+        "TUBE with PRINTED FABRIC",
+        "Hanging Structure hanging structure x 1m height",
+        "Including fabric print m run"
+      ],
+      "description": "m run of hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print",
+      "id": "hanging-structure-m-run-of-hanging-structure-x-1m-height-aluminum-profile-construct-in-fabric-finished-as-per-design-proposal-including-fabric-print",
+      "internal_cost": 100.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "TUBE with PRINTED FABRIC"
+      ],
+      "sale_unit_price": 150.0,
+      "section": "Hanging Structure",
+      "unit_hint": "m run"
+    },
+    {
+      "aliases": [
+        "m run of hanging structure x 1m height",
+        "wooden construct in laminated finished as per design proposal",
+        "hanging structure x 1m height",
+        "Wooden hanging structure",
+        "LAMINATE",
+        "Hanging Structure hanging structure x 1m height",
+        "wooden construct in laminated finished as per design proposal m run"
+      ],
+      "description": "m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
+      "id": "hanging-structure-m-run-of-hanging-structure-x-1m-height-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "internal_cost": 450.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "Wooden hanging structure",
+        "LAMINATE"
+      ],
+      "sale_unit_price": 675.0,
+      "section": "Hanging Structure",
+      "unit_hint": "m run"
+    },
+    {
+      "aliases": [
+        "m run of hanging structure x 1m height",
+        "wooden construct in painted finished as per design proposal",
+        "hanging structure x 1m height",
+        "Wooden hanging structure",
+        "PAINTED",
+        "Hanging Structure hanging structure x 1m height",
+        "wooden construct in painted finished as per design proposal m run"
+      ],
+      "description": "m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal",
+      "id": "hanging-structure-m-run-of-hanging-structure-x-1m-height-wooden-construct-in-painted-finished-as-per-design-proposal",
+      "internal_cost": 300.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "Wooden hanging structure",
+        "PAINTED"
+      ],
+      "sale_unit_price": 450.0,
+      "section": "Hanging Structure",
+      "unit_hint": "m run"
+    },
+    {
+      "aliases": [
+        "nos. of Manual Chain Hoist",
+        "Manual Chain Hoist",
+        "MANUAL HOIST",
+        "Hanging Structure Manual Chain Hoist",
+        "Manual Chain Hoist nos"
+      ],
+      "description": "nos. of Manual Chain Hoist",
+      "id": "hanging-structure-nos-of-manual-chain-hoist",
+      "internal_cost": 500.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "MANUAL HOIST"
+      ],
+      "sale_unit_price": 750.0,
+      "section": "Hanging Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. rigging point for Overhead Structure or Aluminium Box Truss",
+        "\u2022 Prices are not inclusive of truss",
+        "rigging point for Overhead Structure or Aluminium Box Truss",
+        "RIGGING POINT",
+        "Hanging Structure rigging point for Overhead Structure or Aluminium Box Truss",
+        "\u2022 Prices are not inclusive of truss nos"
+      ],
+      "description": "nos. rigging point for Overhead Structure or Aluminium Box Truss; \u2022 Prices are not inclusive of truss",
+      "id": "hanging-structure-nos-rigging-point-for-overhead-structure-or-aluminium-box-truss-prices-are-not-inclusive-of-truss",
+      "internal_cost": 300.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "RIGGING POINT"
+      ],
+      "sale_unit_price": 450.0,
+      "section": "Hanging Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "Professional Engineer Endorsement for hanging",
+        "PE",
+        "Hanging Structure Professional Engineer Endorsement for hanging"
+      ],
+      "description": "Professional Engineer Endorsement for hanging",
+      "id": "hanging-structure-professional-engineer-endorsement-for-hanging",
+      "internal_cost": 800.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Hanging Structure",
+      "remarks": [
+        "PE"
+      ],
+      "sale_unit_price": 1200.0,
+      "section": "Hanging Structure",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. 420L Freezer (Mini Fridge)",
+        "420L Freezer (Mini Fridge)",
+        "MINI FRIDGE",
+        "Rental Items 420L Freezer (Mini Fridge)",
+        "420L Freezer (Mini Fridge) nos"
+      ],
+      "description": "nos. 420L Freezer (Mini Fridge)",
+      "id": "rental-items-nos-420l-freezer-mini-fridge",
+      "internal_cost": 150.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "MINI FRIDGE"
+      ],
+      "sale_unit_price": 225.0,
+      "section": "Rental Items",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 215,
+          "path": "pricing-catalog-images/image31.png",
+          "source": "xl/media/image31.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. 550L Refrigerator",
+        "550L Refrigerator",
+        "MINI FRIDGE",
+        "Rental Items 550L Refrigerator",
+        "550L Refrigerator nos"
+      ],
+      "description": "nos. 550L Refrigerator",
+      "id": "rental-items-nos-550l-refrigerator",
+      "internal_cost": 150.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "MINI FRIDGE"
+      ],
+      "sale_unit_price": 225.0,
+      "section": "Rental Items",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 217,
+          "path": "pricing-catalog-images/image32.png",
+          "source": "xl/media/image32.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Aluminum Foldable Brochure Stand",
+        "Aluminum Foldable Brochure Stand",
+        "Brochure stand",
+        "Rental Items Aluminum Foldable Brochure Stand",
+        "Aluminum Foldable Brochure Stand nos"
+      ],
+      "description": "nos. Aluminum Foldable Brochure Stand",
+      "id": "rental-items-nos-aluminum-foldable-brochure-stand",
+      "internal_cost": 55.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "Brochure stand"
+      ],
+      "sale_unit_price": 82.5,
+      "section": "Rental Items",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 13,
+          "anchor_row": 206,
+          "path": "pricing-catalog-images/image27.jpg",
+          "source": "xl/media/image27.jpeg"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 208,
+          "path": "pricing-catalog-images/image28.jpg",
+          "source": "xl/media/image28.jpeg"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Aluminum Foldable Magazine Stand",
+        "Aluminum Foldable Magazine Stand",
+        "Brochure stand",
+        "Rental Items Aluminum Foldable Magazine Stand",
+        "Aluminum Foldable Magazine Stand nos"
+      ],
+      "description": "nos. Aluminum Foldable Magazine Stand",
+      "id": "rental-items-nos-aluminum-foldable-magazine-stand",
+      "internal_cost": 55.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "Brochure stand"
+      ],
+      "sale_unit_price": 82.5,
+      "section": "Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Queue pole 1m (Black)",
+        "Queue pole 1m (Black)",
+        "Q POLES",
+        "Rental Items Queue pole 1m (Black)",
+        "Queue pole 1m (Black) nos"
+      ],
+      "description": "nos. Queue pole 1m (Black)",
+      "id": "rental-items-nos-queue-pole-1m-black",
+      "internal_cost": 18.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "Q POLES"
+      ],
+      "sale_unit_price": 27.0,
+      "section": "Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. Queue pole 1m (Silver)",
+        "Queue pole 1m (Silver)",
+        "Q POLES",
+        "Rental Items Queue pole 1m (Silver)",
+        "Queue pole 1m (Silver) nos"
+      ],
+      "description": "nos. Queue pole 1m (Silver)",
+      "id": "rental-items-nos-queue-pole-1m-silver",
+      "internal_cost": 18.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "Q POLES"
+      ],
+      "sale_unit_price": 27.0,
+      "section": "Rental Items",
+      "unit_hint": "nos",
+      "visual_references": [
+        {
+          "anchor_col": 12,
+          "anchor_row": 211,
+          "path": "pricing-catalog-images/image29.jpg",
+          "source": "xl/media/image29.jpeg"
+        },
+        {
+          "anchor_col": 13,
+          "anchor_row": 212,
+          "path": "pricing-catalog-images/image30.png",
+          "source": "xl/media/image30.png"
+        }
+      ]
+    },
+    {
+      "aliases": [
+        "nos. Sink with Cabinet",
+        "Sink with Cabinet",
+        "SINK",
+        "Rental Items Sink with Cabinet",
+        "Sink with Cabinet nos"
+      ],
+      "description": "nos. Sink with Cabinet",
+      "id": "rental-items-nos-sink-with-cabinet",
+      "internal_cost": 90.0,
+      "markup_multiplier": 1.5,
+      "reference_section": "Rental Items",
+      "remarks": [
+        "SINK"
+      ],
+      "sale_unit_price": 135.0,
+      "section": "Rental Items",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. sink connection",
+        "sink connection",
+        "Plumbling",
+        "Water Connection sink connection",
+        "sink connection nos"
+      ],
+      "description": "nos. sink connection",
+      "id": "water-connection-nos-sink-connection",
+      "internal_cost": 180.0,
+      "markup_multiplier": 1.2,
+      "reference_section": "Water Connection",
+      "remarks": [
+        "Plumbling"
+      ],
+      "sale_unit_price": 216.0,
+      "section": "Water Connection",
+      "unit_hint": "nos"
+    },
+    {
+      "aliases": [
+        "nos. water inlet and outlet",
+        "water inlet and outlet",
+        "Water connection",
+        "Water Connection water inlet and outlet",
+        "water inlet and outlet nos"
+      ],
+      "description": "nos. water inlet and outlet",
+      "id": "water-connection-nos-water-inlet-and-outlet",
+      "internal_cost": 720.0,
+      "markup_multiplier": 1.2,
+      "reference_section": "Water Connection",
+      "remarks": [
+        "Water connection"
+      ],
+      "sale_unit_price": 864.0,
+      "section": "Water Connection",
+      "unit_hint": "nos"
+    }
+  ],
+  "schema_version": 1
+}
