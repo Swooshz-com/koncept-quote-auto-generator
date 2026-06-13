@@ -331,7 +331,7 @@ async function main() {
     await page.locator("#basisChatKeepButton:not([disabled])").click();
     await page.locator("#basisChatMessages", { hasText: "Kept the current quote basis unchanged." }).waitFor({ timeout: 15000 });
     await submitBasisChat(page, "banana everything but also delete it");
-    await page.locator("#basisChatMessages", { hasText: "Try a shorter" }).waitFor({ timeout: 15000 });
+    await page.locator("#basisChatMessages", { hasText: "Failed. Please try again." }).waitFor({ timeout: 15000 });
     const chatShot = await screenshot(page, "ai-basis-chat-stress.png");
 
     await page.locator("#basisChatCloseButton").click();

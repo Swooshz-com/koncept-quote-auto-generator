@@ -3787,6 +3787,7 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   let changed = false;
   section.lines = (section.lines || []).map((line) => {
     const currentTag = normalizeBasisTag(line.tag);
+    if (currentTag !== "Confirm" && !isPendingAiProposalLine(line)) return line;
     const resolvedTag = nextTag === "Include" && basisLineAcceptsAsAiProposal(line) ? "Custom" : nextTag;
     const customPricing = isCustomPricingBasisLine(line) || resolvedTag === "Custom";
     const customConfirmed = customPricing && nextTag === "Include";
