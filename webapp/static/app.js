@@ -5,6 +5,9 @@ const DEFAULT_SAMPLE_ID = "kent-group";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const LEGACY_QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
 const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
+const QUOTE_SESSION_FILE_DB_NAME = "swooshz_quote_session_files_v1";
+const QUOTE_SESSION_FILE_STORE_NAME = "reference_files";
+const QUOTE_SESSION_FILE_DB_VERSION = 1;
 const QUOTE_SESSION_STATE_VERSION = 4;
 const OUTPUT_SORT_MODES = ["category", "name", "category_name"];
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
@@ -177,6 +180,7 @@ const state = {
 
 const qs = (selector) => document.querySelector(selector);
 let analysisElapsedTimerId = 0;
+let sessionFileDbPromise = null;
 
 const elements = {
   healthText: qs("#healthText"),
@@ -861,6 +865,7 @@ async function addImagesFromFiles(files) {
     return;
   }
   state.images = [...state.images, ...unique];
+  await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
   renderFiles();
   setWorkflowStage("ready_to_analyze");
   const generator = currentGenerator();
@@ -1558,55 +1563,179 @@ function safeSessionJson() {
   }
 }
 
+function openSessionFileDb() {
+  if (!window.indexedDB) return Promise.reject(new Error("IndexedDB unavailable"));
+  if (sessionFileDbPromise) return sessionFileDbPromise;
+  sessionFileDbPromise = new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(QUOTE_SESSION_FILE_DB_NAME, QUOTE_SESSION_FILE_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(QUOTE_SESSION_FILE_STORE_NAME)) {
+        db.createObjectStore(QUOTE_SESSION_FILE_STORE_NAME, { keyPath: "session_file_key" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open session file store"));
+    request.onblocked = () => reject(new Error("Session file store is blocked"));
+  }).catch((error) => {
+    sessionFileDbPromise = null;
+    throw error;
+  });
+  return sessionFileDbPromise;
+}
+
+function sessionFileKeyForImage(image = {}, index = 0) {
+  const existing = String(image.session_file_key || "").trim();
+  if (existing) return existing;
+  const namePart = String(image.name || "reference-file")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "reference-file";
+  const sizePart = String(Number.isFinite(Number(image.size)) ? Number(image.size) : 0);
+  const key = `${Date.now().toString(36)}-${index}-${sizePart}-${namePart}-${Math.random().toString(36).slice(2, 10)}`;
+  image.session_file_key = key;
+  return key;
+}
+
+function sessionImageMetadata(image = {}, index = 0) {
+  const sessionFileKey = sessionFileKeyForImage(image, index);
+  return {
+    name: String(image.name || `reference-${index + 1}`).trim() || `reference-${index + 1}`,
+    type: referenceFileType(image),
+    size: Number.isFinite(Number(image.size)) ? Number(image.size) : 0,
+    session_file_key: sessionFileKey,
+  };
+}
+
+function sessionFileRecordsFromImages(images = state.images) {
+  return images
+    .slice(0, MAX_REFERENCE_IMAGES)
+    .map((image, index) => ({
+      ...sessionImageMetadata(image, index),
+      data_url: String(image.data_url || "").trim(),
+    }))
+    .filter((record) => record.session_file_key && record.data_url);
+}
+
+function persistSessionFiles(records = []) {
+  const validRecords = records.filter((record) => record?.session_file_key && record?.data_url);
+  if (!validRecords.length) return Promise.resolve();
+  return openSessionFileDb().then((db) => new Promise((resolve, reject) => {
+    const transaction = db.transaction(QUOTE_SESSION_FILE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(QUOTE_SESSION_FILE_STORE_NAME);
+    validRecords.forEach((record) => store.put(record));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not persist session files"));
+    transaction.onabort = () => reject(transaction.error || new Error("Session file persistence aborted"));
+  }));
+}
+
+function loadSessionFileMap(keys = []) {
+  const uniqueKeys = [...new Set(keys.map((key) => String(key || "").trim()).filter(Boolean))];
+  if (!uniqueKeys.length) return Promise.resolve(new Map());
+  return openSessionFileDb().then((db) => new Promise((resolve, reject) => {
+    const found = new Map();
+    const transaction = db.transaction(QUOTE_SESSION_FILE_STORE_NAME, "readonly");
+    const store = transaction.objectStore(QUOTE_SESSION_FILE_STORE_NAME);
+    uniqueKeys.forEach((key) => {
+      const request = store.get(key);
+      request.onsuccess = () => {
+        if (request.result?.data_url) found.set(key, request.result);
+      };
+    });
+    transaction.oncomplete = () => resolve(found);
+    transaction.onerror = () => reject(transaction.error || new Error("Could not load session files"));
+    transaction.onabort = () => reject(transaction.error || new Error("Session file loading aborted"));
+  }));
+}
+
+function clearSessionFiles() {
+  return openSessionFileDb().then((db) => new Promise((resolve, reject) => {
+    const transaction = db.transaction(QUOTE_SESSION_FILE_STORE_NAME, "readwrite");
+    transaction.objectStore(QUOTE_SESSION_FILE_STORE_NAME).clear();
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not clear session files"));
+    transaction.onabort = () => reject(transaction.error || new Error("Session file clearing aborted"));
+  }));
+}
+
+function buildSessionSnapshot() {
+  return {
+    version: QUOTE_SESSION_STATE_VERSION,
+    savedAt: new Date().toISOString(),
+    profileId: state.profileId,
+    pricingReferenceId: state.pricingReferenceId,
+    pricingReferenceSource: state.pricingReferenceSource,
+    selectedPresetValue: state.selectedPresetValue,
+    images: state.images.slice(0, MAX_REFERENCE_IMAGES).map(sessionImageMetadata),
+    quoteDetails: collectQuoteDetails(),
+    workflowStage: state.workflowStage,
+    quoteBasis: state.quoteBasis,
+    quoteBasisSections: state.quoteBasisSections,
+    lineItems: state.lineItems,
+    outputRows: state.outputRows,
+    originalOutputRows: state.originalOutputRows,
+    outputErrors: state.outputErrors,
+    outputSortMode: state.outputSortMode,
+    analysisFindings: state.analysisFindings,
+    blockingClarificationQuestions: state.blockingClarificationQuestions,
+    boothDimensions: state.boothDimensions,
+    originalAnalysisSnapshot: state.originalAnalysisSnapshot,
+    basisConfirmed: state.basisConfirmed,
+    aiFailed: state.aiFailed,
+    draftSource: state.draftSource,
+    lastAnalysisMode: state.lastAnalysisMode,
+    activeSidePanel: state.activeSidePanel,
+    downloadFile: state.downloadFile,
+    pricingMatches: state.pricingMatches,
+    pricingIssues: state.pricingIssues,
+    activeJob: state.activeJob,
+  };
+}
+
 function clearSessionState() {
   try {
     window.localStorage.removeItem(QUOTE_SESSION_STORAGE_KEY);
   } catch {
     // Ignore storage failures; the local workflow can continue without refresh recovery.
   }
+  clearSessionFiles().catch(() => {});
 }
 
 function saveSessionState() {
   if (state.isBooting) return;
   try {
-    const snapshot = {
-      version: QUOTE_SESSION_STATE_VERSION,
-      savedAt: new Date().toISOString(),
-      profileId: state.profileId,
-      pricingReferenceId: state.pricingReferenceId,
-      pricingReferenceSource: state.pricingReferenceSource,
-      selectedPresetValue: state.selectedPresetValue,
-      images: state.images.slice(0, MAX_REFERENCE_IMAGES),
-      quoteDetails: collectQuoteDetails(),
-      workflowStage: state.workflowStage,
-      quoteBasis: state.quoteBasis,
-      quoteBasisSections: state.quoteBasisSections,
-      lineItems: state.lineItems,
-      outputRows: state.outputRows,
-      originalOutputRows: state.originalOutputRows,
-      outputErrors: state.outputErrors,
-      outputSortMode: state.outputSortMode,
-      analysisFindings: state.analysisFindings,
-      blockingClarificationQuestions: state.blockingClarificationQuestions,
-      boothDimensions: state.boothDimensions,
-      originalAnalysisSnapshot: state.originalAnalysisSnapshot,
-      basisConfirmed: state.basisConfirmed,
-      aiFailed: state.aiFailed,
-      draftSource: state.draftSource,
-      lastAnalysisMode: state.lastAnalysisMode,
-      activeSidePanel: state.activeSidePanel,
-      downloadFile: state.downloadFile,
-      pricingMatches: state.pricingMatches,
-      pricingIssues: state.pricingIssues,
-      activeJob: state.activeJob,
-    };
+    const fileRecords = sessionFileRecordsFromImages();
+    const snapshot = buildSessionSnapshot();
     window.localStorage.setItem(QUOTE_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+    persistSessionFiles(fileRecords).catch(() => {});
   } catch {
-    // Large image payloads can exceed storage quota; refresh recovery is best-effort.
+    // Refresh recovery is best-effort; the local workflow can continue without persisted state.
   }
 }
 
-function restoreSessionState() {
+async function restoreSessionImages(savedImages = []) {
+  const images = Array.isArray(savedImages) ? savedImages.slice(0, MAX_REFERENCE_IMAGES) : [];
+  const keys = images
+    .filter((image) => !String(image?.data_url || "").trim())
+    .map((image) => image?.session_file_key);
+  const fileMap = await loadSessionFileMap(keys).catch(() => new Map());
+  return images
+    .map((image) => {
+      const key = String(image?.session_file_key || "").trim();
+      const stored = key ? fileMap.get(key) : null;
+      return {
+        ...image,
+        ...(stored || {}),
+        type: stored?.type || image?.type || referenceFileType(stored || image),
+        size: Number.isFinite(Number(stored?.size ?? image?.size)) ? Number(stored?.size ?? image?.size) : 0,
+      };
+    })
+    .filter((image) => String(image.data_url || "").trim());
+}
+
+async function restoreSessionState() {
   const saved = safeSessionJson();
   if (!saved || saved.version !== QUOTE_SESSION_STATE_VERSION) {
     clearSessionState();
@@ -1620,7 +1749,7 @@ function restoreSessionState() {
   renderProfileOptions();
   renderPresetOptions();
   applyQuoteDetails(saved.quoteDetails || {}, { includeLogo: true, clearLogo: true });
-  state.images = Array.isArray(saved.images) ? saved.images.slice(0, MAX_REFERENCE_IMAGES) : [];
+  state.images = await restoreSessionImages(saved.images);
   state.quoteBasis = cloneQuoteBasis(saved.quoteBasis || {});
   state.quoteBasisSections = normalizeQuoteBasisSections(saved.quoteBasisSections || saved.quoteBasis || {});
   state.lineItems = Array.isArray(saved.lineItems) ? saved.lineItems.map(normalizeLineItem) : [];
@@ -2776,6 +2905,7 @@ async function setSampleDetails() {
     updateGeneratorCopy();
     applyQuoteDetails(data.details || {}, { partial: true });
     state.images = Array.isArray(data.images) ? data.images.slice(0, MAX_REFERENCE_IMAGES) : [];
+    await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
     renderFiles();
     setImageUploadStatus(`${state.images.length} sample reference file${state.images.length === 1 ? "" : "s"} loaded.`);
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
@@ -5306,6 +5436,7 @@ function setSidePanel(panelName, options = {}) {
   }
   elements.sideWorkspace.setAttribute("aria-hidden", "false");
   updateSidePanelNav();
+  saveSessionState();
   return true;
 }
 
@@ -5715,13 +5846,13 @@ function wireEvents() {
   elements.pricingMatchesBody.addEventListener("change", handleOutputRowEdit);
 }
 
-function setInitialValues() {
+async function setInitialValues() {
   updateGeneratorCopy();
   renderProfileOptions();
   renderPresetOptions();
   renderHeaderLogoPreview();
   renderPresetStatus();
-  if (restoreSessionState()) {
+  if (await restoreSessionState()) {
     syncControlStates();
     return;
   }
@@ -5743,7 +5874,7 @@ async function boot() {
   try {
     await initializeSession();
     await loadProfiles();
-    setInitialValues();
+    await setInitialValues();
     checkHealth();
   } finally {
     state.isBooting = false;

@@ -4169,7 +4169,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("side-drawer-open", js)
         self.assertNotIn(".side-workspace.is-open", css)
 
-        initial_values_body = js.split("function setInitialValues()", 1)[1].split("async function boot()", 1)[0]
+        initial_values_body = js.split("async function setInitialValues()", 1)[1].split("async function boot()", 1)[0]
         profile_change_body = js.split("function handleProfileSelectionChange()", 1)[1].split("async function setSampleDetails()", 1)[0]
         sample_loader_body = js.split("async function setSampleDetails()", 1)[1].split("function buildPayload()", 1)[0]
         self.assertIn("loadDefaultProfilePreset({ silent: true })", initial_values_body)
@@ -5047,6 +5047,129 @@ const result = uniqueImageEntries([
 assert.strictEqual(result.duplicateCount, 2);
 assert.strictEqual(result.unique.length, 1);
 assert.strictEqual(result.unique[0].name, "b.jpg");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_session_state_does_not_store_reference_payloads_in_local_storage(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("QUOTE_SESSION_FILE_DB_NAME", js)
+        self.assertIn("buildSessionSnapshot", js)
+        self.assertIn("sessionFileRecordsFromImages", js)
+        set_side_panel_body = js.split("function setSidePanel(panelName, options = {})", 1)[1].split("function activeSidePanelIndex()", 1)[0]
+        self.assertIn("saveSessionState();", set_side_panel_body)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const QUOTE_SESSION_STATE_VERSION = 4;
+const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
+const MAX_REFERENCE_IMAGES = 8;
+const state = {
+  isBooting: false,
+  profileId: "koncept",
+  pricingReferenceId: "koncept-exhibition-quotation",
+  pricingReferenceSource: "bundled",
+  selectedPresetValue: "profile:koncept-image-default",
+  images: [{
+    name: "huge-reference.pdf",
+    type: "application/pdf",
+    size: 12_000_000,
+    data_url: `data:application/pdf;base64,${"A".repeat(1024)}`,
+  }],
+  workflowStage: "ready_to_analyze",
+  quoteBasis: {},
+  quoteBasisSections: [],
+  lineItems: [],
+  outputRows: [],
+  originalOutputRows: [],
+  outputErrors: [],
+  outputSortMode: "category_name",
+  analysisFindings: [],
+  blockingClarificationQuestions: [],
+  boothDimensions: {},
+  originalAnalysisSnapshot: null,
+  basisConfirmed: false,
+  aiFailed: false,
+  draftSource: "openai",
+  lastAnalysisMode: "standard",
+  activeSidePanel: "customer",
+  downloadFile: null,
+  pricingMatches: [],
+  pricingIssues: [],
+  activeJob: null,
+};
+function collectQuoteDetails() {
+  return { project: { title: "Persistent project" } };
+}
+function referenceFileType(entry = {}) {
+  return entry.type || "image";
+}
+let savedPayload = "";
+let persistedRecords = [];
+const window = {
+  localStorage: {
+    setItem(key, value) {
+      assert.strictEqual(key, QUOTE_SESSION_STORAGE_KEY);
+      if (value.includes("base64,")) throw new Error("quota exceeded");
+      savedPayload = value;
+    },
+  },
+};
+function persistSessionFiles(records) {
+  persistedRecords = records;
+  return Promise.resolve();
+}
+
+eval([
+  "sessionFileKeyForImage",
+  "sessionImageMetadata",
+  "sessionFileRecordsFromImages",
+  "buildSessionSnapshot",
+  "saveSessionState",
+].map(extractFunction).join("\n"));
+
+saveSessionState();
+
+const saved = JSON.parse(savedPayload);
+assert.strictEqual(saved.quoteDetails.project.title, "Persistent project");
+assert.strictEqual(saved.images.length, 1);
+assert.strictEqual(saved.images[0].name, "huge-reference.pdf");
+assert.strictEqual(saved.images[0].data_url, undefined);
+assert.ok(saved.images[0].session_file_key);
+assert.strictEqual(persistedRecords.length, 1);
+assert.strictEqual(persistedRecords[0].data_url.startsWith("data:application/pdf;base64,"), true);
+assert.strictEqual(state.images[0].session_file_key, saved.images[0].session_file_key);
 """
         completed = subprocess.run(
             [node, "-e", script],
