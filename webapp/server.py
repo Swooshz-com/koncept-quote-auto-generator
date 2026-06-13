@@ -257,15 +257,12 @@ RICH_TEXT_DETAIL_KEYS = {
     "termsHeading",
 }
 DRAFT_ANALYSIS_MODE_STANDARD = "standard"
-DRAFT_ANALYSIS_MODE_HIGH_ACCURACY = "high_accuracy"
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
-OPENAI_DRAFT_MODEL = "gpt-5.4-mini"
-OPENAI_DRAFT_HIGH_ACCURACY_MODEL = "gpt-5.5"
+OPENAI_DRAFT_MODEL = "gpt-5.5"
 OPENAI_BASIS_LINE_MODEL = "gpt-5.4-mini"
 OPENAI_BASIS_ANSWER_MODEL = "gpt-5.4-nano"
 OPENAI_API_KEY_ENV_NAME = "OPENAI_API_KEY"
 OPENAI_DRAFT_MODEL_ENV_NAME = "OPENAI_DRAFT_MODEL"
-OPENAI_DRAFT_HIGH_ACCURACY_MODEL_ENV_NAME = "OPENAI_DRAFT_HIGH_ACCURACY_MODEL"
 OPENAI_BASIS_LINE_MODEL_ENV_NAME = "OPENAI_BASIS_LINE_MODEL"
 OPENAI_BASIS_ANSWER_MODEL_ENV_NAME = "OPENAI_BASIS_ANSWER_MODEL"
 OPENAI_REQUEST_TIMEOUT_ENV_NAME = "OPENAI_REQUEST_TIMEOUT_SECONDS"
@@ -3285,16 +3282,12 @@ def list_pricing_references(company_id: str = DEFAULT_COMPANY_ID) -> list[dict[s
 
 
 def draft_analysis_mode(payload: dict[str, Any] | None = None) -> str:
-    payload = payload if isinstance(payload, dict) else {}
-    raw = clean_text(payload.get("analysis_mode") or payload.get("analysisMode")).lower().replace("-", "_")
-    if raw in {"high", "accurate", "high_accuracy", "frontier"}:
-        return DRAFT_ANALYSIS_MODE_HIGH_ACCURACY
+    _ = payload
     return DRAFT_ANALYSIS_MODE_STANDARD
 
 
 def configured_openai_draft_model(mode: str = DRAFT_ANALYSIS_MODE_STANDARD) -> str:
-    if mode == DRAFT_ANALYSIS_MODE_HIGH_ACCURACY:
-        return safe_segment(read_dotenv_value(OPENAI_DRAFT_HIGH_ACCURACY_MODEL_ENV_NAME), OPENAI_DRAFT_HIGH_ACCURACY_MODEL)
+    _ = mode
     return safe_segment(read_dotenv_value(OPENAI_DRAFT_MODEL_ENV_NAME), OPENAI_DRAFT_MODEL)
 
 

@@ -275,27 +275,17 @@ const elements = {
   analysisConfirmModal: qs("#analysisConfirmModal"),
   analysisConfirmCancelButton: qs("#analysisConfirmCancelButton"),
   analysisConfirmStartButton: qs("#analysisConfirmStartButton"),
-  analysisConfirmHighAccuracyButton: qs("#analysisConfirmHighAccuracyButton"),
   richTextEditors: Array.from(document.querySelectorAll("[data-rich-text-source]")),
   richTextToolbar: Array.from(document.querySelectorAll("[data-rich-command]")),
 };
 
 function normalizeAnalysisMode(value) {
-  const text = String(value || "").trim().toLowerCase().replace(/-/g, "_");
-  if (["high", "accurate", "high_accuracy", "frontier"].includes(text)) return "high_accuracy";
+  void value;
   return "standard";
 }
 
-function analysisRunningMessage(mode) {
-  return normalizeAnalysisMode(mode) === "high_accuracy"
-    ? "Running high accuracy analysis. This can take longer, so keep this window open."
-    : "Reading the reference images and preparing the quote basis. Please wait.";
-}
-
-function analysisModeBadge(mode = state.lastAnalysisMode) {
-  return normalizeAnalysisMode(mode) === "high_accuracy"
-    ? `<span class="analysis-mode-badge">High Accuracy</span>`
-    : "";
+function analysisRunningMessage() {
+  return "Reading the reference images and preparing the quote basis. Please wait.";
 }
 
 function pricingReferenceSelectValue(reference = {}) {
@@ -3723,7 +3713,6 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <div class="quote-basis-title-row">
             <h3>Quote Basis</h3>
             <span>${escapeHtml(statusText)}</span>
-            ${analysisModeBadge()}
           </div>
           <p>${aiFailed ? GENERIC_FAILURE_MESSAGE : "Please review the AI takeoff and revise individual lines where needed."}</p>
         </div>
@@ -5073,10 +5062,7 @@ function requestStartAnalysis(mode = "standard") {
   state.pendingAnalysisMode = normalizeAnalysisMode(mode);
   elements.analysisConfirmModal.hidden = false;
   elements.analysisConfirmModal.classList.add("is-open");
-  const focusTarget = state.pendingAnalysisMode === "high_accuracy"
-    ? elements.analysisConfirmHighAccuracyButton
-    : elements.analysisConfirmStartButton;
-  window.setTimeout(() => focusTarget?.focus(), 0);
+  window.setTimeout(() => elements.analysisConfirmStartButton?.focus(), 0);
 }
 
 function closeAnalysisConfirmModal() {
@@ -5455,7 +5441,6 @@ function wireEvents() {
   });
   elements.analysisConfirmCancelButton.addEventListener("click", closeAnalysisConfirmModal);
   elements.analysisConfirmStartButton.addEventListener("click", () => confirmStartAnalysis("standard"));
-  elements.analysisConfirmHighAccuracyButton.addEventListener("click", () => confirmStartAnalysis("high_accuracy"));
   elements.analysisConfirmModal.addEventListener("click", (event) => {
     if (event.target.closest("[data-analysis-confirm-close]")) closeAnalysisConfirmModal();
   });

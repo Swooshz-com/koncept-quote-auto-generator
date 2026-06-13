@@ -2337,7 +2337,7 @@ class WebappServerTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], "gpt-custom-model")
 
-    def test_openai_request_uses_high_accuracy_model_from_env(self):
+    def test_openai_request_ignores_high_accuracy_mode_and_uses_draft_model(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({"quote_basis": {}, "line_items": []})
@@ -2346,10 +2346,8 @@ class WebappServerTest(unittest.TestCase):
         payload["analysis_mode"] = "high_accuracy"
 
         def dotenv(name):
-            if name == webapp.OPENAI_DRAFT_HIGH_ACCURACY_MODEL_ENV_NAME:
-                return "gpt-frontier-test"
             if name == webapp.OPENAI_DRAFT_MODEL_ENV_NAME:
-                return "gpt-standard-test"
+                return "gpt-5.5-test"
             return ""
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
@@ -2358,7 +2356,7 @@ class WebappServerTest(unittest.TestCase):
 
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
-        self.assertEqual(body["model"], "gpt-frontier-test")
+        self.assertEqual(body["model"], "gpt-5.5-test")
 
     def test_openai_request_timeout_uses_env_with_longer_default(self):
         response = mock.MagicMock()
@@ -5254,9 +5252,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".output-unit-price-editor", css)
         self.assertIn(".output-unit-price-cell", css)
         self.assertIn(".output-unit-price-content", css)
-        self.assertIn(".output-col-description { width: 37%; }", css)
+        self.assertIn(".output-col-description { width: 32%; }", css)
         self.assertIn(".output-col-unit-price { width: 13%; }", css)
-        self.assertIn(".output-col-actions { width: 9%; }", css)
+        self.assertIn(".output-col-actions { width: 13%; }", css)
         self.assertIn(".output-match-table th:nth-child(3),", css)
         self.assertIn(".output-match-table th:nth-child(6),", css)
         self.assertIn(".output-match-table td:nth-child(6) .output-cell-input,", css)
@@ -5543,22 +5541,20 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)
         self.assertIn("analysisConfirmModal", html)
-        self.assertIn("analysisConfirmHighAccuracyButton", html)
-        self.assertIn("Run High Accuracy", html)
-        self.assertLess(html.index("analysisConfirmHighAccuracyButton"), html.index("modal-action-spacer"))
-        self.assertLess(html.index("modal-action-spacer"), html.index("analysisConfirmCancelButton"))
+        self.assertNotIn("analysisConfirmHighAccuracyButton", html)
+        self.assertNotIn("Run High Accuracy", html)
+        self.assertIn("Run Analysis", html)
         self.assertIn("analysis_mode: normalizeAnalysisMode", js)
         self.assertIn("analyseAgainButton", html)
         self.assertIn("Analyse Again", html)
         self.assertIn("lastAnalysisMode", js)
-        self.assertIn("analysis-mode-badge", css)
+        self.assertNotIn("analysis-mode-badge", css)
         self.assertIn('requestStartAnalysis("standard")', js)
         self.assertNotIn("data-analysis-rerun", js)
         self.assertIn("AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?", html)
         self.assertIn(".modal-panel > .modal-actions", css)
         self.assertIn(".analysis-confirm-panel > .modal-actions", css)
-        self.assertIn(".secondary-button.ai-mode-button", css)
-        self.assertIn(".analysis-mode-actions .ai-mode-button {\n  margin-right: auto;", css)
+        self.assertNotIn(".secondary-button.ai-mode-button", css)
         self.assertIn(".secondary-button.panel-analyse-button", css)
         self.assertIn("max-height: min(88dvh, 720px);", css)
         self.assertIn("z-index: 100;", css)
@@ -6329,6 +6325,7 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
         css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
+        self.assertIn('class="assistant-output quote-basis-card output-card"', html)
         self.assertIn('class="quote-basis-header output-page-header"', html)
         self.assertIn('id="outputStatusPill"', html)
         self.assertIn('id="outputSourceLabel"', html)
@@ -6341,6 +6338,9 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
         self.assertIn(".output-page-header", css)
         self.assertIn(".output-status-pill.is-ok", css)
         self.assertIn(".side-workspace .assistant-output .message-list:empty", css)
+        self.assertIn("width: min(100%, var(--workspace-content-width));", css)
+        self.assertIn("width: auto;", css)
+        self.assertIn(".output-col-description { width: 32%; }", css)
         self.assertIn("margin: 0 0 12px;", css)
         output_header_css = css.split(".output-page-header .output-title-row h3", 1)[1].split(".quote-basis-title-row .output-status-pill", 1)[0]
         self.assertIn("font-size: 18px;", output_header_css)
