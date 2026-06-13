@@ -286,7 +286,11 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1365, height: 768 } });
   const consoleProblems = [];
   page.on("console", (message) => {
-    if (message.type() === "error") consoleProblems.push(`${message.type()}: ${message.text()}`);
+    if (message.type() === "error") {
+      const location = message.location();
+      const source = location?.url ? ` (${location.url}:${location.lineNumber || 0})` : "";
+      consoleProblems.push(`${message.type()}: ${message.text()}${source}`);
+    }
   });
   page.on("pageerror", (error) => consoleProblems.push(`pageerror: ${error.message}`));
 
@@ -310,6 +314,8 @@ async function main() {
     const customGraphicsText = "Printed graphics pending manual pricing.";
     await retagBasisLineAndWait(page, customGraphicsText, "Exclude");
     await page.locator(".basis-review-item", { hasText: "Graphics" }).locator('[data-basis-section-action="Include"]').click();
+    await basisLineRow(page, customGraphicsText).locator(".basis-line-pill", { hasText: "AI Proposal" }).waitFor({ timeout: 15000 });
+    await page.locator(".basis-review-item", { hasText: "Graphics" }).locator('[data-basis-section-action="Exclude"]').click();
     await basisLineRow(page, customGraphicsText).locator(".basis-line-pill", { hasText: "Exclude" }).waitFor({ timeout: 15000 });
     await retagBasisLineAndWait(page, customGraphicsText, "Custom", "AI Proposal");
 
@@ -370,7 +376,10 @@ async function main() {
     for (const forbidden of ["Traceback", "Request body must be valid JSON", "OpenAI chat returned invalid JSON"]) {
       if (bodyText.includes(forbidden)) throw new Error(`Raw internal error leaked to UI: ${forbidden}`);
     }
-    if (consoleProblems.length) throw new Error(`Console errors detected: ${consoleProblems.join("; ")}`);
+    if (consoleProblems.length) {
+      const serverOutput = serverInfo?.output?.join("")?.trim();
+      throw new Error(`Console errors detected: ${consoleProblems.join("; ")}${serverOutput ? `\n\nServer output:\n${serverOutput}` : ""}`);
+    }
 
     console.log(JSON.stringify({
       status: "ok",

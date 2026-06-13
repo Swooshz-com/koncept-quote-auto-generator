@@ -1099,6 +1099,18 @@ function supportedCurrencyLabel(value = DEFAULT_CURRENCY_LABEL) {
   return CURRENCY_OPTIONS.some(([code]) => code === normalized) ? normalized : DEFAULT_CURRENCY_LABEL;
 }
 
+function normalizedCustomCurrencyInput() {
+  return String(elements.pricingReferenceCurrencyCustom?.value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 3);
+}
+
+function customCurrencyInputIsValid() {
+  return /^[A-Z]{3}$/.test(normalizedCustomCurrencyInput());
+}
+
 function setPricingReferenceCurrencyControls(value = DEFAULT_CURRENCY_LABEL) {
   const normalized = normalizeCurrencyLabel(value);
   const isSupported = CURRENCY_OPTIONS.some(([code]) => code === normalized);
@@ -2215,7 +2227,7 @@ function pricingReferenceRowStatus(row = {}) {
 function pricingReferenceSaveBlockReason(result = state.pendingPricingReference) {
   if (state.pricingReferenceImportBusy) return "Import preview is still being prepared.";
   if (!result) return "Upload a pricing catalog file before saving.";
-  if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !/^[A-Za-z]{3}$/.test(String(elements.pricingReferenceCurrencyCustom?.value || "").trim())) {
+  if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !customCurrencyInputIsValid()) {
     return "Enter a 3-letter currency code before saving.";
   }
   const errors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
@@ -2416,7 +2428,7 @@ function handlePricingReferencePreviewInput(event) {
   updatePricingReferenceGuidanceDisplays(state.pendingPricingReference);
 }
 
-function renderPricingReferencePreview(result = null) {
+function renderPricingReferencePreview(result = null, options = {}) {
   if (!elements.pricingReferencePreview) return;
   if (!result) {
     elements.pricingReferencePreview.innerHTML = "";
@@ -2442,8 +2454,12 @@ function renderPricingReferencePreview(result = null) {
     return;
   }
   result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
-  const currency = normalizeCurrencyLabel(result.currency || pricingReferenceModalCurrency());
-  if (result.currency) setPricingReferenceCurrencyControls(currency);
+  const selectedCurrencyMode = elements.pricingReferenceCurrency?.value;
+  const modalCurrency = pricingReferenceModalCurrency();
+  const currency = selectedCurrencyMode === CUSTOM_CURRENCY_VALUE
+    ? modalCurrency || "Custom"
+    : normalizeCurrencyLabel(result.currency || modalCurrency || DEFAULT_CURRENCY_LABEL);
+  if (options.syncCurrencyControls && result.currency) setPricingReferenceCurrencyControls(result.currency);
   refreshPricingReferencePreviewValidity(result);
   const required = pricingReferenceRequiredColumns();
   const missing = Array.isArray(result.missing) ? result.missing : [];
@@ -2496,6 +2512,11 @@ function renderPricingReferencePreview(result = null) {
     busy: state.pricingReferenceImportBusy,
     reason: pricingReferenceSaveBlockReason(result),
   });
+  if (options.scrollIntoView) {
+    window.requestAnimationFrame(() => {
+      elements.pricingReferencePreview?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }
 }
 
 
@@ -2508,7 +2529,7 @@ function pricingReferenceModalTax() {
 
 function pricingReferenceModalCurrency() {
   const selected = elements.pricingReferenceCurrency?.value;
-  if (selected === CUSTOM_CURRENCY_VALUE) return normalizeCurrencyLabel(elements.pricingReferenceCurrencyCustom?.value);
+  if (selected === CUSTOM_CURRENCY_VALUE) return customCurrencyInputIsValid() ? normalizedCustomCurrencyInput() : "";
   return supportedCurrencyLabel(selected);
 }
 
@@ -2830,6 +2851,36 @@ function buildPayload(options = {}) {
       koncept_date_label: elements.konceptDateLabel.value.trim(),
     },
     rich_text: collectRichTextDetails(),
+  };
+}
+
+function buildLineItemNormalizePayload() {
+  const pricingReference = currentPricingReference();
+  const profileId = resolvedProfileIdForPayload();
+  return {
+    profile_id: profileId,
+    pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
+    pricing_reference: pricingReference ? {
+      id: pricingReference.id || state.pricingReferenceId || "",
+      label: pricingReference.label || "",
+      source: pricingReference.source || "bundled",
+      tax: pricingReference.tax || selectedPricingReferenceTax(),
+      currency: selectedPricingReferenceCurrency(),
+    } : {
+      id: state.pricingReferenceId || "",
+      source: "bundled",
+      tax: selectedPricingReferenceTax(),
+      currency: selectedPricingReferenceCurrency(),
+    },
+    project: {
+      booth_width: state.boothDimensions.booth_width,
+      booth_depth: state.boothDimensions.booth_depth,
+      booth_size: state.boothDimensions.booth_size,
+      dimension_source: state.boothDimensions.dimension_source,
+    },
+    quote_basis: { ...state.quoteBasis, ...quoteBasisFromSections(state.quoteBasisSections) },
+    quote_basis_sections: cloneQuoteBasisSections(state.quoteBasisSections),
+    line_items: state.lineItems.map(normalizeLineItem),
   };
 }
 
@@ -4425,10 +4476,7 @@ function applyDraftLineItems(lineItems = []) {
 
 async function refreshLineItemsFromServer() {
   if (!state.lineItems.length) return true;
-  const { ok, data } = await postJson("/api/line-items/normalize", {
-    ...buildPayload(),
-    line_items: state.lineItems.map(normalizeLineItem),
-  });
+  const { ok, data } = await postJson("/api/line-items/normalize", buildLineItemNormalizePayload());
   if (!ok || !Array.isArray(data.line_items)) return false;
   state.lineItems = data.line_items.map(normalizeLineItem);
   state.outputRows = [];
@@ -5534,7 +5582,7 @@ function wireEvents() {
     if (state.pricingReferenceImportToken !== importToken) return;
     state.pendingPricingReference = result;
     state.pricingReferenceImportBusy = false;
-    renderPricingReferencePreview(result);
+    renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
   });
   elements.pricingReferenceCurrency?.addEventListener("change", () => {
     syncPricingReferenceCurrencyCustomInput();
@@ -5544,8 +5592,11 @@ function wireEvents() {
     }
   });
   elements.pricingReferenceCurrencyCustom?.addEventListener("input", () => {
-    const raw = String(elements.pricingReferenceCurrencyCustom?.value || "").trim();
-    if (state.pendingPricingReference && /^[A-Za-z]{3}$/.test(raw)) {
+    const normalizedValue = normalizedCustomCurrencyInput();
+    if (elements.pricingReferenceCurrencyCustom.value !== normalizedValue) {
+      elements.pricingReferenceCurrencyCustom.value = normalizedValue;
+    }
+    if (state.pendingPricingReference) {
       state.pendingPricingReference.currency = pricingReferenceModalCurrency();
       renderPricingReferencePreview(state.pendingPricingReference);
       return;

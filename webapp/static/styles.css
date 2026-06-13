@@ -3189,6 +3189,27 @@ td input {
   margin-top: 4px;
 }
 
+.pricing-reference-editor-body .currency-field {
+  grid-column: 1 / -1;
+}
+
+.currency-control-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.currency-control-row select,
+.currency-control-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.currency-control-row input[hidden] {
+  display: none;
+}
+
 .pricing-reference-delete-section {
   border-color: #f7d7d4;
   background: #fffdfd;
@@ -3521,6 +3542,7 @@ body.privacy-page {
   display: grid;
   gap: 14px;
   align-content: start;
+  height: max-content;
   min-height: 46px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -3528,7 +3550,7 @@ body.privacy-page {
   background: #f8fafc;
   color: var(--ink-secondary);
   font-size: 13px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pricing-reference-preview:empty {
@@ -4273,6 +4295,7 @@ body.privacy-page {
 
   .form-grid,
   .side-workspace .quote-details-panel .tax-settings-grid,
+  .currency-control-row,
   .quote-basis-header {
     grid-template-columns: 1fr;
   }
@@ -4407,13 +4430,13 @@ body.privacy-page {
 .pricing-reference-pill-row {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .pricing-reference-pill {
-  width: 58px;
-  min-width: 58px;
-  padding-inline: 6px;
+  width: 76px;
+  min-width: 76px;
+  padding-inline: 10px;
   text-align: center;
   white-space: nowrap;
 }

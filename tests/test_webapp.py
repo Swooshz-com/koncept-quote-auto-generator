@@ -204,6 +204,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Swooshz Quote Generator Privacy Notice", body)
         self.assertIn('class="privacy-notice-card"', body)
         self.assertIn("<details class=\"privacy-section\"", body)
+        self.assertEqual(body.count("<details class=\"privacy-section\" open>"), 8)
         self.assertIn("Personal Data We May Collect", body)
         self.assertIn("Cross-Border Transfers", body)
         self.assertIn("PDPA", body)
@@ -5390,6 +5391,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("exampleRows", js)
         self.assertIn("visual_references: Array.isArray(item.visual_references)", js)
         self.assertIn(".pricing-reference-preview.importing", css)
+        pricing_preview_css = css.split(".pricing-reference-preview {\n", 1)[1].split(".pricing-reference-preview:empty", 1)[0]
+        self.assertIn("height: max-content;", pricing_preview_css)
+        self.assertIn("overflow: visible;", pricing_preview_css)
         self.assertIn(".pricing-reference-import-overlay", css)
         self.assertIn(".pricing-reference-spinner", css)
         self.assertNotIn("<th>aliases</th>", js)
@@ -5699,7 +5703,7 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertLess(html.index("SGD - Singapore Dollar"), html.index("AUD - Australian Dollar"))
         self.assertLess(html.index("AUD - Australian Dollar"), html.index("CNY - Chinese Yuan"))
         self.assertLess(html.index("THB - Thai Baht"), html.index("USD - US Dollar"))
-        self.assertLess(html.index("USD - US Dollar"), html.index("Custom - enter currency code"))
+        self.assertLess(html.index("USD - US Dollar"), html.index("Custom - Enter currency code"))
         self.assertIn("CUSTOM_CURRENCY_VALUE", js)
         self.assertIn("CURRENCY_OPTIONS", js)
         self.assertIn("supportedCurrencyLabel", js)
@@ -5712,7 +5716,8 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".modal-panel > .modal-actions", css)
         self.assertIn(".analysis-confirm-panel > .modal-actions", css)
         self.assertIn("width: min(720px, calc(100vw - 32px));", css)
-        self.assertIn(".pricing-reference-pill {\n  width: 58px;", css)
+        self.assertIn(".pricing-reference-pill {\n  width: 76px;", css)
+        self.assertIn(".currency-control-row {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
         self.assertNotIn(".secondary-button.ai-mode-button", css)
         self.assertIn(".secondary-button.panel-analyse-button", css)
         self.assertIn("max-height: min(88dvh, 720px);", css)
@@ -6655,6 +6660,14 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
         self.assertIn("async function refreshLineItemsFromServer", js)
         self.assertIn('postJson("/api/line-items/normalize"', js)
+        self.assertIn("function buildLineItemNormalizePayload", js)
+        refresh_body = js.split("async function refreshLineItemsFromServer", 1)[1].split("function captureOriginalAnalysisSnapshot", 1)[0]
+        self.assertIn("buildLineItemNormalizePayload()", refresh_body)
+        self.assertNotIn("buildPayload()", refresh_body)
+        normalize_body = js.split("function buildLineItemNormalizePayload", 1)[1].split("function setResultStatus", 1)[0]
+        self.assertNotIn("images:", normalize_body)
+        self.assertNotIn("rich_text:", normalize_body)
+        self.assertNotIn("logo_data_url", normalize_body)
         self.assertLess(
             confirm_body.index("await refreshLineItemsFromServer();"),
             confirm_body.index("refreshOutputRowsFromLineItems();"),
