@@ -11,21 +11,6 @@ You are an execution-first coding agent.
 
 Your job is to understand the task, inspect the relevant repo context, make the smallest safe change, validate it, and report clearly.
 
-## Swooshz Quote Generator Rules
-
-- Require booth/render images before preparing or generating a quote. If images are missing, ask exactly: `Please upload the booth render images first so I can analyze the design and prepare the quote.`
-- Do not generate a quote from a text-only item list, and do not ask the user to create, edit, inspect, or approve an internal generator brief file.
-- Suggest a quote basis from images and user notes, then ask the user to confirm it before generating. Do not silently assume materials, finishes, dimensions, or inclusions.
-- Use `pricing-references/koncept-exhibition-quotation/pricing-catalog.json` as the authoritative bundled Koncept pricing reference and `profiles/koncept/quotation-layout.xlsx` as the customer-facing quote layout source.
-- Preserve the formatting rules in `profiles/koncept/layout-rules.json`, including readable quantity widths, bold table headers, centered quantity values, thousands separators, dynamic totals, and a header logo/details group that stays inside the print area.
-- Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
-- Do not expose internal cost, GST, markup, or supplier notes in customer-facing output unless the user explicitly asks.
-- Do not generate PDFs by default. Treat `quotation.xlsx` as the formatted customer-ready master output; Excel-only output is the default webapp behavior.
-- Run `scripts/generate_quote.py`; XLSX generation must not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other third-party dependencies.
-- Treat brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Text beginning with `=`, `+`, `-`, or `@` must not become an active XLSX or CSV formula.
-- If required information is missing or pricing is unclear, report it under `Missing / Need Confirmation` or the webapp's pricing review flow.
-- Store local/runtime logs under the repo-root `_logs/` folder only, with typed subfolders such as `_logs/app/`, `_logs/server/`, and `_logs/browser/`. Do not write new logs to the repo root, `logs/`, or `_output/`; keep log contents ignored by git.
-
 Optimise for:
 
 1. Correctness.
@@ -114,9 +99,7 @@ Do not only bold the first few words. The entire user-action question must be bo
 
 ## Git Completion
 
-Git Completion is not an exception to the Approval Rules for version-control publication. Do not commit, push, or open/update a pull request unless the user explicitly requests that git completion step in the current turn.
-
-When the user explicitly requests git completion:
+Git Completion is the explicit scoped exception to the Approval Rules for version-control publication after requested repo edits. Unless the user asked for local-only/no-push work, finish by running relevant local validation, committing to a non-main branch, pushing, and opening or updating the pull request.
 
 Before pushing:
 
@@ -170,6 +153,12 @@ After editing:
 - If validation fails, make one targeted repair and rerun.
 - After two failed repair attempts, stop and report the blocker.
 - Review the diff for unrelated changes before final reporting.
+
+## Command And Repo Hygiene
+
+Use safe, targeted shell commands. Prefer read-only inspection before writes, avoid broad destructive patterns, and do not run installers, package managers, `curl | sh`, network downloads, Docker, deploy commands, or service exposure unless the task and approval rules clearly allow them.
+
+When adding local outputs, generated files, logs, caches, backup folders, or secrets-adjacent templates, check whether the repo needs a narrow ignore-rule update. Prefer precise patterns for the actual local artifact, and avoid broad rules that hide source files. Use `git check-ignore` or `git status --ignored` when practical to verify the intended path is ignored.
 
 ## Generated Files
 
@@ -238,3 +227,18 @@ If the task involves n8n workflows, workflow templates, helper scripts, MCP, imp
 If that skill or its full rules are unavailable, stop and report the limitation instead of continuing.
 Do not run live n8n, Docker, import/export, sync, activation, execution, publish/unpublish, credential, deployment, or production actions without explicit current-turn approval naming the target and allowed operation.
 <!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:END N8N-AGENT-RULES-ADAPTER -->
+
+## Swooshz Quote Generator Rules
+
+- Require booth/render images before preparing or generating a quote. If images are missing, ask exactly: `Please upload the booth render images first so I can analyze the design and prepare the quote.`
+- Do not generate a quote from a text-only item list, and do not ask the user to create, edit, inspect, or approve an internal generator brief file.
+- Suggest a quote basis from images and user notes, then ask the user to confirm it before generating. Do not silently assume materials, finishes, dimensions, or inclusions.
+- Use `pricing-references/koncept-exhibition-quotation/pricing-catalog.json` as the authoritative bundled Koncept pricing reference and `profiles/koncept/quotation-layout.xlsx` as the customer-facing quote layout source.
+- Preserve the formatting rules in `profiles/koncept/layout-rules.json`, including readable quantity widths, bold table headers, centered quantity values, thousands separators, dynamic totals, and a header logo/details group that stays inside the print area.
+- Use `sqm` for square-metre quantities; do not use `m2` in customer-facing output.
+- Do not expose internal cost, GST, markup, or supplier notes in customer-facing output unless the user explicitly asks.
+- Do not generate PDFs by default. Treat `quotation.xlsx` as the formatted customer-ready master output; Excel-only output is the default webapp behavior.
+- Run `scripts/generate_quote.py`; XLSX generation must not require Excel, LibreOffice, Node, `openpyxl`, `reportlab`, or other third-party dependencies.
+- Treat brief, customer, project, note, payment-term, and line-item text as untrusted spreadsheet text. Text beginning with `=`, `+`, `-`, or `@` must not become an active XLSX or CSV formula.
+- If required information is missing or pricing is unclear, report it under `Missing / Need Confirmation` or the webapp's pricing review flow.
+- Store local/runtime logs under the repo-root `_logs/` folder only, with typed subfolders such as `_logs/app/`, `_logs/server/`, and `_logs/browser/`. Do not write new logs to the repo root, `logs/`, or `_output/`; keep log contents ignored by git.

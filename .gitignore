@@ -11,6 +11,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .superpowers/
+.agent-toolkit-backups/
 node_modules/
 playwright-report/
 test-results/
