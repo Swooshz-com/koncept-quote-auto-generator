@@ -501,13 +501,68 @@ class WebappServerTest(unittest.TestCase):
             ],
         })
 
-        self.assertEqual(items[0]["pricing_keyword"], "floor-design.100mm-raised-platfrom-with-aluminum-edging")
+        self.assertEqual(items[0]["pricing_keyword"], "floor-design.100mm-raised-platform-with-aluminum-edging")
         self.assertEqual(items[0]["catalog_unit_price"], 60.0)
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
             items[0]["description"],
-            "[ sqm 100mm raised platfrom with aluminum edging ] - 100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+            "[ sqm 100mm raised platform with aluminum edging ] - 100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
         )
+
+    def test_infer_catalog_item_selects_variant_family_without_domain_specific_ids(self):
+        catalog_lookup = {
+            item["id"]: item
+            for item in [
+                {
+                    "id": "rental-items.24-interactive-kiosk-terminal",
+                    "section": "Rental Items",
+                    "description": 'nos. 24" Interactive Kiosk Terminal',
+                    "pricing_reference_description": 'nos. 24" Interactive Kiosk Terminal',
+                    "unit_hint": "nos",
+                    "aliases": ["interactive kiosk"],
+                },
+                {
+                    "id": "rental-items.55-interactive-kiosk-terminal",
+                    "section": "Rental Items",
+                    "description": 'nos. 55" Interactive Kiosk Terminal',
+                    "pricing_reference_description": 'nos. 55" Interactive Kiosk Terminal',
+                    "unit_hint": "nos",
+                    "aliases": ["interactive kiosk"],
+                },
+                {
+                    "id": "rental-items.85-interactive-kiosk-terminal",
+                    "section": "Rental Items",
+                    "description": 'nos. 85" Interactive Kiosk Terminal',
+                    "pricing_reference_description": 'nos. 85" Interactive Kiosk Terminal',
+                    "unit_hint": "nos",
+                    "aliases": ["interactive kiosk"],
+                },
+            ]
+        }
+
+        large_match = webapp.infer_catalog_item_for_line_item(
+            {
+                "section": "Rental Items",
+                "quantity": 1,
+                "unit": "nos",
+                "description": "Large interactive display kiosk at entrance",
+                "pricing_keyword": "",
+            },
+            catalog_lookup,
+        )
+        explicit_match = webapp.infer_catalog_item_for_line_item(
+            {
+                "section": "Rental Items",
+                "quantity": 1,
+                "unit": "nos",
+                "description": "55 inch interactive kiosk terminal for registration",
+                "pricing_keyword": "",
+            },
+            catalog_lookup,
+        )
+
+        self.assertEqual(large_match["id"], "rental-items.85-interactive-kiosk-terminal")
+        self.assertEqual(explicit_match["id"], "rental-items.55-interactive-kiosk-terminal")
 
     def test_normalize_line_items_maps_generic_av_screen_wording_to_catalog_monitor(self):
         items = webapp.normalize_line_items({
@@ -533,12 +588,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(items[0]["pricing_keyword"], "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd")
         self.assertEqual(
             items[0]["description"],
-            "[ nos. 85” LED TV Monitor (With Speaker – Full HD) ] - Large LED video wall or display screen on navy feature wall",
+            '[ nos. 85" LED TV Monitor (With Speaker - Full HD) ] - Large LED video wall or display screen on navy feature wall',
         )
         self.assertEqual(items[1]["pricing_keyword"], "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd")
         self.assertEqual(
             items[1]["description"],
-            "[ nos. 42” LED TV Monitor (With Speaker – Full HD) ] - Wall-mounted LCD monitor for meeting room presentation area",
+            '[ nos. 42" LED TV Monitor (With Speaker - Full HD) ] - Wall-mounted LCD monitor for meeting room presentation area',
         )
 
     def test_normalize_line_items_uses_numeric_size_tokens_for_catalog_inference(self):
@@ -814,7 +869,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased raised platform wording",
-                    "pricing_keyword": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
+                    "pricing_keyword": "floor-design.100mm-raised-platform-with-aluminum-edging",
                 },
             ],
         }
@@ -827,14 +882,14 @@ class WebappServerTest(unittest.TestCase):
             [line["text"] for line in lines],
             [
                 "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording",
-                "[ sqm 100mm raised platfrom with aluminum edging ] - AI paraphrased raised platform wording",
+                "[ sqm 100mm raised platform with aluminum edging ] - AI paraphrased raised platform wording",
             ],
         )
         self.assertEqual(
             [line["catalog_description"] for line in lines],
             [
                 "sqm needle punch carpet in colour",
-                "sqm 100mm raised platfrom with aluminum edging",
+                "sqm 100mm raised platform with aluminum edging",
             ],
         )
         self.assertEqual([line["tag"] for line in lines], ["Confirm", "Confirm"])
@@ -871,7 +926,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 36,
                     "unit": "sqm",
                     "description": "36 sqm 100mm raised platform with aluminum edging",
-                    "pricing_keyword": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
+                    "pricing_keyword": "floor-design.100mm-raised-platform-with-aluminum-edging",
                 }
             ],
         }
@@ -879,9 +934,9 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "sqm 100mm raised platfrom with aluminum edging")
+        self.assertEqual(lines[0]["text"], "sqm 100mm raised platform with aluminum edging")
         self.assertEqual(lines[1]["text"], "100mm raised platform detail edge")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm 100mm raised platfrom with aluminum edging")
+        self.assertEqual(draft["line_items"][0]["description"], "sqm 100mm raised platform with aluminum edging")
 
     def test_normalize_ai_draft_trusts_leading_item_count_before_dimensions(self):
         counter_text = (
@@ -1348,7 +1403,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("omit that leading count/unit from quote_basis_sections line text and line_items.description", prompt)
         self.assertIn("pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording", prompt)
         self.assertIn("format the line as `[ catalog exact customer-facing description ] - observed use/detail`", prompt)
-        self.assertIn("Do not paraphrase catalog-backed product names such as LED TV Monitor items", prompt)
+        self.assertIn("Do not paraphrase catalog-backed product names into generic object names", prompt)
         self.assertIn("Never use quantity 1 with unit m or m length for measured structural runs", prompt)
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
         self.assertNotIn("2 to 4 short lines", prompt)
@@ -1624,9 +1679,30 @@ class WebappServerTest(unittest.TestCase):
         descriptions = [item["description"] for item in result["items"]]
         self.assertIn("m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal", descriptions)
         self.assertIn("nos. 10W LED Spotlight", descriptions)
-        self.assertIn("m2 100mm raised platfrom with aluminum edging", descriptions)
-        self.assertIn("nos. 42” LED TV Monitor (With Speaker – Full HD)", descriptions)
+        self.assertIn("sqm 100mm raised platform with aluminum edging", descriptions)
+        self.assertIn('nos. 42" LED TV Monitor (With Speaker - Full HD)', descriptions)
         self.assertNotIn("data_url", result)
+
+    def test_pricing_reference_save_preserves_user_edited_description_text(self):
+        user_edited_description = "m2 Custom platfrom wording with 42\u201d display \u2013 user edited"
+        reference = webapp.normalize_pricing_reference_payload({
+            "id": "edited-ref",
+            "label": "Edited Ref",
+            "items": [{
+                "id": "row-1",
+                "section": "Floor Design",
+                "description": user_edited_description,
+                "unit_hint": "sqm",
+                "internal_cost": 10,
+                "markup_multiplier": 2,
+            }],
+        })
+
+        self.assertEqual(
+            reference["items"][0]["description"],
+            user_edited_description,
+        )
+        self.assertEqual(reference["items"][0]["unit_hint"], "sqm")
 
     def test_v11_pricing_workbook_import_maps_internal_visual_references(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
@@ -1735,7 +1811,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         )
 
-    def test_koncept_pricing_reference_descriptions_match_v11_workbook_source(self):
+    def test_koncept_pricing_reference_descriptions_match_clean_v11_workbook_build(self):
         generated = pricing_catalog.build_catalog_from_xlsx(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx")
         current = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
 
@@ -1743,8 +1819,11 @@ class WebappServerTest(unittest.TestCase):
         current_descriptions = [(item["id"], item["description"]) for item in current["items"]]
 
         self.assertEqual(current_descriptions, generated_descriptions)
-        self.assertIn(("floor-design.100mm-raised-platfrom-with-aluminum-edging", "m2 100mm raised platfrom with aluminum edging"), current_descriptions)
-        self.assertIn(("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", "nos. 42” LED TV Monitor (With Speaker – Full HD)"), current_descriptions)
+        self.assertIn(("floor-design.100mm-raised-platform-with-aluminum-edging", "m2 100mm raised platform with aluminum edging"), current_descriptions)
+        self.assertIn(("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
+        catalog_text = json.dumps(current, ensure_ascii=False).lower()
+        for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth"):
+            self.assertNotIn(token, catalog_text)
 
     def test_customer_quote_text_sanitization_preserves_dimensions_and_units(self):
         cleaned = webapp.clean_customer_quote_line_text("Booth size taken from quotation title: 6m x 6m.")

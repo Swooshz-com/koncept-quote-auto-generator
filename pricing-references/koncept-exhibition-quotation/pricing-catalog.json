@@ -59,15 +59,15 @@
         "Platform ONLY"
       ],
       "extra_values": [],
-      "id": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
-      "description": "m2 100mm raised platfrom with aluminum edging",
+      "id": "floor-design.100mm-raised-platform-with-aluminum-edging",
+      "description": "m2 100mm raised platform with aluminum edging",
       "unit_hint": "sqm",
       "aliases": [
-        "m2 100mm raised platfrom with aluminum edging",
-        "100mm raised platfrom with aluminum edging",
+        "m2 100mm raised platform with aluminum edging",
+        "100mm raised platform with aluminum edging",
         "Platform ONLY",
-        "Floor Design 100mm raised platfrom with aluminum edging",
-        "100mm raised platfrom with aluminum edging sqm"
+        "Floor Design 100mm raised platform with aluminum edging",
+        "100mm raised platform with aluminum edging sqm"
       ],
       "sale_unit_price": 60.0
     },
@@ -488,16 +488,16 @@
         "PAINTED"
       ],
       "extra_values": [],
-      "id": "booth-structure.wooden-construct-low-parition-ready-in-painted-finished",
-      "description": "nos. wooden construct low parition ready in painted finished",
+      "id": "booth-structure.wooden-construct-low-partition-ready-in-painted-finished",
+      "description": "nos. wooden construct low partition ready in painted finished",
       "unit_hint": "nos",
       "aliases": [
-        "nos. wooden construct low parition ready in painted finished",
-        "wooden construct low parition ready in painted finished",
+        "nos. wooden construct low partition ready in painted finished",
+        "wooden construct low partition ready in painted finished",
         "Low dividing Partition",
         "PAINTED",
-        "Booth Structure wooden construct low parition ready in painted finished",
-        "wooden construct low parition ready in painted finished nos"
+        "Booth Structure wooden construct low partition ready in painted finished",
+        "wooden construct low partition ready in painted finished nos"
       ],
       "sale_unit_price": 270.0
     },
@@ -513,16 +513,16 @@
         "LAMINATED"
       ],
       "extra_values": [],
-      "id": "booth-structure.wooden-construct-low-parition-ready-in-laminated-finished",
-      "description": "nos. wooden construct low parition ready in laminated finished",
+      "id": "booth-structure.wooden-construct-low-partition-ready-in-laminated-finished",
+      "description": "nos. wooden construct low partition ready in laminated finished",
       "unit_hint": "nos",
       "aliases": [
-        "nos. wooden construct low parition ready in laminated finished",
-        "wooden construct low parition ready in laminated finished",
+        "nos. wooden construct low partition ready in laminated finished",
+        "wooden construct low partition ready in laminated finished",
         "Low dividing Partition",
         "LAMINATED",
-        "Booth Structure wooden construct low parition ready in laminated finished",
-        "wooden construct low parition ready in laminated finished nos"
+        "Booth Structure wooden construct low partition ready in laminated finished",
+        "wooden construct low partition ready in laminated finished nos"
       ],
       "sale_unit_price": 420.0
     },
@@ -538,16 +538,16 @@
         "Octanorm"
       ],
       "extra_values": [],
-      "id": "booth-structure.1mw-x-2-5mh-sytem-profile-partition-with-clear-acrylic-panel",
-      "description": "m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
+      "id": "booth-structure.1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel",
+      "description": "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
       "unit_hint": "m length",
       "aliases": [
-        "m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
-        "1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
+        "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "1mW x 2.5mH System Profile partition with clear acrylic panel",
         "Acrylic System Partition",
         "Octanorm",
-        "Booth Structure 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
-        "1mW x 2.5mH Sytem Profile partition with clear acrylic panel m length"
+        "Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "1mW x 2.5mH System Profile partition with clear acrylic panel m length"
       ],
       "sale_unit_price": 277.5
     },
@@ -2318,14 +2318,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 42” LED TV Monitor (With Speaker – Full HD)",
+      "description": "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 42” LED TV Monitor (With Speaker – Full HD)",
-        "42” LED TV Monitor (With Speaker – Full HD)",
+        "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
+        "42\" LED TV Monitor (With Speaker - Full HD)",
         "TV",
-        "AV Equipment Rental Items 42” LED TV Monitor (With Speaker – Full HD)",
-        "42” LED TV Monitor (With Speaker – Full HD) nos"
+        "AV Equipment Rental Items 42\" LED TV Monitor (With Speaker - Full HD)",
+        "42\" LED TV Monitor (With Speaker - Full HD) nos"
       ],
       "sale_unit_price": 450.0
     },
@@ -2341,14 +2341,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.55-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 55” LED TV Monitor (With Speaker – Full HD)",
+      "description": "nos. 55\" LED TV Monitor (With Speaker - Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 55” LED TV Monitor (With Speaker – Full HD)",
-        "55” LED TV Monitor (With Speaker – Full HD)",
+        "nos. 55\" LED TV Monitor (With Speaker - Full HD)",
+        "55\" LED TV Monitor (With Speaker - Full HD)",
         "TV",
-        "AV Equipment Rental Items 55” LED TV Monitor (With Speaker – Full HD)",
-        "55” LED TV Monitor (With Speaker – Full HD) nos"
+        "AV Equipment Rental Items 55\" LED TV Monitor (With Speaker - Full HD)",
+        "55\" LED TV Monitor (With Speaker - Full HD) nos"
       ],
       "sale_unit_price": 675.0
     },
@@ -2364,14 +2364,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.65-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 65” LED TV Monitor (With Speaker – Full HD)",
+      "description": "nos. 65\" LED TV Monitor (With Speaker - Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 65” LED TV Monitor (With Speaker – Full HD)",
-        "65” LED TV Monitor (With Speaker – Full HD)",
+        "nos. 65\" LED TV Monitor (With Speaker - Full HD)",
+        "65\" LED TV Monitor (With Speaker - Full HD)",
         "TV",
-        "AV Equipment Rental Items 65” LED TV Monitor (With Speaker – Full HD)",
-        "65” LED TV Monitor (With Speaker – Full HD) nos"
+        "AV Equipment Rental Items 65\" LED TV Monitor (With Speaker - Full HD)",
+        "65\" LED TV Monitor (With Speaker - Full HD) nos"
       ],
       "sale_unit_price": 975.0
     },
@@ -2387,14 +2387,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 85” LED TV Monitor (With Speaker – Full HD)",
+      "description": "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 85” LED TV Monitor (With Speaker – Full HD)",
-        "85” LED TV Monitor (With Speaker – Full HD)",
+        "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
+        "85\" LED TV Monitor (With Speaker - Full HD)",
         "TV",
-        "AV Equipment Rental Items 85” LED TV Monitor (With Speaker – Full HD)",
-        "85” LED TV Monitor (With Speaker – Full HD) nos"
+        "AV Equipment Rental Items 85\" LED TV Monitor (With Speaker - Full HD)",
+        "85\" LED TV Monitor (With Speaker - Full HD) nos"
       ],
       "sale_unit_price": 2250.0
     },

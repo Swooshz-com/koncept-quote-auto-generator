@@ -98,7 +98,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "needle punch",
     ],
     [
-        "example.floor-design.100mm-raised-platfrom-with-aluminum-edging",
+        "example.floor-design.100mm-raised-platform-with-aluminum-edging",
         "Floor Design",
         "m2 100mm raised platform with aluminum edging",
         "sqm",
@@ -2181,8 +2181,36 @@ def add_unique_text(values: list[str], value: Any) -> None:
         values.append(text)
 
 
-def pricing_workbook_source_text(value: Any) -> str:
-    return clean_text(value)
+PRICING_WORKBOOK_TEXT_FIXES = {
+    "platfrom": "platform",
+    "parition": "partition",
+    "sytem": "system",
+    "dowlight": "downlight",
+    "lenght": "length",
+    "widht": "width",
+    "heigth": "height",
+}
+
+
+def normalize_import_typography_text(value: Any) -> str:
+    text = str(value or "")
+    text = text.replace("\xa0", " ")
+    text = text.replace("\u201c", '"').replace("\u201d", '"')
+    text = text.replace("\u2018", "'").replace("\u2019", "'")
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    return clean_text(text)
+
+
+def apply_pricing_workbook_text_fixes(value: Any) -> str:
+    text = normalize_import_typography_text(value)
+
+    def replace(match: re.Match[str]) -> str:
+        replacement = PRICING_WORKBOOK_TEXT_FIXES[match.group(0).lower()]
+        return replacement[:1].upper() + replacement[1:] if match.group(0)[:1].isupper() else replacement
+
+    for typo in PRICING_WORKBOOK_TEXT_FIXES:
+        text = re.sub(rf"\b{re.escape(typo)}\b", replace, text, flags=re.IGNORECASE)
+    return clean_customer_quote_line_text(text)
 
 
 def stripped_pricing_unit_text(value: Any) -> str:
@@ -2313,8 +2341,8 @@ def attach_visual_references_to_pricing_rows(rows: list[dict[str, Any]], visual_
 
 
 def v11_row_to_pricing_reference_row(section: str, row_number: int, row: list[str]) -> dict[str, Any]:
-    description = pricing_workbook_source_text(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-    remarks = [pricing_workbook_source_text(pricing_workbook_cell(row, V11_COL_REMARKS))]
+    description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
+    remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
     unit_hint = infer_unit_prefix(description)
     return {
@@ -2343,8 +2371,8 @@ def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any
             continue
         if not rows:
             continue
-        description = pricing_workbook_source_text(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-        remark = pricing_workbook_source_text(pricing_workbook_cell(row, V11_COL_REMARKS))
+        description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
+        remark = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))
         if description:
             rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
             rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
@@ -3571,13 +3599,17 @@ CATALOG_INFERENCE_STOP_WORDS = {
     "for",
     "from",
     "full",
+    "hd",
     "height",
     "integrated",
     "lot",
     "mounted",
+    "on",
+    "or",
     "nos",
     "per",
     "proposal",
+    "speaker",
     "sqm",
     "the",
     "use",
@@ -3595,8 +3627,6 @@ CATALOG_INFERENCE_TOKEN_ALIASES = {
     "chairs": "chair",
     "coves": "cove",
     "counters": "counter",
-    "display": "monitor",
-    "displays": "monitor",
     "dowlight": "downlight",
     "downlights": "downlight",
     "floodlights": "floodlight",
@@ -3606,7 +3636,6 @@ CATALOG_INFERENCE_TOKEN_ALIASES = {
     "lcd": "led",
     "lenght": "length",
     "lighting": "light",
-    "monitors": "monitor",
     "panels": "panel",
     "parition": "partition",
     "print": "printed",
@@ -3614,15 +3643,23 @@ CATALOG_INFERENCE_TOKEN_ALIASES = {
     "planters": "planter",
     "plants": "plant",
     "plinths": "counter",
-    "screen": "monitor",
     "sockets": "socket",
-    "screens": "monitor",
     "stools": "stool",
     "sytem": "system",
     "tables": "table",
-    "video": "tv",
     "walls": "wall",
     "widht": "width",
+}
+
+
+CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS = (
+    ("display", {"display", "displays", "monitor", "monitors", "screen", "screens", "tv", "television", "televisions"}),
+)
+
+CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES = {
+    token: canonical
+    for canonical, tokens in CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS
+    for token in tokens
 }
 
 
@@ -3632,7 +3669,8 @@ def catalog_inference_token(value: str) -> str:
         token = f"{token[:-3]}y"
     elif token.endswith("s") and len(token) > 3 and not token.endswith("ss"):
         token = token[:-1]
-    return CATALOG_INFERENCE_TOKEN_ALIASES.get(token, token)
+    token = CATALOG_INFERENCE_TOKEN_ALIASES.get(token, token)
+    return CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES.get(token, token)
 
 
 def catalog_inference_tokens(value: Any) -> set[str]:
@@ -3653,13 +3691,6 @@ def catalog_inference_values(item: dict[str, Any]) -> list[str]:
         item.get("pricing_reference_description"),
         *aliases,
     ]
-    description_tokens = catalog_inference_tokens(item.get("description"))
-    if {"tv", "monitor"} <= description_tokens:
-        values.extend([
-            "LED TV monitor display screen",
-            "LCD monitor wall mounted presentation screen",
-            "large LED video wall display screen",
-        ])
     return [clean_text(value) for value in values if clean_text(value)]
 
 
@@ -3706,12 +3737,7 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
             overlap = query_tokens & value_tokens
             value_ratio = len(overlap) / max(len(value_tokens), 1)
             query_ratio = len(overlap) / max(min(len(query_tokens), 12), 1)
-            short_context_match = (
-                bool(section_bonus and unit_bonus)
-                and len(overlap) >= 2
-                and value_ratio >= 0.5
-                and query_ratio >= 0.4
-            )
+            short_context_match = bool(section_bonus and unit_bonus) and len(overlap) >= 2 and value_ratio >= 0.6
             if len(overlap) < 3 and not short_context_match:
                 continue
             strong_context_match = bool(section_bonus or unit_bonus) and query_ratio >= 0.6
@@ -3733,35 +3759,70 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
     return scored[0][2]
 
 
-def catalog_item_monitor_size(item: dict[str, Any]) -> int | None:
+def catalog_item_variant_value(item: dict[str, Any]) -> float | None:
     text = " ".join(clean_text(value) for value in (item.get("description"), item.get("pricing_reference_description")))
-    match = re.search(r"\b(\d{2,3})\s*(?:\"|\u201d|inch|in\b)", text, flags=re.IGNORECASE)
+    match = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:\"|\u201d|inch(?:es)?\b|in\b|cm\b|mm\b|w\b|kw\b|l\b)", text, flags=re.IGNORECASE)
     if not match:
         return None
-    size = parse_float_or_none(match.group(1))
-    if size is None or size <= 0:
+    value = parse_float_or_none(match.group(1))
+    if value is None or value <= 0:
         return None
-    return int(size)
+    return value
+
+
+def catalog_item_variant_family_key(item: dict[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+    section_key = safe_section_id(normalize_catalog_section(item.get("section")) or item.get("section"), "")
+    unit_key = normalize_pricing_unit(catalog_item_unit_hint(item)).lower()
+    tokens = tuple(
+        sorted(
+            token
+            for token in catalog_inference_tokens(item.get("description"))
+            if not token.isdigit()
+        )
+    )
+    return (section_key, unit_key, tokens)
+
+
+def query_variant_preference(query_text: str, variant_values: list[float], family_tokens: tuple[str, ...]) -> float | None:
+    query = clean_text(query_text)
+    explicit_matches = [
+        parse_float_or_none(match)
+        for match in re.findall(
+            r"\b(\d+(?:\.\d+)?)\s*(?:\"|\u201d|inch(?:es)?\b|in\b|cm\b|mm\b|w\b|kw\b|l\b)",
+            query,
+            flags=re.IGNORECASE,
+        )
+    ]
+    explicit_values = [value for value in explicit_matches if value is not None and value > 0]
+    if explicit_values:
+        return explicit_values[0]
+    if re.search(r"\b(large|main|hero|feature|prominent|primary)\b", query, flags=re.IGNORECASE):
+        return max(variant_values)
+    if re.search(r"\b(small|compact|secondary|side|countertop|tabletop)\b", query, flags=re.IGNORECASE):
+        return min(variant_values)
+    query_tokens = catalog_inference_tokens(query)
+    if "display" in query_tokens and "display" in set(family_tokens):
+        return min(variant_values)
+    return None
 
 
 def resolve_tied_catalog_family_item(query_text: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
-    sized_monitors = [
-        (catalog_item_monitor_size(item), item)
-        for item in items
-        if catalog_item_monitor_size(item) is not None and {"tv", "monitor"} <= catalog_inference_tokens(item.get("description"))
-    ]
-    if len(sized_monitors) < 2 or len(sized_monitors) != len(items):
+    family_groups: dict[tuple[str, str, tuple[str, ...]], list[tuple[float, dict[str, Any]]]] = {}
+    for item in items:
+        variant_value = catalog_item_variant_value(item)
+        if variant_value is None:
+            continue
+        family_groups.setdefault(catalog_item_variant_family_key(item), []).append((variant_value, item))
+    variant_groups = [group for group in family_groups.values() if len(group) >= 2]
+    if len(variant_groups) != 1:
         return None
-    query = clean_text(query_text).lower()
-    explicit_size_match = re.search(r"\b(\d{2,3})\s*(?:\"|\u201d|inch|in\b)", query, flags=re.IGNORECASE)
-    if explicit_size_match:
-        preferred_size = int(explicit_size_match.group(1))
-    elif re.search(r"\b(large|main|hero)\b|\bvideo\s+wall\b|\bfeature\s+wall\b", query, flags=re.IGNORECASE):
-        preferred_size = max(size for size, _item in sized_monitors if size is not None)
-    else:
-        preferred_size = min(size for size, _item in sized_monitors if size is not None)
-    sized_monitors.sort(key=lambda entry: (abs((entry[0] or preferred_size) - preferred_size), entry[0] or 0, clean_text(entry[1].get("id"))))
-    return sized_monitors[0][1]
+    family_key, variants = next((key, group) for key, group in family_groups.items() if len(group) >= 2)
+    variant_values = [value for value, _item in variants]
+    preferred_value = query_variant_preference(query_text, variant_values, family_key[2])
+    if preferred_value is None:
+        return None
+    variants.sort(key=lambda entry: (abs(entry[0] - preferred_value), entry[0], clean_text(entry[1].get("id"))))
+    return variants[0][1]
 
 
 def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -4454,7 +4515,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "When a pricing_catalog item applies, the pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording. "
         "Set pricing_keyword exactly to the matching catalog id. For catalog-backed quote_basis_sections line text and line_items.description, use the catalog item's exact customer-facing description as the reference prefix. "
         "If visible AI-specific detail does not fit that exact catalog description, format the line as `[ catalog exact customer-facing description ] - observed use/detail`, for example `[ nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) ] - For counters, AV, meeting room and open booth areas`. "
-        "Do not paraphrase catalog-backed product names such as LED TV Monitor items into generic display screen, video wall, or LCD monitor wording; choose the closest matching pricing_catalog id and keep the catalog description intact. "
+        "Do not paraphrase catalog-backed product names into generic object names; choose the closest matching pricing_catalog id and keep the catalog description intact. "
         "When visible or requested scope is not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can fill the price manually. "
         "Use tag Confirm for catalog-backed lines that still need the operator's include/exclude decision. "
         "Use confidence_pct as an integer from 0 to 100 to show how strongly the uploaded images and quote context support that line. "
