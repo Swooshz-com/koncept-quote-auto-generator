@@ -1123,13 +1123,26 @@ REFERENCE_SECTION_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
-def reference_section_title_aliases(value: Any) -> set[str]:
+def ordered_reference_section_title_aliases(value: Any) -> list[str]:
     title = clean_basis_section_title(value)
     if not title:
-        return set()
-    aliases = {title, normalize_catalog_section(title)}
-    aliases.update(REFERENCE_SECTION_ALIASES.get(section_title_lookup_key(title), ()))
-    return {alias for alias in aliases if clean_basis_section_title(alias)}
+        return []
+    aliases: list[str] = []
+
+    def add_alias(alias: Any) -> None:
+        cleaned = clean_basis_section_title(alias)
+        if cleaned and all(section_title_lookup_key(existing) != section_title_lookup_key(cleaned) for existing in aliases):
+            aliases.append(cleaned)
+
+    add_alias(title)
+    add_alias(normalize_catalog_section(title))
+    for alias in REFERENCE_SECTION_ALIASES.get(section_title_lookup_key(title), ()):
+        add_alias(alias)
+    return aliases
+
+
+def reference_section_title_aliases(value: Any) -> set[str]:
+    return set(ordered_reference_section_title_aliases(value))
 
 
 def exact_pricing_reference_section_title(value: Any, pricing_reference_sections: list[str] | None = None) -> str:
@@ -1141,11 +1154,11 @@ def exact_pricing_reference_section_title(value: Any, pricing_reference_sections
         title = clean_basis_section_title(section)
         if not title:
             continue
-        for alias in reference_section_title_aliases(title):
+        for alias in ordered_reference_section_title_aliases(title):
             key = section_title_lookup_key(alias)
             if key:
                 lookup.setdefault(key, title)
-    for candidate in reference_section_title_aliases(text):
+    for candidate in ordered_reference_section_title_aliases(text):
         match = lookup.get(section_title_lookup_key(candidate))
         if match:
             return match
