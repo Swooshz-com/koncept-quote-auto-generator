@@ -1938,7 +1938,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("/var/data/swooshz-quote-runner/output", render_yaml)
         self.assertNotIn("koncept-quote-auto-generator", render_yaml)
         self.assertNotIn("/var/data/koncept-quote-runner", render_yaml)
-        self.assertIn("buildCommand: pip install --only-binary=:all: -r requirements.txt", render_yaml)
+        self.assertIn('buildCommand: "pip install --only-binary=:all: -r requirements.txt"', render_yaml)
         self.assertIn("startCommand: python webapp/server.py", render_yaml)
         self.assertIn("APP_MODE", render_yaml)
         self.assertIn("deploy", render_yaml)
