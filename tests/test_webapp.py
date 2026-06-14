@@ -465,6 +465,22 @@ class WebappServerTest(unittest.TestCase):
             "[ sqm needle punch carpet in colour ] - sqm needle-punch carpet and sqm printed floor panel",
         )
 
+    def test_catalog_reference_suffix_starts_with_uppercase_letter(self):
+        self.assertEqual(
+            webapp.display_description_from_catalog_reference(
+                "Professional Engineer Endorsement for hanging",
+                "allowance for circular overhead sign",
+            ),
+            "[ Professional Engineer Endorsement for hanging ] - Allowance for circular overhead sign",
+        )
+        self.assertEqual(
+            webapp.display_description_from_catalog_reference(
+                "m. run LED strip light for coves",
+                "custom LED strip lighting to platform counters",
+            ),
+            "[ m. run LED strip light for coves ] - Custom LED strip lighting to platform counters",
+        )
+
     def test_normalize_line_items_preserves_customer_text_and_price_metadata(self):
         items = webapp.normalize_line_items({
             "profile_id": "koncept",
@@ -1250,6 +1266,92 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["text"], text)
         self.assertNotIn("catalog_description", line)
         self.assertNotIn("pricing_reference_description", line)
+
+    def test_normalize_ai_draft_marks_unmatched_invented_keyword_for_custom_review(self):
+        text = "White round cocktail tables with chrome pedestal bases for open discussion areas"
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "furniture-rental",
+                    "title": "Furniture Rental",
+                    "lines": [
+                        {
+                            "id": "cocktail-table",
+                            "tag": "Confirm",
+                            "text": text,
+                            "pricing_keyword": "furniture-rental.white-round-table",
+                            "quantity": 4,
+                            "unit": "nos",
+                            "confidence_pct": 82,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Furniture Rental",
+                    "quantity": 4,
+                    "unit": "nos",
+                    "description": text,
+                    "pricing_keyword": "furniture-rental.white-round-table",
+                    "source_basis_line_id": "cocktail-table",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Custom")
+        self.assertTrue(line["custom_pricing"])
+        self.assertEqual(line["text"], text)
+        self.assertNotIn("pricing_keyword", line)
+        self.assertNotIn("catalog_description", line)
+        self.assertNotIn("pricing_reference_description", line)
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
+
+    def test_normalize_ai_draft_does_not_use_invented_id_like_keyword_to_force_wrong_catalog_match(self):
+        text = "Glass-top coffee table with dark frame for lounge area"
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "furniture-rental",
+                    "title": "Furniture Rental",
+                    "lines": [
+                        {
+                            "id": "coffee-table",
+                            "tag": "Confirm",
+                            "text": text,
+                            "pricing_keyword": "furniture-rental.glass-coffee-table",
+                            "quantity": 1,
+                            "unit": "nos",
+                            "confidence_pct": 80,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Furniture Rental",
+                    "quantity": 1,
+                    "unit": "nos",
+                    "description": text,
+                    "pricing_keyword": "furniture-rental.glass-coffee-table",
+                    "source_basis_line_id": "coffee-table",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Custom")
+        self.assertTrue(line["custom_pricing"])
+        self.assertEqual(line["text"], text)
+        self.assertNotIn("pricing_keyword", line)
+        self.assertNotIn("catalog_description", line)
+        self.assertNotIn("pricing_reference_description", line)
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
 
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
         parsed = {

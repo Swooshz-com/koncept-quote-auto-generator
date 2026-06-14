@@ -907,7 +907,9 @@ def catalog_usage_detail(reference: str, detail: str) -> str:
 
 def sentence_case_usage_detail(value: Any) -> str:
     detail = clean_customer_quote_line_text(value)
-    if re.match(r"^(for|to|at|on|in|with|around|across|from|as)\b", detail, flags=re.IGNORECASE):
+    if re.match(r"^(?:sqm|m(?:\.| length| run)?|nos?\.?|lot|sets?)\b", detail, flags=re.IGNORECASE):
+        return detail
+    if detail and detail[0].isalpha():
         return detail[:1].upper() + detail[1:]
     return detail
 
@@ -3929,6 +3931,11 @@ def catalog_item_unit_hint(item: dict[str, Any] | None) -> str:
     )
 
 
+def pricing_keyword_looks_like_catalog_id(value: Any) -> bool:
+    keyword = clean_text(value).lower()
+    return bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+", keyword))
+
+
 def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     query_text = " ".join(
         clean_text(value)
@@ -4064,12 +4071,17 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         display_price = clean_text(raw.get("display_price"))
         pricing_keyword = clean_text(raw.get("pricing_keyword"))
-        pricing_keyword_was_explicit = bool(pricing_keyword)
         catalog_item = catalog_lookup.get(pricing_keyword)
+        pricing_keyword_was_explicit = bool(pricing_keyword and catalog_item)
         if not catalog_item:
-            catalog_item = infer_catalog_item_for_line_item(raw, catalog_lookup)
+            inference_raw = raw
+            if pricing_keyword_looks_like_catalog_id(pricing_keyword):
+                inference_raw = {**raw, "pricing_keyword": ""}
+            catalog_item = infer_catalog_item_for_line_item(inference_raw, catalog_lookup)
             if catalog_item:
                 pricing_keyword = clean_text(catalog_item.get("id"))
+            else:
+                pricing_keyword = ""
         raw_unit = normalize_pricing_unit(raw.get("unit"))
         quantity_parts = normalized_line_text_quantity_parts(raw.get("description"), raw.get("quantity"), raw_unit)
         quantity = parse_float_or_none(quantity_parts["quantity"])
@@ -5194,12 +5206,28 @@ def quote_basis_sections_with_catalog_exact_lines(
     line_items: list[dict[str, Any]],
     catalog_items: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    invalid_pricing_keyword_flag = "_invalid_pricing_keyword"
     exact_catalog_items_by_id: dict[str, dict[str, Any]] = {}
     for item in catalog_items or []:
         if not isinstance(item, dict) or not clean_text(item.get("id")) or not clean_text(item.get("description")):
             continue
         exact_catalog_items_by_id.setdefault(clean_text(item.get("id")), item)
     exact_catalog_items = list(exact_catalog_items_by_id.values())
+
+    def catalog_item_for_pricing_keyword(keyword: Any) -> dict[str, Any] | None:
+        normalized_keyword = clean_text(keyword)
+        if not normalized_keyword:
+            return None
+        if normalized_keyword in exact_catalog_items_by_id:
+            return exact_catalog_items_by_id[normalized_keyword]
+        return next(
+            (
+                item
+                for catalog_id, item in exact_catalog_items_by_id.items()
+                if normalized_keyword in legacy_pricing_catalog_id_aliases(catalog_id)
+            ),
+            None,
+        )
 
     def item_has_catalog_reference(item: dict[str, Any]) -> bool:
         return bool(clean_text(item.get("pricing_reference_description")) or clean_text(item.get("catalog_description")))
@@ -5296,6 +5324,15 @@ def quote_basis_sections_with_catalog_exact_lines(
 
     next_sections = merge_duplicate_sections(copy.deepcopy(sections))
 
+    for section in next_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            pricing_keyword = clean_text(line.get("pricing_keyword"))
+            if pricing_keyword and not catalog_item_for_pricing_keyword(pricing_keyword):
+                line.pop("pricing_keyword", None)
+                line[invalid_pricing_keyword_flag] = True
+
     def section_matches_item(section: dict[str, Any], item: dict[str, Any]) -> bool:
         item_keys = set()
         for value in item_section_values(item):
@@ -5385,10 +5422,11 @@ def quote_basis_sections_with_catalog_exact_lines(
         normalized_line = clean_text(line_text).lower()
         for value in catalog_match_values(item):
             normalized_value = clean_text(value).lower()
-            item_tokens.update(catalog_match_tokens(value))
-            if normalized_line == normalized_value:
+            value_tokens = catalog_match_tokens(value)
+            item_tokens.update(value_tokens)
+            if normalized_line == normalized_value and value_tokens:
                 phrase_bonus = max(phrase_bonus, 20)
-            elif normalized_value in normalized_line or normalized_line in normalized_value:
+            elif len(value_tokens) >= 2 and (normalized_value in normalized_line or normalized_line in normalized_value):
                 phrase_bonus = max(phrase_bonus, 10)
         section_bonus = 2 if isinstance(section, dict) and section_matches_item(section, item) else 0
         overlap = line_tokens & item_tokens
@@ -5607,6 +5645,22 @@ def quote_basis_sections_with_catalog_exact_lines(
         }
         apply_catalog_item_metadata(next_line, item, default_confidence=50)
         target_lines.append(next_line)
+    for section in next_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            had_invalid_pricing_keyword = bool(line.pop(invalid_pricing_keyword_flag, False))
+            if not had_invalid_pricing_keyword:
+                continue
+            if clean_text(line.get("pricing_keyword")) and item_has_catalog_reference(line):
+                continue
+            if normalize_basis_tag(line.get("tag")) != "Exclude":
+                line["tag"] = "Custom"
+                line["custom_pricing"] = True
+            line.pop("pricing_keyword", None)
+            line.pop("catalog_description", None)
+            line.pop("pricing_reference_description", None)
+            line.pop("catalog_unit_price", None)
     return [
         section for section in merge_duplicate_sections(next_sections)
         if [line for line in (section.get("lines") or []) if isinstance(line, dict) and clean_text(line.get("text"))]
