@@ -25,7 +25,9 @@ KONCEPT_AI_REFERENCE = KONCEPT_PRICING_REFERENCE / "pricing-catalog.ai-reference
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
+import build_pricing_catalog as pricing_catalog
 from webapp import server as webapp
 
 
@@ -460,7 +462,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
             items[0]["description"],
-            "sqm needle punch carpet in colour - sqm needle-punch carpet and sqm printed floor panel",
+            "[ sqm needle punch carpet in colour ] - sqm needle-punch carpet and sqm printed floor panel",
         )
 
     def test_normalize_line_items_preserves_customer_text_and_price_metadata(self):
@@ -479,7 +481,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(items[0]["section"], "Floor Design")
         self.assertEqual(items[0]["unit"], "sqm")
-        self.assertEqual(items[0]["description"], "sqm needle punch carpet in colour - AI paraphrased green carpet wording")
+        self.assertEqual(items[0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(items[0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(items[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
         self.assertEqual(items[0]["catalog_unit_price"], 10.5)
@@ -499,12 +501,44 @@ class WebappServerTest(unittest.TestCase):
             ],
         })
 
-        self.assertEqual(items[0]["pricing_keyword"], "floor-design.100mm-raised-platform-with-aluminum-edging")
+        self.assertEqual(items[0]["pricing_keyword"], "floor-design.100mm-raised-platfrom-with-aluminum-edging")
         self.assertEqual(items[0]["catalog_unit_price"], 60.0)
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
             items[0]["description"],
-            "sqm 100mm raised platform with aluminum edging - 100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+            "[ sqm 100mm raised platfrom with aluminum edging ] - 100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+        )
+
+    def test_normalize_line_items_maps_generic_av_screen_wording_to_catalog_monitor(self):
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "AV Equipment Rental Items",
+                    "quantity": 1,
+                    "unit": "nos",
+                    "description": "Large LED video wall or display screen on navy feature wall",
+                    "pricing_keyword": "",
+                },
+                {
+                    "section": "AV Equipment Rental Items",
+                    "quantity": 1,
+                    "unit": "nos",
+                    "description": "Wall-mounted LCD monitor for meeting room presentation area",
+                    "pricing_keyword": "",
+                },
+            ],
+        })
+
+        self.assertEqual(items[0]["pricing_keyword"], "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd")
+        self.assertEqual(
+            items[0]["description"],
+            "[ nos. 85” LED TV Monitor (With Speaker – Full HD) ] - Large LED video wall or display screen on navy feature wall",
+        )
+        self.assertEqual(items[1]["pricing_keyword"], "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd")
+        self.assertEqual(
+            items[1]["description"],
+            "[ nos. 42” LED TV Monitor (With Speaker – Full HD) ] - Wall-mounted LCD monitor for meeting room presentation area",
         )
 
     def test_normalize_line_items_uses_numeric_size_tokens_for_catalog_inference(self):
@@ -698,7 +732,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(items[0]["unit"], "m run")
         self.assertEqual(items[0]["catalog_unit_price"], 42.0)
 
-    def test_normalize_line_items_treats_1m_counters_as_each_not_linear_metre(self):
+    def test_normalize_line_items_uses_catalog_leading_nos_for_1m_counters(self):
         items = webapp.normalize_line_items({
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
@@ -706,15 +740,15 @@ class WebappServerTest(unittest.TestCase):
                     "section": "COUNTERS AND CABINETS",
                     "quantity": 2,
                     "unit": "m",
-                    "description": "Branded 1m lockable information counters with painted green, blue and yellow finish and laminated top.",
-                    "pricing_keyword": "",
+                    "description": "Branded 1m lockable counters with painted green, blue and yellow finish and laminated top.",
+                    "pricing_keyword": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
                 }
             ],
         })
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+            "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
         )
         self.assertEqual(items[0]["quantity"], 2.0)
         self.assertEqual(items[0]["unit"], "nos")
@@ -747,12 +781,12 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Floor Design")
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "sqm needle punch carpet in colour - AI paraphrased green carpet wording")
+        self.assertEqual(lines[0]["text"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(lines[0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(lines[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
         self.assertEqual(lines[0]["catalog_unit_price"], 10.5)
         self.assertEqual(lines[1]["text"], "Use a 6m x 6m booth footprint for area takeoff.")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm needle punch carpet in colour - AI paraphrased green carpet wording")
+        self.assertEqual(draft["line_items"][0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "m2 needle punch carpet in colour")
 
@@ -792,15 +826,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(
             [line["text"] for line in lines],
             [
-                "sqm needle punch carpet in colour - AI paraphrased green carpet wording",
-                "sqm 100mm raised platform with aluminum edging - AI paraphrased raised platform wording",
+                "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording",
+                "[ sqm 100mm raised platfrom with aluminum edging ] - AI paraphrased raised platform wording",
             ],
         )
         self.assertEqual(
             [line["catalog_description"] for line in lines],
             [
                 "sqm needle punch carpet in colour",
-                "sqm 100mm raised platform with aluminum edging",
+                "sqm 100mm raised platfrom with aluminum edging",
             ],
         )
         self.assertEqual([line["tag"] for line in lines], ["Confirm", "Confirm"])
@@ -845,9 +879,9 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "sqm 100mm raised platform with aluminum edging")
+        self.assertEqual(lines[0]["text"], "sqm 100mm raised platfrom with aluminum edging")
         self.assertEqual(lines[1]["text"], "100mm raised platform detail edge")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm 100mm raised platform with aluminum edging")
+        self.assertEqual(draft["line_items"][0]["description"], "sqm 100mm raised platfrom with aluminum edging")
 
     def test_normalize_ai_draft_trusts_leading_item_count_before_dimensions(self):
         counter_text = (
@@ -1078,7 +1112,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         line = lines[0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], "sqm of vinyl printed graphics - Custom printed graphic panels for front and side feature walls")
+        self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Custom printed graphic panels for front and side feature walls")
         self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
         self.assertEqual(line["pricing_reference_description"], "m2 of vinyl printed graphics")
@@ -1313,7 +1347,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Use tag Confirm for catalog-backed lines", prompt)
         self.assertIn("omit that leading count/unit from quote_basis_sections line text and line_items.description", prompt)
         self.assertIn("pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording", prompt)
-        self.assertIn("begin quote_basis_sections line text and line_items.description with the catalog item's exact description", prompt)
+        self.assertIn("format the line as `[ catalog exact customer-facing description ] - observed use/detail`", prompt)
+        self.assertIn("Do not paraphrase catalog-backed product names such as LED TV Monitor items", prompt)
         self.assertIn("Never use quantity 1 with unit m or m length for measured structural runs", prompt)
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
         self.assertNotIn("2 to 4 short lines", prompt)
@@ -1589,7 +1624,8 @@ class WebappServerTest(unittest.TestCase):
         descriptions = [item["description"] for item in result["items"]]
         self.assertIn("m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal", descriptions)
         self.assertIn("nos. 10W LED Spotlight", descriptions)
-        self.assertIn("sqm 100mm raised platform with aluminum edging", descriptions)
+        self.assertIn("m2 100mm raised platfrom with aluminum edging", descriptions)
+        self.assertIn("nos. 42” LED TV Monitor (With Speaker – Full HD)", descriptions)
         self.assertNotIn("data_url", result)
 
     def test_v11_pricing_workbook_import_maps_internal_visual_references(self):
@@ -1699,35 +1735,16 @@ class WebappServerTest(unittest.TestCase):
             ],
         )
 
-    def test_koncept_pricing_reference_has_no_known_catalog_typos(self):
-        bad_tokens = [
-            "platfrom",
-            "parition",
-            "sytem",
-            "dowlight",
-            "lenght",
-            "widht",
-            "heigth",
-            "flourescent",
-            "flourescence",
-            "strenght",
-            "signange",
-            "cabinate",
-            "recieve",
-            "seperate",
-            "dimention",
-            "accomodate",
-            "adress",
-        ]
-        haystacks = {
-            "pricing-catalog.json": KONCEPT_CATALOG.read_text(encoding="utf-8").lower(),
-            "pricing-catalog.ai-reference.md": KONCEPT_AI_REFERENCE.read_text(encoding="utf-8").lower(),
-        }
+    def test_koncept_pricing_reference_descriptions_match_v11_workbook_source(self):
+        generated = pricing_catalog.build_catalog_from_xlsx(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx")
+        current = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
 
-        for filename, text in haystacks.items():
-            with self.subTest(filename=filename):
-                for token in bad_tokens:
-                    self.assertNotIn(token, text)
+        generated_descriptions = [(item["id"], item["description"]) for item in generated["items"]]
+        current_descriptions = [(item["id"], item["description"]) for item in current["items"]]
+
+        self.assertEqual(current_descriptions, generated_descriptions)
+        self.assertIn(("floor-design.100mm-raised-platfrom-with-aluminum-edging", "m2 100mm raised platfrom with aluminum edging"), current_descriptions)
+        self.assertIn(("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", "nos. 42” LED TV Monitor (With Speaker – Full HD)"), current_descriptions)
 
     def test_customer_quote_text_sanitization_preserves_dimensions_and_units(self):
         cleaned = webapp.clean_customer_quote_line_text("Booth size taken from quotation title: 6m x 6m.")
@@ -2184,7 +2201,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("brazil-feature-wall", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
-        self.assertEqual(result["line_items"][0]["description"], "sqm needle punch carpet in colour - sqm green carpet across pavilion footprint")
+        self.assertEqual(result["line_items"][0]["description"], "[ sqm needle punch carpet in colour ] - sqm green carpet across pavilion footprint")
         self.assertEqual(result["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
 
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):

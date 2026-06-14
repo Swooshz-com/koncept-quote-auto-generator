@@ -25,12 +25,12 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Remarks:** velour
 - **Search aliases:** m2 needle velour carpet in colour; needle velour carpet in colour; velour; Floor Design needle velour carpet in colour; needle velour carpet in colour sqm
 
-### floor-design.100mm-raised-platform-with-aluminum-edging
+### floor-design.100mm-raised-platfrom-with-aluminum-edging
 
-- **Item:** m2 100mm raised platform with aluminum edging
+- **Item:** m2 100mm raised platfrom with aluminum edging
 - **Unit hint:** sqm
 - **Remarks:** Platform ONLY
-- **Search aliases:** m2 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging; Platform ONLY; Floor Design 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging sqm
+- **Search aliases:** m2 100mm raised platfrom with aluminum edging; 100mm raised platfrom with aluminum edging; Platform ONLY; Floor Design 100mm raised platfrom with aluminum edging; 100mm raised platfrom with aluminum edging sqm
 
 ### floor-design.white-laminated-flooring-on-raised-platform
 
@@ -139,26 +139,26 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Remarks:** Partition for meeting room; LAMINATE
 - **Search aliases:** m length double side partition wall at height 2.5m for meeting room; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; Partition for meeting room; LAMINATE; Booth Structure double side partition wall at height 2.5m for meeting room; Booth Structure wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room m length; wooden construct in laminated finished as per design proposal m length
 
-### booth-structure.wooden-construct-low-partition-ready-in-painted-finished
+### booth-structure.wooden-construct-low-parition-ready-in-painted-finished
 
-- **Item:** nos. wooden construct low partition ready in painted finished
+- **Item:** nos. wooden construct low parition ready in painted finished
 - **Unit hint:** nos
 - **Remarks:** Low dividing Partition; PAINTED
-- **Search aliases:** nos. wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished; Low dividing Partition; PAINTED; Booth Structure wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished nos
+- **Search aliases:** nos. wooden construct low parition ready in painted finished; wooden construct low parition ready in painted finished; Low dividing Partition; PAINTED; Booth Structure wooden construct low parition ready in painted finished; wooden construct low parition ready in painted finished nos
 
-### booth-structure.wooden-construct-low-partition-ready-in-laminated-finished
+### booth-structure.wooden-construct-low-parition-ready-in-laminated-finished
 
-- **Item:** nos. wooden construct low partition ready in laminated finished
+- **Item:** nos. wooden construct low parition ready in laminated finished
 - **Unit hint:** nos
 - **Remarks:** Low dividing Partition; LAMINATED
-- **Search aliases:** nos. wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished; Low dividing Partition; LAMINATED; Booth Structure wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished nos
+- **Search aliases:** nos. wooden construct low parition ready in laminated finished; wooden construct low parition ready in laminated finished; Low dividing Partition; LAMINATED; Booth Structure wooden construct low parition ready in laminated finished; wooden construct low parition ready in laminated finished nos
 
-### booth-structure.1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel
+### booth-structure.1mw-x-2-5mh-sytem-profile-partition-with-clear-acrylic-panel
 
-- **Item:** m length 1mW x 2.5mH System Profile partition with clear acrylic panel
+- **Item:** m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel
 - **Unit hint:** m length
 - **Remarks:** Acrylic System Partition; Octanorm
-- **Search aliases:** m length 1mW x 2.5mH System Profile partition with clear acrylic panel; 1mW x 2.5mH System Profile partition with clear acrylic panel; Acrylic System Partition; Octanorm; Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel; 1mW x 2.5mH System Profile partition with clear acrylic panel m length
+- **Search aliases:** m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel; 1mW x 2.5mH Sytem Profile partition with clear acrylic panel; Acrylic System Partition; Octanorm; Booth Structure 1mW x 2.5mH Sytem Profile partition with clear acrylic panel; 1mW x 2.5mH Sytem Profile partition with clear acrylic panel m length
 
 ### booth-structure.vertical-support-pillars-in-painted-finished
 
@@ -199,17 +199,17 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
-- **Item:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
-- **Unit hint:** nos
+- **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
+- **Unit hint:** m length
 - **Remarks:** INFORMATION COUNTER; PAINTED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable information counter nos; wooden construct in painted finished and laminated top as per design proposal nos
+- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in painted finished and laminated top as per design proposal m length
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
-- **Item:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
-- **Unit hint:** nos
+- **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
+- **Unit hint:** m length
 - **Remarks:** INFORMATION COUNTER; FULL LAMINATED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable information counter nos; wooden construct in laminated finished as per design proposal nos
+- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in laminated finished as per design proposal m length
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
@@ -371,23 +371,23 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### electrical-fittings-excluding-connection-fees-by-organiser.led-strip-light-for-coves
 
 - **Item:** m. run LED strip light for coves
-- **Unit hint:** not specified
+- **Unit hint:** m run
 - **Remarks:** LED STRIPS
-- **Search aliases:** m. run LED strip light for coves; LED strip light for coves; LED STRIPS; Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves
+- **Search aliases:** m. run LED strip light for coves; LED strip light for coves; LED STRIPS; Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves; LED strip light for coves m run
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.led-bar-for-backlit-graphics
 
 - **Item:** m. run LED bar for backlit graphics
-- **Unit hint:** not specified
+- **Unit hint:** m run
 - **Remarks:** LED BAR
-- **Search aliases:** m. run LED bar for backlit graphics; LED bar for backlit graphics; LED BAR; Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics
+- **Search aliases:** m. run LED bar for backlit graphics; LED bar for backlit graphics; LED BAR; Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics; LED bar for backlit graphics m run
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.single-line-drawing-for-db-box
 
 - **Item:** no. single line drawing for DB box
-- **Unit hint:** no.
+- **Unit hint:** nos
 - **Remarks:** Single Line Drawing
-- **Search aliases:** no. single line drawing for DB box; single line drawing for DB box; Single Line Drawing; Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box; single line drawing for DB box no.
+- **Search aliases:** no. single line drawing for DB box; single line drawing for DB box; Single Line Drawing; Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box; single line drawing for DB box nos
 
 ## Furniture Rental
 
@@ -643,31 +643,31 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 
 ### av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd
 
-- **Item:** nos. 42" LED TV Monitor (With Speaker - Full HD)
+- **Item:** nos. 42” LED TV Monitor (With Speaker – Full HD)
 - **Unit hint:** nos
 - **Remarks:** TV
-- **Search aliases:** nos. 42" LED TV Monitor (With Speaker - Full HD); 42" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 42" LED TV Monitor (With Speaker - Full HD); 42" LED TV Monitor (With Speaker - Full HD) nos
+- **Search aliases:** nos. 42” LED TV Monitor (With Speaker – Full HD); 42” LED TV Monitor (With Speaker – Full HD); TV; AV Equipment Rental Items 42” LED TV Monitor (With Speaker – Full HD); 42” LED TV Monitor (With Speaker – Full HD) nos
 
 ### av-equipment-rental-items.55-led-tv-monitor-with-speaker-full-hd
 
-- **Item:** nos. 55" LED TV Monitor (With Speaker - Full HD)
+- **Item:** nos. 55” LED TV Monitor (With Speaker – Full HD)
 - **Unit hint:** nos
 - **Remarks:** TV
-- **Search aliases:** nos. 55" LED TV Monitor (With Speaker - Full HD); 55" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 55" LED TV Monitor (With Speaker - Full HD); 55" LED TV Monitor (With Speaker - Full HD) nos
+- **Search aliases:** nos. 55” LED TV Monitor (With Speaker – Full HD); 55” LED TV Monitor (With Speaker – Full HD); TV; AV Equipment Rental Items 55” LED TV Monitor (With Speaker – Full HD); 55” LED TV Monitor (With Speaker – Full HD) nos
 
 ### av-equipment-rental-items.65-led-tv-monitor-with-speaker-full-hd
 
-- **Item:** nos. 65" LED TV Monitor (With Speaker - Full HD)
+- **Item:** nos. 65” LED TV Monitor (With Speaker – Full HD)
 - **Unit hint:** nos
 - **Remarks:** TV
-- **Search aliases:** nos. 65" LED TV Monitor (With Speaker - Full HD); 65" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 65" LED TV Monitor (With Speaker - Full HD); 65" LED TV Monitor (With Speaker - Full HD) nos
+- **Search aliases:** nos. 65” LED TV Monitor (With Speaker – Full HD); 65” LED TV Monitor (With Speaker – Full HD); TV; AV Equipment Rental Items 65” LED TV Monitor (With Speaker – Full HD); 65” LED TV Monitor (With Speaker – Full HD) nos
 
 ### av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd
 
-- **Item:** nos. 85" LED TV Monitor (With Speaker - Full HD)
+- **Item:** nos. 85” LED TV Monitor (With Speaker – Full HD)
 - **Unit hint:** nos
 - **Remarks:** TV
-- **Search aliases:** nos. 85" LED TV Monitor (With Speaker - Full HD); 85" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 85" LED TV Monitor (With Speaker - Full HD); 85" LED TV Monitor (With Speaker - Full HD) nos
+- **Search aliases:** nos. 85” LED TV Monitor (With Speaker – Full HD); 85” LED TV Monitor (With Speaker – Full HD); TV; AV Equipment Rental Items 85” LED TV Monitor (With Speaker – Full HD); 85” LED TV Monitor (With Speaker – Full HD) nos
 
 ## Graphics
 

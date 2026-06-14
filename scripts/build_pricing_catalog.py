@@ -50,31 +50,7 @@ def parse_args() -> argparse.Namespace:
 def normalized_text(value: Any) -> str:
     text = str(value or "")
     text = text.replace("\xa0", " ")
-    text = text.replace("\u201c", '"').replace("\u201d", '"')
-    text = text.replace("\u2018", "'").replace("\u2019", "'")
-    text = text.replace("\u2013", "-").replace("\u2014", "-")
     return re.sub(r"\s+", " ", text).strip()
-
-
-def apply_pricing_workbook_text_fixes(value: Any) -> str:
-    text = normalized_text(value)
-    replacements = {
-        "platfrom": "platform",
-        "parition": "partition",
-        "sytem": "system",
-        "dowlight": "downlight",
-        "lenght": "length",
-        "widht": "width",
-        "heigth": "height",
-    }
-
-    def replace(match: re.Match[str]) -> str:
-        replacement = replacements[match.group(0).lower()]
-        return replacement[:1].upper() + replacement[1:] if match.group(0)[:1].isupper() else replacement
-
-    for typo in replacements:
-        text = re.sub(rf"\b{re.escape(typo)}\b", replace, text, flags=re.IGNORECASE)
-    return normalized_text(text)
 
 
 def numeric_value(value: Any) -> float | None:
@@ -194,7 +170,7 @@ def item_from_price_row(section: str, row_number: int, row: list[Any]) -> dict[s
     item = {
         "_source_row": row_number,
         "section": section,
-        "description_parts": [apply_pricing_workbook_text_fixes(text_cell(row, COL_DESCRIPTION))],
+        "description_parts": [normalized_text(text_cell(row, COL_DESCRIPTION))],
         "default_quantity": default_quantity,
         "default_quote_amount": default_estimate if default_estimate and default_estimate > 0 else None,
         "internal_cost": numeric_value(cell(row, COL_COST)) or 0.0,
@@ -203,7 +179,7 @@ def item_from_price_row(section: str, row_number: int, row: list[Any]) -> dict[s
         "remarks": [],
         "extra_values": [],
     }
-    append_remark(item, apply_pricing_workbook_text_fixes(text_cell(row, COL_REMARKS)))
+    append_remark(item, normalized_text(text_cell(row, COL_REMARKS)))
     for value in row[COL_REMARKS + 1:]:
         cleaned = normalized_text(value)
         if cleaned:
@@ -382,8 +358,8 @@ def build_catalog_from_xlsx(source: Path, out: Path | None = None) -> dict[str, 
         if current_item is None:
             continue
 
-        description = apply_pricing_workbook_text_fixes(text_cell(row, COL_DESCRIPTION))
-        remark = apply_pricing_workbook_text_fixes(text_cell(row, COL_REMARKS))
+        description = normalized_text(text_cell(row, COL_DESCRIPTION))
+        remark = normalized_text(text_cell(row, COL_REMARKS))
         if description:
             append_description_part(current_item, description)
         if remark:

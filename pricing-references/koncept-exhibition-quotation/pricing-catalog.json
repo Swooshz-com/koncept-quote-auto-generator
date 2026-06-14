@@ -59,15 +59,15 @@
         "Platform ONLY"
       ],
       "extra_values": [],
-      "id": "floor-design.100mm-raised-platform-with-aluminum-edging",
-      "description": "m2 100mm raised platform with aluminum edging",
+      "id": "floor-design.100mm-raised-platfrom-with-aluminum-edging",
+      "description": "m2 100mm raised platfrom with aluminum edging",
       "unit_hint": "sqm",
       "aliases": [
-        "m2 100mm raised platform with aluminum edging",
-        "100mm raised platform with aluminum edging",
+        "m2 100mm raised platfrom with aluminum edging",
+        "100mm raised platfrom with aluminum edging",
         "Platform ONLY",
-        "Floor Design 100mm raised platform with aluminum edging",
-        "100mm raised platform with aluminum edging sqm"
+        "Floor Design 100mm raised platfrom with aluminum edging",
+        "100mm raised platfrom with aluminum edging sqm"
       ],
       "sale_unit_price": 60.0
     },
@@ -488,16 +488,16 @@
         "PAINTED"
       ],
       "extra_values": [],
-      "id": "booth-structure.wooden-construct-low-partition-ready-in-painted-finished",
-      "description": "nos. wooden construct low partition ready in painted finished",
+      "id": "booth-structure.wooden-construct-low-parition-ready-in-painted-finished",
+      "description": "nos. wooden construct low parition ready in painted finished",
       "unit_hint": "nos",
       "aliases": [
-        "nos. wooden construct low partition ready in painted finished",
-        "wooden construct low partition ready in painted finished",
+        "nos. wooden construct low parition ready in painted finished",
+        "wooden construct low parition ready in painted finished",
         "Low dividing Partition",
         "PAINTED",
-        "Booth Structure wooden construct low partition ready in painted finished",
-        "wooden construct low partition ready in painted finished nos"
+        "Booth Structure wooden construct low parition ready in painted finished",
+        "wooden construct low parition ready in painted finished nos"
       ],
       "sale_unit_price": 270.0
     },
@@ -513,16 +513,16 @@
         "LAMINATED"
       ],
       "extra_values": [],
-      "id": "booth-structure.wooden-construct-low-partition-ready-in-laminated-finished",
-      "description": "nos. wooden construct low partition ready in laminated finished",
+      "id": "booth-structure.wooden-construct-low-parition-ready-in-laminated-finished",
+      "description": "nos. wooden construct low parition ready in laminated finished",
       "unit_hint": "nos",
       "aliases": [
-        "nos. wooden construct low partition ready in laminated finished",
-        "wooden construct low partition ready in laminated finished",
+        "nos. wooden construct low parition ready in laminated finished",
+        "wooden construct low parition ready in laminated finished",
         "Low dividing Partition",
         "LAMINATED",
-        "Booth Structure wooden construct low partition ready in laminated finished",
-        "wooden construct low partition ready in laminated finished nos"
+        "Booth Structure wooden construct low parition ready in laminated finished",
+        "wooden construct low parition ready in laminated finished nos"
       ],
       "sale_unit_price": 420.0
     },
@@ -538,16 +538,16 @@
         "Octanorm"
       ],
       "extra_values": [],
-      "id": "booth-structure.1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel",
-      "description": "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
+      "id": "booth-structure.1mw-x-2-5mh-sytem-profile-partition-with-clear-acrylic-panel",
+      "description": "m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
       "unit_hint": "m length",
       "aliases": [
-        "m length 1mW x 2.5mH System Profile partition with clear acrylic panel",
-        "1mW x 2.5mH System Profile partition with clear acrylic panel",
+        "m length 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
+        "1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
         "Acrylic System Partition",
         "Octanorm",
-        "Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel",
-        "1mW x 2.5mH System Profile partition with clear acrylic panel m length"
+        "Booth Structure 1mW x 2.5mH Sytem Profile partition with clear acrylic panel",
+        "1mW x 2.5mH Sytem Profile partition with clear acrylic panel m length"
       ],
       "sale_unit_price": 277.5
     },
@@ -687,18 +687,18 @@
       ],
       "extra_values": [],
       "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
-      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
-      "unit_hint": "nos",
+      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+      "unit_hint": "m length",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable information counter",
-        "1m length x 1m height x 0.5m Width lockable information counter",
+        "m length x 1m height x 0.5m Width lockable information counter",
+        "x 1m height x 0.5m Width lockable information counter",
         "wooden construct in painted finished and laminated top as per design proposal",
         "INFORMATION COUNTER",
         "PAINTED",
-        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter",
+        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable information counter nos",
-        "wooden construct in painted finished and laminated top as per design proposal nos"
+        "x 1m height x 0.5m Width lockable information counter m length",
+        "wooden construct in painted finished and laminated top as per design proposal m length"
       ],
       "sale_unit_price": 1200.0
     },
@@ -715,18 +715,18 @@
       ],
       "extra_values": [],
       "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
-      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
-      "unit_hint": "nos",
+      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+      "unit_hint": "m length",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable information counter",
-        "1m length x 1m height x 0.5m Width lockable information counter",
+        "m length x 1m height x 0.5m Width lockable information counter",
+        "x 1m height x 0.5m Width lockable information counter",
         "wooden construct in laminated finished as per design proposal",
         "INFORMATION COUNTER",
         "FULL LAMINATED",
-        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter",
+        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable information counter nos",
-        "wooden construct in laminated finished as per design proposal nos"
+        "x 1m height x 0.5m Width lockable information counter m length",
+        "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 1800.0
     },
@@ -1290,12 +1290,13 @@
       "extra_values": [],
       "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-strip-light-for-coves",
       "description": "m. run LED strip light for coves",
-      "unit_hint": "",
+      "unit_hint": "m run",
       "aliases": [
         "m. run LED strip light for coves",
         "LED strip light for coves",
         "LED STRIPS",
-        "Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves"
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves",
+        "LED strip light for coves m run"
       ],
       "sale_unit_price": 42.0
     },
@@ -1312,12 +1313,13 @@
       "extra_values": [],
       "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-bar-for-backlit-graphics",
       "description": "m. run LED bar for backlit graphics",
-      "unit_hint": "",
+      "unit_hint": "m run",
       "aliases": [
         "m. run LED bar for backlit graphics",
         "LED bar for backlit graphics",
         "LED BAR",
-        "Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics"
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics",
+        "LED bar for backlit graphics m run"
       ],
       "sale_unit_price": 60.0
     },
@@ -1334,13 +1336,13 @@
       "extra_values": [],
       "id": "electrical-fittings-excluding-connection-fees-by-organiser.single-line-drawing-for-db-box",
       "description": "no. single line drawing for DB box",
-      "unit_hint": "no.",
+      "unit_hint": "nos",
       "aliases": [
         "no. single line drawing for DB box",
         "single line drawing for DB box",
         "Single Line Drawing",
         "Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box",
-        "single line drawing for DB box no."
+        "single line drawing for DB box nos"
       ],
       "sale_unit_price": 600.0
     },
@@ -2316,14 +2318,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
+      "description": "nos. 42” LED TV Monitor (With Speaker – Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
-        "42\" LED TV Monitor (With Speaker - Full HD)",
+        "nos. 42” LED TV Monitor (With Speaker – Full HD)",
+        "42” LED TV Monitor (With Speaker – Full HD)",
         "TV",
-        "AV Equipment Rental Items 42\" LED TV Monitor (With Speaker - Full HD)",
-        "42\" LED TV Monitor (With Speaker - Full HD) nos"
+        "AV Equipment Rental Items 42” LED TV Monitor (With Speaker – Full HD)",
+        "42” LED TV Monitor (With Speaker – Full HD) nos"
       ],
       "sale_unit_price": 450.0
     },
@@ -2339,14 +2341,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.55-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 55\" LED TV Monitor (With Speaker - Full HD)",
+      "description": "nos. 55” LED TV Monitor (With Speaker – Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 55\" LED TV Monitor (With Speaker - Full HD)",
-        "55\" LED TV Monitor (With Speaker - Full HD)",
+        "nos. 55” LED TV Monitor (With Speaker – Full HD)",
+        "55” LED TV Monitor (With Speaker – Full HD)",
         "TV",
-        "AV Equipment Rental Items 55\" LED TV Monitor (With Speaker - Full HD)",
-        "55\" LED TV Monitor (With Speaker - Full HD) nos"
+        "AV Equipment Rental Items 55” LED TV Monitor (With Speaker – Full HD)",
+        "55” LED TV Monitor (With Speaker – Full HD) nos"
       ],
       "sale_unit_price": 675.0
     },
@@ -2362,14 +2364,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.65-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 65\" LED TV Monitor (With Speaker - Full HD)",
+      "description": "nos. 65” LED TV Monitor (With Speaker – Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 65\" LED TV Monitor (With Speaker - Full HD)",
-        "65\" LED TV Monitor (With Speaker - Full HD)",
+        "nos. 65” LED TV Monitor (With Speaker – Full HD)",
+        "65” LED TV Monitor (With Speaker – Full HD)",
         "TV",
-        "AV Equipment Rental Items 65\" LED TV Monitor (With Speaker - Full HD)",
-        "65\" LED TV Monitor (With Speaker - Full HD) nos"
+        "AV Equipment Rental Items 65” LED TV Monitor (With Speaker – Full HD)",
+        "65” LED TV Monitor (With Speaker – Full HD) nos"
       ],
       "sale_unit_price": 975.0
     },
@@ -2385,14 +2387,14 @@
       ],
       "extra_values": [],
       "id": "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd",
-      "description": "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
+      "description": "nos. 85” LED TV Monitor (With Speaker – Full HD)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
-        "85\" LED TV Monitor (With Speaker - Full HD)",
+        "nos. 85” LED TV Monitor (With Speaker – Full HD)",
+        "85” LED TV Monitor (With Speaker – Full HD)",
         "TV",
-        "AV Equipment Rental Items 85\" LED TV Monitor (With Speaker - Full HD)",
-        "85\" LED TV Monitor (With Speaker - Full HD) nos"
+        "AV Equipment Rental Items 85” LED TV Monitor (With Speaker – Full HD)",
+        "85” LED TV Monitor (With Speaker – Full HD) nos"
       ],
       "sale_unit_price": 2250.0
     },
