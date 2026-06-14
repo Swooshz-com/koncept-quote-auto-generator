@@ -4392,6 +4392,10 @@ CATALOG_INFERENCE_TOKEN_ALIASES = {
 
 CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS = (
     ("display", {"display", "displays", "monitor", "monitors", "screen", "screens", "tv", "television", "televisions"}),
+    ("fascia", {"fascia", "fascias"}),
+    ("partition", {"partition", "partitions", "wall", "walls", "backwall", "backwalls", "enclosure", "enclosures"}),
+    ("pillar", {"pillar", "pillars", "column", "columns", "support", "supports"}),
+    ("supply", {"supply", "supplies", "service", "services", "package", "packages", "consumable", "consumables"}),
 )
 
 CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES = {
@@ -4426,9 +4430,12 @@ CATALOG_OBJECT_FAMILY_TOKENS = {
     "chair": {"chair", "chairs"},
     "counter": {"counter", "counters"},
     "display": {"display", "monitor", "screen", "tv", "television"},
+    "fascia": {"fascia"},
     "hoist": {"hoist"},
     "kiosk": {"kiosk", "terminal"},
     "lift": {"boom", "lift"},
+    "partition": {"partition", "wall", "backwall", "enclosure"},
+    "pillar": {"pillar", "column", "support"},
     "plant": {"plant", "plants", "planter", "greenery"},
     "socket": {"socket", "sockets", "power"},
     "sofa": {"sofa", "sofas"},
@@ -4442,6 +4449,9 @@ def catalog_object_families(value: Any) -> set[str]:
     for family, family_tokens in CATALOG_OBJECT_FAMILY_TOKENS.items():
         if tokens & family_tokens:
             families.add(family)
+    if tokens & {"graphic", "printed", "print", "logo", "sign", "signage"}:
+        families.discard("fascia")
+        families.discard("partition")
     if "lift" in families and "hoist" in families:
         families.discard("hoist")
     return families
@@ -4471,6 +4481,19 @@ def catalog_line_contradicts_item(line_text: Any, item: dict[str, Any]) -> bool:
         if line_families <= group and item_families <= group:
             return False
     return line_families.isdisjoint(item_families)
+
+
+def explicit_catalog_keyword_can_span_structural_family(line_text: Any, item: dict[str, Any]) -> bool:
+    if normalize_catalog_section(item.get("section")) != "Booth Structure":
+        return False
+    structural_families = {"fascia", "partition", "pillar", "plant"}
+    line_families = catalog_object_families(line_text) & structural_families
+    item_families = {
+        family_name
+        for value in catalog_inference_values(item)
+        for family_name in catalog_object_families(value)
+    } & structural_families
+    return bool(line_families and item_families)
 
 
 def catalog_inference_values(item: dict[str, Any]) -> list[str]:
@@ -4549,6 +4572,9 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
         return None
     scored.sort(key=lambda entry: (-entry[0], entry[1]))
     if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.5:
+        tied_item = resolve_tied_catalog_attribute_item(query_text, [item for score, _item_id, item in scored if scored[0][0] - score < 0.5])
+        if tied_item:
+            return tied_item
         tied_item = resolve_tied_catalog_family_item(query_text, [item for score, _item_id, item in scored if scored[0][0] - score < 0.5])
         if tied_item:
             return tied_item
@@ -4622,6 +4648,67 @@ def resolve_tied_catalog_family_item(query_text: str, items: list[dict[str, Any]
     return variants[0][1]
 
 
+def resolve_tied_catalog_attribute_item(query_text: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    unique_items = {clean_text(item.get("id")): item for item in items if clean_text(item.get("id"))}
+    candidates = list(unique_items.values())
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+
+    query = clean_text(query_text).lower()
+
+    object_preferences: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"\b(?:vertical\s+)?(?:support\s+)?pillars?\b|\bcolumns?\b", re.IGNORECASE), "pillar"),
+        (re.compile(r"\btop\s+fascia\b|\bfascias?\b", re.IGNORECASE), "fascia"),
+        (re.compile(r"\b(?:partition|wall|backwall|room\s+build|enclosure)s?\b", re.IGNORECASE), "partition"),
+        (re.compile(r"\bplanters?\b|\bplants?\b|\bgreenery\b", re.IGNORECASE), "plant"),
+    )
+    for pattern, family in object_preferences:
+        if not pattern.search(query):
+            continue
+        family_matches = [
+            item
+            for item in candidates
+            if family in {
+                family_name
+                for value in catalog_inference_values(item)
+                for family_name in catalog_object_families(value)
+            }
+        ]
+        if family_matches:
+            candidates = family_matches
+            break
+
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+
+    finish_preferences: list[str] = []
+    if re.search(r"\blaminat(?:e|ed|ion)\b", query, flags=re.IGNORECASE):
+        finish_preferences.append("laminated")
+    if re.search(r"\bpaint(?:ed|ing)?\b", query, flags=re.IGNORECASE):
+        finish_preferences.append("painted")
+    if not finish_preferences and re.search(
+        r"\b(?:black|blue|brown|cyan|dark|green|grey|gray|navy|orange|pink|purple|red|teal|white|yellow|colour|color|finish|finished)\b",
+        query,
+        flags=re.IGNORECASE,
+    ):
+        finish_preferences.append("painted")
+
+    for finish in finish_preferences:
+        finish_matches = [
+            item
+            for item in candidates
+            if re.search(rf"\b{re.escape(finish)}\b", clean_text(item.get("description")), flags=re.IGNORECASE)
+        ]
+        if len(finish_matches) == 1:
+            return finish_matches[0]
+        if finish_matches:
+            candidates = finish_matches
+
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     raw_items = payload.get("line_items")
     if not isinstance(raw_items, list):
@@ -4654,7 +4741,14 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             else ((catalog_item_unit_hint(catalog_item) or raw_unit) if catalog_item else raw_unit)
         )
         raw_description = clean_customer_quote_line_text(quantity_parts["text"])
-        if catalog_item and catalog_line_contradicts_item(raw_description, catalog_item):
+        if (
+            catalog_item
+            and catalog_line_contradicts_item(raw_description, catalog_item)
+            and not (
+                pricing_keyword_was_explicit
+                and explicit_catalog_keyword_can_span_structural_family(raw_description, catalog_item)
+            )
+        ):
             catalog_item = None
             pricing_keyword = ""
             unit = quantity_parts["unit"] if quantity_parts.get("from_text_prefix") else raw_unit
@@ -5353,13 +5447,15 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "quote_basis_sections line text and line_items.description are customer-facing quotation text. Do not include provenance, reasoning, analysis, or source phrases such as taken from quotation title, visible in image, as seen in render, AI detected, assumed from, likely, appears to be, from reference image, or suggested by image. Put analysis reasons only in analysis_findings, clarification questions, or internal notes. "
         "Use quote_basis_sections as the operator review surface for the same pricing sentences that will become output rows. "
         "When a pricing_catalog item applies, the pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording. "
+        "Treat pricing_catalog as the company's owned offer catalog: these are the products and services the company normally sells or rents, so use them aggressively before suggesting anything custom. "
         "Before using Custom, compare the proposed object or service against every pricing_catalog row and ask whether any catalog item can safely be that specific thing. "
         "A catalog match must share the same object family and must not contradict distinguishing attributes present in the evidence or wording, including shape, colour, material, size, capacity, mounting, or finish. Generic word overlap such as table, counter, coffee, light, display, screen, monitor, or TV is not enough by itself. "
         "Set pricing_keyword exactly to the matching catalog id. For catalog-backed quote_basis_sections line text and line_items.description, always start with the catalog item's exact customer-facing description in brackets: `[ catalog exact customer-facing description ]`. "
         "If there is observed booth-specific detail, format the line as `[ catalog exact customer-facing description ] - Observed use/detail`, for example `[ nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) ] - For counters, AV, meeting room and open booth areas`. "
         "If there is no extra observed detail, use only `[ catalog exact customer-facing description ]`. "
         "Do not paraphrase catalog-backed product names into generic object names; choose the closest safe pricing_catalog id and keep the catalog description intact. "
-        "When visible or requested scope is genuinely not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can fill the price manually. "
+        "Do not collapse booth structure, fascia, partition, wall, pillar, planter, glass partition, AV, electrical, graphics, furniture, coffee/tea, or water-connection scope into broad 'custom' or '1 lot' package lines when pricing_catalog has matching rows. Split composite visible scope into the closest catalog-backed rows first, then add Custom rows only for the truly unmatched remainder. "
+        "When visible or requested scope is genuinely not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom as an optional AI suggestion/manual-pricing row, and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can decide whether to source or ignore it. "
         "Use tag Confirm for catalog-backed lines that still need the operator's include/exclude decision. "
         "Use confidence_pct as an integer from 0 to 100 to show how strongly the uploaded images and quote context support that line. "
         "Use higher confidence for clearly visible or explicitly stated scope, and lower confidence for inferred or unclear scope. "
@@ -5367,7 +5463,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Every basis line must name the observed material, object, finish, sign, light, furniture, or service "
         "rather than a broad category. Every line must state the exact observed scope or missing decision. "
         "When a line begins with a count and unit such as 2 nos., 14 nos., 36 sqm, or 1 lot, put the number in quantity and the unit in unit, then omit that leading count/unit from quote_basis_sections line text and line_items.description. "
-        "Never use quantity 1 with unit m or m length for measured structural runs such as booth structure, fascia, walls, partitions, portals, frames, or canopies unless the exact measured length is explicitly provided by the quote context. If a structural run is visible but not measurable, use unit lot with empty pricing_keyword for manual pricing, or ask a blocking clarification question when the measured quantity is required. "
+        "Never use quantity 1 with unit m or m length for measured structural runs such as booth structure, fascia, walls, partitions, portals, frames, or canopies unless the exact measured length is explicitly provided by the quote context. If a structural product type matches pricing_catalog but the run length is uncertain, keep the catalog-backed line and use a visible best-effort measured/estimated quantity when reasonable; otherwise ask a blocking clarification question. Do not downgrade a catalog-backed structural product to Custom only because the exact length is uncertain. "
         "The JSON must also include a project object with booth_width and booth_depth as numbers in metres. "
         "Do not derive booth dimensions from the quotation title. Use explicit booth-size fields in Quote context JSON when supplied; otherwise infer booth_width and booth_depth from the uploaded images or reference PDFs. "
         "If dimensions are still unclear, use a reasonable default booth size instead of leaving dimensions empty. "
@@ -5993,21 +6089,34 @@ def quote_basis_sections_with_catalog_exact_lines(
         stop_words = {
             "and",
             "area",
+            "approval",
+            "approvals",
+            "custom",
             "for",
+            "final",
             "from",
             "height",
             "lot",
             "meeting",
             "nos",
             "one",
+            "organiser",
+            "organisers",
+            "organizer",
+            "organizers",
+            "owner",
+            "owners",
             "per",
             "rental",
+            "requirement",
+            "requirements",
             "seat",
             "seating",
             "sqm",
+            "subject",
             "the",
-            "wall",
-            "walls",
+            "venue",
+            "venues",
             "with",
         }
         tokens: set[str] = set()
@@ -6032,6 +6141,15 @@ def quote_basis_sections_with_catalog_exact_lines(
         ]
         return [clean_text(value) for value in values if clean_text(value)]
 
+    def line_has_exclusion_scope(value: Any) -> bool:
+        text = clean_text(value).lower()
+        return bool(
+            re.search(
+                r"\b(?:excluded?|excluding|not\s+included|not\s+provided|unless\s+requested|by\s+others|no\s+allowance)\b",
+                text,
+            )
+        )
+
     def score_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any], section: dict[str, Any] | None = None) -> int:
         line_text = clean_customer_quote_line_text(line.get("text"))
         line_tokens = catalog_match_tokens(line_text)
@@ -6051,10 +6169,18 @@ def quote_basis_sections_with_catalog_exact_lines(
         section_bonus = 2 if isinstance(section, dict) and section_matches_item(section, item) else 0
         overlap = line_tokens & item_tokens
         family_bonus = 3 if section_bonus and "display" in line_tokens and "display" in item_tokens else 0
+        catalog_like_bonus = 0
+        if section_bonus and not line_has_exclusion_scope(line_text):
+            service_tokens = {"supply", "beverage", "drink", "coffee", "tea"}
+            if "supply" in line_tokens and (item_tokens & service_tokens) and len(overlap) >= 2:
+                catalog_like_bonus = max(catalog_like_bonus, 4)
+            structure_tokens = {"fascia", "partition", "pillar", "plant"}
+            if line_tokens & item_tokens & structure_tokens:
+                catalog_like_bonus = max(catalog_like_bonus, 4)
         line_ratio = len(overlap) / max(len(line_tokens), 1)
-        if not phrase_bonus and not family_bonus and line_ratio < 0.75:
+        if not phrase_bonus and not family_bonus and not catalog_like_bonus and line_ratio < 0.75:
             return 0
-        return len(overlap) + phrase_bonus + section_bonus + family_bonus
+        return len(overlap) + phrase_bonus + section_bonus + family_bonus + catalog_like_bonus
 
     def catalog_item_for_basis_line(line: dict[str, Any], section: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if is_default_dimension_basis_line(line):
@@ -6072,6 +6198,9 @@ def quote_basis_sections_with_catalog_exact_lines(
         top_score = scored[0][0]
         tied_items = [item for score, item in scored if score == top_score]
         if len(tied_items) > 1:
+            tied_item = resolve_tied_catalog_attribute_item(clean_customer_quote_line_text(line.get("text")), tied_items)
+            if tied_item:
+                return tied_item
             tied_item = resolve_tied_catalog_family_item(clean_customer_quote_line_text(line.get("text")), tied_items)
             if tied_item:
                 return tied_item
@@ -6116,6 +6245,14 @@ def quote_basis_sections_with_catalog_exact_lines(
             return ""
         return current_text or clean_customer_quote_line_text(fallback_detail)
 
+    def should_clear_generic_lot_quantity_for_catalog_unit(original_quantity: Any, original_unit: Any, catalog_unit: str) -> bool:
+        if normalize_pricing_unit(original_unit) != "lot":
+            return False
+        quantity = parse_float_or_none(original_quantity)
+        if quantity is None or abs(quantity - 1) > 0.001:
+            return False
+        return normalize_pricing_unit(catalog_unit) in {"m", "m length", "m run", "sqm"}
+
     def line_matches_item(line: dict[str, Any], item: dict[str, Any]) -> bool:
         source_id = safe_resource_id(item.get("source_basis_line_id"), "")
         line_ids = {
@@ -6139,6 +6276,8 @@ def quote_basis_sections_with_catalog_exact_lines(
         has_catalog_reference = item_has_catalog_reference(item)
         catalog_id = clean_text(item.get("pricing_keyword") or item.get("id"))
         was_custom = normalize_basis_tag(line.get("tag")) == "Custom" or bool(line.get("custom_pricing"))
+        original_quantity = line.get("quantity")
+        original_unit = line.get("unit")
         if catalog_id:
             line["pricing_keyword"] = catalog_id
             if has_catalog_reference and normalize_basis_tag(line.get("tag")) == "Custom":
@@ -6173,6 +6312,8 @@ def quote_basis_sections_with_catalog_exact_lines(
         unit = clean_text(item.get("unit") or catalog_item_unit_hint(item))
         if unit:
             line["unit"] = normalize_pricing_unit(unit)
+        if unit and should_clear_generic_lot_quantity_for_catalog_unit(original_quantity, original_unit, unit):
+            line["quantity"] = ""
         confidence = normalize_confidence_percent(line.get("confidence", line.get("confidence_pct")))
         if confidence is not None:
             line["confidence"] = confidence

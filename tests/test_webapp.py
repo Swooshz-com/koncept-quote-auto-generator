@@ -1537,6 +1537,94 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("pricing_keyword", lines[1])
         self.assertNotIn("pricing_reference_description", lines[1])
 
+    def test_normalize_ai_draft_maps_positive_coffee_package_to_catalog_row(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "coffee-tea",
+                    "title": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "Coffee and tea service package for coffee counter area, subject to venue approval and final service requirement",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 70,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Confirm")
+        self.assertEqual(
+            line["pricing_keyword"],
+            "coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day",
+        )
+        self.assertEqual(line["pricing_reference_description"], "Coffee / Tea and supplies for 100 people per day")
+        self.assertTrue(line["text"].startswith("[ Coffee / Tea and supplies for 100 people per day ] - "))
+        self.assertNotIn("custom_pricing", line)
+
+    def test_normalize_ai_draft_rehomes_broad_booth_structure_to_catalog_families_without_one_metre_quantity(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "booth-structure",
+                    "title": "Booth Structure",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "Custom perimeter booth wall and room build with dark navy exterior, white interior finishes, meeting room, lounge, store enclosure, rounded corners, doorway openings, top fascia, and feature side opening",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 92,
+                        },
+                        {
+                            "tag": "Custom",
+                            "text": "Central circular feature structure with white and teal round base, integrated planter seating, tall white curved support pillars, illuminated round canopy, and Kent logo panels",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 90,
+                        },
+                        {
+                            "tag": "Custom",
+                            "text": "Custom illuminated navy top fascia with cyan accent line, website text, and slogan text around perimeter wall structure",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 88,
+                        },
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        by_keyword = {line["pricing_keyword"]: line for line in lines}
+        self.assertIn(
+            "booth-structure.double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal",
+            by_keyword,
+        )
+        self.assertIn(
+            "booth-structure.top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal",
+            by_keyword,
+        )
+        self.assertIn("booth-structure.vertical-support-pillars-in-painted-finished", by_keyword)
+        for keyword, line in by_keyword.items():
+            self.assertEqual(line["tag"], "Confirm")
+            self.assertNotIn("custom_pricing", line)
+            self.assertTrue(line["text"].startswith("[ "))
+            if line["unit"] == "m length":
+                self.assertEqual(line["quantity"], "", keyword)
+            else:
+                self.assertEqual(line["quantity"], "1")
+
     def test_normalize_ai_draft_rebuilds_brackets_from_resolved_catalog_keyword(self):
         parsed = {
             "quote_basis_sections": [
@@ -1925,27 +2013,15 @@ class WebappServerTest(unittest.TestCase):
                 self.assertTrue(login_redirect.exception.headers["Location"].startswith("https://issuer.example/authorize?"))
                 self.assertIn(webapp.OIDC_STATE_COOKIE_NAME, login_redirect.exception.headers["Set-Cookie"])
 
-    def test_render_deploy_config_is_optional_non_default_example(self):
+    def test_non_coolify_deploy_examples_are_not_kept_as_stale_targets(self):
         self.assertFalse((ROOT / "render.yaml").exists())
-        render_yaml = (ROOT / "docs" / "examples" / "render.yaml").read_text(encoding="utf-8")
+        self.assertFalse((ROOT / "docs" / "examples" / "render.yaml").exists())
         infra = (ROOT / "docs" / "otc-platform-infra.md").read_text(encoding="utf-8")
 
-        self.assertIn("Optional Render example", render_yaml)
-        self.assertIn("docs/examples/render.yaml", infra)
+        self.assertIn("Hostinger VPS + Coolify", infra)
+        self.assertIn("do not keep", infra)
         self.assertIn("complete OIDC callback", infra)
-        self.assertIn("name: swooshz-quote-generator", render_yaml)
-        self.assertIn("name: swooshz-quote-runner-data", render_yaml)
-        self.assertIn("/var/data/swooshz-quote-runner/output", render_yaml)
-        self.assertNotIn("koncept-quote-auto-generator", render_yaml)
-        self.assertNotIn("/var/data/koncept-quote-runner", render_yaml)
-        self.assertIn('buildCommand: "pip install --only-binary=:all: -r requirements.txt"', render_yaml)
-        self.assertIn("startCommand: python webapp/server.py", render_yaml)
-        self.assertIn("APP_MODE", render_yaml)
-        self.assertIn("deploy", render_yaml)
-        self.assertIn("AUTH_REQUIRED", render_yaml)
-        self.assertIn("QUOTE_OUTPUT_ROOT", render_yaml)
-        self.assertIn("SESSION_SECRET", render_yaml)
-        self.assertIn("OIDC_ISSUER_URL", render_yaml)
+        self.assertNotIn("docs/examples/render.yaml", infra)
 
     def test_xlsx_pricing_reference_upload_validates_to_sanitized_json(self):
         raw = minimal_pricing_reference_xlsx()

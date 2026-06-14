@@ -201,10 +201,15 @@ Do not treat the deployment as production-ready until these pass:
 - Server patching procedure is documented.
 - Domain and DNS ownership are confirmed.
 
-## Vercel / Render
+## Non-Coolify Hosting
 
-Do not use Vercel + Render as the default deployment target.
+Do not use Vercel + Render as the default deployment target, and do not keep
+stale provider-specific examples in the repo while Hostinger VPS + Coolify is
+the selected MVP deployment path.
 
-Use it only if a later decision explicitly prioritizes managed frontend previews or managed backend hosting over single-server Coolify deployment. The optional Render example lives at `docs/examples/render.yaml` so the repository root does not imply Render is the production deployment path.
+Add a provider-specific deployment example only after a later decision
+explicitly prioritizes that provider over single-server Coolify deployment, and
+keep that example aligned with the current auth, storage, dependency, and
+secret-handling requirements.
 
 The current deploy/auth scaffold is guarded until a complete OIDC callback token exchange and claims-validation boundary is implemented. Do not expose a public deployment that routes users into the scaffolded callback; production access must stay blocked until the auth boundary is complete and tested.
