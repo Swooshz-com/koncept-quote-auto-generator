@@ -34,7 +34,8 @@ This baseline covers:
 ## Current Local Development Behavior
 
 - The local app stores workflow state in the browser, writes generated files under local repo output directories, and writes diagnostics under the root `_logs` folder.
-- Uploaded images and quote data may be sent to the configured AI provider when analysis is run.
+- Uploaded images, uploaded PDFs, rendered PDF page images, and quote data may be sent to the configured AI provider when analysis is run.
+- OpenAI is the current full PDF/image draft-analysis provider; DeepSeek may be configured only for text-only quote-basis chat and pricing-reference import normalization.
 - Pricing references saved through the local app are stored as repo pricing-reference packs.
 - Error UI should show a short retry/support message with an error reference, while detailed provider errors stay in local logs.
 

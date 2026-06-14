@@ -63,6 +63,9 @@ MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
+MAX_RENDERED_PDF_PAGES = 12
+MAX_RENDERED_PDF_PAGE_BYTES = 1024 * 1024
+PDF_RENDER_TARGET_LONG_EDGE_PX = 1600
 MAX_JOB_REQUEST_BYTES = (((MAX_REFERENCE_IMAGES * max(MAX_IMAGE_BYTES, MAX_PDF_BYTES)) + 2) // 3) * 4 + 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
@@ -270,6 +273,19 @@ OPENAI_DRAFT_MODEL_ENV_NAME = "OPENAI_DRAFT_MODEL"
 OPENAI_BASIS_LINE_MODEL_ENV_NAME = "OPENAI_BASIS_LINE_MODEL"
 OPENAI_BASIS_ANSWER_MODEL_ENV_NAME = "OPENAI_BASIS_ANSWER_MODEL"
 OPENAI_REQUEST_TIMEOUT_ENV_NAME = "OPENAI_REQUEST_TIMEOUT_SECONDS"
+AI_PROVIDER_OPENAI = "openai"
+AI_PROVIDER_DEEPSEEK = "deepseek"
+SUPPORTED_TEXT_AI_PROVIDERS = {AI_PROVIDER_OPENAI, AI_PROVIDER_DEEPSEEK}
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_PRO_MODEL = "deepseek-v4-pro"
+DEEPSEEK_API_KEY_ENV_NAME = "DEEPSEEK_API_KEY"
+DEEPSEEK_MODEL_ENV_NAME = "DEEPSEEK_MODEL"
+DEEPSEEK_BASE_URL_ENV_NAME = "DEEPSEEK_BASE_URL"
+DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME = "DEEPSEEK_REQUEST_TIMEOUT_SECONDS"
+AI_BASIS_LINE_PROVIDER_ENV_NAME = "AI_BASIS_LINE_PROVIDER"
+AI_BASIS_ANSWER_PROVIDER_ENV_NAME = "AI_BASIS_ANSWER_PROVIDER"
+AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME = "AI_BASIS_PROPOSAL_PROVIDER"
+AI_PRICING_IMPORT_PROVIDER_ENV_NAME = "AI_PRICING_IMPORT_PROVIDER"
 DEFAULT_BOOTH_WIDTH_METRES = 6.0
 DEFAULT_BOOTH_DEPTH_METRES = 6.0
 QUOTE_BASIS_KEYS = ("surfaces", "counters", "platform", "graphics", "furniture", "electrical")
@@ -286,6 +302,7 @@ ALLOWED_BASIS_TAGS = {"Include", "Confirm", "Custom", "Exclude"}
 SECRET_REDACTION = "sk-..."
 LOCAL_SECRET_REDACTION = "[local-runner-key]"
 OPENAI_REQUEST_TIMEOUT_SECONDS = 1800
+DEEPSEEK_REQUEST_TIMEOUT_SECONDS = 1800
 OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 MAX_PROMPT_CATALOG_ROWS = 180
@@ -343,6 +360,7 @@ def scrub_sensitive_text(text: str) -> str:
     )
     for env_name, redaction in (
         (OPENAI_API_KEY_ENV_NAME, SECRET_REDACTION),
+        (DEEPSEEK_API_KEY_ENV_NAME, SECRET_REDACTION),
         (CSRF_TOKEN_ENV_NAME, LOCAL_SECRET_REDACTION),
     ):
         scrubbed = re.sub(
@@ -390,7 +408,7 @@ def log_event_category(event_type: str) -> str:
     event = log_event_name(event_type)
     if event.startswith(("security_", "abuse_")):
         return "security"
-    if event.startswith(("openai_", "basis_chat", "draft", "ai_")):
+    if event.startswith(("openai_", "deepseek_", "basis_chat", "draft", "ai_")):
         return "ai"
     if event.startswith("generate_"):
         return "generation"
@@ -842,7 +860,11 @@ CATALOG_TEXT_COMPARISON_TOKEN_ALIASES = {
 
 def comparable_catalog_description_key(value: Any) -> str:
     tokens = re.findall(r"[a-z0-9]+", clean_customer_quote_line_text(value).casefold())
-    return " ".join(CATALOG_TEXT_COMPARISON_TOKEN_ALIASES.get(token, token) for token in tokens)
+    return " ".join(
+        CATALOG_TEXT_COMPARISON_TOKEN_ALIASES.get(token, token)
+        for token in tokens
+        if token not in {"inch", "inches"}
+    )
 
 
 def comparable_catalog_description_key_without_leading_unit(value: Any) -> str:
@@ -921,7 +943,7 @@ def display_description_from_catalog_reference(reference_text: Any, ai_text: Any
         return detail
     usage = sentence_case_usage_detail(catalog_usage_detail(reference, detail))
     if not usage:
-        return reference
+        return f"[ {reference} ]"
     return f"[ {reference} ] - {usage}"
 
 
@@ -1767,6 +1789,18 @@ def split_pricing_reference_terms(value: Any) -> list[str]:
     return terms
 
 
+def unique_clean_list(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = clean_text(value)
+        key = text.lower()
+        if text and key not in seen:
+            result.append(text)
+            seen.add(key)
+    return result
+
+
 def default_pricing_reference_aliases(section: str, description: str, unit_hint: str, remarks: list[str]) -> list[str]:
     aliases: list[str] = []
     seen: set[str] = set()
@@ -1978,9 +2012,17 @@ def pricing_reference_sale_unit_price(item: dict[str, Any]) -> float | None:
     return round(cost * markup, 2)
 
 
-def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict[str, Any] | None:
-    description = clean_text(sanitize_formula_text(raw.get("description")))
-    reference_section = clean_basis_section_title(sanitize_formula_text(raw.get("reference_section") or raw.get("section")))
+def sanitize_pricing_reference_item(
+    raw: dict[str, Any],
+    index: int = 0,
+    apply_import_text_fixes: bool = False,
+) -> dict[str, Any] | None:
+    raw_description = sanitize_formula_text(raw.get("description"))
+    description = apply_pricing_workbook_text_fixes(raw_description) if apply_import_text_fixes else clean_text(raw_description)
+    raw_reference_section = sanitize_formula_text(raw.get("reference_section") or raw.get("section"))
+    reference_section = clean_basis_section_title(
+        apply_pricing_workbook_text_fixes(raw_reference_section) if apply_import_text_fixes else raw_reference_section
+    )
     description = normalize_per_item_counter_description(reference_section, description)
     section = normalize_catalog_section(reference_section)
     raw_unit_hint = normalize_pricing_unit(sanitize_formula_text(raw.get("unit_hint") or raw.get("unit")))
@@ -1991,10 +2033,22 @@ def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict
     markup = parse_pricing_number(raw.get("markup_multiplier") or raw.get("markup"))
     if not description or internal_cost is None or internal_cost <= 0 or markup is None or markup <= 0:
         return None
-    remarks = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))]
-    aliases = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("aliases"))][:8]
+    if apply_import_text_fixes:
+        remarks = [
+            apply_pricing_workbook_text_fixes(sanitize_formula_text(item))
+            for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))
+        ]
+        aliases = [
+            apply_pricing_workbook_text_fixes(sanitize_formula_text(item))
+            for item in split_pricing_reference_terms(raw.get("aliases"))
+        ][:8]
+    else:
+        remarks = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))]
+        aliases = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("aliases"))][:8]
     if not aliases:
         aliases = default_pricing_reference_aliases(section, description, unit_hint, remarks)
+    elif apply_import_text_fixes and description != clean_text(raw_description):
+        aliases = unique_clean_list([description, *aliases])[:8]
     item = {
         "id": safe_section_id(raw.get("id") or f"{section}-{description}", f"item-{index + 1}"),
         "section": section,
@@ -2125,7 +2179,7 @@ def validate_pricing_reference_rows(
     seen_ids: set[str] = set()
     rows = stitch_pricing_reference_continuation_rows(rows)
     for index, raw in enumerate(rows[:MAX_PRICING_REFERENCE_ROWS]):
-        item = sanitize_pricing_reference_item(raw, index)
+        item = sanitize_pricing_reference_item(raw, index, apply_import_text_fixes=True)
         if item:
             base_id = safe_section_id(item.get("id"), f"item-{index + 1}")
             candidate_id = base_id
@@ -2336,8 +2390,12 @@ def normalize_import_typography_text(value: Any) -> str:
     return clean_text(text)
 
 
+def normalize_word_slash_spacing(value: Any) -> str:
+    return re.sub(r"(?<=[A-Za-z])\s*/\s*(?=[A-Za-z])", " / ", clean_text(value))
+
+
 def apply_pricing_workbook_text_fixes(value: Any) -> str:
-    text = normalize_import_typography_text(value)
+    text = normalize_word_slash_spacing(normalize_import_typography_text(value))
 
     def replace(match: re.Match[str]) -> str:
         replacement = PRICING_WORKBOOK_TEXT_FIXES[match.group(0).lower()]
@@ -3065,6 +3123,49 @@ def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dic
     )
 
 
+def request_deepseek_chat_completion_json_data(prompt: str, api_key: str, model: str, max_tokens: int, error_context: str) -> dict[str, Any]:
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "response_format": {"type": "json_object"},
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    request = urllib.request.Request(
+        configured_deepseek_chat_completions_url(),
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    retry_delays = list(OPENAI_RETRY_DELAYS_SECONDS)
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=configured_deepseek_timeout_seconds()) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            if attempt < len(retry_delays) and is_transient_openai_error(exc):
+                time.sleep(retry_delays[attempt])
+                continue
+            raise OpenAIAnalysisError(provider_http_error_message("DeepSeek", exc)) from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt < len(retry_delays) and is_transient_openai_error(exc):
+                time.sleep(retry_delays[attempt])
+                continue
+            raise OpenAIAnalysisError(provider_connection_error_message("DeepSeek", exc)) from exc
+        except json.JSONDecodeError as exc:
+            raise OpenAIAnalysisError(f"DeepSeek {error_context} returned invalid JSON.") from exc
+    return data
+
+
+def request_deepseek_json_object(prompt: str, api_key: str, model: str, max_tokens: int, error_context: str) -> dict[str, Any]:
+    data = request_deepseek_chat_completion_json_data(prompt, api_key, model, max_tokens, error_context)
+    return parse_json_object(chat_completions_output_text(data))
+
+
 def request_openai_pricing_catalog_import(source_name: str, content: Any, tax: dict[str, Any], api_key: str) -> dict[str, Any]:
     body = {
         "model": configured_openai_basis_line_model(),
@@ -3082,16 +3183,38 @@ def request_openai_pricing_catalog_import(source_name: str, content: Any, tax: d
     return parse_json_object(response_output_text(data))
 
 
+def request_deepseek_pricing_catalog_import(source_name: str, content: Any, tax: dict[str, Any], api_key: str) -> dict[str, Any]:
+    return request_deepseek_json_object(
+        build_pricing_catalog_import_prompt(source_name, content, tax),
+        api_key,
+        configured_deepseek_model(),
+        4000,
+        "pricing import",
+    )
+
+
 def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[str, Any]) -> dict[str, Any]:
-    provider = "openai"
+    provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
     parsed: dict[str, Any] | None = None
     errors: list[str] = []
-    openai_key = read_dotenv_value(OPENAI_API_KEY_ENV_NAME)
-    if openai_key:
+    provider_order = [provider]
+    if provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    for candidate_provider in provider_order:
+        api_key = text_ai_provider_api_key(candidate_provider)
+        if not api_key:
+            errors.append(f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}.")
+            continue
         try:
-            parsed = request_openai_pricing_catalog_import(filename, content, tax, openai_key)
+            if candidate_provider == AI_PROVIDER_DEEPSEEK:
+                parsed = request_deepseek_pricing_catalog_import(filename, content, tax, api_key)
+            else:
+                parsed = request_openai_pricing_catalog_import(filename, content, tax, api_key)
         except OpenAIAnalysisError as exc:
             errors.append(str(exc))
+            continue
+        if parsed is not None:
+            break
     if parsed is None:
         error_reference = new_error_reference()
         if errors:
@@ -3104,9 +3227,16 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                     "errors": safe_error_messages(errors),
                 },
             )
+        missing_key_errors = [error for error in errors if "Missing:" in error]
+        missing_keys_only = bool(missing_key_errors) and len(missing_key_errors) == len(errors)
+        friendly_errors = (
+            [AI_PRICING_IMPORT_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
+            if missing_keys_only
+            else safe_error_messages(errors)
+        )
         return pricing_reference_validation_result([], [], 0, filename) | {
-            "layout": "ai-normalization-required" if not errors else "ai-normalization-failed",
-            "errors": [AI_PRICING_IMPORT_NOT_CONFIGURED, f"Selected provider: {provider}. Missing: {OPENAI_API_KEY_ENV_NAME}."] if not errors else safe_error_messages(errors),
+            "layout": "ai-normalization-required" if not errors or missing_keys_only else "ai-normalization-failed",
+            "errors": [AI_PRICING_IMPORT_NOT_CONFIGURED, f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}."] if not errors else friendly_errors,
             "error_reference": error_reference,
         }
     raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
@@ -3296,8 +3426,10 @@ def role_permissions(role: str) -> dict[str, bool]:
 
 def user_type_role(value: Any) -> str:
     normalized = clean_text(str(value or "").split("#", 1)[0]).lower()
-    if normalized == "admin":
-        return "admin"
+    if normalized in {"admin", "management", "operator", "viewer"}:
+        return normalized
+    if normalized == "manager":
+        return "management"
     if normalized == "user":
         return "operator"
     return ""
@@ -3309,6 +3441,8 @@ def current_local_role() -> str:
     env_user_type = user_type_role(os.environ.get(USER_TYPE_ENV_NAME))
     if env_user_type:
         return env_user_type
+    # Backward-compatible only: new local setups should use USER_TYPE for the
+    # exact dev role instead of carrying a second role env var.
     env_role = clean_text(os.environ.get(LOCAL_USER_ROLE_ENV_NAME))
     if env_role:
         return env_role
@@ -3747,6 +3881,58 @@ def configured_openai_basis_answer_model() -> str:
     return safe_segment(read_dotenv_value(OPENAI_BASIS_ANSWER_MODEL_ENV_NAME), OPENAI_BASIS_ANSWER_MODEL)
 
 
+def configured_text_ai_provider(env_name: str, fallback: str = AI_PROVIDER_OPENAI) -> str:
+    raw = clean_text(read_dotenv_value(env_name)).lower()
+    if raw in SUPPORTED_TEXT_AI_PROVIDERS:
+        return raw
+    if text_ai_route_uses_deepseek_by_default(env_name):
+        return AI_PROVIDER_DEEPSEEK
+    return fallback
+
+
+def text_ai_route_uses_deepseek_by_default(env_name: str) -> bool:
+    return (
+        env_name in {
+            AI_BASIS_LINE_PROVIDER_ENV_NAME,
+            AI_BASIS_ANSWER_PROVIDER_ENV_NAME,
+            AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME,
+            AI_PRICING_IMPORT_PROVIDER_ENV_NAME,
+        }
+        and bool(clean_text(read_dotenv_value(DEEPSEEK_API_KEY_ENV_NAME)))
+    )
+
+
+def text_ai_provider_label(provider: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        return "DeepSeek"
+    return "OpenAI"
+
+
+def text_ai_provider_key_env_name(provider: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        return DEEPSEEK_API_KEY_ENV_NAME
+    return OPENAI_API_KEY_ENV_NAME
+
+
+def text_ai_provider_api_key(provider: str) -> str:
+    return clean_text(read_dotenv_value(text_ai_provider_key_env_name(provider)))
+
+
+def configured_deepseek_base_url() -> str:
+    raw = clean_text(read_dotenv_value(DEEPSEEK_BASE_URL_ENV_NAME)) or DEEPSEEK_BASE_URL
+    if not re.match(r"^https?://", raw, flags=re.IGNORECASE):
+        return DEEPSEEK_BASE_URL
+    return raw.rstrip("/")
+
+
+def configured_deepseek_chat_completions_url() -> str:
+    return f"{configured_deepseek_base_url()}/chat/completions"
+
+
+def configured_deepseek_model() -> str:
+    return safe_segment(read_dotenv_value(DEEPSEEK_MODEL_ENV_NAME), DEEPSEEK_PRO_MODEL)
+
+
 def basis_chat_has_selected_line(payload: dict[str, Any]) -> bool:
     basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
     return bool(clean_multiline(basis_chat.get("line")))
@@ -3775,6 +3961,37 @@ def openai_basis_chat_models(payload: dict[str, Any]) -> list[str]:
     return unique_model_sequence(configured_openai_draft_model())
 
 
+def deepseek_basis_chat_models(payload: dict[str, Any]) -> list[str]:
+    _ = payload
+    return unique_model_sequence(configured_deepseek_model())
+
+
+def basis_chat_provider_env_name(payload: dict[str, Any]) -> str:
+    if basis_chat_required_intent(payload) == "answer":
+        return AI_BASIS_ANSWER_PROVIDER_ENV_NAME
+    if basis_chat_has_selected_line(payload):
+        return AI_BASIS_LINE_PROVIDER_ENV_NAME
+    return AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME
+
+
+def basis_chat_provider_model_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
+    primary_provider = configured_text_ai_provider(basis_chat_provider_env_name(payload))
+    provider_order = [primary_provider]
+    if primary_provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    candidates: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for provider in provider_order:
+        models = deepseek_basis_chat_models(payload) if provider == AI_PROVIDER_DEEPSEEK else openai_basis_chat_models(payload)
+        for model in models:
+            key = (provider, model)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append({"provider": provider, "model": model})
+    return candidates
+
+
 def configured_timeout_seconds(env_name: str, fallback: int) -> int:
     raw = read_dotenv_value(env_name)
     if not raw:
@@ -3788,6 +4005,10 @@ def configured_timeout_seconds(env_name: str, fallback: int) -> int:
 
 def configured_openai_timeout_seconds() -> int:
     return configured_timeout_seconds(OPENAI_REQUEST_TIMEOUT_ENV_NAME, OPENAI_REQUEST_TIMEOUT_SECONDS)
+
+
+def configured_deepseek_timeout_seconds() -> int:
+    return configured_timeout_seconds(DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME, DEEPSEEK_REQUEST_TIMEOUT_SECONDS)
 
 
 def image_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3822,6 +4043,283 @@ def reference_file_mime_type(entry: dict[str, Any]) -> str:
     if mime_type == "image/jpg":
         return "image/jpeg"
     return mime_type
+
+
+def decode_reference_data_url_bytes(entry: dict[str, Any], max_bytes: int) -> bytes:
+    text = str(entry.get("data_url") or "")
+    prefix, separator, encoded = text.partition(",")
+    if not separator or ";base64" not in prefix:
+        raise ValueError("Reference file payload must be a base64 data URL.")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except binascii.Error as exc:
+        raise ValueError("Reference file payload is not valid base64.") from exc
+    if len(raw) > max_bytes:
+        raise ValueError(f"Reference file is larger than {max_bytes // (1024 * 1024)} MB.")
+    return raw
+
+
+def image_mime_type_from_bytes(raw: bytes) -> str:
+    if raw.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return ""
+
+
+def image_data_url_from_bytes(raw: bytes, mime_type: str) -> str:
+    if not raw or mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return ""
+    if len(raw) > MAX_RENDERED_PDF_PAGE_BYTES:
+        return ""
+    return f"data:{mime_type};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+def looks_like_complete_pdf(raw: bytes) -> bool:
+    stripped = raw.lstrip()
+    return stripped.startswith(b"%PDF-") and b"%%EOF" in raw[-4096:]
+
+
+def prompt_image_data_url_from_pil(image: Any) -> str:
+    try:
+        from PIL import Image
+    except Exception:
+        return ""
+
+    try:
+        if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image.convert("RGBA"), mask=image.convert("RGBA").split()[-1])
+            image = background
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
+
+        for max_edge in (PDF_RENDER_TARGET_LONG_EDGE_PX, 1280, 1024, 768):
+            candidate = image.copy()
+            if max(candidate.size) > max_edge:
+                candidate.thumbnail((max_edge, max_edge))
+            for quality in (82, 74, 66, 58):
+                output = io.BytesIO()
+                candidate.save(output, format="JPEG", quality=quality, optimize=True)
+                data = output.getvalue()
+                if len(data) <= MAX_RENDERED_PDF_PAGE_BYTES:
+                    return image_data_url_from_bytes(data, "image/jpeg")
+    except Exception:
+        return ""
+    return ""
+
+
+def compressed_prompt_image_data_url(raw: bytes) -> str:
+    mime_type = image_mime_type_from_bytes(raw)
+    if mime_type and len(raw) <= MAX_RENDERED_PDF_PAGE_BYTES:
+        return image_data_url_from_bytes(raw, mime_type)
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return ""
+
+    try:
+        from PIL import Image
+    except Exception:
+        return ""
+
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+    except Exception:
+        return image_data_url_from_bytes(raw, image_mime_type_from_bytes(raw))
+
+    return prompt_image_data_url_from_pil(image)
+
+
+def pdf_page_image_entry(source_name: str, page_number: int, data_url: str, renderer: str) -> dict[str, Any]:
+    return {
+        "name": f"{Path(source_name).stem or 'reference'}-page-{page_number}.jpg",
+        "page": page_number,
+        "data_url": data_url,
+        "source": source_name,
+        "renderer": renderer,
+    }
+
+
+def persist_pdf_page_debug_images(
+    images: list[dict[str, Any]],
+    source_name: str,
+    source_digest: str,
+) -> list[dict[str, Any]]:
+    if not images:
+        return []
+    safe_source = safe_segment(Path(source_name).stem or "reference", "reference")
+    safe_digest = re.sub(r"[^a-fA-F0-9]", "", source_digest)[:12] or "unknown"
+    output_dir = DEFAULT_TMP_ROOT / "pdf-pages" / f"{safe_source}-{safe_digest}"
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return images
+    try:
+        resolved_output = output_dir.resolve()
+        resolved_tmp_root = DEFAULT_TMP_ROOT.resolve()
+        if resolved_tmp_root in resolved_output.parents:
+            for stale_path in output_dir.glob("page-*"):
+                if stale_path.is_file():
+                    stale_path.unlink()
+    except OSError:
+        pass
+    extension_by_mime = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    saved: list[dict[str, Any]] = []
+    for index, image in enumerate(images, start=1):
+        data_url = clean_text(image.get("data_url"))
+        inline = data_url_inline_image(data_url)
+        if not inline:
+            saved.append(image)
+            continue
+        page_number = int(image.get("page") or index)
+        renderer = safe_segment(clean_text(image.get("renderer")) or "page", "page")
+        extension = extension_by_mime.get(inline["mime_type"], ".jpg")
+        filename = f"page-{page_number:03d}-{renderer}{extension}"
+        path = output_dir / filename
+        try:
+            path.write_bytes(base64.b64decode(inline["data"], validate=True))
+        except (OSError, binascii.Error):
+            saved.append(image)
+            continue
+        saved.append({**image, "path": str(path)})
+    return saved
+
+
+def render_pdf_pages_with_pdfium(pdf_bytes: bytes, source_name: str, max_pages: int) -> list[dict[str, Any]]:
+    try:
+        import pypdfium2 as pdfium
+    except Exception as exc:
+        raise RuntimeError("pypdfium2 is not available.") from exc
+
+    document = pdfium.PdfDocument(io.BytesIO(pdf_bytes))
+    images: list[dict[str, Any]] = []
+    try:
+        page_count = min(max_pages, len(document))
+        for page_index in range(page_count):
+            page = document[page_index]
+            try:
+                width, height = page.get_size()
+                long_edge = max(float(width), float(height)) or 1.0
+                scale = max(1.0, min(2.5, PDF_RENDER_TARGET_LONG_EDGE_PX / long_edge))
+                bitmap = page.render(scale=scale, rotation=0)
+                try:
+                    data_url = prompt_image_data_url_from_pil(bitmap.to_pil())
+                finally:
+                    close = getattr(bitmap, "close", None)
+                    if callable(close):
+                        close()
+                if data_url:
+                    images.append(pdf_page_image_entry(source_name, page_index + 1, data_url, "pdfium"))
+            finally:
+                close = getattr(page, "close", None)
+                if callable(close):
+                    close()
+    finally:
+        close = getattr(document, "close", None)
+        if callable(close):
+            close()
+    return images
+
+
+def select_embedded_pdf_page_images(
+    page_candidates: list[list[dict[str, Any]]],
+    max_pages: int,
+) -> list[dict[str, Any]]:
+    digest_counts: dict[str, int] = {}
+    for candidates in page_candidates:
+        for candidate in candidates:
+            digest = clean_text(candidate.get("digest"))
+            if digest:
+                digest_counts[digest] = digest_counts.get(digest, 0) + 1
+
+    selected: list[dict[str, Any]] = []
+    for candidates in page_candidates[:max_pages]:
+        if not candidates:
+            continue
+
+        def candidate_rank(candidate: dict[str, Any]) -> tuple[int, int, str]:
+            digest = clean_text(candidate.get("digest"))
+            shared_count = digest_counts.get(digest, 0)
+            is_page_specific = 1 if shared_count <= 1 else 0
+            score = int(candidate.get("score") or 0)
+            return (is_page_specific, score, clean_text(candidate.get("data_url")))
+
+        best = max(candidates, key=candidate_rank)
+        selected.append({key: value for key, value in best.items() if key not in {"digest", "score"}})
+    return selected
+
+
+def extract_pdf_embedded_page_images(pdf_bytes: bytes, source_name: str, max_pages: int) -> list[dict[str, Any]]:
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        raise RuntimeError("pypdf is not available.") from exc
+
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    page_candidates: list[list[dict[str, Any]]] = []
+    for page_index, page in enumerate(reader.pages[:max_pages], start=1):
+        candidates: list[dict[str, Any]] = []
+        for image in getattr(page, "images", []):
+            raw = bytes(getattr(image, "data", b"") or b"")
+            data_url = compressed_prompt_image_data_url(raw)
+            if not data_url:
+                continue
+            candidates.append({
+                **pdf_page_image_entry(source_name, page_index, data_url, "embedded-image"),
+                "digest": hashlib.sha256(raw).hexdigest(),
+                "score": len(raw),
+            })
+        page_candidates.append(candidates)
+    return select_embedded_pdf_page_images(page_candidates, max_pages)
+
+
+def pdf_reference_page_images(entry: dict[str, Any], max_pages: int = MAX_RENDERED_PDF_PAGES) -> list[dict[str, Any]]:
+    if reference_file_mime_type(entry) != "application/pdf":
+        return []
+    try:
+        page_budget = min(max(int(max_pages), 0), MAX_RENDERED_PDF_PAGES)
+    except (TypeError, ValueError):
+        page_budget = MAX_RENDERED_PDF_PAGES
+    if page_budget <= 0:
+        return []
+    source_name = safe_segment(clean_text(entry.get("name")) or "reference.pdf", "reference.pdf")
+    try:
+        pdf_bytes = decode_reference_data_url_bytes(entry, MAX_PDF_BYTES)
+    except ValueError:
+        return []
+    if not looks_like_complete_pdf(pdf_bytes):
+        return []
+
+    errors: list[str] = []
+    for renderer in (
+        render_pdf_pages_with_pdfium,
+        extract_pdf_embedded_page_images,
+    ):
+        try:
+            images = renderer(pdf_bytes, source_name, page_budget)
+        except Exception as exc:
+            errors.append(str(exc))
+            continue
+        valid_images = [
+            image
+            for image in images[:page_budget]
+            if data_url_inline_image(clean_text(image.get("data_url"))) is not None
+        ]
+        if valid_images:
+            source_digest = hashlib.sha256(pdf_bytes).hexdigest()
+            return persist_pdf_page_debug_images(valid_images, source_name, source_digest)
+    if errors:
+        write_local_log("pdf_page_render_unavailable", {
+            "filename": source_name,
+            "errors": safe_error_messages(errors, limit=160),
+        })
+    return []
 
 
 CATALOG_INFERENCE_STOP_WORDS = {
@@ -3921,6 +4419,58 @@ def catalog_inference_tokens(value: Any) -> set[str]:
             continue
         tokens.add(token)
     return tokens
+
+
+CATALOG_OBJECT_FAMILY_TOKENS = {
+    "cabinet": {"cabinet", "cabinets"},
+    "chair": {"chair", "chairs"},
+    "counter": {"counter", "counters"},
+    "display": {"display", "monitor", "screen", "tv", "television"},
+    "hoist": {"hoist"},
+    "kiosk": {"kiosk", "terminal"},
+    "lift": {"boom", "lift"},
+    "plant": {"plant", "plants", "planter", "greenery"},
+    "socket": {"socket", "sockets", "power"},
+    "sofa": {"sofa", "sofas"},
+    "table": {"table", "tables", "desk"},
+}
+
+
+def catalog_object_families(value: Any) -> set[str]:
+    tokens = catalog_inference_tokens(value)
+    families: set[str] = set()
+    for family, family_tokens in CATALOG_OBJECT_FAMILY_TOKENS.items():
+        if tokens & family_tokens:
+            families.add(family)
+    if "lift" in families and "hoist" in families:
+        families.discard("hoist")
+    return families
+
+
+def catalog_line_contradicts_item(line_text: Any, item: dict[str, Any]) -> bool:
+    bracketed = bracketed_catalog_reference_parts(line_text)
+    if bracketed:
+        reference, detail = bracketed
+        catalog_reference = clean_customer_quote_line_text(item.get("pricing_reference_description") or item.get("description"))
+        if comparable_catalog_description_key(reference) == comparable_catalog_description_key(catalog_reference) and not detail:
+            return False
+        line_text = detail
+    line_families = catalog_object_families(line_text)
+    if not line_families:
+        return False
+    item_families: set[str] = set()
+    for value in catalog_inference_values(item):
+        item_families.update(catalog_object_families(value))
+    if not item_families:
+        return False
+    compatible_groups = [
+        {"chair", "stool"},
+        {"counter", "cabinet"},
+    ]
+    for group in compatible_groups:
+        if line_families <= group and item_families <= group:
+            return False
+    return line_families.isdisjoint(item_families)
 
 
 def catalog_inference_values(item: dict[str, Any]) -> list[str]:
@@ -4104,6 +4654,10 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             else ((catalog_item_unit_hint(catalog_item) or raw_unit) if catalog_item else raw_unit)
         )
         raw_description = clean_customer_quote_line_text(quantity_parts["text"])
+        if catalog_item and catalog_line_contradicts_item(raw_description, catalog_item):
+            catalog_item = None
+            pricing_keyword = ""
+            unit = quantity_parts["unit"] if quantity_parts.get("from_text_prefix") else raw_unit
         catalog_reference_description = clean_text(catalog_item.get("pricing_reference_description")) if catalog_item else ""
         catalog_description = clean_customer_quote_line_text(catalog_item.get("description")) if catalog_item else ""
         description = (
@@ -4373,7 +4927,7 @@ class AIModelOutputError(OpenAIAnalysisError):
     pass
 
 
-def openai_http_error_message(exc: urllib.error.HTTPError) -> str:
+def provider_http_error_message(provider: str, exc: urllib.error.HTTPError) -> str:
     message = ""
     try:
         raw = exc.read().decode("utf-8", errors="replace")
@@ -4391,12 +4945,16 @@ def openai_http_error_message(exc: urllib.error.HTTPError) -> str:
             elif isinstance(data, dict):
                 message = clean_text(data.get("message"))
     if message:
-        result = f"OpenAI analysis failed with HTTP {exc.code}: {scrub_sensitive_text(message)[:500]}"
+        result = f"{provider} analysis failed with HTTP {exc.code}: {scrub_sensitive_text(message)[:500]}"
     else:
-        result = f"OpenAI analysis failed with HTTP {exc.code}."
+        result = f"{provider} analysis failed with HTTP {exc.code}."
     if exc.code in TRANSIENT_OPENAI_HTTP_CODES:
         result += " This looks like a temporary upstream timeout; wait a moment and retry the analysis."
     return result
+
+
+def openai_http_error_message(exc: urllib.error.HTTPError) -> str:
+    return provider_http_error_message("OpenAI", exc)
 
 
 def is_timeout_exception(exc: BaseException) -> bool:
@@ -4437,6 +4995,24 @@ def response_output_text(data: dict[str, Any]) -> str:
         for content in item.get("content") or []:
             if isinstance(content, dict) and isinstance(content.get("text"), str):
                 chunks.append(content["text"])
+    return "\n".join(chunks).strip()
+
+
+def chat_completions_output_text(data: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    for choice in data.get("choices") or []:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+        content = message.get("content")
+        if isinstance(content, str):
+            chunks.append(content)
+        elif isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                    chunks.append(item["text"])
+                elif isinstance(item, str):
+                    chunks.append(item)
     return "\n".join(chunks).strip()
 
 
@@ -4777,10 +5353,13 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "quote_basis_sections line text and line_items.description are customer-facing quotation text. Do not include provenance, reasoning, analysis, or source phrases such as taken from quotation title, visible in image, as seen in render, AI detected, assumed from, likely, appears to be, from reference image, or suggested by image. Put analysis reasons only in analysis_findings, clarification questions, or internal notes. "
         "Use quote_basis_sections as the operator review surface for the same pricing sentences that will become output rows. "
         "When a pricing_catalog item applies, the pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording. "
-        "Set pricing_keyword exactly to the matching catalog id. For catalog-backed quote_basis_sections line text and line_items.description, use the catalog item's exact customer-facing description as the reference prefix. "
-        "If visible AI-specific detail does not fit that exact catalog description, format the line as `[ catalog exact customer-facing description ] - observed use/detail`, for example `[ nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) ] - For counters, AV, meeting room and open booth areas`. "
-        "Do not paraphrase catalog-backed product names into generic object names; choose the closest matching pricing_catalog id and keep the catalog description intact. "
-        "When visible or requested scope is not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can fill the price manually. "
+        "Before using Custom, compare the proposed object or service against every pricing_catalog row and ask whether any catalog item can safely be that specific thing. "
+        "A catalog match must share the same object family and must not contradict distinguishing attributes present in the evidence or wording, including shape, colour, material, size, capacity, mounting, or finish. Generic word overlap such as table, counter, coffee, light, display, screen, monitor, or TV is not enough by itself. "
+        "Set pricing_keyword exactly to the matching catalog id. For catalog-backed quote_basis_sections line text and line_items.description, always start with the catalog item's exact customer-facing description in brackets: `[ catalog exact customer-facing description ]`. "
+        "If there is observed booth-specific detail, format the line as `[ catalog exact customer-facing description ] - Observed use/detail`, for example `[ nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) ] - For counters, AV, meeting room and open booth areas`. "
+        "If there is no extra observed detail, use only `[ catalog exact customer-facing description ]`. "
+        "Do not paraphrase catalog-backed product names into generic object names; choose the closest safe pricing_catalog id and keep the catalog description intact. "
+        "When visible or requested scope is genuinely not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can fill the price manually. "
         "Use tag Confirm for catalog-backed lines that still need the operator's include/exclude decision. "
         "Use confidence_pct as an integer from 0 to 100 to show how strongly the uploaded images and quote context support that line. "
         "Use higher confidence for clearly visible or explicitly stated scope, and lower confidence for inferred or unclear scope. "
@@ -5218,6 +5797,7 @@ def quote_basis_sections_with_catalog_exact_lines(
     sections: list[dict[str, Any]],
     line_items: list[dict[str, Any]],
     catalog_items: list[dict[str, Any]] | None = None,
+    mark_unmatched_confirm_custom: bool = False,
 ) -> list[dict[str, Any]]:
     invalid_pricing_keyword_flag = "_invalid_pricing_keyword"
     exact_catalog_items_by_id: dict[str, dict[str, Any]] = {}
@@ -5244,6 +5824,33 @@ def quote_basis_sections_with_catalog_exact_lines(
 
     def item_has_catalog_reference(item: dict[str, Any]) -> bool:
         return bool(clean_text(item.get("pricing_reference_description")) or clean_text(item.get("catalog_description")))
+
+    def can_remain_confirm_without_catalog(line: dict[str, Any]) -> bool:
+        text = clean_text(line.get("text")).lower()
+        return (
+            "booth size defaults" in text
+            or "default booth size" in text
+            or ("default" in text and ("booth dimensions" in text or "booth size" in text))
+            or (
+                ("booth footprint" in text or "booth dimensions" in text or "quotation takeoff" in text)
+                and not clean_text(line.get("pricing_keyword"))
+            )
+        )
+
+    def is_default_dimension_basis_line(line: dict[str, Any]) -> bool:
+        return can_remain_confirm_without_catalog(line)
+
+    def mark_line_custom_for_manual_pricing(line: dict[str, Any]) -> None:
+        bracketed = bracketed_catalog_reference_parts(line.get("text"))
+        if bracketed:
+            reference, detail = bracketed
+            line["text"] = detail or reference
+        line["tag"] = "Custom"
+        line["custom_pricing"] = True
+        line.pop("pricing_keyword", None)
+        line.pop("catalog_description", None)
+        line.pop("pricing_reference_description", None)
+        line.pop("catalog_unit_price", None)
 
     def line_signature(line: dict[str, Any]) -> str:
         pricing_keyword = clean_text(line.get("pricing_keyword"))
@@ -5450,6 +6057,8 @@ def quote_basis_sections_with_catalog_exact_lines(
         return len(overlap) + phrase_bonus + section_bonus + family_bonus
 
     def catalog_item_for_basis_line(line: dict[str, Any], section: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        if is_default_dimension_basis_line(line):
+            return None
         if clean_text(line.get("pricing_keyword")):
             return None
         scored = [
@@ -5490,6 +6099,22 @@ def quote_basis_sections_with_catalog_exact_lines(
             comparable_basis_text(value) == description_key
             for value in reference_values
         )
+
+    def display_detail_source_for_catalog_line(
+        line: dict[str, Any],
+        catalog_description: str,
+        fallback_detail: Any,
+    ) -> str:
+        current_text = clean_customer_quote_line_text(line.get("text"))
+        bracketed = bracketed_catalog_reference_parts(current_text)
+        if bracketed:
+            current_reference, current_detail = bracketed
+            if current_detail:
+                return current_detail
+            if comparable_basis_text(current_reference) == comparable_basis_text(catalog_description):
+                return ""
+            return ""
+        return current_text or clean_customer_quote_line_text(fallback_detail)
 
     def line_matches_item(line: dict[str, Any], item: dict[str, Any]) -> bool:
         source_id = safe_resource_id(item.get("source_basis_line_id"), "")
@@ -5539,7 +6164,8 @@ def quote_basis_sections_with_catalog_exact_lines(
             order_value = pricing_reference_order_number(item.get(order_key))
             if order_value is not None:
                 line[order_key] = order_value
-        display_description = display_description_from_catalog_reference(catalog_description, item.get("description"))
+        display_detail_source = display_detail_source_for_catalog_line(line, catalog_description, item.get("description"))
+        display_description = display_description_from_catalog_reference(catalog_description, display_detail_source)
         if replace_text and (display_description or catalog_description):
             line["text"] = display_description or catalog_description
         if item.get("quantity") not in (None, ""):
@@ -5566,9 +6192,13 @@ def quote_basis_sections_with_catalog_exact_lines(
         for line in section.get("lines") or []:
             if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) in {"Custom", "Exclude"}:
                 continue
+            if clean_text(line.get("pricing_keyword")):
+                continue
             index = counters.get(counter_key, 0)
             if index >= len(section_catalog_items):
                 break
+            if is_default_dimension_basis_line(line):
+                continue
             item = section_catalog_items[index]
             apply_catalog_item_metadata(line, item, replace_text=not item_description_is_reference_text(item))
             counters[counter_key] = index + 1
@@ -5577,6 +6207,8 @@ def quote_basis_sections_with_catalog_exact_lines(
         lines = section.get("lines") if isinstance(section.get("lines"), list) else []
         for line in lines:
             if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
+                continue
+            if clean_text(line.get("pricing_keyword")):
                 continue
             match = next(
                 (
@@ -5618,7 +6250,9 @@ def quote_basis_sections_with_catalog_exact_lines(
         existing_target = next(
             (
                 line for line in target_lines
-                if isinstance(line, dict) and line_matches_item(line, item)
+                if isinstance(line, dict)
+                and not is_default_dimension_basis_line(line)
+                and line_matches_item(line, item)
             ),
             None,
         )
@@ -5668,12 +6302,30 @@ def quote_basis_sections_with_catalog_exact_lines(
             if clean_text(line.get("pricing_keyword")) and item_has_catalog_reference(line):
                 continue
             if normalize_basis_tag(line.get("tag")) != "Exclude":
-                line["tag"] = "Custom"
-                line["custom_pricing"] = True
-            line.pop("pricing_keyword", None)
-            line.pop("catalog_description", None)
-            line.pop("pricing_reference_description", None)
-            line.pop("catalog_unit_price", None)
+                mark_line_custom_for_manual_pricing(line)
+    for section in next_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
+                continue
+            catalog_item = catalog_item_for_pricing_keyword(line.get("pricing_keyword"))
+            if not catalog_item:
+                continue
+            if catalog_line_contradicts_item(line.get("text"), catalog_item):
+                mark_line_custom_for_manual_pricing(line)
+                continue
+            apply_catalog_item_metadata(line, catalog_item, replace_text=True)
+    if mark_unmatched_confirm_custom:
+        for section in next_sections:
+            for line in section.get("lines") or []:
+                if not isinstance(line, dict):
+                    continue
+                if normalize_basis_tag(line.get("tag")) != "Confirm":
+                    continue
+                if line.get("quantity") in (None, "") and not clean_text(line.get("unit")):
+                    continue
+                if item_has_catalog_reference(line) or can_remain_confirm_without_catalog(line):
+                    continue
+                mark_line_custom_for_manual_pricing(line)
     return [
         section for section in merge_duplicate_sections(next_sections)
         if [line for line in (section.get("lines") or []) if isinstance(line, dict) and clean_text(line.get("text"))]
@@ -6025,6 +6677,7 @@ def require_basis_confidence(sections: list[dict[str, Any]], provider: str = "AI
 
 
 def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = None, require_confidence: bool = False) -> dict[str, Any]:
+    has_payload_context = payload is not None
     payload = payload or {}
     raw_line_items = parsed.get("line_items") if isinstance(parsed.get("line_items"), list) else []
     raw_project = parsed.get("project") if isinstance(parsed.get("project"), dict) else {}
@@ -6036,6 +6689,7 @@ def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = 
         confirm_only_basis_sections(normalize_quote_basis_sections(parsed, pricing_reference_sections)),
         line_items,
         list(catalog_lookup.values()),
+        mark_unmatched_confirm_custom=has_payload_context,
     )
     line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
     sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
@@ -6064,17 +6718,36 @@ def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = 
 def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
     prompt = build_quote_draft_prompt(payload)
     content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+    rendered_pdf_pages_remaining = MAX_RENDERED_PDF_PAGES
     for image in image_entries(payload)[:MAX_REFERENCE_IMAGES]:
         data_url = clean_text(image.get("data_url"))
         if not data_url:
             continue
         mime_type = reference_file_mime_type(image)
         if mime_type == "application/pdf":
+            filename = safe_segment(clean_text(image.get("name")) or "reference.pdf", "reference.pdf")
             content.append({
                 "type": "input_file",
-                "filename": safe_segment(clean_text(image.get("name")) or "reference.pdf", "reference.pdf"),
+                "filename": filename,
                 "file_data": data_url,
             })
+            if rendered_pdf_pages_remaining > 0:
+                rendered_pages = pdf_reference_page_images(image, max_pages=rendered_pdf_pages_remaining)
+                rendered_pages = rendered_pages[:rendered_pdf_pages_remaining]
+                if rendered_pages:
+                    page_numbers = ", ".join(str(page.get("page")) for page in rendered_pages if page.get("page"))
+                    content.append({
+                        "type": "input_text",
+                        "text": (
+                            f"Rendered PDF page images follow for {filename}"
+                            f"{f' (pages {page_numbers})' if page_numbers else ''}. "
+                            "Use these images for visual layout, labels, dimensions, and render details; "
+                            "the original PDF file remains attached for full document context."
+                        ),
+                    })
+                    for page in rendered_pages:
+                        content.append({"type": "input_image", "image_url": page["data_url"], "detail": "high"})
+                    rendered_pdf_pages_remaining -= len(rendered_pages)
         elif mime_type.startswith("image/"):
             content.append({"type": "input_image", "image_url": data_url, "detail": "high"})
     catalog_visuals = catalog_visual_image_entries_for_payload(payload)
@@ -6158,6 +6831,14 @@ def request_openai_basis_chat_with_model(payload: dict[str, Any], api_key: str, 
         raise AIModelOutputError(str(exc)) from exc
 
 
+def request_deepseek_basis_chat_with_model(payload: dict[str, Any], api_key: str, model: str) -> dict[str, Any]:
+    data = request_deepseek_chat_completion_json_data(build_basis_chat_prompt(payload), api_key, model, 1200, "chat")
+    try:
+        return normalize_basis_chat_result(parse_json_object(chat_completions_output_text(data)), payload, "deepseek")
+    except OpenAIAnalysisError as exc:
+        raise AIModelOutputError(str(exc)) from exc
+
+
 def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
     models = openai_basis_chat_models(payload)
     errors: list[str] = []
@@ -6177,6 +6858,53 @@ def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str
     raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
 
 
+def request_deepseek_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+    models = deepseek_basis_chat_models(payload)
+    errors: list[str] = []
+    for index, model in enumerate(models):
+        try:
+            return request_deepseek_basis_chat_with_model(payload, api_key, model)
+        except AIModelOutputError as exc:
+            errors.append(str(exc))
+            if index + 1 < len(models):
+                write_local_log("deepseek_basis_chat_model_retry", {
+                    "from_model": model,
+                    "to_model": models[index + 1],
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            raise
+    raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
+
+
+def request_configured_basis_chat(payload: dict[str, Any]) -> dict[str, Any]:
+    candidates = basis_chat_provider_model_candidates(payload)
+    errors: list[str] = []
+    for index, candidate in enumerate(candidates):
+        provider = candidate["provider"]
+        api_key = text_ai_provider_api_key(provider)
+        if not api_key:
+            errors.append(f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}.")
+            continue
+        try:
+            if provider == AI_PROVIDER_DEEPSEEK:
+                return request_deepseek_basis_chat_with_model(payload, api_key, candidate["model"])
+            return request_openai_basis_chat_with_model(payload, api_key, candidate["model"])
+        except OpenAIAnalysisError as exc:
+            errors.append(str(exc))
+            if index + 1 < len(candidates):
+                write_local_log("basis_chat_model_retry", {
+                    "from_provider": provider,
+                    "from_model": candidate["model"],
+                    "to_provider": candidates[index + 1]["provider"],
+                    "to_model": candidates[index + 1]["model"],
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            raise
+    raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
+
+
 def data_url_inline_image(data_url: str) -> dict[str, str] | None:
     match = re.match(r"data:(image/(?:jpeg|jpg|png|webp));base64,(.+)", clean_text(data_url), flags=re.IGNORECASE | re.DOTALL)
     if not match:
@@ -6187,6 +6915,7 @@ def data_url_inline_image(data_url: str) -> dict[str, str] | None:
 
 
 def unpack_ai_draft(ai_draft: dict[str, Any], payload: dict[str, Any] | None = None) -> tuple[dict[str, str], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+    has_payload_context = payload is not None
     payload = payload or {}
     line_items = normalize_line_items({**payload, "line_items": ai_draft.get("line_items")})
     pricing_reference_sections = pricing_reference_section_names_for_payload(payload)
@@ -6195,6 +6924,7 @@ def unpack_ai_draft(ai_draft: dict[str, Any], payload: dict[str, Any] | None = N
         confirm_only_basis_sections(normalize_quote_basis_sections(ai_draft, pricing_reference_sections)),
         line_items,
         list(catalog_lookup.values()),
+        mark_unmatched_confirm_custom=has_payload_context,
     )
     require_basis_confidence(sections, provider=clean_text(ai_draft.get("source")) or "AI")
     raw_basis = quote_basis_from_sections(sections)
@@ -6259,6 +6989,28 @@ def finalized_remote_draft_result(
         sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
         project,
     )
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    adjusted_sections = quote_basis_sections_with_catalog_exact_lines(
+        adjusted_sections,
+        line_items,
+        list(catalog_lookup.values()),
+        mark_unmatched_confirm_custom=True,
+    )
+    adjusted_sections = sort_quote_basis_sections_by_pricing_reference_order(payload, adjusted_sections)
+    for section in adjusted_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            has_catalog = bool(clean_text(line.get("pricing_reference_description")) or clean_text(line.get("catalog_description")))
+            if normalize_basis_tag(line.get("tag")) == "Confirm" and not has_catalog and (line.get("quantity") not in (None, "") or clean_text(line.get("unit"))):
+                bracketed = bracketed_catalog_reference_parts(line.get("text"))
+                if bracketed:
+                    reference, detail = bracketed
+                    line["text"] = detail or reference
+                line["tag"] = "Custom"
+                line["custom_pricing"] = True
+                line.pop("pricing_keyword", None)
+    adjusted_basis = quote_basis_from_sections(adjusted_sections)
     write_local_log(
         f"{source}_draft_completed",
         ai_draft_diagnostic_details(source, adjusted_basis, adjusted_sections, line_items),
@@ -6355,18 +7107,21 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def answer_basis_chat(payload: dict[str, Any]) -> dict[str, Any]:
-    openai_key = read_dotenv_value(OPENAI_API_KEY_ENV_NAME)
-    if openai_key:
-        try:
-            return request_openai_basis_chat(payload, openai_key)
-        except OpenAIAnalysisError as exc:
-            openai_error = str(exc)
-            write_local_log("openai_basis_chat_failed", {"errors": safe_error_messages([openai_error])})
-            raise OpenAIAnalysisError(" ".join(safe_error_messages([openai_error]))) from exc
-    messages = [
-        "AI basis chat is not configured. Selected provider is OpenAI. Add OPENAI_API_KEY, then retry the basis change.",
-    ]
-    raise OpenAIAnalysisError(" ".join(safe_error_messages(messages)))
+    try:
+        return request_configured_basis_chat(payload)
+    except OpenAIAnalysisError as exc:
+        error = str(exc)
+        provider = configured_text_ai_provider(basis_chat_provider_env_name(payload))
+        write_local_log("basis_chat_failed", {
+            "selected_provider": provider,
+            "errors": safe_error_messages([error]),
+        })
+        fallback_note = "OpenAI fallback is enabled for DeepSeek routes when OPENAI_API_KEY is configured."
+        message = (
+            f"AI basis chat is not configured or failed. Selected provider is {text_ai_provider_label(provider)}. "
+            f"Add {text_ai_provider_key_env_name(provider)}, or configure OPENAI_API_KEY for fallback. {fallback_note} {error}"
+        )
+        raise OpenAIAnalysisError(" ".join(safe_error_messages([message]))) from exc
 
 
 def save_uploaded_images(images: list[dict[str, Any]], job_dir: Path) -> list[dict[str, Any]]:

@@ -768,10 +768,10 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 
 ### coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day
 
-- **Item:** Coffee/ Tea and supplies for 100 people per day
+- **Item:** Coffee / Tea and supplies for 100 people per day
 - **Unit hint:** not specified
 - **Remarks:** COFFEE PER DAY
-- **Search aliases:** Coffee/ Tea and supplies for 100 people per day; Coffee; Tea and supplies for 100 people per day; COFFEE PER DAY; Coffee / Tea (Subject to approval by Venue owner and Organiser) Coffee/ Tea and supplies for 100 people per day
+- **Search aliases:** Coffee / Tea and supplies for 100 people per day; Coffee; Tea and supplies for 100 people per day; COFFEE PER DAY; Coffee / Tea (Subject to approval by Venue owner and Organiser) Coffee / Tea and supplies for 100 people per day
 
 ### coffee-tea-subject-to-approval-by-venue-owner-and-organiser.water-cooler-and-heating-equipment-for-3-gallons
 

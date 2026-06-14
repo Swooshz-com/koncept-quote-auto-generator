@@ -120,7 +120,43 @@ QUOTE_LOG_ROOT=/data/swooshz/logs
 OPENAI_API_KEY=<openai-key-if-used>
 OPENAI_DRAFT_MODEL=<model-id-or-app-alias>
 OPENAI_BASIS_LINE_MODEL=<model-id-or-app-alias>
+DEEPSEEK_API_KEY=<deepseek-key-if-used>
+DEEPSEEK_MODEL=deepseek-v4-pro
 ```
+
+## Python Dependencies
+
+Install pinned Python dependencies before starting the API or worker:
+
+```text
+pip install --only-binary=:all: -r requirements.txt
+```
+
+`pypdfium2` is the preferred PDF page renderer for uploaded render decks, and
+`Pillow` is used only as the local image encoder/compressor for the rendered
+page bitmap. This avoids SaaS PDF conversion, avoids undeclared system
+dependencies such as Poppler/`pdftoppm`, and keeps PDF rendering portable across
+local and deployed runners. Rendered debug page copies stay under
+`QUOTE_TMP_ROOT/pdf-pages/`.
+
+The original PDF and rendered prompt images are still sent to OpenAI when the
+operator explicitly runs remote AI quote analysis. Rendering itself does not
+call an external server; provider analysis is the network boundary.
+
+Set `DEEPSEEK_API_KEY` to use DeepSeek Pro for text-only work such as `Re`
+selected-line edits, quote-basis answers/proposals, and pricing-reference import
+normalization. `DEEPSEEK_MODEL` can be changed later to test another DeepSeek
+model. Keep full PDF/image draft analysis on OpenAI unless a future provider
+integration explicitly supports the same vision input contract. When a DeepSeek
+text route fails or returns unusable JSON, the app may retry through OpenAI if
+`OPENAI_API_KEY` is configured.
+
+`pypdfium2` is preferred over PyMuPDF for deployment because pypdfium2/PDFium
+uses permissive Apache-2.0/BSD-style licensing, while PyMuPDF/MuPDF is AGPL
+unless a commercial license is used. Use binary-wheel-only installation so
+deployment fails closed if a supported wheel is unavailable instead of running
+an unreviewed source build. Keep dependencies pinned and update them
+deliberately with advisory, release-note, and license review.
 
 Storage and database variables:
 

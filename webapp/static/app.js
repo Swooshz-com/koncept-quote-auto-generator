@@ -57,7 +57,7 @@ const QUOTE_COPY = {
   label: "Quotation",
   intakeSubtitle: "Drop reference images or PDFs for a real quote, or load the demo fixture for a quick test run.",
   dropTitle: "Drop reference images or PDFs to start",
-  dropMeta: `JPG, PNG, WebP, or PDF. Up to ${MAX_REFERENCE_IMAGES} references, 12 MB each; files stay local to this runner.`,
+  dropMeta: `JPG, PNG, WebP, or PDF. Up to ${MAX_REFERENCE_IMAGES} references, 12 MB each; remote AI analysis sends selected refs to the configured provider.`,
   imageNoun: "reference file",
   analyzeLabel: "Start Analysis",
   fallbackAction: "review the reference files",
@@ -459,6 +459,24 @@ function pricingReferenceLineText(value = "") {
   return String(value || "").trim().replace(/\s+/g, " ");
 }
 
+function bracketedCatalogReferenceParts(value = "") {
+  const match = cleanCustomerQuoteLineText(value).match(/^\[\s*(.+?)\s*\](?:\s*-\s*(.*))?$/);
+  if (!match) return null;
+  const reference = cleanCustomerQuoteLineText(match[1] || "");
+  const detail = cleanCustomerQuoteLineText(match[2] || "");
+  return reference ? { reference, detail } : null;
+}
+
+function outputCatalogDescription(value = {}) {
+  const reference = pricingReferenceLineText(value.pricing_reference_description || value.catalog_description || "");
+  if (reference) return cleanCustomerQuoteLineText(reference);
+  if (value.pricing_keyword) {
+    const bracketed = bracketedCatalogReferenceParts(value.text || value.description || "");
+    if (bracketed?.reference) return bracketed.reference;
+  }
+  return cleanCustomerQuoteLineText(value.text || value.description || "");
+}
+
 function leadingNumber(value = "") {
   const match = String(value ?? "").replaceAll(",", "").trim().match(/^-?\d+(?:\.\d+)?/);
   if (!match) return null;
@@ -642,7 +660,7 @@ function updateGeneratorCopy() {
     ? "Maximum reference files added"
     : state.images.length ? "Add more reference files" : generator.dropTitle;
   elements.dropMeta.textContent = atImageLimit
-    ? `Remove one reference to add another. Maximum ${MAX_REFERENCE_IMAGES} images.`
+    ? `Remove one reference to add another. Maximum ${MAX_REFERENCE_IMAGES} reference files.`
     : generator.dropMeta;
 }
 
@@ -3312,6 +3330,7 @@ function includedBasisOutputRows(existingRows = []) {
       if (!basisLineAllowsOutput(line)) return;
       const text = String(line.text || "").trim();
       if (!text) return;
+      const description = customPricing ? text : outputCatalogDescription(line);
       const isBoothSizeInfo = /\bbooth size\b/i.test(text) && !line.pricing_keyword;
       if (isBoothSizeInfo && !customPricing) return;
       const sectionTitle = section.title || section.id || "";
@@ -3320,7 +3339,7 @@ function includedBasisOutputRows(existingRows = []) {
       if (duplicate) return;
       rows.push(normalizeOutputRow({
         section: normalizeCategoryTitle(section.title || section.id || "Quote Basis"),
-        description: text,
+        description,
         quantity: line.quantity || (isBoothSizeInfo ? 1 : ""),
         unit: normalizeUnit(line.unit || (isBoothSizeInfo ? "lot" : "")),
         price_mode: isBoothSizeInfo ? "Included" : "Priced",
@@ -3341,9 +3360,10 @@ function includedBasisOutputRows(existingRows = []) {
 
 function outputRowFromLineItem(item = {}) {
   const normalized = normalizeLineItem(item);
+  const description = normalized.pricing_keyword ? outputCatalogDescription(normalized) : normalized.description;
   return normalizeOutputRow({
     section: normalized.section,
-    description: normalized.description,
+    description,
     quantity: normalized.quantity,
     unit: normalized.unit,
     price_mode: normalized.price_mode,

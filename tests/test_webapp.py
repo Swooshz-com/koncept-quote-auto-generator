@@ -2,6 +2,7 @@ import tempfile
 import threading
 import unittest
 import base64
+import hashlib
 import io
 import json
 import os
@@ -14,6 +15,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 import sys
+import types
 from unittest import mock
 
 
@@ -480,6 +482,20 @@ class WebappServerTest(unittest.TestCase):
             ),
             "[ m. run LED strip light for coves ] - Custom LED strip lighting to platform counters",
         )
+        self.assertEqual(
+            webapp.display_description_from_catalog_reference(
+                "Coffee / Tea and supplies for 100 people per day",
+                "Coffee / Tea and supplies for 100 people per day",
+            ),
+            "[ Coffee / Tea and supplies for 100 people per day ]",
+        )
+        self.assertEqual(
+            webapp.display_description_from_catalog_reference(
+                "nos. water inlet and outlet",
+                "",
+            ),
+            "[ nos. water inlet and outlet ]",
+        )
 
     def test_normalize_line_items_preserves_customer_text_and_price_metadata(self):
         items = webapp.normalize_line_items({
@@ -852,7 +868,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Floor Design")
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
+        self.assertEqual(lines[0]["text"], "[ sqm needle punch carpet in colour ] - AI says green carpet across the whole booth.")
         self.assertEqual(lines[0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(lines[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
         self.assertEqual(lines[0]["catalog_unit_price"], 10.5)
@@ -897,7 +913,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(
             [line["text"] for line in lines],
             [
-                "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording",
+                "[ sqm needle punch carpet in colour ] - AI bundled the flooring into one sentence.",
                 "[ sqm 100mm raised platform with aluminum edging ] - AI paraphrased raised platform wording",
             ],
         )
@@ -950,9 +966,9 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "sqm 100mm raised platform with aluminum edging")
+        self.assertEqual(lines[0]["text"], "[ sqm 100mm raised platform with aluminum edging ]")
         self.assertEqual(lines[1]["text"], "100mm raised platform detail edge")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm 100mm raised platform with aluminum edging")
+        self.assertEqual(draft["line_items"][0]["description"], "[ sqm 100mm raised platform with aluminum edging ]")
 
     def test_normalize_ai_draft_trusts_leading_item_count_before_dimensions(self):
         counter_text = (
@@ -993,13 +1009,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["unit"], "nos")
         self.assertEqual(
             line["text"],
-            "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+            "[ nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal ]",
         )
         self.assertEqual(draft["line_items"][0]["quantity"], 2.0)
         self.assertEqual(draft["line_items"][0]["unit"], "nos")
         self.assertEqual(
             draft["line_items"][0]["description"],
-            "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+            "[ nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal ]",
         )
 
     def test_normalize_ai_draft_moves_catalog_backfilled_lines_to_pricing_section(self):
@@ -1034,10 +1050,12 @@ class WebappServerTest(unittest.TestCase):
         by_title = {section["title"]: section for section in draft["quote_basis_sections"]}
         self.assertEqual(
             [line["text"] for line in by_title["Booth Structure"]["lines"]],
-            ["Single side partition wall."],
+            [
+                "[ m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal ]"
+            ],
         )
         counters_line = by_title["COUNTERS AND CABINETS"]["lines"][0]
-        self.assertEqual(counters_line["text"], "Professional Engineer Endorsement for structure above 4m")
+        self.assertEqual(counters_line["text"], "[ Professional Engineer Endorsement for structure above 4m ]")
         self.assertEqual(counters_line["confidence"], 77)
         self.assertEqual(counters_line["quantity"], 1)
         self.assertEqual(counters_line["unit"], "lot")
@@ -1075,7 +1093,7 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], "nos. LED recess downlight 3\"")
+        self.assertEqual(line["text"], "[ nos. LED recess downlight 3\" ]")
         self.assertEqual(line["quantity"], 10.0)
         self.assertEqual(line["unit"], "nos")
         self.assertNotIn("custom_pricing", line)
@@ -1106,7 +1124,7 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], "nos. planter box in painted finished")
+        self.assertEqual(line["text"], "[ nos. planter box in painted finished ]")
         self.assertEqual(line["quantity"], "4")
         self.assertEqual(line["unit"], "nos")
         self.assertNotIn("custom_pricing", line)
@@ -1137,7 +1155,7 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], text)
+        self.assertEqual(line["text"], f"[ {text} ]")
         self.assertEqual(line["quantity"], "10")
         self.assertEqual(line["unit"], "m length")
         self.assertEqual(
@@ -1223,7 +1241,7 @@ class WebappServerTest(unittest.TestCase):
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(len(lines), 1)
         line = lines[0]
-        self.assertEqual(line["text"], "printed brand fascia graphics with BRASIL artwork")
+        self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
         self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
         self.assertEqual(line["pricing_reference_description"], "m2 of vinyl printed graphics")
@@ -1353,6 +1371,290 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("pricing_reference_description", line)
         self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
 
+    def test_normalize_ai_draft_drops_valid_keyword_when_object_family_contradicts_line(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "furniture-rental",
+                    "title": "Furniture Rental",
+                    "lines": [
+                        {
+                            "id": "meeting-table",
+                            "tag": "Confirm",
+                            "text": "Meeting table for 6-pax meeting room",
+                            "pricing_keyword": "furniture-rental.white-folding-chairs",
+                            "quantity": 1,
+                            "unit": "nos",
+                            "confidence_pct": 88,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Furniture Rental",
+                    "quantity": 1,
+                    "unit": "nos",
+                    "description": "Meeting table for 6-pax meeting room",
+                    "pricing_keyword": "furniture-rental.white-folding-chairs",
+                    "source_basis_line_id": "meeting-table",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Custom")
+        self.assertTrue(line["custom_pricing"])
+        self.assertEqual(line["text"], "Meeting table for 6-pax meeting room")
+        self.assertNotIn("pricing_keyword", line)
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
+
+    def test_normalize_ai_draft_keeps_matching_glass_partition_catalog_keyword(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "booth-structure",
+                    "title": "Booth Structure",
+                    "lines": [
+                        {
+                            "id": "glass-partition",
+                            "tag": "Confirm",
+                            "text": "Glass partition and door treatment for meeting room frontage",
+                            "pricing_keyword": "booth-structure.x-2-5m-height-glass-partition",
+                            "quantity": 8,
+                            "unit": "m",
+                            "confidence_pct": 82,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Booth Structure",
+                    "quantity": 8,
+                    "unit": "m",
+                    "description": "Glass partition and door treatment for meeting room frontage",
+                    "pricing_keyword": "booth-structure.x-2-5m-height-glass-partition",
+                    "source_basis_line_id": "glass-partition",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Confirm")
+        self.assertEqual(line["pricing_keyword"], "booth-structure.x-2-5m-height-glass-partition")
+        self.assertEqual(
+            line["text"],
+            "[ m length x 2.5m height glass partition ] - Glass partition and door treatment for meeting room frontage",
+        )
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "booth-structure.x-2-5m-height-glass-partition")
+
+    def test_normalize_ai_draft_uses_pricing_keyword_over_overlapping_bracket_text(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "hanging-structure",
+                    "title": "Hanging Structure",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "[ nos. of Manual Chain Hoist ] - For circular overhead branded hanging sign",
+                            "pricing_keyword": "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 58,
+                        },
+                        {
+                            "tag": "Confirm",
+                            "text": "[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ] - For overhead hanging sign installation",
+                            "pricing_keyword": "hanging-structure.professional-engineer-endorsement-for-hanging",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 60,
+                        },
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(lines[0]["pricing_keyword"], "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth")
+        self.assertTrue(lines[0]["text"].startswith("[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ]"))
+        self.assertEqual(lines[1]["pricing_keyword"], "hanging-structure.professional-engineer-endorsement-for-hanging")
+        self.assertTrue(lines[1]["text"].startswith("[ Professional Engineer Endorsement for hanging ]"))
+
+    def test_normalize_ai_draft_marks_unmatched_service_exclusion_wording_for_custom_review(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "coffee-tea",
+                    "title": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "Coffee and tea service, consumables and barista manpower are excluded unless requested",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 70,
+                        }
+                    ],
+                },
+                {
+                    "id": "water-connection",
+                    "title": "Water Connection",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "Water connection for coffee counter is excluded unless requested",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 68,
+                        }
+                    ],
+                },
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+
+        lines = [
+            line
+            for section in draft["quote_basis_sections"]
+            for line in section["lines"]
+        ]
+        self.assertEqual([line["tag"] for line in lines], ["Custom", "Custom"])
+        self.assertEqual([line.get("custom_pricing") for line in lines], [True, True])
+        self.assertNotIn("pricing_keyword", lines[0])
+        self.assertNotIn("pricing_reference_description", lines[0])
+        self.assertNotIn("pricing_keyword", lines[1])
+        self.assertNotIn("pricing_reference_description", lines[1])
+
+    def test_normalize_ai_draft_rebuilds_brackets_from_resolved_catalog_keyword(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "title": "Hanging Structure",
+                    "lines": [
+                        {
+                            "id": "boom-lift",
+                            "tag": "Confirm",
+                            "text": "[ nos. of Manual Chain Hoist ] - For circular overhead hanging brand sign",
+                            "pricing_keyword": "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 64,
+                        },
+                        {
+                            "id": "pe-hanging",
+                            "tag": "Confirm",
+                            "text": "Professional Engineer Endorsement for hanging",
+                            "pricing_keyword": "hanging-structure.professional-engineer-endorsement-for-hanging",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 80,
+                        },
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Hanging Structure",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": "[ nos. of Manual Chain Hoist ] - For circular overhead hanging brand sign",
+                    "pricing_keyword": "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth",
+                    "source_basis_line_id": "boom-lift",
+                },
+                {
+                    "section": "Hanging Structure",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": "Professional Engineer Endorsement for hanging",
+                    "pricing_keyword": "hanging-structure.professional-engineer-endorsement-for-hanging",
+                    "source_basis_line_id": "pe-hanging",
+                },
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(
+            lines[0]["text"],
+            "[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ] - For circular overhead hanging brand sign",
+        )
+        self.assertEqual(lines[1]["text"], "[ Professional Engineer Endorsement for hanging ]")
+
+    def test_finalized_remote_draft_reapplies_catalog_and_custom_review_rules(self):
+        ai_basis = {
+            "quote_basis_sections": [
+                {
+                    "title": "COUNTERS AND CABINETS",
+                    "lines": [
+                        {
+                            "id": "pe",
+                            "tag": "Confirm",
+                            "text": "[ nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal ] - Custom curved coffee counter",
+                            "pricing_keyword": "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 80,
+                        }
+                    ],
+                },
+                {
+                    "title": "Water Connection",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "Water connection and drainage provision for coffee counter, subject to venue and organiser approval",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 55,
+                        }
+                    ],
+                },
+            ],
+            "line_items": [
+                {
+                    "section": "COUNTERS AND CABINETS",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": "[ nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal ] - Custom curved coffee counter",
+                    "pricing_keyword": "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m",
+                    "source_basis_line_id": "pe",
+                },
+            ],
+        }
+
+        result = webapp.finalized_remote_draft_result(
+            {"pricing_reference_id": "koncept-exhibition-quotation", "project": {"booth_width": "9", "booth_depth": "10.5"}},
+            ai_basis,
+            "openai",
+            "OpenAI",
+            {"booth_width": 9, "booth_depth": 10.5, "booth_size": "9m x 10.5m", "dimension_source": "user"},
+            [],
+        )
+
+        lines = [
+            line
+            for section in result["quote_basis_sections"]
+            for line in section["lines"]
+        ]
+        pe_line = next(line for line in lines if line.get("pricing_keyword") == "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m")
+        water_line = next(line for line in lines if "Water connection and drainage" in line["text"])
+        self.assertEqual(pe_line["text"], "[ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee counter")
+        self.assertEqual(water_line["tag"], "Custom")
+        self.assertTrue(water_line["custom_pricing"])
+
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
         parsed = {
             "quote_basis_sections": [
@@ -1411,7 +1713,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Furniture Rental")
         line = draft["quote_basis_sections"][0]["lines"][0]
-        self.assertEqual(line["text"], "White Eames replica chairs for meeting area seating")
+        self.assertEqual(line["text"], "[ nos. Eames Replica Chair (White) ] - White Eames replica chairs for meeting area seating")
         self.assertEqual(line["pricing_keyword"], "furniture-rental.eames-replica-chair-white")
         self.assertEqual(line["catalog_description"], "nos. Eames Replica Chair (White)")
 
@@ -1504,7 +1806,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Use tag Confirm for catalog-backed lines", prompt)
         self.assertIn("omit that leading count/unit from quote_basis_sections line text and line_items.description", prompt)
         self.assertIn("pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording", prompt)
-        self.assertIn("format the line as `[ catalog exact customer-facing description ] - observed use/detail`", prompt)
+        self.assertIn("format the line as `[ catalog exact customer-facing description ] - Observed use/detail`", prompt)
         self.assertIn("Do not paraphrase catalog-backed product names into generic object names", prompt)
         self.assertIn("Never use quantity 1 with unit m or m length for measured structural runs", prompt)
         self.assertNotIn("surfaces, counters, platform, graphics, furniture, electrical", prompt)
@@ -1636,6 +1938,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("/var/data/swooshz-quote-runner/output", render_yaml)
         self.assertNotIn("koncept-quote-auto-generator", render_yaml)
         self.assertNotIn("/var/data/koncept-quote-runner", render_yaml)
+        self.assertIn("buildCommand: pip install --only-binary=:all: -r requirements.txt", render_yaml)
         self.assertIn("startCommand: python webapp/server.py", render_yaml)
         self.assertIn("APP_MODE", render_yaml)
         self.assertIn("deploy", render_yaml)
@@ -1696,6 +1999,21 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["items"][0]["unit_hint"], "nos")
+
+    def test_pricing_reference_import_fixes_spaced_word_slashes_before_saving(self):
+        raw = (
+            "section,description,unit_hint,internal_cost,markup_multiplier,aliases\n"
+            "Coffee / Tea (Subject to approval by Venue owner and Organiser),Coffee/ Tea and supplies for 100 people per day,lot,150,1.5,COFFEE PER DAY\n"
+        ).encode("utf-8")
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "coffee.csv",
+            "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["items"][0]["description"], "Coffee / Tea and supplies for 100 people per day")
+        self.assertIn("Coffee / Tea and supplies for 100 people per day", result["items"][0]["aliases"])
+        self.assertNotIn("Coffee/ Tea and supplies for 100 people per day", result["items"][0]["aliases"])
 
     def test_pricing_reference_import_stitches_multirow_description_remarks_and_keeps_rigging(self):
         raw = (
@@ -2075,6 +2393,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(current_descriptions, generated_descriptions)
         self.assertIn(("floor-design.100mm-raised-platform-with-aluminum-edging", "m2 100mm raised platform with aluminum edging"), current_descriptions)
         self.assertIn(("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
+        self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
         catalog_text = json.dumps(current, ensure_ascii=False).lower()
         for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth"):
             self.assertNotIn(token, catalog_text)
@@ -2257,7 +2576,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("invalid cell reference", " ".join(response["errors"]))
 
     def test_session_endpoint_includes_current_permissions(self):
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
             with LocalRunnerServer() as runner:
                 response = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
 
@@ -2265,17 +2584,28 @@ class WebappServerTest(unittest.TestCase):
         self.assertFalse(response["permissions"]["canManageSettings"])
         self.assertFalse(response["permissions"]["canManagePricingReferences"])
 
+    def test_legacy_local_user_role_still_works_for_existing_env_files(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=True):
+            permissions = webapp.current_permissions()
+
+        self.assertEqual(permissions["role"], "viewer")
+        self.assertFalse(permissions["canManageSettings"])
+
     def test_user_type_env_simulates_prod_permissions(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "USER #ADMIN"}, clear=True):
             user_permissions = webapp.current_permissions()
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "ADMIN"}, clear=True):
             admin_permissions = webapp.current_permissions()
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=True):
+            viewer_permissions = webapp.current_permissions()
 
         self.assertEqual(user_permissions["role"], "operator")
         self.assertTrue(user_permissions["canGenerateQuote"])
         self.assertFalse(user_permissions["canManagePricingReferences"])
         self.assertEqual(admin_permissions["role"], "admin")
         self.assertTrue(admin_permissions["canManagePricingReferences"])
+        self.assertEqual(viewer_permissions["role"], "viewer")
+        self.assertFalse(viewer_permissions["canGenerateQuote"])
 
     def test_payload_to_brief_preserves_header_breaks_from_textarea_or_html_breaks(self):
         payload = valid_payload()
@@ -2383,11 +2713,151 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(sample["details"]["rich_text"]["projectNumber"], "<div>KI-SAMPLE-001</div>")
         self.assertNotIn("company", sample["details"])
         self.assertNotIn("quote_text", sample["details"])
-        self.assertEqual(len(sample["images"]), 8)
-        self.assertTrue(sample["images"][0]["data_url"].startswith("data:image/"))
-        self.assertFalse(any(image["data_url"].startswith("data:application/pdf") for image in sample["images"]))
+        self.assertEqual(len(sample["images"]), 1)
+        self.assertEqual(sample["images"][0]["name"], "kent-group.pdf")
+        self.assertTrue(sample["images"][0]["data_url"].startswith("data:application/pdf"))
+        self.assertFalse(any(image["data_url"].startswith("data:image/") for image in sample["images"]))
         self.assertNotIn("internal_cost", json.dumps(sample))
         self.assertNotIn("pricing-catalog", json.dumps(sample))
+
+    def test_persist_pdf_page_debug_images_writes_review_copies_under_tmp(self):
+        pages = [{
+            "name": "deck-page-1.jpg",
+            "page": 1,
+            "renderer": "test",
+            "data_url": "data:image/jpeg;base64,ZmFrZS1wYWdl",
+        }]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "DEFAULT_TMP_ROOT", Path(tmp)):
+                saved = webapp.persist_pdf_page_debug_images(pages, "Client Deck.pdf", "abcdef1234567890")
+
+            output_path = Path(saved[0]["path"])
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), b"fake-page")
+            self.assertIn(Path(tmp) / "pdf-pages" / "Client-Deck-abcdef123456", output_path.parents)
+            self.assertTrue(output_path.name.startswith("page-001-test"))
+
+    def test_persist_pdf_page_debug_images_clears_stale_page_files(self):
+        pages = [{
+            "name": "deck-page-2.jpg",
+            "page": 2,
+            "renderer": "test",
+            "data_url": "data:image/jpeg;base64,bmV3LXBhZ2U=",
+        }]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "DEFAULT_TMP_ROOT", Path(tmp)):
+                output_dir = Path(tmp) / "pdf-pages" / "Client-Deck-abcdef123456"
+                output_dir.mkdir(parents=True)
+                stale_path = output_dir / "page-001-old.jpg"
+                stale_path.write_bytes(b"old-page")
+
+                saved = webapp.persist_pdf_page_debug_images(pages, "Client Deck.pdf", "abcdef1234567890")
+
+            self.assertFalse(stale_path.exists())
+            self.assertEqual(Path(saved[0]["path"]).name, "page-002-test.jpg")
+
+    def test_select_embedded_pdf_page_images_prefers_page_specific_images(self):
+        candidates = [
+            [
+                {"page": 1, "digest": "shared", "score": 900, "data_url": "data:image/jpeg;base64,c2hhcmVk"},
+            ],
+            [
+                {"page": 2, "digest": "shared", "score": 900, "data_url": "data:image/jpeg;base64,c2hhcmVk"},
+                {"page": 2, "digest": "page-2", "score": 800, "data_url": "data:image/jpeg;base64,cGFnZTI="},
+            ],
+            [
+                {"page": 3, "digest": "shared", "score": 900, "data_url": "data:image/jpeg;base64,c2hhcmVk"},
+                {"page": 3, "digest": "page-3", "score": 700, "data_url": "data:image/jpeg;base64,cGFnZTM="},
+            ],
+        ]
+
+        selected = webapp.select_embedded_pdf_page_images(candidates, 3)
+
+        self.assertEqual(
+            [image["data_url"] for image in selected],
+            [
+                "data:image/jpeg;base64,c2hhcmVk",
+                "data:image/jpeg;base64,cGFnZTI=",
+                "data:image/jpeg;base64,cGFnZTM=",
+            ],
+        )
+
+    def test_pdfium_renderer_renders_full_pdf_pages_when_dependency_is_available(self):
+        class FakeBitmap:
+            def __init__(self):
+                self.closed = False
+
+            def to_pil(self):
+                from PIL import Image
+
+                return Image.new("RGB", (40, 20), (255, 255, 255))
+
+            def close(self):
+                self.closed = True
+
+        class FakePage:
+            def __init__(self, index):
+                self.index = index
+                self.closed = False
+
+            def get_size(self):
+                return (800, 600)
+
+            def render(self, scale=1, rotation=0):
+                self.scale = scale
+                self.rotation = rotation
+                return FakeBitmap()
+
+            def close(self):
+                self.closed = True
+
+        class FakeDocument:
+            def __init__(self, source):
+                self.source = source
+                self.pages = [FakePage(0), FakePage(1), FakePage(2)]
+                self.closed = False
+
+            def __len__(self):
+                return len(self.pages)
+
+            def __getitem__(self, index):
+                return self.pages[index]
+
+            def close(self):
+                self.closed = True
+
+        fake_module = types.SimpleNamespace(PdfDocument=FakeDocument)
+        with mock.patch.dict(sys.modules, {"pypdfium2": fake_module}):
+            images = webapp.render_pdf_pages_with_pdfium(b"%PDF-1.7\n%%EOF", "deck.pdf", 2)
+
+        self.assertEqual([image["page"] for image in images], [1, 2])
+        self.assertEqual({image["renderer"] for image in images}, {"pdfium"})
+        self.assertTrue(all(image["data_url"].startswith("data:image/jpeg;base64,") for image in images))
+
+    def test_pdf_reference_page_images_uses_pdfium_for_sample_pdf_when_installed(self):
+        try:
+            import pypdfium2  # noqa: F401
+        except Exception:
+            self.skipTest("pypdfium2 is not installed in this runtime.")
+
+        pdf_path = ROOT / "fixtures" / "samples" / "kent-group" / "kent-group.pdf"
+        entry = {
+            "name": "kent-group.pdf",
+            "type": "application/pdf",
+            "data_url": webapp.file_data_url(pdf_path),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "DEFAULT_TMP_ROOT", Path(tmp)):
+                images = webapp.pdf_reference_page_images(entry, max_pages=3)
+
+            paths = [Path(image["path"]) for image in images]
+            digests = {hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+        self.assertEqual([image["page"] for image in images], [1, 2, 3])
+        self.assertEqual({image["renderer"] for image in images}, {"pdfium"})
+        self.assertEqual(len(digests), 3)
 
     def test_payload_to_brief_does_not_backfill_profile_logo(self):
         payload = valid_payload()
@@ -2491,7 +2961,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["source"], "openai")
         self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: AI surfaces")
-        self.assertEqual(result["quote_basis"]["graphics"], "Confirm: AI vinyl graphics")
+        self.assertEqual(result["quote_basis"]["graphics"], "Custom: AI vinyl graphics")
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["description"], "AI vinyl graphics")
         self.assertEqual(result["line_items"][0]["quantity"], 12.0)
@@ -2530,7 +3000,7 @@ class WebappServerTest(unittest.TestCase):
                     result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "openai")
-        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Booth Structure", "Floor Design"])
+        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Floor Design", "Booth Structure"])
         self.assertIn("brazil-feature-wall", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
@@ -2895,6 +3365,94 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(input_files[0]["filename"], "kent-group.pdf")
         self.assertEqual(input_files[0]["file_data"], "data:application/pdf;base64,JVBERi0xLjQK")
         self.assertEqual(len(uploaded_images), 1)
+
+    def test_ai_requests_send_rendered_pdf_pages_as_high_detail_images(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        payload = valid_payload()
+        payload["images"] = [
+            {
+                "name": "kent-group.pdf",
+                "type": "application/pdf",
+                "size": 16,
+                "data_url": "data:application/pdf;base64,JVBERi0xLjQK",
+            },
+            {
+                "name": "ref.jpg",
+                "type": "image/jpeg",
+                "size": 4,
+                "data_url": "data:image/jpeg;base64,ZmFrZQ==",
+            },
+        ]
+        rendered_pages = [
+            {"name": "kent-group-page-1.jpg", "page": 1, "data_url": "data:image/jpeg;base64,cGFnZTE="},
+            {"name": "kent-group-page-2.jpg", "page": 2, "data_url": "data:image/jpeg;base64,cGFnZTI="},
+        ]
+
+        with (
+            mock.patch.object(webapp, "pdf_reference_page_images", return_value=rendered_pages, create=True) as render_pages,
+            mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen,
+        ):
+            webapp.request_openai_quote_basis(payload, "sk-test-redacted")
+
+        content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
+        input_files = [item for item in content if item.get("type") == "input_file"]
+        high_detail_images = [item for item in content if item.get("type") == "input_image" and item.get("detail") == "high"]
+        self.assertEqual(input_files[0]["filename"], "kent-group.pdf")
+        self.assertEqual(input_files[0]["file_data"], "data:application/pdf;base64,JVBERi0xLjQK")
+        self.assertEqual(
+            [item["image_url"] for item in high_detail_images],
+            [
+                "data:image/jpeg;base64,cGFnZTE=",
+                "data:image/jpeg;base64,cGFnZTI=",
+                "data:image/jpeg;base64,ZmFrZQ==",
+            ],
+        )
+        self.assertIn("Rendered PDF page images follow", json.dumps(content))
+        self.assertEqual(render_pages.call_args.kwargs["max_pages"], webapp.MAX_RENDERED_PDF_PAGES)
+
+    def test_ai_requests_cap_rendered_pdf_pages_separately_from_reference_file_limit(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        payload = valid_payload()
+        payload["images"] = [
+            {
+                "name": "long-deck.pdf",
+                "type": "application/pdf",
+                "size": 16,
+                "data_url": "data:application/pdf;base64,JVBERi0xLjQK",
+            },
+            *[
+                {
+                    "name": f"ref-{index}.jpg",
+                    "type": "image/jpeg",
+                    "size": 4,
+                    "data_url": f"data:image/jpeg;base64,aW1hZ2Ut{index}",
+                }
+                for index in range(webapp.MAX_REFERENCE_IMAGES - 1)
+            ],
+        ]
+        rendered_pages = [
+            {"name": f"long-deck-page-{index}.jpg", "page": index, "data_url": f"data:image/jpeg;base64,cGFnZS0{index}"}
+            for index in range(webapp.MAX_RENDERED_PDF_PAGES + 4)
+        ]
+
+        with (
+            mock.patch.object(webapp, "pdf_reference_page_images", return_value=rendered_pages, create=True),
+            mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen,
+        ):
+            webapp.request_openai_quote_basis(payload, "sk-test-redacted")
+
+        content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
+        high_detail_images = [item for item in content if item.get("type") == "input_image" and item.get("detail") == "high"]
+        rendered_urls = [item["image_url"] for item in high_detail_images if "cGFnZS0" in item["image_url"]]
+        uploaded_urls = [item["image_url"] for item in high_detail_images if "aW1hZ2Ut" in item["image_url"]]
+        self.assertEqual(len(rendered_urls), webapp.MAX_RENDERED_PDF_PAGES)
+        self.assertEqual(len(uploaded_urls), webapp.MAX_REFERENCE_IMAGES - 1)
 
     def test_ai_requests_send_pdf_only_as_input_file_even_when_type_is_stale(self):
         response = mock.MagicMock()
@@ -3704,6 +4262,141 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["max_output_tokens"], 1200)
         self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
 
+    def test_deepseek_defaults_use_single_pro_model_for_text_routes(self):
+        with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
+            self.assertEqual(webapp.configured_deepseek_model(), "deepseek-v4-pro")
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "deepseek-test-model" if name == webapp.DEEPSEEK_MODEL_ENV_NAME else ""):
+            self.assertEqual(webapp.configured_deepseek_model(), "deepseek-test-model")
+
+    def test_deepseek_basis_chat_uses_chat_completions_json_mode(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "change 100mm to 150mm",
+            "scope": "line",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with needle punch carpet.",
+        }
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps({
+                            "intent": "proposal",
+                            "proposal": {
+                                "message": "Change the platform height to 150mm?",
+                                "replacement_line": {
+                                    "tag": "Confirm",
+                                    "text": "150mm raised platform with needle punch carpet.",
+                                    "confidence_pct": 90,
+                                },
+                            },
+                        })
+                    }
+                }
+            ]
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.answer_basis_chat(payload)
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
+        self.assertEqual(body["model"], "deepseek-v4-pro")
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["messages"][0]["role"], "user")
+        self.assertNotIn("input", body)
+        self.assertEqual(result["type"], "proposal")
+
+    def test_deepseek_basis_chat_bad_output_falls_back_to_openai(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "change 100mm to 150mm",
+            "scope": "line",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with needle punch carpet.",
+        }
+        bad_deepseek = mock.MagicMock()
+        bad_deepseek.__enter__.return_value.read.return_value = json.dumps({
+            "choices": [{"message": {"content": "not valid json"}}]
+        }).encode("utf-8")
+        good_openai = mock.MagicMock()
+        good_openai.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "intent": "proposal",
+                "proposal": {
+                    "message": "Change the platform height to 150mm?",
+                    "replacement_line": {
+                        "tag": "Confirm",
+                        "text": "150mm raised platform with needle punch carpet.",
+                        "confidence_pct": 90,
+                    },
+                },
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+                webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME: "gpt-basis-line-mini-test",
+                webapp.OPENAI_DRAFT_MODEL_ENV_NAME: "gpt-draft-pro-test",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_deepseek, good_openai]) as urlopen:
+                result = webapp.answer_basis_chat(payload)
+
+        first_body = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
+        second_body = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
+        self.assertEqual(first_body["model"], "deepseek-v4-pro")
+        self.assertEqual(second_body["model"], "gpt-basis-line-mini-test")
+        self.assertEqual(result["type"], "proposal")
+
+    def test_pricing_reference_import_uses_deepseek_then_openai_fallback(self):
+        parsed = {
+            "currency": "SGD",
+            "items": [
+                {
+                    "section": "Floor Design",
+                    "description": "sqm needle punch carpet in colour",
+                    "unit_hint": "sqm",
+                    "internal_cost": "0",
+                    "markup_multiplier": "1",
+                    "remarks": "",
+                    "aliases": [],
+                }
+            ],
+        }
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp, "request_deepseek_pricing_catalog_import", side_effect=webapp.OpenAIAnalysisError("DeepSeek failed")) as deepseek:
+                with mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed) as openai:
+                    result = webapp.ai_pricing_reference_import_preview("pricing.xlsx", [], {"label": "GST", "rate": 0.09})
+
+        deepseek.assert_called_once()
+        openai.assert_called_once()
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["currency"], "SGD")
+
     def test_openai_whole_basis_chat_uses_draft_model_env(self):
         payload = valid_payload()
         payload["basis_chat"] = {
@@ -3845,15 +4538,18 @@ class WebappServerTest(unittest.TestCase):
     def test_safe_error_messages_redacts_keys_headers_and_env_assignments(self):
         messages = webapp.safe_error_messages([
             "OPENAI_API_KEY=sk-proj-secret123",
+            "DEEPSEEK_API_KEY=ds-secret123",
             "Authorization: Bearer sk-test-secret456",
             "plain error",
         ])
 
         joined = "\n".join(messages)
         self.assertIn("OPENAI_API_KEY=sk-...", joined)
+        self.assertIn("DEEPSEEK_API_KEY=sk-...", joined)
         self.assertIn("Authorization: Bearer sk-...", joined)
         self.assertIn("plain error", joined)
         self.assertNotIn("sk-proj-secret123", joined)
+        self.assertNotIn("ds-secret123", joined)
         self.assertNotIn("sk-test-secret456", joined)
 
     def test_local_runner_csrf_config_uses_env_with_safe_fallbacks(self):
@@ -6099,6 +6795,8 @@ eval([
   "parseBasisLine",
   "normalizeQuoteBasisSections",
   "basisSections",
+  "bracketedCatalogReferenceParts",
+  "outputCatalogDescription",
   "numberOrNull",
   "orderNumber",
   "effectiveOutputUnitPrice",
@@ -6158,7 +6856,7 @@ state.quoteBasisSections = [{
   lines: [{
     id: "raised-platform",
     tag: "Include",
-    text: "100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+    text: "[ sqm 100mm raised platform with aluminum edging ] - Full booth footprint with visible perimeter edging",
     quantity: 36,
     unit: "sqm",
     pricing_keyword: "floor-design.100mm-raised-platform-with-aluminum-edging",
@@ -6173,6 +6871,7 @@ refreshOutputRowsFromLineItems();
 assert.strictEqual(state.outputRows.length, 1);
 assert.strictEqual(state.outputRows[0].catalog_unit_price, 60);
 assert.strictEqual(state.outputRows[0].amount, 2160);
+assert.strictEqual(state.outputRows[0].description, "sqm 100mm raised platform with aluminum edging");
 state.quoteBasisSections = originalBasisSections;
 
 state.quoteBasisSections = [{
@@ -6199,6 +6898,7 @@ state.lineItems = [{
 state.outputRows = [];
 refreshOutputRowsFromLineItems();
 assert.strictEqual(state.outputRows.length, 1);
+assert.strictEqual(state.outputRows[0].description, "custom decorative arch portals and curved trim detailing in branded blue, green, and yellow finish");
 assert.strictEqual(String(state.outputRows[0].quantity), "1");
 assert.strictEqual(state.outputRows[0].unit, "lot");
 assert.strictEqual(state.outputRows[0].amount, "");
@@ -7210,6 +7910,8 @@ eval([
   "formatAmount",
   "recalculateOutputRow",
   "normalizeOutputRow",
+  "bracketedCatalogReferenceParts",
+  "outputCatalogDescription",
   "outputRowFromLineItem",
   "outputCellDisplayValue",
   "outputRowsValid",
@@ -7224,12 +7926,14 @@ function selectedPricingReferenceCurrency() {
 
 const row = outputRowFromLineItem({
   section: "Booth Structure",
-  description: "custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish",
+  description: "[ m length single side partition wall at height 2.4m ] - Custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish",
   quantity: 1,
   unit: "m length",
   pricing_keyword: "booth-structure.single-side-partition-wall-at-height-2-4m",
+  pricing_reference_description: "m length single side partition wall at height 2.4m",
   status: "quantity-review",
 });
+assert.strictEqual(row.description, "m length single side partition wall at height 2.4m");
 assert.strictEqual(row.status, "quantity-review");
 assert.strictEqual(row.catalog_unit_price, "");
 assert.strictEqual(row.amount, "");
@@ -7472,7 +8176,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
-                with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "admin"}, clear=False):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
                     with LocalRunnerServer() as runner:
                         session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
                         request = urllib.request.Request(
@@ -7510,7 +8214,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
                 webapp.save_pricing_reference_pack(reference)
-                with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "admin"}, clear=False):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
                     with LocalRunnerServer() as runner:
                         session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
                         request = urllib.request.Request(
@@ -7547,7 +8251,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 }],
             })
             with mock.patch.object(webapp, "company_config_store", return_value=store):
-                with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
                     with LocalRunnerServer() as runner:
                         response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
                         payload = json.loads(response.read().decode("utf-8"))
@@ -7560,7 +8264,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
     def test_settings_read_endpoints_require_management_permission(self):
         paths = ["/api/settings", "/api/settings/pricing-references", "/api/settings/profiles"]
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
             with LocalRunnerServer() as runner:
                 for path in paths:
                     with self.subTest(path=path):
@@ -7580,7 +8284,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             }],
         }
 
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "viewer"}, clear=False):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
             with LocalRunnerServer() as runner:
                 session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
                 request = urllib.request.Request(
@@ -7601,14 +8305,14 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertNotIn("10.5", body_text)
 
     def test_settings_permissions_deny_non_admin_writes(self):
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "operator"}, clear=True):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=True):
             allowed, error = webapp.require_permission("canManagePricingReferences")
         self.assertFalse(allowed)
         self.assertEqual(error["status"], "blocked")
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "LOCAL_USER_ROLE": "management"}, clear=True):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "management"}, clear=True):
             allowed, _ = webapp.require_permission("canManagePricingReferences")
         self.assertTrue(allowed)
-        with mock.patch.dict(os.environ, {"APP_MODE": "deploy", "LOCAL_USER_ROLE": "admin"}, clear=True):
+        with mock.patch.dict(os.environ, {"APP_MODE": "deploy", "USER_TYPE": "admin"}, clear=True):
             self.assertFalse(webapp.current_permissions()["canManagePricingReferences"])
 
     def test_pricing_reference_tax_overrides_quote_company_tax_in_brief(self):

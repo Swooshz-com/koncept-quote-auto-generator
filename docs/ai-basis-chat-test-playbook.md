@@ -12,16 +12,16 @@ This playbook covers:
 
 - `Re`: per-line basis revision.
 - `Ask For Changes`: whole-basis question and edit flow.
-- AI response parsing for OpenAI.
+- AI response parsing for OpenAI and optional DeepSeek text routes.
 - Quote basis proposal preview, apply, discard, and retry behavior.
 - User-facing error handling when AI returns malformed or unusable JSON.
 
 ## Model Routing
 
-- `Re` selected-line edits use the basis-line model first: `OPENAI_BASIS_LINE_MODEL`.
-- If selected-line output is malformed or cannot be normalized, retry once on the draft model: `OPENAI_DRAFT_MODEL`.
-- `Ask For Changes` whole-basis chats use the draft model immediately.
-- Provider/network/auth failures should not be hidden as model-quality failures.
+- Without `DEEPSEEK_API_KEY`, `Re` selected-line edits use `OPENAI_BASIS_LINE_MODEL`, answer-style `Ask For Changes` uses `OPENAI_BASIS_ANSWER_MODEL`, and whole-basis proposals use `OPENAI_DRAFT_MODEL`.
+- With `DEEPSEEK_API_KEY`, text-only basis chat uses `DEEPSEEK_MODEL`, defaulting to `deepseek-v4-pro`.
+- If a DeepSeek route fails or returns malformed/unusable JSON, retry through OpenAI when `OPENAI_API_KEY` is configured.
+- Provider/network/auth failures should be sanitized in user-facing errors and logs. Do not leak raw provider responses or keys.
 
 This playbook does not cover:
 

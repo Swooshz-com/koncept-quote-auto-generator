@@ -11,7 +11,7 @@ Source of truth: `.github/workflows/ci.yml`
 - Permissions: read-only repository contents
 - No deployment job is configured
 - No production environment mutation is performed by CI
-- CI does not require OpenAI, Gemini, OIDC, deployment, or production secrets
+- CI does not require OpenAI, DeepSeek, Gemini, OIDC, deployment, or production secrets
 
 ## Active Jobs
 
@@ -22,9 +22,11 @@ Source of truth: `.github/workflows/ci.yml`
 ## Validate App Checks
 
 - Installs Python 3.12 and Node 22.
+- Installs pinned Python dependencies with `python -m pip install --only-binary=:all: -r requirements.txt`.
 - Installs Playwright Chromium.
 - Checks JavaScript syntax for `webapp/static/app.js`, `scripts/playwright-smoke.mjs`, and `scripts/playwright-ai-basis-chat-stress.mjs`.
-- Checks Python syntax for `webapp/server.py`, `scripts/generate_quote.py`, and `scripts/live_ai_basis_chat_smoke.py`.
+- Checks Python syntax for `webapp/server.py`, `scripts/generate_quote.py`, `scripts/live_ai_basis_chat_smoke.py`, `scripts/build_pricing_catalog.py`, and `scripts/validate_local_pdf_dependency_usage.py`.
+- Runs `python scripts/validate_local_pdf_dependency_usage.py` to keep `pypdfium2` and `Pillow` usage on the local PDF rendering path only.
 - Runs `python -m unittest discover -s tests`.
 - Runs `npm run playwright:ai-stress`.
 - Runs `npm run playwright:smoke`.

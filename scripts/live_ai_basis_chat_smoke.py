@@ -29,6 +29,7 @@ FORBIDDEN_OUTPUT_TERMS = (
     "traceback",
     "invalid json",
     "openai_api_key=",
+    "deepseek_api_key=",
     "sk-",
     "sk_",
 )
@@ -199,9 +200,19 @@ def smoke_cases(include_injection: bool, selected_cases: set[str] | None = None)
 
 
 def configured_provider() -> str:
-    if webapp.read_dotenv_value(webapp.OPENAI_API_KEY_ENV_NAME):
-        return "openai"
-    return ""
+    providers = {
+        webapp.configured_text_ai_provider(webapp.AI_BASIS_LINE_PROVIDER_ENV_NAME),
+        webapp.configured_text_ai_provider(webapp.AI_BASIS_ANSWER_PROVIDER_ENV_NAME),
+        webapp.configured_text_ai_provider(webapp.AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME),
+    }
+    configured = [
+        provider
+        for provider in sorted(providers)
+        if webapp.text_ai_provider_api_key(provider)
+    ]
+    if webapp.read_dotenv_value(webapp.OPENAI_API_KEY_ENV_NAME) and "openai" not in configured:
+        configured.append("openai")
+    return ",".join(configured)
 
 
 def result_summary(result: dict[str, Any]) -> str:
@@ -258,7 +269,7 @@ def main() -> int:
     if not provider:
         print(json.dumps({
             "status": "blocked",
-            "error": f"Configure {webapp.OPENAI_API_KEY_ENV_NAME} in the local environment.",
+            "error": f"Configure {webapp.DEEPSEEK_API_KEY_ENV_NAME} or {webapp.OPENAI_API_KEY_ENV_NAME} in the local environment.",
         }, indent=2))
         return 2
 

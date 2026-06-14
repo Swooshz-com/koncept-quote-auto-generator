@@ -56,8 +56,12 @@ def normalized_text(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def normalize_word_slash_spacing(value: Any) -> str:
+    return re.sub(r"(?<=[A-Za-z])\s*/\s*(?=[A-Za-z])", " / ", normalized_text(value))
+
+
 def apply_pricing_workbook_text_fixes(value: Any) -> str:
-    text = normalized_text(value)
+    text = normalize_word_slash_spacing(value)
     replacements = {
         "platfrom": "platform",
         "parition": "partition",

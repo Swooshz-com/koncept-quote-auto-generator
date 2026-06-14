@@ -76,6 +76,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Install Python dependencies
+        run: python -m pip install --only-binary=:all: -r requirements.txt
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -86,7 +89,10 @@ jobs:
           node --check scripts/playwright-ai-basis-chat-stress.mjs
 
       - name: Check Python syntax
-        run: python -m py_compile webapp/server.py scripts/generate_quote.py scripts/live_ai_basis_chat_smoke.py
+        run: python -m py_compile webapp/server.py scripts/generate_quote.py scripts/live_ai_basis_chat_smoke.py scripts/build_pricing_catalog.py scripts/validate_local_pdf_dependency_usage.py
+
+      - name: Guard local PDF dependency usage
+        run: python scripts/validate_local_pdf_dependency_usage.py
 
       - name: Run Python tests
         run: python -m unittest discover -s tests
