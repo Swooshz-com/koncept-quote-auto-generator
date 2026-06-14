@@ -199,17 +199,17 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
-- **Item:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
-- **Unit hint:** nos
+- **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal
+- **Unit hint:** m length
 - **Remarks:** INFORMATION COUNTER; PAINTED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable information counter nos; wooden construct in painted finished and laminated top as per design proposal nos
+- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in painted finished and laminated top as per design proposal m length
 
 ### counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
-- **Item:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
-- **Unit hint:** nos
+- **Item:** m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal
+- **Unit hint:** m length
 - **Remarks:** INFORMATION COUNTER; FULL LAMINATED
-- **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable information counter nos; wooden construct in laminated finished as per design proposal nos
+- **Search aliases:** m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter; COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal; x 1m height x 0.5m Width lockable information counter m length; wooden construct in laminated finished as per design proposal m length
 
 ### counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
@@ -371,23 +371,23 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### electrical-fittings-excluding-connection-fees-by-organiser.led-strip-light-for-coves
 
 - **Item:** m. run LED strip light for coves
-- **Unit hint:** not specified
+- **Unit hint:** m run
 - **Remarks:** LED STRIPS
-- **Search aliases:** m. run LED strip light for coves; LED strip light for coves; LED STRIPS; Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves
+- **Search aliases:** m. run LED strip light for coves; LED strip light for coves; LED STRIPS; Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves; LED strip light for coves m run
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.led-bar-for-backlit-graphics
 
 - **Item:** m. run LED bar for backlit graphics
-- **Unit hint:** not specified
+- **Unit hint:** m run
 - **Remarks:** LED BAR
-- **Search aliases:** m. run LED bar for backlit graphics; LED bar for backlit graphics; LED BAR; Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics
+- **Search aliases:** m. run LED bar for backlit graphics; LED bar for backlit graphics; LED BAR; Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics; LED bar for backlit graphics m run
 
 ### electrical-fittings-excluding-connection-fees-by-organiser.single-line-drawing-for-db-box
 
 - **Item:** no. single line drawing for DB box
-- **Unit hint:** no.
+- **Unit hint:** nos
 - **Remarks:** Single Line Drawing
-- **Search aliases:** no. single line drawing for DB box; single line drawing for DB box; Single Line Drawing; Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box; single line drawing for DB box no.
+- **Search aliases:** no. single line drawing for DB box; single line drawing for DB box; Single Line Drawing; Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box; single line drawing for DB box nos
 
 ## Furniture Rental
 

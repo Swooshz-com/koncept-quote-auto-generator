@@ -687,18 +687,18 @@
       ],
       "extra_values": [],
       "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
-      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
-      "unit_hint": "nos",
+      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+      "unit_hint": "m length",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable information counter",
-        "1m length x 1m height x 0.5m Width lockable information counter",
+        "m length x 1m height x 0.5m Width lockable information counter",
+        "x 1m height x 0.5m Width lockable information counter",
         "wooden construct in painted finished and laminated top as per design proposal",
         "INFORMATION COUNTER",
         "PAINTED",
-        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter",
+        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable information counter nos",
-        "wooden construct in painted finished and laminated top as per design proposal nos"
+        "x 1m height x 0.5m Width lockable information counter m length",
+        "wooden construct in painted finished and laminated top as per design proposal m length"
       ],
       "sale_unit_price": 1200.0
     },
@@ -715,18 +715,18 @@
       ],
       "extra_values": [],
       "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
-      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
-      "unit_hint": "nos",
+      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+      "unit_hint": "m length",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable information counter",
-        "1m length x 1m height x 0.5m Width lockable information counter",
+        "m length x 1m height x 0.5m Width lockable information counter",
+        "x 1m height x 0.5m Width lockable information counter",
         "wooden construct in laminated finished as per design proposal",
         "INFORMATION COUNTER",
         "FULL LAMINATED",
-        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter",
+        "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
-        "1m length x 1m height x 0.5m Width lockable information counter nos",
-        "wooden construct in laminated finished as per design proposal nos"
+        "x 1m height x 0.5m Width lockable information counter m length",
+        "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 1800.0
     },
@@ -1290,12 +1290,13 @@
       "extra_values": [],
       "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-strip-light-for-coves",
       "description": "m. run LED strip light for coves",
-      "unit_hint": "",
+      "unit_hint": "m run",
       "aliases": [
         "m. run LED strip light for coves",
         "LED strip light for coves",
         "LED STRIPS",
-        "Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves"
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves",
+        "LED strip light for coves m run"
       ],
       "sale_unit_price": 42.0
     },
@@ -1312,12 +1313,13 @@
       "extra_values": [],
       "id": "electrical-fittings-excluding-connection-fees-by-organiser.led-bar-for-backlit-graphics",
       "description": "m. run LED bar for backlit graphics",
-      "unit_hint": "",
+      "unit_hint": "m run",
       "aliases": [
         "m. run LED bar for backlit graphics",
         "LED bar for backlit graphics",
         "LED BAR",
-        "Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics"
+        "Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics",
+        "LED bar for backlit graphics m run"
       ],
       "sale_unit_price": 60.0
     },
@@ -1334,13 +1336,13 @@
       "extra_values": [],
       "id": "electrical-fittings-excluding-connection-fees-by-organiser.single-line-drawing-for-db-box",
       "description": "no. single line drawing for DB box",
-      "unit_hint": "no.",
+      "unit_hint": "nos",
       "aliases": [
         "no. single line drawing for DB box",
         "single line drawing for DB box",
         "Single Line Drawing",
         "Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box",
-        "single line drawing for DB box no."
+        "single line drawing for DB box nos"
       ],
       "sale_unit_price": 600.0
     },
