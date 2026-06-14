@@ -86,6 +86,39 @@ def numeric_value(value: Any) -> float | None:
     return parsed
 
 
+COUNTER_PER_ITEM_TERMS = {
+    "information counter",
+    "lockable counter",
+    "lockable information counter",
+}
+
+
+def positive_order(value: Any) -> int | None:
+    parsed = numeric_value(value)
+    if parsed is None or parsed <= 0:
+        return None
+    return int(parsed)
+
+
+def is_per_item_counter_text(section: Any, description: Any) -> bool:
+    text = f"{normalized_text(section)} {normalized_text(description)}".lower()
+    if "counter" not in text and "cabinet" not in text:
+        return False
+    return any(term in text for term in COUNTER_PER_ITEM_TERMS)
+
+
+def normalize_per_item_counter_description(section: Any, description: Any) -> str:
+    text = normalized_text(description)
+    if not is_per_item_counter_text(section, text):
+        return text
+    return re.sub(
+        r"(?i)^m\.?\s*length\s*x\b",
+        "nos. of 1m length x",
+        text,
+        count=1,
+    )
+
+
 def cell(row: list[Any], index: int) -> Any:
     return row[index] if index < len(row) else None
 
@@ -171,28 +204,33 @@ def finalize_item(item: dict[str, Any], items: list[dict[str, Any]]) -> None:
         return
     description_parts = item.pop("description_parts")
     remarks = item["remarks"]
-    description = "; ".join(description_parts)
-    unit_hint = quote.infer_unit(description)
     section = item["section"]
+    description = normalize_per_item_counter_description(section, "; ".join(description_parts))
+    unit_hint = quote.infer_unit(description)
+    if is_per_item_counter_text(section, description):
+        unit_hint = "nos"
+    alias_description_parts = [description, *[part for part in description_parts if normalized_text(part) != description]]
     existing_ids = {existing["id"] for existing in items}
     item.update(
         {
             "id": catalog_id(section, description, existing_ids),
             "description": description,
             "unit_hint": unit_hint,
-            "aliases": alias_candidates(section, description_parts, remarks, unit_hint),
+            "aliases": alias_candidates(section, alias_description_parts, remarks, unit_hint),
             "sale_unit_price": round(float(item["internal_cost"]) * float(item["markup_multiplier"]), 2),
         }
     )
     items.append(item)
 
 
-def item_from_price_row(section: str, row_number: int, row: list[Any]) -> dict[str, Any]:
+def item_from_price_row(section: str, section_order: int | None, row_number: int, row: list[Any]) -> dict[str, Any]:
     default_quantity = numeric_value(cell(row, COL_DEFAULT_QUANTITY))
     default_estimate = numeric_value(cell(row, COL_DEFAULT_ESTIMATE))
     gst_multiplier = numeric_value(cell(row, COL_GST)) or 1.0
     item = {
         "_source_row": row_number,
+        "category_order": section_order,
+        "item_order": row_number,
         "section": section,
         "description_parts": [apply_pricing_workbook_text_fixes(text_cell(row, COL_DESCRIPTION))],
         "default_quantity": default_quantity,
@@ -365,6 +403,8 @@ def build_catalog_from_xlsx(source: Path, out: Path | None = None) -> dict[str, 
     items: list[dict[str, Any]] = []
     rows = quote.read_first_sheet_rows_with_numbers(source)
     current_section = ""
+    current_section_order: int | None = None
+    fallback_section_order = 1
     current_item: dict[str, Any] | None = None
 
     for row_number, row in rows:
@@ -372,11 +412,13 @@ def build_catalog_from_xlsx(source: Path, out: Path | None = None) -> dict[str, 
             finalize_item(current_item or {}, items)
             current_item = None
             current_section = text_cell(row, COL_DESCRIPTION)
+            current_section_order = positive_order(cell(row, COL_SECTION_NO)) or fallback_section_order
+            fallback_section_order = max(fallback_section_order + 1, current_section_order + 1)
             continue
 
         if is_price_row(row):
             finalize_item(current_item or {}, items)
-            current_item = item_from_price_row(current_section, row_number, row)
+            current_item = item_from_price_row(current_section, current_section_order, row_number, row)
             continue
 
         if current_item is None:

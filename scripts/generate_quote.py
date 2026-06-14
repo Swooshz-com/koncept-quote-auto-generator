@@ -452,6 +452,38 @@ SUSPICIOUS_LINEAR_STRUCTURE_TERMS = {
     "structure",
     "wall",
 }
+COUNTER_PER_ITEM_TERMS = {
+    "information counter",
+    "lockable counter",
+    "lockable information counter",
+}
+
+
+def per_item_counter_text(section: str, description: str, match: PriceRow | None = None) -> str:
+    match_text = ""
+    if match is not None:
+        match_text = f"{match.description} {match.unit_hint}"
+    return f"{section} {description} {match_text}".lower()
+
+
+def suspicious_per_item_counter_quantity(
+    section: str,
+    description: str,
+    quantity: float | None,
+    unit: str,
+    match: PriceRow | None = None,
+) -> bool:
+    text = per_item_counter_text(section, description, match)
+    if "counter" not in text and "cabinet" not in text:
+        return False
+    if not any(term in text for term in COUNTER_PER_ITEM_TERMS):
+        return False
+    normalized_unit = normalize_unit(unit).lower()
+    if normalized_unit in LINEAR_TAKEOFF_UNITS:
+        return True
+    if quantity is None:
+        return False
+    return quantity > 0 and abs(quantity - round(quantity)) > 0.0001
 
 
 def suspicious_linear_structure_quantity(section: str, description: str, quantity: float | None, unit: str) -> bool:
@@ -520,6 +552,10 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             match = None
         elif display_price:
             status = "manual-display"
+        elif suspicious_per_item_counter_quantity(clean_text(item.get("section")), clean_text(item.get("description")), quantity_num, normalized_unit, match):
+            status = "quantity-review"
+            match = None
+            amount = None
         elif suspicious_linear_structure_quantity(clean_text(item.get("section")), clean_text(item.get("description")), quantity_num, normalized_unit):
             status = "quantity-review"
             match = None

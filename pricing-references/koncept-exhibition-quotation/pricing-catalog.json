@@ -3,6 +3,8 @@
   "currency": "SGD",
   "items": [
     {
+      "category_order": 1,
+      "item_order": 4,
       "section": "Floor Design",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -26,6 +28,8 @@
       "sale_unit_price": 10.5
     },
     {
+      "category_order": 1,
+      "item_order": 6,
       "section": "Floor Design",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -49,6 +53,8 @@
       "sale_unit_price": 28.5
     },
     {
+      "category_order": 1,
+      "item_order": 8,
       "section": "Floor Design",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -72,6 +78,8 @@
       "sale_unit_price": 60.0
     },
     {
+      "category_order": 1,
+      "item_order": 10,
       "section": "Floor Design",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -95,6 +103,8 @@
       "sale_unit_price": 52.5
     },
     {
+      "category_order": 1,
+      "item_order": 12,
       "section": "Floor Design",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -118,6 +128,8 @@
       "sale_unit_price": 75.0
     },
     {
+      "category_order": 1,
+      "item_order": 14,
       "section": "Floor Design",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -141,6 +153,8 @@
       "sale_unit_price": 60.0
     },
     {
+      "category_order": 2,
+      "item_order": 19,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -156,19 +170,25 @@
       "description": "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length single side partition wall at height 2.4m",
+        "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
+        "single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
         "single side partition wall at height 2.4m",
         "wooden construct in painted finished as per design proposal",
+        "m length single side partition wall at height 2.4m",
         "Backwall or any partition",
         "PAINTED",
+        "Booth Structure single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
         "Booth Structure single side partition wall at height 2.4m",
         "Booth Structure wooden construct in painted finished as per design proposal",
+        "single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal m length",
         "single side partition wall at height 2.4m m length",
         "wooden construct in painted finished as per design proposal m length"
       ],
       "sale_unit_price": 270.0
     },
     {
+      "category_order": 2,
+      "item_order": 22,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -184,19 +204,25 @@
       "description": "m length single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length single side partition wall at height 2.4m",
+        "m length single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
+        "single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
         "single side partition wall at height 2.4m",
         "wooden construct in laminated finished as per design proposal",
+        "m length single side partition wall at height 2.4m",
         "Backwall or any partition",
         "LAMINATED",
+        "Booth Structure single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
         "Booth Structure single side partition wall at height 2.4m",
         "Booth Structure wooden construct in laminated finished as per design proposal",
+        "single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal m length",
         "single side partition wall at height 2.4m m length",
         "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 420.0
     },
     {
+      "category_order": 2,
+      "item_order": 25,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -212,19 +238,25 @@
       "description": "m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length double side partition wall at height 2.4m",
+        "m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
         "double side partition wall at height 2.4m",
         "wooden construct in painted finished as per design proposal",
+        "m length double side partition wall at height 2.4m",
         "Double sided partition",
         "PAINTED",
+        "Booth Structure double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
         "Booth Structure double side partition wall at height 2.4m",
         "Booth Structure wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal m length",
         "double side partition wall at height 2.4m m length",
         "wooden construct in painted finished as per design proposal m length"
       ],
       "sale_unit_price": 540.0
     },
     {
+      "category_order": 2,
+      "item_order": 28,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -240,19 +272,25 @@
       "description": "m length double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length double side partition wall at height 2.4m",
+        "m length double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
         "double side partition wall at height 2.4m",
         "wooden construct in laminated finished as per design proposal",
+        "m length double side partition wall at height 2.4m",
         "Double sided partition",
         "LAMINATE",
+        "Booth Structure double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal",
         "Booth Structure double side partition wall at height 2.4m",
         "Booth Structure wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal m length",
         "double side partition wall at height 2.4m m length",
         "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 840.0
     },
     {
+      "category_order": 2,
+      "item_order": 31,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -268,19 +306,25 @@
       "description": "m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length single side partition wall at height 4m",
+        "m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
+        "single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "single side partition wall at height 4m",
         "wooden construct in painted finished as per design proposal",
+        "m length single side partition wall at height 4m",
         "Backwall or any partition",
         "PAINTED",
+        "Booth Structure single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "Booth Structure single side partition wall at height 4m",
         "Booth Structure wooden construct in painted finished as per design proposal",
+        "single side partition wall at height 4m; wooden construct in painted finished as per design proposal m length",
         "single side partition wall at height 4m m length",
         "wooden construct in painted finished as per design proposal m length"
       ],
       "sale_unit_price": 540.0
     },
     {
+      "category_order": 2,
+      "item_order": 34,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -296,19 +340,25 @@
       "description": "m length single side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length single side partition wall at height 4m",
+        "m length single side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
+        "single side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
         "single side partition wall at height 4m",
         "wooden construct in laminated finished as per design proposal",
+        "m length single side partition wall at height 4m",
         "Backwall or any partition",
         "LAMINATED",
+        "Booth Structure single side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
         "Booth Structure single side partition wall at height 4m",
         "Booth Structure wooden construct in laminated finished as per design proposal",
+        "single side partition wall at height 4m; wooden construct in laminated finished as per design proposal m length",
         "single side partition wall at height 4m m length",
         "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 720.0
     },
     {
+      "category_order": 2,
+      "item_order": 37,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -324,19 +374,25 @@
       "description": "m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length double side partition wall at height 4m",
+        "m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "double side partition wall at height 4m",
         "wooden construct in painted finished as per design proposal",
+        "m length double side partition wall at height 4m",
         "Double sided partition",
         "PAINTED",
+        "Booth Structure double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "Booth Structure double side partition wall at height 4m",
         "Booth Structure wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 4m; wooden construct in painted finished as per design proposal m length",
         "double side partition wall at height 4m m length",
         "wooden construct in painted finished as per design proposal m length"
       ],
       "sale_unit_price": 870.0
     },
     {
+      "category_order": 2,
+      "item_order": 40,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -352,19 +408,25 @@
       "description": "m length double side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length double side partition wall at height 4m",
+        "m length double side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
         "double side partition wall at height 4m",
         "wooden construct in laminated finished as per design proposal",
+        "m length double side partition wall at height 4m",
         "Double sided partition",
         "LAMINATE",
+        "Booth Structure double side partition wall at height 4m; wooden construct in laminated finished as per design proposal",
         "Booth Structure double side partition wall at height 4m",
         "Booth Structure wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 4m; wooden construct in laminated finished as per design proposal m length",
         "double side partition wall at height 4m m length",
         "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 1275.0
     },
     {
+      "category_order": 2,
+      "item_order": 44,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -380,19 +442,25 @@
       "description": "m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length top fascia structure at height 3.99m",
+        "m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
+        "top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
         "top fascia structure at height 3.99m",
         "wooden construct in painted finished as per design proposal",
+        "m length top fascia structure at height 3.99m",
         "Top Booth Structure",
         "PAINTED",
+        "Booth Structure top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
         "Booth Structure top fascia structure at height 3.99m",
         "Booth Structure wooden construct in painted finished as per design proposal",
+        "top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal m length",
         "top fascia structure at height 3.99m m length",
         "wooden construct in painted finished as per design proposal m length"
       ],
       "sale_unit_price": 375.0
     },
     {
+      "category_order": 2,
+      "item_order": 47,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -408,19 +476,25 @@
       "description": "m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length top fascia structure at height 3.99m",
+        "m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
+        "top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
         "top fascia structure at height 3.99m",
         "wooden construct in laminated finished as per design proposal",
+        "m length top fascia structure at height 3.99m",
         "Top Booth Structure",
         "LAMINATED",
+        "Booth Structure top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
         "Booth Structure top fascia structure at height 3.99m",
         "Booth Structure wooden construct in laminated finished as per design proposal",
+        "top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal m length",
         "top fascia structure at height 3.99m m length",
         "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 675.0
     },
     {
+      "category_order": 2,
+      "item_order": 50,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -436,19 +510,25 @@
       "description": "m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length double side partition wall at height 2.5m for meeting room",
+        "m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal",
         "double side partition wall at height 2.5m for meeting room",
         "wooden construct in painted finished as per design proposal",
+        "m length double side partition wall at height 2.5m for meeting room",
         "Partition for meeting room",
         "PAINTED",
+        "Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal",
         "Booth Structure double side partition wall at height 2.5m for meeting room",
         "Booth Structure wooden construct in painted finished as per design proposal",
+        "double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal m length",
         "double side partition wall at height 2.5m for meeting room m length",
         "wooden construct in painted finished as per design proposal m length"
       ],
       "sale_unit_price": 540.0
     },
     {
+      "category_order": 2,
+      "item_order": 53,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -464,19 +544,25 @@
       "description": "m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m length",
       "aliases": [
-        "m length double side partition wall at height 2.5m for meeting room",
+        "m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal",
         "double side partition wall at height 2.5m for meeting room",
         "wooden construct in laminated finished as per design proposal",
+        "m length double side partition wall at height 2.5m for meeting room",
         "Partition for meeting room",
         "LAMINATE",
+        "Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal",
         "Booth Structure double side partition wall at height 2.5m for meeting room",
         "Booth Structure wooden construct in laminated finished as per design proposal",
+        "double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal m length",
         "double side partition wall at height 2.5m for meeting room m length",
         "wooden construct in laminated finished as per design proposal m length"
       ],
       "sale_unit_price": 840.0
     },
     {
+      "category_order": 2,
+      "item_order": 56,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -502,6 +588,8 @@
       "sale_unit_price": 270.0
     },
     {
+      "category_order": 2,
+      "item_order": 59,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -527,6 +615,8 @@
       "sale_unit_price": 420.0
     },
     {
+      "category_order": 2,
+      "item_order": 62,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -552,6 +642,8 @@
       "sale_unit_price": 277.5
     },
     {
+      "category_order": 2,
+      "item_order": 65,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -577,6 +669,8 @@
       "sale_unit_price": 675.0
     },
     {
+      "category_order": 2,
+      "item_order": 68,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -602,6 +696,8 @@
       "sale_unit_price": 1275.0
     },
     {
+      "category_order": 2,
+      "item_order": 71,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -627,6 +723,8 @@
       "sale_unit_price": 525.0
     },
     {
+      "category_order": 2,
+      "item_order": 74,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -652,6 +750,8 @@
       "sale_unit_price": 825.0
     },
     {
+      "category_order": 2,
+      "item_order": 77,
       "section": "Booth Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -675,6 +775,8 @@
       "sale_unit_price": 1230.0
     },
     {
+      "category_order": 3,
+      "item_order": 83,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -686,23 +788,30 @@
         "PAINTED"
       ],
       "extra_values": [],
-      "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
-      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
-      "unit_hint": "m length",
+      "id": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+      "unit_hint": "nos",
       "aliases": [
+        "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable information counter",
+        "wooden construct in painted finished and laminated top as per design proposal",
         "m length x 1m height x 0.5m Width lockable information counter",
         "x 1m height x 0.5m Width lockable information counter",
-        "wooden construct in painted finished and laminated top as per design proposal",
         "INFORMATION COUNTER",
         "PAINTED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
         "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
-        "x 1m height x 0.5m Width lockable information counter m length",
-        "wooden construct in painted finished and laminated top as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal nos",
+        "x 1m height x 0.5m Width lockable information counter nos",
+        "wooden construct in painted finished and laminated top as per design proposal nos"
       ],
       "sale_unit_price": 1200.0
     },
     {
+      "category_order": 3,
+      "item_order": 86,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -714,23 +823,30 @@
         "FULL LAMINATED"
       ],
       "extra_values": [],
-      "id": "counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
-      "description": "m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
-      "unit_hint": "m length",
+      "id": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
+      "description": "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+      "unit_hint": "nos",
       "aliases": [
+        "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable information counter",
+        "wooden construct in laminated finished as per design proposal",
         "m length x 1m height x 0.5m Width lockable information counter",
         "x 1m height x 0.5m Width lockable information counter",
-        "wooden construct in laminated finished as per design proposal",
         "INFORMATION COUNTER",
         "FULL LAMINATED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal",
         "COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
-        "x 1m height x 0.5m Width lockable information counter m length",
-        "wooden construct in laminated finished as per design proposal m length"
+        "1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal nos",
+        "x 1m height x 0.5m Width lockable information counter nos",
+        "wooden construct in laminated finished as per design proposal nos"
       ],
       "sale_unit_price": 1800.0
     },
     {
+      "category_order": 3,
+      "item_order": 89,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -746,19 +862,25 @@
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
       "unit_hint": "nos",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable counter",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
         "1m length x 1m height x 0.5m Width lockable counter",
         "wooden construct in painted finished and laminated top as per design proposal",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter",
         "COUNTER",
         "PAINTED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal nos",
         "1m length x 1m height x 0.5m Width lockable counter nos",
         "wooden construct in painted finished and laminated top as per design proposal nos"
       ],
       "sale_unit_price": 1200.0
     },
     {
+      "category_order": 3,
+      "item_order": 92,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -774,19 +896,25 @@
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
       "unit_hint": "nos",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable counter",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
         "1m length x 1m height x 0.5m Width lockable counter",
         "wooden construct in laminated finished as per design proposal",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter",
         "COUNTER",
         "FULL LAMINATED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal nos",
         "1m length x 1m height x 0.5m Width lockable counter nos",
         "wooden construct in laminated finished as per design proposal nos"
       ],
       "sale_unit_price": 1800.0
     },
     {
+      "category_order": 3,
+      "item_order": 95,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -802,19 +930,25 @@
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal",
       "unit_hint": "nos",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal",
         "1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "wooden construct in painted finished and laminated top as per design proposal",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "COUNTER WITH GLASS TOP",
         "PAINTED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "COUNTERS AND CABINETS wooden construct in painted finished and laminated top as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal nos",
         "1m length x 1m height x 0.5m Width lockable counter with glass display top nos",
         "wooden construct in painted finished and laminated top as per design proposal nos"
       ],
       "sale_unit_price": 1800.0
     },
     {
+      "category_order": 3,
+      "item_order": 98,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -830,19 +964,25 @@
       "description": "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal",
       "unit_hint": "nos",
       "aliases": [
-        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal",
         "1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "wooden construct in laminated finished as per design proposal",
+        "nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "COUNTER",
         "FULL LAMINATED",
+        "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal",
         "COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top",
         "COUNTERS AND CABINETS wooden construct in laminated finished as per design proposal",
+        "1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal nos",
         "1m length x 1m height x 0.5m Width lockable counter with glass display top nos",
         "wooden construct in laminated finished as per design proposal nos"
       ],
       "sale_unit_price": 2100.0
     },
     {
+      "category_order": 3,
+      "item_order": 101,
       "section": "COUNTERS AND CABINETS",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -864,6 +1004,8 @@
       "sale_unit_price": 1200.0
     },
     {
+      "category_order": 4,
+      "item_order": 106,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -885,6 +1027,8 @@
       "sale_unit_price": 135.0
     },
     {
+      "category_order": 4,
+      "item_order": 108,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -910,6 +1054,8 @@
       "sale_unit_price": 450.0
     },
     {
+      "category_order": 4,
+      "item_order": 111,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -933,6 +1079,8 @@
       "sale_unit_price": 750.0
     },
     {
+      "category_order": 4,
+      "item_order": 113,
       "section": "Hanging Structure",
       "default_quantity": 1.0,
       "default_quote_amount": 817.5,
@@ -956,6 +1104,8 @@
       "sale_unit_price": 750.0
     },
     {
+      "category_order": 4,
+      "item_order": 115,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -971,19 +1121,25 @@
       "description": "m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal",
       "unit_hint": "m run",
       "aliases": [
-        "m run of hanging structure x 1m height",
+        "m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal",
+        "hanging structure x 1m height; wooden construct in painted finished as per design proposal",
         "hanging structure x 1m height",
         "wooden construct in painted finished as per design proposal",
+        "m run of hanging structure x 1m height",
         "Wooden hanging structure",
         "PAINTED",
+        "Hanging Structure hanging structure x 1m height; wooden construct in painted finished as per design proposal",
         "Hanging Structure hanging structure x 1m height",
         "Hanging Structure wooden construct in painted finished as per design proposal",
+        "hanging structure x 1m height; wooden construct in painted finished as per design proposal m run",
         "hanging structure x 1m height m run",
         "wooden construct in painted finished as per design proposal m run"
       ],
       "sale_unit_price": 450.0
     },
     {
+      "category_order": 4,
+      "item_order": 118,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -999,19 +1155,25 @@
       "description": "m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
       "unit_hint": "m run",
       "aliases": [
-        "m run of hanging structure x 1m height",
+        "m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
+        "hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
         "hanging structure x 1m height",
         "wooden construct in laminated finished as per design proposal",
+        "m run of hanging structure x 1m height",
         "Wooden hanging structure",
         "LAMINATE",
+        "Hanging Structure hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
         "Hanging Structure hanging structure x 1m height",
         "Hanging Structure wooden construct in laminated finished as per design proposal",
+        "hanging structure x 1m height; wooden construct in laminated finished as per design proposal m run",
         "hanging structure x 1m height m run",
         "wooden construct in laminated finished as per design proposal m run"
       ],
       "sale_unit_price": 675.0
     },
     {
+      "category_order": 4,
+      "item_order": 121,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1026,14 +1188,18 @@
       "description": "m run of hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print",
       "unit_hint": "m run",
       "aliases": [
-        "m run of hanging structure x 1m height",
+        "m run of hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print",
+        "hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print",
         "hanging structure x 1m height",
         "aluminum profile construct in fabric finished as per design proposal",
         "Including fabric print",
+        "m run of hanging structure x 1m height",
         "TUBE with PRINTED FABRIC",
+        "Hanging Structure hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print",
         "Hanging Structure hanging structure x 1m height",
         "Hanging Structure aluminum profile construct in fabric finished as per design proposal",
         "Hanging Structure Including fabric print",
+        "hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print m run",
         "hanging structure x 1m height m run",
         "aluminum profile construct in fabric finished as per design proposal m run",
         "Including fabric print m run"
@@ -1041,6 +1207,8 @@
       "sale_unit_price": 150.0
     },
     {
+      "category_order": 4,
+      "item_order": 125,
       "section": "Hanging Structure",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1067,6 +1235,8 @@
       "sale_unit_price": 1200.0
     },
     {
+      "category_order": 5,
+      "item_order": 130,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1098,6 +1268,8 @@
       ]
     },
     {
+      "category_order": 5,
+      "item_order": 132,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1121,6 +1293,8 @@
       "sale_unit_price": 52.5
     },
     {
+      "category_order": 5,
+      "item_order": 134,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1152,6 +1326,8 @@
       ]
     },
     {
+      "category_order": 5,
+      "item_order": 136,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1175,6 +1351,8 @@
       "sale_unit_price": 105.0
     },
     {
+      "category_order": 5,
+      "item_order": 138,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1198,6 +1376,8 @@
       "sale_unit_price": 45.0
     },
     {
+      "category_order": 5,
+      "item_order": 140,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1229,6 +1409,8 @@
       ]
     },
     {
+      "category_order": 5,
+      "item_order": 142,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1253,6 +1435,8 @@
       "sale_unit_price": 142.5
     },
     {
+      "category_order": 5,
+      "item_order": 144,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1278,6 +1462,8 @@
       "sale_unit_price": 270.0
     },
     {
+      "category_order": 5,
+      "item_order": 146,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1301,6 +1487,8 @@
       "sale_unit_price": 42.0
     },
     {
+      "category_order": 5,
+      "item_order": 148,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1324,6 +1512,8 @@
       "sale_unit_price": 60.0
     },
     {
+      "category_order": 5,
+      "item_order": 150,
       "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1347,6 +1537,8 @@
       "sale_unit_price": 600.0
     },
     {
+      "category_order": 6,
+      "item_order": 154,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1378,6 +1570,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 156,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1415,6 +1609,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 158,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1446,6 +1642,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 160,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1477,6 +1675,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 162,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1508,6 +1708,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 164,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1539,6 +1741,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 166,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1570,6 +1774,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 168,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1593,6 +1799,8 @@
       "sale_unit_price": 12.0
     },
     {
+      "category_order": 6,
+      "item_order": 170,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1630,6 +1838,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 172,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1653,6 +1863,8 @@
       "sale_unit_price": 52.5
     },
     {
+      "category_order": 6,
+      "item_order": 174,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1690,6 +1902,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 176,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1721,6 +1935,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 178,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1744,6 +1960,8 @@
       "sale_unit_price": 52.5
     },
     {
+      "category_order": 6,
+      "item_order": 180,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1781,6 +1999,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 182,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1804,6 +2024,8 @@
       "sale_unit_price": 52.5
     },
     {
+      "category_order": 6,
+      "item_order": 184,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1841,6 +2063,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 186,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1864,6 +2088,8 @@
       "sale_unit_price": 82.5
     },
     {
+      "category_order": 6,
+      "item_order": 188,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1895,6 +2121,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 190,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1926,6 +2154,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 192,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1957,6 +2187,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 194,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -1994,6 +2226,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 196,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2017,6 +2251,8 @@
       "sale_unit_price": 112.5
     },
     {
+      "category_order": 6,
+      "item_order": 198,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2048,6 +2284,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 200,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2079,6 +2317,8 @@
       ]
     },
     {
+      "category_order": 6,
+      "item_order": 202,
       "section": "Furniture Rental",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2102,6 +2342,8 @@
       "sale_unit_price": 67.5
     },
     {
+      "category_order": 7,
+      "item_order": 208,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2139,6 +2381,8 @@
       ]
     },
     {
+      "category_order": 7,
+      "item_order": 210,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2162,6 +2406,8 @@
       "sale_unit_price": 82.5
     },
     {
+      "category_order": 7,
+      "item_order": 212,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2199,6 +2445,8 @@
       ]
     },
     {
+      "category_order": 7,
+      "item_order": 214,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2222,6 +2470,8 @@
       "sale_unit_price": 27.0
     },
     {
+      "category_order": 7,
+      "item_order": 216,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2253,6 +2503,8 @@
       ]
     },
     {
+      "category_order": 7,
+      "item_order": 218,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2284,6 +2536,8 @@
       ]
     },
     {
+      "category_order": 7,
+      "item_order": 220,
       "section": "Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2307,6 +2561,8 @@
       "sale_unit_price": 135.0
     },
     {
+      "category_order": 8,
+      "item_order": 225,
       "section": "AV Equipment Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2330,6 +2586,8 @@
       "sale_unit_price": 450.0
     },
     {
+      "category_order": 8,
+      "item_order": 227,
       "section": "AV Equipment Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2353,6 +2611,8 @@
       "sale_unit_price": 675.0
     },
     {
+      "category_order": 8,
+      "item_order": 229,
       "section": "AV Equipment Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2376,6 +2636,8 @@
       "sale_unit_price": 975.0
     },
     {
+      "category_order": 8,
+      "item_order": 231,
       "section": "AV Equipment Rental Items",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2399,6 +2661,8 @@
       "sale_unit_price": 2250.0
     },
     {
+      "category_order": 9,
+      "item_order": 238,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2422,6 +2686,8 @@
       "sale_unit_price": 525.0
     },
     {
+      "category_order": 9,
+      "item_order": 240,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2447,6 +2713,8 @@
       "sale_unit_price": 600.0
     },
     {
+      "category_order": 9,
+      "item_order": 243,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2470,6 +2738,8 @@
       "sale_unit_price": 300.0
     },
     {
+      "category_order": 9,
+      "item_order": 245,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2493,6 +2763,8 @@
       "sale_unit_price": 225.0
     },
     {
+      "category_order": 9,
+      "item_order": 247,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2518,6 +2790,8 @@
       "sale_unit_price": 240.0
     },
     {
+      "category_order": 9,
+      "item_order": 250,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2543,6 +2817,8 @@
       "sale_unit_price": 75.0
     },
     {
+      "category_order": 9,
+      "item_order": 253,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2566,6 +2842,8 @@
       "sale_unit_price": 60.0
     },
     {
+      "category_order": 9,
+      "item_order": 255,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2589,6 +2867,8 @@
       "sale_unit_price": 72.0
     },
     {
+      "category_order": 9,
+      "item_order": 257,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2603,18 +2883,24 @@
       "description": "nos. digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH)",
       "unit_hint": "nos",
       "aliases": [
-        "nos. digital print graphic mounted directly onto system panels",
+        "nos. digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH)",
+        "digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH)",
         "digital print graphic mounted directly onto system panels",
         "(Size: 950mmL x 2340mmH)",
+        "nos. digital print graphic mounted directly onto system panels",
         "For Shell Scheme",
+        "Graphics digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH)",
         "Graphics digital print graphic mounted directly onto system panels",
         "Graphics (Size: 950mmL x 2340mmH)",
+        "digital print graphic mounted directly onto system panels; (Size: 950mmL x 2340mmH) nos",
         "digital print graphic mounted directly onto system panels nos",
         "(Size: 950mmL x 2340mmH) nos"
       ],
       "sale_unit_price": 150.0
     },
     {
+      "category_order": 9,
+      "item_order": 260,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2629,17 +2915,22 @@
       "description": "nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH)",
       "unit_hint": "nos",
       "aliases": [
+        "nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH)",
         "nos.seamless wall graphic on flex foam",
         "(Size: 3000mmL x 2500mmH)",
         "For Shell Scheme",
+        "Graphics nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH)",
         "Graphics nos.seamless wall graphic on flex foam",
         "Graphics (Size: 3000mmL x 2500mmH)",
+        "nos.seamless wall graphic on flex foam; (Size: 3000mmL x 2500mmH) nos",
         "nos.seamless wall graphic on flex foam nos",
         "(Size: 3000mmL x 2500mmH) nos"
       ],
       "sale_unit_price": 540.0
     },
     {
+      "category_order": 9,
+      "item_order": 263,
       "section": "Graphics",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2663,6 +2954,8 @@
       "sale_unit_price": 90.0
     },
     {
+      "category_order": 10,
+      "item_order": 268,
       "section": "Water Connection",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2686,6 +2979,8 @@
       "sale_unit_price": 864.0
     },
     {
+      "category_order": 10,
+      "item_order": 270,
       "section": "Water Connection",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2709,6 +3004,8 @@
       "sale_unit_price": 216.0
     },
     {
+      "category_order": 11,
+      "item_order": 276,
       "section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,
@@ -2732,6 +3029,8 @@
       "sale_unit_price": 225.0
     },
     {
+      "category_order": 11,
+      "item_order": 278,
       "section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
       "default_quantity": null,
       "default_quote_amount": null,

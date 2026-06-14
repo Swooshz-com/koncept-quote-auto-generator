@@ -1396,7 +1396,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Dynamic section count", prompt)
         self.assertIn("Use pricing_reference_sections from Quote context JSON as the fixed section list to match against first.", prompt)
         self.assertIn("Only create a new section when a line genuinely does not fit", prompt)
-        self.assertIn("Sort quote_basis_sections and line_items alphabetically by section, then description.", prompt)
+        self.assertIn("Sort quote_basis_sections and line_items by pricing reference category_order, then item_order; keep source order for unresolved custom rows.", prompt)
         self.assertIn('"pricing_reference_sections"', prompt)
         self.assertIn("confidence_pct", prompt)
         self.assertIn("Use tag Confirm for catalog-backed lines", prompt)
@@ -1772,10 +1772,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Floor Design", prompt)
         self.assertIn("COUNTERS AND CABINETS", prompt)
         self.assertIn("Only create a new section", prompt)
-        self.assertIn("Sort items alphabetically by section, then description", prompt)
+        self.assertIn("Preserve the source category order and source row order.", prompt)
+        self.assertIn("assign category_order by first-seen section in the source rows and item_order by source row order", prompt)
         self.assertNotIn("Use normalized sections such as", prompt)
 
-    def test_pricing_reference_validation_sorts_by_section_then_description(self):
+    def test_pricing_reference_validation_uses_first_seen_category_order(self):
         rows = [
             {
                 "section": "Graphics",
@@ -1805,11 +1806,162 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(
             [(item["section"], item["description"]) for item in result["items"]],
             [
-                ("Booth Structure", "A painted wall"),
-                ("Graphics", "A printed logo"),
                 ("Graphics", "Z vinyl panel"),
+                ("Graphics", "A printed logo"),
+                ("Booth Structure", "A painted wall"),
             ],
         )
+
+    def test_pricing_reference_import_preserves_category_order_from_source(self):
+        rows = [
+            {
+                "category_order": "2",
+                "section": "Graphics",
+                "description": "Z vinyl panel",
+                "unit_hint": "sqm",
+                "internal_cost": "20",
+                "markup_multiplier": "1.5",
+            },
+            {
+                "category_order": "1",
+                "section": "AV Equipment Rental Items",
+                "description": "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
+                "unit_hint": "nos",
+                "internal_cost": "100",
+                "markup_multiplier": "1.5",
+            },
+            {
+                "category_order": "2",
+                "section": "Graphics",
+                "description": "A printed logo",
+                "unit_hint": "sqm",
+                "internal_cost": "30",
+                "markup_multiplier": "1.5",
+            },
+        ]
+
+        result = webapp.validate_pricing_reference_rows(
+            rows,
+            [*webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS, "category_order"],
+            "ordered.csv",
+        )
+
+        self.assertEqual(
+            [(item["category_order"], item["item_order"], item["section"], item["description"]) for item in result["items"]],
+            [
+                (1, 2, "AV Equipment Rental Items", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'),
+                (2, 1, "Graphics", "Z vinyl panel"),
+                (2, 3, "Graphics", "A printed logo"),
+            ],
+        )
+
+    def test_pricing_reference_import_falls_back_to_first_seen_category_order(self):
+        rows = [
+            {
+                "section": "Graphics",
+                "description": "Z vinyl panel",
+                "unit_hint": "sqm",
+                "internal_cost": "20",
+                "markup_multiplier": "1.5",
+            },
+            {
+                "section": "AV Equipment Rental Items",
+                "description": "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
+                "unit_hint": "nos",
+                "internal_cost": "100",
+                "markup_multiplier": "1.5",
+            },
+            {
+                "section": "Graphics",
+                "description": "A printed logo",
+                "unit_hint": "sqm",
+                "internal_cost": "30",
+                "markup_multiplier": "1.5",
+            },
+        ]
+
+        result = webapp.validate_pricing_reference_rows(rows, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS), "first-seen.csv")
+
+        self.assertEqual(
+            [(item["category_order"], item["item_order"], item["section"]) for item in result["items"]],
+            [
+                (1, 1, "Graphics"),
+                (1, 3, "Graphics"),
+                (2, 2, "AV Equipment Rental Items"),
+            ],
+        )
+
+    def test_normalize_ai_draft_sorts_sections_by_pricing_reference_order(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "graphics",
+                    "title": "Graphics",
+                    "lines": [{"tag": "Confirm", "text": "Printed wall graphics.", "confidence_pct": 80}],
+                },
+                {
+                    "id": "av-equipment-rental-items",
+                    "title": "AV Equipment Rental Items",
+                    "lines": [{"tag": "Confirm", "text": "Wall-mounted TV display in meeting room.", "confidence_pct": 88}],
+                },
+            ],
+            "line_items": [
+                {
+                    "section": "Graphics",
+                    "quantity": 10,
+                    "unit": "sqm",
+                    "description": "Printed wall graphics.",
+                    "pricing_keyword": "graphics.vinyl-printed-graphics",
+                },
+                {
+                    "section": "AV Equipment Rental Items",
+                    "quantity": 1,
+                    "unit": "nos",
+                    "description": "Wall-mounted TV display in meeting room",
+                    "pricing_keyword": "",
+                },
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        self.assertEqual([section["title"] for section in draft["quote_basis_sections"][:2]], ["AV Equipment Rental Items", "Graphics"])
+        self.assertEqual([item["section"] for item in draft["line_items"][:2]], ["AV Equipment Rental Items", "Graphics"])
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd")
+        av_line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(av_line["tag"], "Confirm")
+        self.assertEqual(av_line["pricing_keyword"], "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd")
+        self.assertIn('42" LED TV Monitor', av_line["pricing_reference_description"])
+
+    def test_information_counter_catalog_entries_remain_per_item_units(self):
+        catalog = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
+        affected = [
+            item for item in catalog["items"]
+            if "lockable-information-counter" in item["id"]
+        ]
+
+        self.assertEqual(len(affected), 2)
+        for item in affected:
+            self.assertEqual(item["unit_hint"], "nos")
+            self.assertTrue(item["description"].lower().startswith("nos. of 1m length"))
+
+        items = webapp.normalize_line_items({
+            "pricing_reference_id": "koncept-exhibition-quotation",
+            "line_items": [
+                {
+                    "section": "COUNTERS AND CABINETS",
+                    "quantity": 0.5,
+                    "unit": "m length",
+                    "description": "0.5m length lockable information counter wooden construct in painted finish and laminated top",
+                    "pricing_keyword": affected[0]["id"],
+                }
+            ],
+        })
+
+        self.assertEqual(items[0]["unit"], "nos")
+        self.assertEqual(items[0]["quantity"], 0.5)
+        self.assertEqual(items[0]["status"], "quantity-review")
+        self.assertNotIn("catalog_unit_price", items[0])
 
     def test_koncept_pricing_reference_descriptions_match_clean_v11_workbook_build(self):
         generated = pricing_catalog.build_catalog_from_xlsx(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx")
@@ -4702,6 +4854,7 @@ function extractFunction(name) {
 eval(extractFunction("pricingMatchStatus"));
 eval(extractFunction("pricingStatusLabel"));
 eval(extractFunction("numberOrNull"));
+eval(extractFunction("orderNumber"));
 function normalizeCategoryTitle(value = "") {
   return String(value || "").trim();
 }
@@ -5601,7 +5754,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("moveOutputRow", js)
         self.assertNotIn("data-output-move-row", js)
         self.assertNotIn('value="manual"', html)
-        self.assertIn('value="category_name" selected', html)
+        self.assertIn('value="pricing_reference" selected', html)
         self.assertIn("source_basis_line_id", js)
         self.assertIn('source: "bundled"', js)
         self.assertNotIn('source: state.pricingReferenceSource || "bundled"', js)
@@ -5845,6 +5998,7 @@ eval([
   "normalizeQuoteBasisSections",
   "basisSections",
   "numberOrNull",
+  "orderNumber",
   "effectiveOutputUnitPrice",
   "recalculateOutputRow",
   "normalizeLineItem",
@@ -5861,6 +6015,9 @@ eval([
   "dedupeOutputRows",
   "includedBasisOutputRows",
   "outputRowFromLineItem",
+  "categoryOrderValue",
+  "pricingReferenceOrder",
+  "compareOrderValues",
   "sortOutputRows",
   "refreshOutputRowsFromLineItems",
   "ensureOutputRowsFromLineItems",
@@ -6381,6 +6538,7 @@ eval([
   "cleanCustomerQuoteLineText",
   "neutralizeFormulaText",
   "numberOrNull",
+  "orderNumber",
   "canManagePricingReferences",
   "pricingReferenceNoAccessReason",
   "pricingReferenceRowStatus",
@@ -6500,6 +6658,8 @@ eval([
   "normalizeBasisTag",
   "isCustomPricingBasisLine",
   "isPendingAiProposalLine",
+  "numberOrNull",
+  "orderNumber",
   "normalizeConfidence",
   "splitBasisDecisionText",
   "normalizeBasisLines",
@@ -6874,6 +7034,17 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
 
         self.assertNotIn('renderMessages(data.errors || ["Pricing needs review."], "error")', js)
 
+    def test_static_output_sort_defaults_to_pricing_reference_order(self):
+        static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('value="pricing_reference" selected', html)
+        self.assertIn('const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];', js)
+        self.assertIn('outputSortMode: "pricing_reference"', js)
+        self.assertIn('categoryOrderValue', js)
+        self.assertIn('pricingReferenceOrder', js)
+
     def test_static_unresolved_pricing_stays_as_pending_output_row(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
@@ -6920,6 +7091,8 @@ eval([
   "normalizeUnit",
   "cleanCustomerQuoteLineText",
   "pricingReferenceLineText",
+  "numberOrNull",
+  "orderNumber",
   "leadingNumber",
   "formatQuantityNumber",
   "normalizeQuantityPrefixUnit",

@@ -9,7 +9,7 @@ const QUOTE_SESSION_FILE_DB_NAME = "swooshz_quote_session_files_v1";
 const QUOTE_SESSION_FILE_STORE_NAME = "reference_files";
 const QUOTE_SESSION_FILE_DB_VERSION = 1;
 const QUOTE_SESSION_STATE_VERSION = 4;
-const OUTPUT_SORT_MODES = ["category", "name", "category_name"];
+const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
@@ -128,7 +128,7 @@ const state = {
   outputRows: [],
   originalOutputRows: [],
   outputErrors: [],
-  outputSortMode: "category_name",
+  outputSortMode: "pricing_reference",
   analysisFindings: [],
   blockingClarificationQuestions: [],
   boothDimensions: { ...DEFAULT_BOOTH_DIMENSIONS },
@@ -1263,6 +1263,8 @@ function normalizeLineItem(item = {}) {
     catalog_description: cleanCustomerQuoteLineText(item.catalog_description || ""),
     pricing_reference_description: pricingReferenceLineText(item.pricing_reference_description || ""),
     source_basis_line_id: item.source_basis_line_id || "",
+    category_order: orderNumber(item.category_order) ?? "",
+    item_order: orderNumber(item.item_order) ?? "",
     status: item.status || "",
   };
 }
@@ -1761,7 +1763,7 @@ async function restoreSessionState() {
   state.outputRows = Array.isArray(saved.outputRows) ? saved.outputRows.map(normalizeOutputRow) : [];
   state.originalOutputRows = Array.isArray(saved.originalOutputRows) ? saved.originalOutputRows.map(normalizeOutputRow) : [];
   state.outputErrors = Array.isArray(saved.outputErrors) ? saved.outputErrors : [];
-  state.outputSortMode = OUTPUT_SORT_MODES.includes(saved.outputSortMode) ? saved.outputSortMode : "category_name";
+  state.outputSortMode = OUTPUT_SORT_MODES.includes(saved.outputSortMode) ? saved.outputSortMode : "pricing_reference";
   state.analysisFindings = Array.isArray(saved.analysisFindings) ? saved.analysisFindings : [];
   state.blockingClarificationQuestions = Array.isArray(saved.blockingClarificationQuestions) ? saved.blockingClarificationQuestions : [];
   state.boothDimensions = normalizeBoothDimensions(saved.boothDimensions || saved.quoteDetails?.project || {});
@@ -2228,6 +2230,8 @@ function normalizeBasisLines(line = "") {
       if (line.catalog_unit_price !== undefined && line.catalog_unit_price !== null && String(line.catalog_unit_price).trim() !== "") next.catalog_unit_price = line.catalog_unit_price;
       if (line.catalog_description) next.catalog_description = cleanCustomerQuoteLineText(line.catalog_description);
       if (line.pricing_reference_description) next.pricing_reference_description = pricingReferenceLineText(line.pricing_reference_description);
+      if (orderNumber(line.category_order) !== null) next.category_order = orderNumber(line.category_order);
+      if (orderNumber(line.item_order) !== null) next.item_order = orderNumber(line.item_order);
       if (quantityParts.quantity !== undefined && quantityParts.quantity !== null && String(quantityParts.quantity).trim() !== "") next.quantity = quantityParts.quantity;
       if (quantityParts.unit) next.unit = quantityParts.unit;
       if (confidence !== null) next.confidence = confidence;
@@ -2312,6 +2316,8 @@ function normalizeOutputRow(row = {}) {
     pricing_reference_description: pricingReferenceLineText(row.pricing_reference_description || row.reference_description || ""),
     pricing_keyword: row.pricing_keyword || row.keyword || "",
     source_basis_line_id: row.source_basis_line_id || "",
+    category_order: orderNumber(row.category_order) ?? "",
+    item_order: orderNumber(row.item_order) ?? "",
     status: row.status || "",
   });
 }
@@ -2340,13 +2346,37 @@ function pricingReferenceValidationResult(items, headers, skipped, sourceName = 
 }
 
 function sortPricingReferencePreviewItems(items = []) {
-  return [...items].sort((a, b) => {
-    const sectionCompare = String(a?.section || "").toLowerCase().localeCompare(String(b?.section || "").toLowerCase());
-    if (sectionCompare) return sectionCompare;
-    const descriptionCompare = String(a?.description || "").toLowerCase().localeCompare(String(b?.description || "").toLowerCase());
-    if (descriptionCompare) return descriptionCompare;
-    return String(a?.id || "").toLowerCase().localeCompare(String(b?.id || "").toLowerCase());
+  const sectionOrders = new Map();
+  let nextCategoryOrder = 1;
+  const ordered = [...items].map((item, index) => {
+    const sectionKey = safeId(normalizeCategoryTitle(item?.section || ""), `section-${index + 1}`);
+    const explicitCategoryOrder = orderNumber(item?.category_order);
+    if (!sectionOrders.has(sectionKey)) {
+      const categoryOrder = explicitCategoryOrder || nextCategoryOrder;
+      sectionOrders.set(sectionKey, categoryOrder);
+      nextCategoryOrder = Math.max(nextCategoryOrder + 1, categoryOrder + 1);
+    }
+    return {
+      item: {
+        ...item,
+        category_order: sectionOrders.get(sectionKey),
+        item_order: orderNumber(item?.item_order) || index + 1,
+      },
+      index,
+    };
   });
+  ordered.sort((a, b) => {
+    const categoryCompare = (orderNumber(a.item.category_order) || 999999) - (orderNumber(b.item.category_order) || 999999);
+    if (categoryCompare) return categoryCompare;
+    const itemOrderCompare = (orderNumber(a.item.item_order) || 999999) - (orderNumber(b.item.item_order) || 999999);
+    if (itemOrderCompare) return itemOrderCompare;
+    const sectionCompare = String(a.item?.section || "").toLowerCase().localeCompare(String(b.item?.section || "").toLowerCase());
+    if (sectionCompare) return sectionCompare;
+    const descriptionCompare = String(a.item?.description || "").toLowerCase().localeCompare(String(b.item?.description || "").toLowerCase());
+    if (descriptionCompare) return descriptionCompare;
+    return String(a.item?.id || "").toLowerCase().localeCompare(String(b.item?.id || "").toLowerCase()) || a.index - b.index;
+  });
+  return ordered.map(({ item }) => item);
 }
 
 function pricingReferenceRowStatus(row = {}) {
@@ -2447,6 +2477,8 @@ function normalizePricingReferencePreviewItem(item = {}, index = 0) {
     unit_hint: normalizeUnit(neutralizeFormulaText(item.unit_hint || item.unit || "")),
     internal_cost: item.internal_cost ?? "",
     markup_multiplier: item.markup_multiplier ?? "",
+    category_order: orderNumber(item.category_order) ?? "",
+    item_order: orderNumber(item.item_order) ?? index + 1,
     remarks: Array.isArray(item.remarks) ? item.remarks.map(neutralizeFormulaText).join("; ") : neutralizeFormulaText(item.remarks || ""),
     aliases: Array.isArray(item.aliases) ? item.aliases.map(neutralizeFormulaText).join(" | ") : neutralizeFormulaText(item.aliases || ""),
     visual_references: Array.isArray(item.visual_references) ? item.visual_references : [],
@@ -3095,6 +3127,11 @@ function numberOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function orderNumber(value) {
+  const number = numberOrNull(value);
+  return number !== null && number > 0 ? Math.trunc(number) : null;
+}
+
 function unitPriceEditKind(value) {
   const text = String(value ?? "").trim();
   if (!text) return "blank";
@@ -3293,6 +3330,8 @@ function includedBasisOutputRows(existingRows = []) {
         pricing_reference_description: line.pricing_reference_description || "",
         pricing_keyword: line.pricing_keyword || "",
         source_basis_line_id: line.id || line.source_line_item_id || "",
+        category_order: line.category_order ?? "",
+        item_order: line.item_order ?? "",
         status: customPricing ? "custom" : "needs-pricing",
       }));
     });
@@ -3314,6 +3353,8 @@ function outputRowFromLineItem(item = {}) {
     pricing_reference_description: normalized.pricing_reference_description || "",
     pricing_keyword: normalized.pricing_keyword,
     source_basis_line_id: normalized.source_basis_line_id,
+    category_order: normalized.category_order,
+    item_order: normalized.item_order,
     status: normalized.status || "",
   });
 }
@@ -3355,20 +3396,50 @@ function outputRowFromPricingMatch(row = {}) {
     pricing_reference_description: referenceDescription,
     pricing_keyword: row.keyword || row.pricing_keyword || "",
     source_basis_line_id: row.source_basis_line_id || "",
+    category_order: row.category_order ?? "",
+    item_order: row.item_order ?? "",
     status: row.status,
   });
+}
+
+function categoryOrderValue(row = {}) {
+  return orderNumber(row.category_order) || 999999;
+}
+
+function pricingReferenceOrder(row = {}, fallbackIndex = 0) {
+  return [
+    categoryOrderValue(row),
+    orderNumber(row.item_order) || 999999,
+    fallbackIndex,
+  ];
+}
+
+function compareOrderValues(left = [], right = []) {
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (left[index] || 0) - (right[index] || 0);
+    if (difference) return difference;
+  }
+  return 0;
 }
 
 function sortOutputRows(rows = state.outputRows) {
   const copy = rows.map((row, index) => ({ row, index }));
   const compareText = (value) => String(value || "").toLowerCase();
   copy.sort((a, b) => {
-    if (state.outputSortMode === "name") {
-      return compareText(a.row.description).localeCompare(compareText(b.row.description)) || a.index - b.index;
-    }
     const sectionCompare = compareText(a.row.section).localeCompare(compareText(b.row.section));
+    const descriptionCompare = compareText(a.row.description).localeCompare(compareText(b.row.description));
+    if (state.outputSortMode === "pricing_reference") {
+      return compareOrderValues(pricingReferenceOrder(a.row, a.index), pricingReferenceOrder(b.row, b.index))
+        || sectionCompare
+        || descriptionCompare
+        || a.index - b.index;
+    }
+    if (state.outputSortMode === "name") {
+      return descriptionCompare || a.index - b.index;
+    }
     if (state.outputSortMode === "category") return sectionCompare || a.index - b.index;
-    return sectionCompare || compareText(a.row.description).localeCompare(compareText(b.row.description)) || a.index - b.index;
+    return sectionCompare || descriptionCompare || a.index - b.index;
   });
   return copy.map((item) => item.row);
 }

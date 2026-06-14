@@ -1605,9 +1605,47 @@ SUSPICIOUS_LINEAR_STRUCTURE_TERMS = {
     "structure",
     "wall",
 }
+COUNTER_PER_ITEM_TERMS = {
+    "information counter",
+    "lockable counter",
+    "lockable information counter",
+}
+
+
+def is_per_item_counter_text(section: Any, description: Any) -> bool:
+    text = f"{clean_text(section)} {clean_text(description)}".lower()
+    if "counter" not in text and "cabinet" not in text:
+        return False
+    return any(term in text for term in COUNTER_PER_ITEM_TERMS)
+
+
+def normalize_per_item_counter_description(section: Any, description: Any) -> str:
+    text = clean_text(description)
+    if not is_per_item_counter_text(section, text):
+        return text
+    return re.sub(
+        r"(?i)^m\.?\s*length\s*x\b",
+        "nos. of 1m length x",
+        text,
+        count=1,
+    )
+
+
+def per_item_counter_quantity_needs_review(section: Any, description: Any, quantity: Any, unit: Any) -> bool:
+    if not is_per_item_counter_text(section, description):
+        return False
+    numeric_quantity = parse_float_or_none(quantity)
+    normalized_unit = normalize_pricing_unit(unit).lower()
+    if normalized_unit in LINEAR_TAKEOFF_UNITS:
+        return True
+    if numeric_quantity is None:
+        return False
+    return numeric_quantity > 0 and abs(numeric_quantity - round(numeric_quantity)) > 0.0001
 
 
 def line_item_needs_quantity_review(section: Any, description: Any, quantity: Any, unit: Any) -> bool:
+    if per_item_counter_quantity_needs_review(section, description, quantity, unit):
+        return True
     numeric_quantity = parse_float_or_none(quantity)
     if numeric_quantity is None or abs(numeric_quantity - 1.0) > 0.0001:
         return False
@@ -1625,6 +1663,77 @@ def parse_pricing_number(value: Any) -> float | None:
     except ValueError:
         return None
     return number if math.isfinite(number) else None
+
+
+PRICING_REFERENCE_CATEGORY_ORDER_KEYS = (
+    "category_order",
+    "category_index",
+    "category_no",
+    "category_number",
+    "section_order",
+    "section_index",
+    "section_no",
+    "section_number",
+)
+PRICING_REFERENCE_ITEM_ORDER_KEYS = (
+    "item_order",
+    "item_index",
+    "row_order",
+    "row_index",
+    "source_row",
+    "_source_row",
+)
+
+
+def pricing_reference_order_number(value: Any) -> int | None:
+    number = parse_pricing_number(value)
+    if number is None or number <= 0:
+        return None
+    return int(number)
+
+
+def pricing_reference_order_from_raw(raw: dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        if key not in raw:
+            continue
+        order = pricing_reference_order_number(raw.get(key))
+        if order is not None:
+            return order
+    return None
+
+
+def ensure_pricing_reference_order_fields(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    section_orders: dict[str, int] = {}
+    next_category_order = 1
+    for index, item in enumerate(items, start=1):
+        item_order = pricing_reference_order_number(item.get("item_order")) or index
+        item["item_order"] = item_order
+        section = clean_text(item.get("section")) or clean_text(item.get("reference_section"))
+        section_key = safe_section_id(normalize_catalog_section(section) or section, f"section-{index}")
+        explicit_category_order = pricing_reference_order_number(item.get("category_order"))
+        if section_key not in section_orders:
+            if explicit_category_order is not None:
+                section_orders[section_key] = explicit_category_order
+                next_category_order = max(next_category_order, explicit_category_order + 1)
+            else:
+                while next_category_order in section_orders.values():
+                    next_category_order += 1
+                section_orders[section_key] = next_category_order
+                next_category_order += 1
+        item["category_order"] = section_orders[section_key]
+    return items
+
+
+def pricing_reference_sort_order(item: dict[str, Any]) -> tuple[int, int, str, str, str]:
+    category_order = pricing_reference_order_number(item.get("category_order")) or 999999
+    item_order = pricing_reference_order_number(item.get("item_order")) or 999999
+    return (
+        category_order,
+        item_order,
+        clean_text(item.get("section")).casefold(),
+        clean_text(item.get("description")).casefold(),
+        clean_text(item.get("id")).casefold(),
+    )
 
 
 def split_pricing_reference_terms(value: Any) -> list[str]:
@@ -1857,9 +1966,12 @@ def pricing_reference_sale_unit_price(item: dict[str, Any]) -> float | None:
 def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict[str, Any] | None:
     description = clean_text(sanitize_formula_text(raw.get("description")))
     reference_section = clean_basis_section_title(sanitize_formula_text(raw.get("reference_section") or raw.get("section")))
+    description = normalize_per_item_counter_description(reference_section, description)
     section = normalize_catalog_section(reference_section)
     raw_unit_hint = normalize_pricing_unit(sanitize_formula_text(raw.get("unit_hint") or raw.get("unit")))
     unit_hint = reconcile_pricing_reference_unit_hint(description, raw_unit_hint)
+    if is_per_item_counter_text(section or reference_section, description):
+        unit_hint = "nos"
     internal_cost = parse_pricing_number(raw.get("internal_cost") or raw.get("cost"))
     markup = parse_pricing_number(raw.get("markup_multiplier") or raw.get("markup"))
     if not description or internal_cost is None or internal_cost <= 0 or markup is None or markup <= 0:
@@ -1880,6 +1992,12 @@ def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict
         "remarks": remarks,
         "aliases": aliases,
     }
+    category_order = pricing_reference_order_from_raw(raw, PRICING_REFERENCE_CATEGORY_ORDER_KEYS)
+    if category_order is not None:
+        item["category_order"] = category_order
+    item_order = pricing_reference_order_from_raw(raw, PRICING_REFERENCE_ITEM_ORDER_KEYS)
+    if item_order is not None:
+        item["item_order"] = item_order
     visual_references = sanitize_visual_references(raw.get("visual_references"))
     if visual_references:
         item["visual_references"] = visual_references
@@ -2002,9 +2120,11 @@ def validate_pricing_reference_rows(
                 suffix += 1
             seen_ids.add(candidate_id)
             item["id"] = candidate_id
+            item["item_order"] = pricing_reference_order_number(item.get("item_order")) or pricing_reference_order_from_raw(raw, PRICING_REFERENCE_ITEM_ORDER_KEYS) or index + 1
             items.append(item)
         else:
             skipped += 1
+    ensure_pricing_reference_order_fields(items)
     if len(rows) > MAX_PRICING_REFERENCE_ROWS:
         skipped += len(rows) - MAX_PRICING_REFERENCE_ROWS
     empty_is_error = bool(rows and skipped)
@@ -2340,13 +2460,15 @@ def attach_visual_references_to_pricing_rows(rows: list[dict[str, Any]], visual_
         item_refs.append(visual_ref)
 
 
-def v11_row_to_pricing_reference_row(section: str, row_number: int, row: list[str]) -> dict[str, Any]:
+def v11_row_to_pricing_reference_row(section: str, section_order: int | None, row_number: int, row: list[str]) -> dict[str, Any]:
     description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
     remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
     unit_hint = infer_unit_prefix(description)
     return {
         "_source_row": row_number,
+        "category_order": section_order,
+        "item_order": row_number,
         "section": section,
         "description": description,
         "unit_hint": unit_hint,
@@ -2361,13 +2483,19 @@ def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any
     rows_with_numbers = xlsx_rows_with_numbers_from_bytes(raw)
     rows: list[dict[str, Any]] = []
     current_section = ""
+    current_section_order: int | None = None
+    fallback_section_order = 1
     for row_number, row in rows_with_numbers:
         if is_v11_section_row(row):
             current_section = clean_basis_section_title(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
+            current_section_order = pricing_reference_order_number(pricing_workbook_number(row, V11_COL_SECTION_NO))
+            if current_section_order is None:
+                current_section_order = fallback_section_order
+            fallback_section_order = max(fallback_section_order + 1, current_section_order + 1)
             continue
         if is_v11_price_row(row):
             if current_section:
-                rows.append(v11_row_to_pricing_reference_row(current_section, row_number, row))
+                rows.append(v11_row_to_pricing_reference_row(current_section, current_section_order, row_number, row))
             continue
         if not rows:
             continue
@@ -2397,8 +2525,6 @@ def pricing_reference_import_preview_from_v11_workbook(raw: bytes, filename: str
             "layout": "v1.1-pricing-workbook",
             "errors": ["Workbook layout was not recognized as a V1.1 pricing workbook."],
         }
-    for row in rows:
-        row.pop("_source_row", None)
     result = validate_pricing_reference_rows(rows, list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
     result["layout"] = "v1.1-pricing-workbook"
     result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows) or DEFAULT_CURRENCY_LABEL
@@ -2574,9 +2700,11 @@ def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, An
             continue
         sanitized = sanitize_pricing_reference_item({**raw, "description": sanitize_formula_text(raw.get("description"))}, index)
         if sanitized:
+            sanitized["item_order"] = pricing_reference_order_number(sanitized.get("item_order")) or index + 1
             items.append(sanitized)
     if not items:
         raise ValueError("At least one valid pricing row is required.")
+    ensure_pricing_reference_order_fields(items)
     items = sorted_pricing_reference_items(items)
     return {
         "id": reference_id,
@@ -2616,6 +2744,7 @@ def pricing_reference_catalog_payload(reference: dict[str, Any]) -> dict[str, An
         if sale_unit_price is not None:
             next_item["sale_unit_price"] = sale_unit_price
         items.append(next_item)
+    ensure_pricing_reference_order_fields(items)
     items = sorted_pricing_reference_items(items)
     return {
         "schema_version": int(parse_pricing_number(reference.get("schema_version")) or 1),
@@ -2775,14 +2904,7 @@ def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]
 
 
 def sorted_pricing_reference_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        items,
-        key=lambda item: (
-            clean_text(item.get("section")).casefold(),
-            clean_text(item.get("description")).casefold(),
-            clean_text(item.get("id")).casefold(),
-        ),
-    )
+    return sorted(items, key=pricing_reference_sort_order)
 
 
 def pricing_reference_section_names(reference_id: str | None = None) -> list[str]:
@@ -2807,6 +2929,109 @@ def pricing_reference_section_names_for_payload(payload: dict[str, Any]) -> list
     return pricing_reference_section_names(pricing_reference_id_from_payload(payload))
 
 
+def pricing_reference_section_order_map_for_payload(payload: dict[str, Any]) -> dict[str, int]:
+    order: dict[str, int] = {}
+    for index, section in enumerate(pricing_reference_section_names_for_payload(payload), start=1):
+        for value in (section, normalize_catalog_section(section)):
+            key = safe_section_id(value, "")
+            if key and key not in order:
+                order[key] = index
+    return order
+
+
+def pricing_reference_section_order_value(section: Any, section_order: dict[str, int]) -> int | None:
+    for value in (section, normalize_catalog_section(section)):
+        key = safe_section_id(value, "")
+        if key and key in section_order:
+            return section_order[key]
+    return None
+
+
+def line_item_pricing_reference_order(
+    item: dict[str, Any],
+    section_order: dict[str, int],
+    fallback_index: int,
+) -> tuple[int, int, int, str, str]:
+    category_order = (
+        pricing_reference_order_number(item.get("category_order"))
+        or pricing_reference_section_order_value(item.get("section") or item.get("reference_section"), section_order)
+        or 999999
+    )
+    item_order = pricing_reference_order_number(item.get("item_order")) or 999999
+    return (
+        category_order,
+        item_order,
+        fallback_index,
+        clean_text(item.get("section")).casefold(),
+        clean_text(item.get("description")).casefold(),
+    )
+
+
+def sort_line_items_by_pricing_reference_order(payload: dict[str, Any], line_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    section_order = pricing_reference_section_order_map_for_payload(payload)
+    return [
+        item
+        for _index, item in sorted(
+            enumerate(line_items),
+            key=lambda entry: line_item_pricing_reference_order(entry[1], section_order, entry[0]),
+        )
+    ]
+
+
+def quote_basis_line_order(
+    line: dict[str, Any],
+    section_title: Any,
+    section_order: dict[str, int],
+    fallback_index: int,
+) -> tuple[int, int, int, str]:
+    category_order = (
+        pricing_reference_order_number(line.get("category_order"))
+        or pricing_reference_section_order_value(section_title, section_order)
+        or 999999
+    )
+    item_order = pricing_reference_order_number(line.get("item_order")) or 999999
+    return (category_order, item_order, fallback_index, clean_text(line.get("text")).casefold())
+
+
+def quote_basis_section_order(
+    section: dict[str, Any],
+    section_order: dict[str, int],
+    fallback_index: int,
+) -> tuple[int, int, str]:
+    title = clean_basis_section_title(section.get("title"))
+    line_category_orders = [
+        pricing_reference_order_number(line.get("category_order"))
+        for line in section.get("lines") or []
+        if isinstance(line, dict) and pricing_reference_order_number(line.get("category_order")) is not None
+    ]
+    category_order = min(line_category_orders) if line_category_orders else None
+    category_order = category_order or pricing_reference_section_order_value(title, section_order) or 999999
+    return (category_order, fallback_index, title.casefold())
+
+
+def sort_quote_basis_sections_by_pricing_reference_order(payload: dict[str, Any], sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    section_order = pricing_reference_section_order_map_for_payload(payload)
+    sorted_sections: list[dict[str, Any]] = []
+    for section in sections:
+        next_section = {**section}
+        lines = section.get("lines") if isinstance(section.get("lines"), list) else []
+        next_section["lines"] = [
+            line
+            for _index, line in sorted(
+                [(index, line) for index, line in enumerate(lines) if isinstance(line, dict)],
+                key=lambda entry: quote_basis_line_order(entry[1], section.get("title"), section_order, entry[0]),
+            )
+        ]
+        sorted_sections.append(next_section)
+    return [
+        section
+        for _index, section in sorted(
+            enumerate(sorted_sections),
+            key=lambda entry: quote_basis_section_order(entry[1], section_order, entry[0]),
+        )
+    ]
+
+
 def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dict[str, Any]) -> str:
     sections = pricing_reference_section_names()
     return (
@@ -2819,7 +3044,7 @@ def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dic
         "Extract sensible unit prefixes including m run, m, sqm, nos, and lot. Neutralize formula-like text beginning with =, +, -, or @ by treating it as literal text. "
         "Use these pricing reference sections first and match each priced row to the closest provided section. "
         "Only create a new section when none of the provided pricing reference sections fits the row. "
-        "Sort items alphabetically by section, then description. "
+        "Preserve the source category order and source row order. When no category order exists, assign category_order by first-seen section in the source rows and item_order by source row order. "
         f"Pricing reference sections JSON: {json.dumps(sections, ensure_ascii=True)}. "
         f"Source name: {source_name}. Tax: {json.dumps(tax, ensure_ascii=True)}. Bounded extracted content JSON: {json.dumps(content, ensure_ascii=True)}"
     )
@@ -3738,12 +3963,14 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
             value_ratio = len(overlap) / max(len(value_tokens), 1)
             query_ratio = len(overlap) / max(min(len(query_tokens), 12), 1)
             short_context_match = bool(section_bonus and unit_bonus) and len(overlap) >= 2 and value_ratio >= 0.6
-            if len(overlap) < 3 and not short_context_match:
+            family_context_match = bool(section_bonus or unit_bonus) and "display" in query_tokens and "display" in value_tokens
+            if len(overlap) < 3 and not short_context_match and not family_context_match:
                 continue
             strong_context_match = bool(section_bonus or unit_bonus) and query_ratio >= 0.6
-            if value_ratio < 0.55 and len(overlap) < 4 and not strong_context_match and not short_context_match:
+            if value_ratio < 0.55 and len(overlap) < 4 and not strong_context_match and not short_context_match and not family_context_match:
                 continue
-            score = len(overlap) * 2.0 + value_ratio * 6.0 + query_ratio * 2.0 + section_bonus + unit_bonus + unit_penalty
+            family_bonus = 6.0 if family_context_match else 0.0
+            score = len(overlap) * 2.0 + value_ratio * 6.0 + query_ratio * 2.0 + section_bonus + unit_bonus + unit_penalty + family_bonus
             best_score = max(best_score, score)
         if best_score >= 9.0:
             scored.append((best_score, item_id, item))
@@ -3879,6 +4106,10 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "price_mode": price_mode,
             "source_basis_line_id": safe_resource_id(raw.get("source_basis_line_id"), ""),
         }
+        for order_key in ("category_order", "item_order"):
+            order_value = pricing_reference_order_number((catalog_item or {}).get(order_key)) or pricing_reference_order_number(raw.get(order_key))
+            if order_value is not None:
+                item[order_key] = order_value
         if catalog_item and clean_text(catalog_item.get("reference_section")):
             item["reference_section"] = clean_basis_section_title(catalog_item.get("reference_section"))
         if unit_price_override is not None:
@@ -3889,7 +4120,9 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             item["catalog_description"] = catalog_description
         if catalog_item and clean_text(catalog_item.get("pricing_reference_description")):
             item["pricing_reference_description"] = clean_text(catalog_item.get("pricing_reference_description"))
-        if not pricing_keyword_was_explicit and line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"]):
+        needs_quantity_review = line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"])
+        counter_quantity_review = per_item_counter_quantity_needs_review(item["section"], item["description"], item["quantity"], item["unit"])
+        if needs_quantity_review and (not pricing_keyword_was_explicit or counter_quantity_review):
             item["status"] = "quantity-review"
             item.pop("catalog_unit_price", None)
         if not item["source_basis_line_id"]:
@@ -4040,7 +4273,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "logo_data_url": header_logo,
         },
         "tax": quote_tax_from_payload(payload),
-        "line_items": normalize_line_items(payload),
+        "line_items": sort_line_items_by_pricing_reference_order(payload, normalize_line_items(payload)),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
         "terms_heading": clean_text(quote_text.get("terms_heading")),
         "cheque_payee": clean_text(quote_text.get("cheque_payee")),
@@ -4216,6 +4449,8 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
         row = {
             "id": clean_text(item.get("id")),
             "section": clean_text(item.get("section")),
+            "category_order": pricing_reference_order_number(item.get("category_order")),
+            "item_order": pricing_reference_order_number(item.get("item_order")),
             "unit_hint": clean_text(item.get("unit_hint")),
             "description": clean_customer_quote_line_text(item.get("description"))[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS],
             "remarks": [
@@ -4271,6 +4506,8 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
             "id": safe_section_id(raw.get("id"), f"local-item-{len(items) + 1}"),
             "section": clean_text(raw.get("section")),
             "reference_section": clean_basis_section_title(raw.get("reference_section") or raw.get("section")),
+            "category_order": pricing_reference_order_number(raw.get("category_order")),
+            "item_order": pricing_reference_order_number(raw.get("item_order")),
             "unit_hint": clean_text(raw.get("unit_hint")),
             "description": clean_customer_quote_line_text(description),
             "internal_cost": cost,
@@ -4427,6 +4664,8 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
             "id": item_id,
             "section": normalize_catalog_section(item.get("section")),
             "reference_section": reference_section or normalize_catalog_section(item.get("section")),
+            "category_order": pricing_reference_order_number(item.get("category_order")),
+            "item_order": pricing_reference_order_number(item.get("item_order")),
             "unit_hint": clean_text(item.get("unit_hint")),
             "description": clean_customer_quote_line_text(raw_description),
             "pricing_reference_description": raw_description,
@@ -4508,7 +4747,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "The JSON must have quote_basis_sections as an array of dynamic sections. Dynamic section count "
         "and line count should follow the actual booth evidence. Use pricing_reference_sections from Quote context JSON as the fixed section list to match against first. "
         "Only create a new section when a line genuinely does not fit any provided pricing_reference_sections entry. "
-        "Sort quote_basis_sections and line_items alphabetically by section, then description. "
+        "Sort quote_basis_sections and line_items by pricing reference category_order, then item_order; keep source order for unresolved custom rows. "
         "Each section must include id, title, and lines. Each line must include tag, text, confidence_pct, quantity, unit, and source_line_item_id when available. "
         "quote_basis_sections line text and line_items.description are customer-facing quotation text. Do not include provenance, reasoning, analysis, or source phrases such as taken from quotation title, visible in image, as seen in render, AI detected, assumed from, likely, appears to be, from reference image, or suggested by image. Put analysis reasons only in analysis_findings, clarification questions, or internal notes. "
         "Use quote_basis_sections as the operator review surface for the same pricing sentences that will become output rows. "
@@ -4955,10 +5194,12 @@ def quote_basis_sections_with_catalog_exact_lines(
     line_items: list[dict[str, Any]],
     catalog_items: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    exact_catalog_items = [
-        item for item in (catalog_items or [])
-        if isinstance(item, dict) and clean_text(item.get("id")) and clean_text(item.get("description"))
-    ]
+    exact_catalog_items_by_id: dict[str, dict[str, Any]] = {}
+    for item in catalog_items or []:
+        if not isinstance(item, dict) or not clean_text(item.get("id")) or not clean_text(item.get("description")):
+            continue
+        exact_catalog_items_by_id.setdefault(clean_text(item.get("id")), item)
+    exact_catalog_items = list(exact_catalog_items_by_id.values())
 
     def item_has_catalog_reference(item: dict[str, Any]) -> bool:
         return bool(clean_text(item.get("pricing_reference_description")) or clean_text(item.get("catalog_description")))
@@ -4979,7 +5220,7 @@ def quote_basis_sections_with_catalog_exact_lines(
             merged["tag"] = normalize_basis_tag(incoming.get("tag"))
             merged.pop("custom_pricing", None)
             merged.pop("custom_confirmed", None)
-        for key in ("id", "source_line_item_id", "pricing_keyword", "catalog_description", "pricing_reference_description", "quantity", "unit"):
+        for key in ("id", "source_line_item_id", "pricing_keyword", "catalog_description", "pricing_reference_description", "category_order", "item_order", "quantity", "unit"):
             if not clean_text(merged.get(key)) and clean_text(incoming.get(key)):
                 merged[key] = incoming.get(key)
         existing_confidence = normalize_confidence_percent(merged.get("confidence", merged.get("confidence_pct")))
@@ -5108,10 +5349,13 @@ def quote_basis_sections_with_catalog_exact_lines(
             "seating",
             "sqm",
             "the",
+            "wall",
+            "walls",
             "with",
         }
         tokens: set[str] = set()
-        for token in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+        for raw_token in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+            token = catalog_inference_token(raw_token)
             if len(token) <= 2 or token in stop_words:
                 continue
             tokens.add(token)
@@ -5131,7 +5375,7 @@ def quote_basis_sections_with_catalog_exact_lines(
         ]
         return [clean_text(value) for value in values if clean_text(value)]
 
-    def score_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any]) -> int:
+    def score_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any], section: dict[str, Any] | None = None) -> int:
         line_text = clean_customer_quote_line_text(line.get("text"))
         line_tokens = catalog_match_tokens(line_text)
         if not line_tokens:
@@ -5146,13 +5390,19 @@ def quote_basis_sections_with_catalog_exact_lines(
                 phrase_bonus = max(phrase_bonus, 20)
             elif normalized_value in normalized_line or normalized_line in normalized_value:
                 phrase_bonus = max(phrase_bonus, 10)
-        return len(line_tokens & item_tokens) + phrase_bonus
+        section_bonus = 2 if isinstance(section, dict) and section_matches_item(section, item) else 0
+        overlap = line_tokens & item_tokens
+        family_bonus = 3 if section_bonus and "display" in line_tokens and "display" in item_tokens else 0
+        line_ratio = len(overlap) / max(len(line_tokens), 1)
+        if not phrase_bonus and not family_bonus and line_ratio < 0.75:
+            return 0
+        return len(overlap) + phrase_bonus + section_bonus + family_bonus
 
-    def catalog_item_for_basis_line(line: dict[str, Any]) -> dict[str, Any] | None:
+    def catalog_item_for_basis_line(line: dict[str, Any], section: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if clean_text(line.get("pricing_keyword")):
             return None
         scored = [
-            (score_catalog_item_for_line(line, item), item)
+            (score_catalog_item_for_line(line, item, section), item)
             for item in exact_catalog_items
         ]
         scored = [(score, item) for score, item in scored if score >= 3]
@@ -5160,7 +5410,11 @@ def quote_basis_sections_with_catalog_exact_lines(
             return None
         scored.sort(key=lambda entry: (-entry[0], clean_text(entry[1].get("id"))))
         top_score = scored[0][0]
-        if sum(1 for score, _item in scored if score == top_score) > 1:
+        tied_items = [item for score, item in scored if score == top_score]
+        if len(tied_items) > 1:
+            tied_item = resolve_tied_catalog_family_item(clean_customer_quote_line_text(line.get("text")), tied_items)
+            if tied_item:
+                return tied_item
             return None
         return scored[0][1]
 
@@ -5230,6 +5484,10 @@ def quote_basis_sections_with_catalog_exact_lines(
         catalog_unit_price = parse_float_or_none(item.get("catalog_unit_price") or item.get("sale_unit_price"))
         if catalog_unit_price is not None:
             line["catalog_unit_price"] = catalog_unit_price
+        for order_key in ("category_order", "item_order"):
+            order_value = pricing_reference_order_number(item.get(order_key))
+            if order_value is not None:
+                line[order_key] = order_value
         display_description = display_description_from_catalog_reference(catalog_description, item.get("description"))
         if replace_text and (display_description or catalog_description):
             line["text"] = display_description or catalog_description
@@ -5290,7 +5548,7 @@ def quote_basis_sections_with_catalog_exact_lines(
             line = source_lines[line_index]
             if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
                 continue
-            match = catalog_item_for_basis_line(line)
+            match = catalog_item_for_basis_line(line, source_section)
             if not match:
                 continue
             target_section = ensure_item_section(match)
@@ -5600,6 +5858,8 @@ def normalize_basis_chat_result(parsed: dict[str, Any], payload: dict[str, Any],
         if not sections:
             raise OpenAIAnalysisError("AI basis chat did not return a usable proposal.")
         sections = quote_basis_sections_apply_global_tag_command(payload, sections)
+        line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
+        sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
 
         return {
             "status": "answered",
@@ -5710,6 +5970,8 @@ def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = 
         line_items,
         list(catalog_lookup.values()),
     )
+    line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
+    sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
     legacy_basis = quote_basis_from_sections(sections)
     blockers = normalize_blocking_clarification_questions(parsed.get("blocking_clarification_questions"))
     if blockers:

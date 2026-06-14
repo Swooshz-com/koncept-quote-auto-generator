@@ -706,6 +706,37 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             issues,
         )
 
+    def test_fractional_information_counter_requires_quantity_review(self):
+        rows = [
+            quote.PriceRow(
+                row_number=1,
+                section="COUNTERS AND CABINETS",
+                description="nos. of 1m length x 1m height x 0.5m Width lockable information counter",
+                unit_hint="nos",
+                cost=800,
+                gst_multiplier=1.0,
+                markup=1.5,
+                remark="",
+                pricing_id="counters.lockable-information-counter",
+                aliases=["lockable information counter"],
+            )
+        ]
+        brief = {
+            "line_items": [{
+                "section": "COUNTERS AND CABINETS",
+                "quantity": 0.5,
+                "unit": "m length",
+                "description": "0.5m length lockable information counter",
+                "pricing_keyword": "lockable information counter",
+            }]
+        }
+
+        [line] = quote.prepare_lines(brief, rows, allow_ambiguous=True)
+
+        self.assertEqual(line.match_status, "quantity-review")
+        self.assertIsNone(line.matched_price)
+        self.assertIsNone(line.amount)
+
     def test_structure_sections_are_itemized_by_default(self):
         lines = [
             quote.QuoteLine(
