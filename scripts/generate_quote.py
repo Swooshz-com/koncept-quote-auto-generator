@@ -219,9 +219,19 @@ def clean_text(value: Any) -> str:
 
 def normalize_unit(unit: Any) -> str:
     text = clean_text(unit)
-    lower = text.lower()
+    lower = re.sub(r"\s+", " ", text.lower()).strip(". ")
     if lower in {"m2", "m^2", "sq m", "sq.m", "sq.m.", "square metre", "square meter", "square metres", "square meters"}:
         return "sqm"
+    if lower in {"m run", "m. run"}:
+        return "m run"
+    if lower in {"m length", "m. length"}:
+        return "m length"
+    if lower in {"nos", "no", "pc", "pcs", "piece", "pieces", "unit", "units"}:
+        return "nos"
+    if lower in {"lot", "lots"}:
+        return "lot"
+    if lower in {"set", "sets"}:
+        return "sets"
     return text
 
 
@@ -242,6 +252,9 @@ def resolve_default_output_dir(brief: dict[str, Any], provided_out: Path | None)
 
 def infer_unit(description: str) -> str:
     text = description.lower()
+    leading_unit = re.match(r"^\s*(m2|sqm|m\.?\s*length|m\.?\s*run|nos\.?|no\.|lot\.?|sets?)\b", text)
+    if leading_unit:
+        return normalize_unit(leading_unit.group(1))
     for unit in ("m2", "sqm", "m length", "m run", "nos", "no.", "lot", "sets"):
         if unit in text:
             return normalize_unit(unit)

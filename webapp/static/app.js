@@ -562,10 +562,15 @@ function neutralizeFormulaText(value = "") {
 
 function normalizeUnit(value = "") {
   const text = String(value || "").trim();
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().replace(/\s+/g, " ").replace(/^[.\s]+|[.\s]+$/g, "");
   if (["m2", "m^2", "sq m", "sq.m", "sq.m.", "square metre", "square meter", "square metres", "square meters"].includes(lower)) {
     return "sqm";
   }
+  if (["m run", "m. run"].includes(lower)) return "m run";
+  if (["m length", "m. length"].includes(lower)) return "m length";
+  if (["nos", "no", "pc", "pcs", "piece", "pieces", "unit", "units"].includes(lower)) return "nos";
+  if (["lot", "lots"].includes(lower)) return "lot";
+  if (["set", "sets"].includes(lower)) return "sets";
   return text;
 }
 
