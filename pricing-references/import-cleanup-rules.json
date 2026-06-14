@@ -1,0 +1,18 @@
+{
+  "word_replacements": {
+    "platfrom": "platform",
+    "parition": "partition",
+    "sytem": "system",
+    "dowlight": "downlight",
+    "lenght": "length",
+    "widht": "width",
+    "heigth": "height",
+    "plumbling": "plumbing"
+  },
+  "leading_unit_replacements": {
+    "m2": "sqm"
+  },
+  "label_spacing": [
+    "size"
+  ]
+}

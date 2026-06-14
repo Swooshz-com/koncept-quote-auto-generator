@@ -42,6 +42,13 @@ from xml.sax.saxutils import escape as xml_escape
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import pricing_reference_cleanup
+import pricing_reference_enrichment
+
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 GENERATOR_PATH = PROJECT_ROOT / "scripts" / "generate_quote.py"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -94,7 +101,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
         "example.floor-design.needle-punch-carpet-in-colour",
         "Floor Design",
-        "m2 needle punch carpet in colour",
+        "sqm needle punch carpet in colour",
         "sqm",
         "7",
         "1.5",
@@ -103,7 +110,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
         "example.floor-design.100mm-raised-platform-with-aluminum-edging",
         "Floor Design",
-        "m2 100mm raised platform with aluminum edging",
+        "sqm 100mm raised platform with aluminum edging",
         "sqm",
         "40",
         "1.5",
@@ -139,7 +146,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
         "example.graphics.vinyl-printed-graphics",
         "Graphics",
-        "m2 of vinyl printed graphics",
+        "sqm of vinyl printed graphics",
         "sqm",
         "40",
         "1.5",
@@ -847,15 +854,7 @@ def detect_currency_from_rows(headers: list[str], rows: list[dict[str, Any]]) ->
     return detected_currency_label(" ".join(parts))
 
 
-CATALOG_TEXT_COMPARISON_TOKEN_ALIASES = {
-    "dowlight": "downlight",
-    "heigth": "height",
-    "lenght": "length",
-    "parition": "partition",
-    "platfrom": "platform",
-    "sytem": "system",
-    "widht": "width",
-}
+CATALOG_TEXT_COMPARISON_TOKEN_ALIASES = pricing_reference_cleanup.import_word_replacements()
 
 
 def comparable_catalog_description_key(value: Any) -> str:
@@ -1084,6 +1083,18 @@ def safe_section_id(value: Any, fallback: str = "section") -> str:
         return text
     slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
     return slug or fallback
+
+
+def safe_catalog_item_id(value: Any, fallback: str = "item") -> str:
+    text = clean_text(value).lower()
+    if re.fullmatch(r"[a-z0-9_-]+(?:\.[a-z0-9_-]+)*", text):
+        return text
+    if "." in text:
+        segments = [safe_section_id(segment, "") for segment in text.split(".")]
+        dotted = ".".join(segment for segment in segments if segment)
+        if dotted:
+            return dotted
+    return safe_section_id(text, fallback)
 
 
 def clean_basis_section_title(value: Any) -> str:
@@ -2033,6 +2044,9 @@ def sanitize_pricing_reference_item(
     markup = parse_pricing_number(raw.get("markup_multiplier") or raw.get("markup"))
     if not description or internal_cost is None or internal_cost <= 0 or markup is None or markup <= 0:
         return None
+    default_quantity = parse_pricing_number(raw.get("default_quantity"))
+    default_quote_amount = parse_pricing_number(raw.get("default_quote_amount") or raw.get("default_estimate"))
+    gst_multiplier = parse_pricing_number(raw.get("gst_multiplier") or raw.get("gst"))
     if apply_import_text_fixes:
         remarks = [
             apply_pricing_workbook_text_fixes(sanitize_formula_text(item))
@@ -2049,8 +2063,17 @@ def sanitize_pricing_reference_item(
         aliases = default_pricing_reference_aliases(section, description, unit_hint, remarks)
     elif apply_import_text_fixes and description != clean_text(raw_description):
         aliases = unique_clean_list([description, *aliases])[:8]
+    raw_id = clean_text(raw.get("id"))
+    default_item_id = ".".join(
+        part
+        for part in (
+            safe_section_id(section, "pricing"),
+            safe_section_id(stripped_pricing_unit_text(description), f"item-{index + 1}"),
+        )
+        if part
+    )
     item = {
-        "id": safe_section_id(raw.get("id") or f"{section}-{description}", f"item-{index + 1}"),
+        "id": safe_catalog_item_id(raw_id, default_item_id) if raw_id else default_item_id,
         "section": section,
         "reference_section": reference_section or section,
         "description": description,
@@ -2061,6 +2084,12 @@ def sanitize_pricing_reference_item(
         "remarks": remarks,
         "aliases": aliases,
     }
+    if default_quantity is not None:
+        item["default_quantity"] = default_quantity
+    if default_quote_amount is not None and default_quote_amount > 0:
+        item["default_quote_amount"] = default_quote_amount
+    if gst_multiplier is not None and gst_multiplier > 0:
+        item["gst_multiplier"] = gst_multiplier
     category_order = pricing_reference_order_from_raw(raw, PRICING_REFERENCE_CATEGORY_ORDER_KEYS)
     if category_order is not None:
         item["category_order"] = category_order
@@ -2070,6 +2099,7 @@ def sanitize_pricing_reference_item(
     visual_references = sanitize_visual_references(raw.get("visual_references"))
     if visual_references:
         item["visual_references"] = visual_references
+    pricing_reference_enrichment.enrich_pricing_reference_item(item)
     return item
 
 
@@ -2181,7 +2211,7 @@ def validate_pricing_reference_rows(
     for index, raw in enumerate(rows[:MAX_PRICING_REFERENCE_ROWS]):
         item = sanitize_pricing_reference_item(raw, index, apply_import_text_fixes=True)
         if item:
-            base_id = safe_section_id(item.get("id"), f"item-{index + 1}")
+            base_id = safe_catalog_item_id(item.get("id"), f"item-{index + 1}")
             candidate_id = base_id
             suffix = 2
             while candidate_id in seen_ids:
@@ -2370,40 +2400,16 @@ def add_unique_text(values: list[str], value: Any) -> None:
         values.append(text)
 
 
-PRICING_WORKBOOK_TEXT_FIXES = {
-    "platfrom": "platform",
-    "parition": "partition",
-    "sytem": "system",
-    "dowlight": "downlight",
-    "lenght": "length",
-    "widht": "width",
-    "heigth": "height",
-}
-
-
 def normalize_import_typography_text(value: Any) -> str:
-    text = str(value or "")
-    text = text.replace("\xa0", " ")
-    text = text.replace("\u201c", '"').replace("\u201d", '"')
-    text = text.replace("\u2018", "'").replace("\u2019", "'")
-    text = text.replace("\u2013", "-").replace("\u2014", "-")
-    return clean_text(text)
+    return clean_text(pricing_reference_cleanup.normalized_import_text(value))
 
 
 def normalize_word_slash_spacing(value: Any) -> str:
-    return re.sub(r"(?<=[A-Za-z])\s*/\s*(?=[A-Za-z])", " / ", clean_text(value))
+    return clean_text(pricing_reference_cleanup.normalize_word_slash_spacing(value))
 
 
 def apply_pricing_workbook_text_fixes(value: Any) -> str:
-    text = normalize_word_slash_spacing(normalize_import_typography_text(value))
-
-    def replace(match: re.Match[str]) -> str:
-        replacement = PRICING_WORKBOOK_TEXT_FIXES[match.group(0).lower()]
-        return replacement[:1].upper() + replacement[1:] if match.group(0)[:1].isupper() else replacement
-
-    for typo in PRICING_WORKBOOK_TEXT_FIXES:
-        text = re.sub(rf"\b{re.escape(typo)}\b", replace, text, flags=re.IGNORECASE)
-    return clean_customer_quote_line_text(text)
+    return clean_customer_quote_line_text(pricing_reference_cleanup.apply_import_text_cleanup(value))
 
 
 def stripped_pricing_unit_text(value: Any) -> str:
@@ -2545,7 +2551,10 @@ def v11_row_to_pricing_reference_row(section: str, section_order: int | None, ro
         "section": section,
         "description": description,
         "unit_hint": unit_hint,
+        "default_quantity": pricing_workbook_number(row, V11_COL_DEFAULT_QUANTITY),
+        "default_quote_amount": pricing_workbook_number(row, V11_COL_DEFAULT_ESTIMATE),
         "internal_cost": pricing_workbook_number(row, V11_COL_COST),
+        "gst_multiplier": pricing_workbook_number(row, V11_COL_GST),
         "markup_multiplier": pricing_workbook_number(row, V11_COL_MARKUP) or 1.0,
         "remarks": remarks,
         "aliases": v11_alias_candidates(section, description, remarks, unit_hint),
@@ -2575,8 +2584,12 @@ def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any
         description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
         remark = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))
         if description:
-            rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
-            rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
+            if description.startswith("\u2022") or description.lower().startswith(("note:", "notes:")):
+                remarks = rows[-1].setdefault("remarks", [])
+                add_unique_text(remarks, description)
+            else:
+                rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
+                rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
         if remark:
             remarks = rows[-1].setdefault("remarks", [])
             add_unique_text(remarks, remark)
@@ -2816,6 +2829,7 @@ def pricing_reference_catalog_payload(reference: dict[str, Any]) -> dict[str, An
         sale_unit_price = pricing_reference_sale_unit_price(next_item)
         if sale_unit_price is not None:
             next_item["sale_unit_price"] = sale_unit_price
+        pricing_reference_enrichment.enrich_pricing_reference_item(next_item)
         items.append(next_item)
     ensure_pricing_reference_order_fields(items)
     items = sorted_pricing_reference_items(items)
@@ -2868,6 +2882,12 @@ def pricing_reference_catalog_ai_markdown(catalog: dict[str, Any], catalog_name:
         aliases = [clean_text(value) for value in item.get("aliases", []) if clean_text(value)] if isinstance(item.get("aliases"), list) else []
         if aliases:
             lines.append(f"- **Search aliases:** {'; '.join(aliases[:12])}")
+        match_terms = [clean_text(value) for value in item.get("match_terms", []) if clean_text(value)] if isinstance(item.get("match_terms"), list) else []
+        if match_terms:
+            lines.append(f"- **Match terms:** {'; '.join(match_terms[:12])}")
+        object_families = [clean_text(value) for value in item.get("object_families", []) if clean_text(value)] if isinstance(item.get("object_families"), list) else []
+        if object_families:
+            lines.append(f"- **Object families:** {'; '.join(object_families[:8])}")
         visual_references = item.get("visual_references") if isinstance(item.get("visual_references"), list) else []
         visual_values = [
             clean_text(ref.get("path") or ref.get("source"))
@@ -3115,6 +3135,8 @@ def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dic
         "Do not merge independent priced rows. Preserve short technical rows such as nos. rigging point for Overhead Structure or Aluminium Box Truss. "
         "Commercial notes such as Prices are not inclusive of truss belong in remarks. Preserve all-caps remarks. "
         "Extract sensible unit prefixes including m run, m, sqm, nos, and lot. Neutralize formula-like text beginning with =, +, -, or @ by treating it as literal text. "
+        "Clean obvious spelling, OCR, spacing, and unit wording errors only when the workbook itself makes the correction unambiguous through repeated terms, nearby rows, section headings, or standard unit notation. "
+        "Do not paraphrase, market-polish, simplify, or rename technical catalog descriptions; preserve the supplier/customer catalog wording after any clearly justified cleanup. "
         "Use these pricing reference sections first and match each priced row to the closest provided section. "
         "Only create a new section when none of the provided pricing reference sections fits the row. "
         "Preserve the source category order and source row order. When no category order exists, assign category_order by first-seen section in the source rows and item_order by source row order. "
@@ -4365,43 +4387,22 @@ CATALOG_INFERENCE_TOKEN_ALIASES = {
     "chairs": "chair",
     "coves": "cove",
     "counters": "counter",
-    "dowlight": "downlight",
     "downlights": "downlight",
     "floodlights": "floodlight",
     "frames": "frame",
     "graphics": "graphic",
-    "heigth": "height",
     "lcd": "led",
-    "lenght": "length",
     "lighting": "light",
     "panels": "panel",
-    "parition": "partition",
     "print": "printed",
-    "platfrom": "platform",
     "planters": "planter",
     "plants": "plant",
     "plinths": "counter",
     "sockets": "socket",
     "stools": "stool",
-    "sytem": "system",
     "tables": "table",
     "walls": "wall",
-    "widht": "width",
-}
-
-
-CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS = (
-    ("display", {"display", "displays", "monitor", "monitors", "screen", "screens", "tv", "television", "televisions"}),
-    ("fascia", {"fascia", "fascias"}),
-    ("partition", {"partition", "partitions", "wall", "walls", "backwall", "backwalls", "enclosure", "enclosures"}),
-    ("pillar", {"pillar", "pillars", "column", "columns", "support", "supports"}),
-    ("supply", {"supply", "supplies", "service", "services", "package", "packages", "consumable", "consumables"}),
-)
-
-CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES = {
-    token: canonical
-    for canonical, tokens in CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS
-    for token in tokens
+    **pricing_reference_cleanup.import_word_replacements(),
 }
 
 
@@ -4411,8 +4412,7 @@ def catalog_inference_token(value: str) -> str:
         token = f"{token[:-3]}y"
     elif token.endswith("s") and len(token) > 3 and not token.endswith("ss"):
         token = token[:-1]
-    token = CATALOG_INFERENCE_TOKEN_ALIASES.get(token, token)
-    return CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES.get(token, token)
+    return CATALOG_INFERENCE_TOKEN_ALIASES.get(token, token)
 
 
 def catalog_inference_tokens(value: Any) -> set[str]:
@@ -4426,20 +4426,43 @@ def catalog_inference_tokens(value: Any) -> set[str]:
 
 
 CATALOG_OBJECT_FAMILY_TOKENS = {
+    "beverage_service": {"barista", "beverage", "coffee", "consumable", "drink", "package", "service", "tea"},
     "cabinet": {"cabinet", "cabinets"},
     "chair": {"chair", "chairs"},
     "counter": {"counter", "counters"},
+    "electrical": {"electrical", "power"},
     "display": {"display", "monitor", "screen", "tv", "television"},
     "fascia": {"fascia"},
+    "floor": {"carpet", "floor", "flooring", "platform"},
+    "graphics": {"graphic", "graphics", "lettering", "logo", "poster", "print", "printed", "signage", "vinyl"},
     "hoist": {"hoist"},
     "kiosk": {"kiosk", "terminal"},
     "lift": {"boom", "lift"},
+    "lighting": {"downlight", "led", "light", "lighting", "spotlight"},
     "partition": {"partition", "wall", "backwall", "enclosure"},
     "pillar": {"pillar", "column", "support"},
     "plant": {"plant", "plants", "planter", "greenery"},
+    "rigging": {"rigging", "truss"},
     "socket": {"socket", "sockets", "power"},
     "sofa": {"sofa", "sofas"},
     "table": {"table", "tables", "desk"},
+    "water": {"drainage", "inlet", "outlet", "plumbing", "sink", "tap", "water"},
+}
+
+CATALOG_BROAD_MATCH_FAMILIES = {
+    "beverage_service",
+    "display",
+    "electrical",
+    "fascia",
+    "floor",
+    "graphics",
+    "lighting",
+    "partition",
+    "pillar",
+    "plant",
+    "rigging",
+    "socket",
+    "water",
 }
 
 
@@ -4452,9 +4475,51 @@ def catalog_object_families(value: Any) -> set[str]:
     if tokens & {"graphic", "printed", "print", "logo", "sign", "signage"}:
         families.discard("fascia")
         families.discard("partition")
+    if "table" in families and "beverage_service" in families and not (tokens & {"barista", "beverage", "consumable", "drink", "package", "service", "tea"}):
+        families.discard("beverage_service")
     if "lift" in families and "hoist" in families:
         families.discard("hoist")
     return families
+
+
+def catalog_item_match_terms(item: dict[str, Any]) -> set[str]:
+    values = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+    tokens: set[str] = set()
+    for value in values:
+        tokens.update(catalog_inference_tokens(value))
+    return tokens
+
+
+def catalog_item_object_families(item: dict[str, Any]) -> set[str]:
+    families = {
+        clean_text(value).lower()
+        for value in (item.get("object_families") if isinstance(item.get("object_families"), list) else [])
+        if clean_text(value)
+    }
+    if families:
+        return families
+    derived: set[str] = set()
+    for value in catalog_inference_values(item):
+        derived.update(catalog_object_families(value))
+    return derived
+
+
+def catalog_item_alias_values(item: dict[str, Any]) -> list[str]:
+    aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+    section_values = [
+        clean_text(item.get("reference_section") or item.get("section")).lower(),
+        clean_text(item.get("section")).lower(),
+    ]
+    values: list[str] = []
+    for alias in aliases:
+        text = clean_text(alias)
+        lowered = text.lower()
+        if not text:
+            continue
+        if any(section and lowered.startswith(section) for section in section_values):
+            continue
+        values.append(text)
+    return values
 
 
 def catalog_line_contradicts_item(line_text: Any, item: dict[str, Any]) -> bool:
@@ -4468,9 +4533,7 @@ def catalog_line_contradicts_item(line_text: Any, item: dict[str, Any]) -> bool:
     line_families = catalog_object_families(line_text)
     if not line_families:
         return False
-    item_families: set[str] = set()
-    for value in catalog_inference_values(item):
-        item_families.update(catalog_object_families(value))
+    item_families = catalog_item_object_families(item)
     if not item_families:
         return False
     compatible_groups = [
@@ -4488,21 +4551,20 @@ def explicit_catalog_keyword_can_span_structural_family(line_text: Any, item: di
         return False
     structural_families = {"fascia", "partition", "pillar", "plant"}
     line_families = catalog_object_families(line_text) & structural_families
-    item_families = {
-        family_name
-        for value in catalog_inference_values(item)
-        for family_name in catalog_object_families(value)
-    } & structural_families
+    item_families = catalog_item_object_families(item) & structural_families
     return bool(line_families and item_families)
 
 
 def catalog_inference_values(item: dict[str, Any]) -> list[str]:
-    aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+    aliases = catalog_item_alias_values(item)
+    match_terms = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+    object_families = item.get("object_families") if isinstance(item.get("object_families"), list) else []
     values = [
-        item.get("id"),
         item.get("description"),
         item.get("pricing_reference_description"),
         *aliases,
+        *match_terms,
+        *object_families,
     ]
     return [clean_text(value) for value in values if clean_text(value)]
 
@@ -4528,9 +4590,12 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
         for value in (raw.get("pricing_keyword"), raw.get("description"))
         if clean_text(value)
     )
+    if re.search(r"\b(?:excluded?|excluding|not\s+included|not\s+provided|unless\s+requested|by\s+others|no\s+allowance)\b", query_text, flags=re.IGNORECASE):
+        return None
     query_tokens = catalog_inference_tokens(query_text)
     if len(query_tokens) < 3:
         return None
+    query_families = catalog_object_families(query_text)
 
     raw_section_key = safe_section_id(normalize_catalog_section(raw.get("section")) or raw.get("section"), "")
     raw_unit = normalize_pricing_unit(raw.get("unit"))
@@ -4548,6 +4613,7 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
         unit_bonus = 3.0 if raw_unit and item_unit == raw_unit else 0.0
         unit_penalty = -1.5 if raw_unit and item_unit and item_unit != raw_unit else 0.0
         best_score = 0.0
+        item_families = catalog_item_object_families(item)
         for value in catalog_inference_values(item):
             value_tokens = catalog_inference_tokens(value)
             if len(value_tokens) < 2:
@@ -4556,13 +4622,14 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
             value_ratio = len(overlap) / max(len(value_tokens), 1)
             query_ratio = len(overlap) / max(min(len(query_tokens), 12), 1)
             short_context_match = bool(section_bonus and unit_bonus) and len(overlap) >= 2 and value_ratio >= 0.6
-            family_context_match = bool(section_bonus or unit_bonus) and "display" in query_tokens and "display" in value_tokens
+            family_overlap = query_families & item_families & CATALOG_BROAD_MATCH_FAMILIES
+            family_context_match = bool(section_bonus or unit_bonus) and bool(family_overlap) and len(overlap) >= 1
             if len(overlap) < 3 and not short_context_match and not family_context_match:
                 continue
             strong_context_match = bool(section_bonus or unit_bonus) and query_ratio >= 0.6
             if value_ratio < 0.55 and len(overlap) < 4 and not strong_context_match and not short_context_match and not family_context_match:
                 continue
-            family_bonus = 6.0 if family_context_match else 0.0
+            family_bonus = 8.0 if family_context_match else 0.0
             score = len(overlap) * 2.0 + value_ratio * 6.0 + query_ratio * 2.0 + section_bonus + unit_bonus + unit_penalty + family_bonus
             best_score = max(best_score, score)
         if best_score >= 9.0:
@@ -4624,7 +4691,7 @@ def query_variant_preference(query_text: str, variant_values: list[float], famil
     if re.search(r"\b(small|compact|secondary|side|countertop|tabletop)\b", query, flags=re.IGNORECASE):
         return min(variant_values)
     query_tokens = catalog_inference_tokens(query)
-    if "display" in query_tokens and "display" in set(family_tokens):
+    if query_tokens & {"display", "monitor", "screen", "tv", "television"} and set(family_tokens) & {"display", "monitor", "screen", "tv", "television", "led"}:
         return min(variant_values)
     return None
 
@@ -4657,6 +4724,9 @@ def resolve_tied_catalog_attribute_item(query_text: str, items: list[dict[str, A
     query = clean_text(query_text).lower()
 
     object_preferences: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"\b(?:tv|television|monitor|screen|display)s?\b", re.IGNORECASE), "display"),
+        (re.compile(r"\b(?:water|sink|plumbing|drainage|inlet|outlet)\b", re.IGNORECASE), "water"),
+        (re.compile(r"\b(?:graphic|graphics|logo|lettering|poster|print|printed|vinyl|signage)\b", re.IGNORECASE), "graphics"),
         (re.compile(r"\b(?:vertical\s+)?(?:support\s+)?pillars?\b|\bcolumns?\b", re.IGNORECASE), "pillar"),
         (re.compile(r"\btop\s+fascia\b|\bfascias?\b", re.IGNORECASE), "fascia"),
         (re.compile(r"\b(?:partition|wall|backwall|room\s+build|enclosure)s?\b", re.IGNORECASE), "partition"),
@@ -4668,11 +4738,7 @@ def resolve_tied_catalog_attribute_item(query_text: str, items: list[dict[str, A
         family_matches = [
             item
             for item in candidates
-            if family in {
-                family_name
-                for value in catalog_inference_values(item)
-                for family_name in catalog_object_families(value)
-            }
+            if family in catalog_item_object_families(item)
         ]
         if family_matches:
             candidates = family_matches
@@ -4680,6 +4746,45 @@ def resolve_tied_catalog_attribute_item(query_text: str, items: list[dict[str, A
 
     if len(candidates) <= 1:
         return candidates[0] if candidates else None
+
+    def candidate_tokens(item: dict[str, Any]) -> set[str]:
+        tokens: set[str] = set()
+        for value in catalog_inference_values(item):
+            tokens.update(catalog_inference_tokens(value))
+        return tokens
+
+    query_tokens = catalog_inference_tokens(query)
+    if "water" in query_tokens and not (query_tokens & {"sink", "plumbing", "drainage"}):
+        water_matches = [
+            item
+            for item in candidates
+            if candidate_tokens(item) & {"inlet", "outlet"}
+        ]
+        if len(water_matches) == 1:
+            return water_matches[0]
+        if water_matches:
+            candidates = water_matches
+
+    attribute_preferences: tuple[tuple[re.Pattern[str], set[str]], ...] = (
+        (re.compile(r"\bsinks?\b", re.IGNORECASE), {"sink"}),
+        (re.compile(r"\b(?:water|inlet|outlet|tap|plumbing|drainage)\b", re.IGNORECASE), {"water", "inlet", "outlet", "plumbing"}),
+        (re.compile(r"\b(?:poster|foam)\b", re.IGNORECASE), {"poster", "foam"}),
+        (re.compile(r"\bbacklit\b", re.IGNORECASE), {"backlit"}),
+        (re.compile(r"\b(?:wall|fascia|surface|printed|print|graphic\s+panels?|graphics?)\b", re.IGNORECASE), {"printed", "vinyl", "graphics", "wall"}),
+        (re.compile(r"\b(?:logo|lettering|brand)\b", re.IGNORECASE), {"logo", "lettering", "vinyl"}),
+    )
+    for pattern, preferred_tokens in attribute_preferences:
+        if not pattern.search(query):
+            continue
+        attribute_matches = [
+            item
+            for item in candidates
+            if candidate_tokens(item) & preferred_tokens
+        ]
+        if len(attribute_matches) == 1:
+            return attribute_matches[0]
+        if attribute_matches:
+            candidates = attribute_matches
 
     finish_preferences: list[str] = []
     if re.search(r"\blaminat(?:e|ed|ion)\b", query, flags=re.IGNORECASE):
@@ -4706,15 +4811,47 @@ def resolve_tied_catalog_attribute_item(query_text: str, items: list[dict[str, A
 
     if len(candidates) == 1:
         return candidates[0]
+
+    specialty_tokens = {
+        "2d",
+        "3d",
+        "4m",
+        "backlit",
+        "digital",
+        "exhibitor",
+        "flex",
+        "foam",
+        "glass",
+        "laminated",
+        "lettering",
+        "logo",
+        "poster",
+        "seamless",
+    }
+    scored_candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    for item in candidates:
+        tokens = candidate_tokens(item)
+        overlap_count = len(query_tokens & tokens)
+        absent_specialty_count = len((tokens & specialty_tokens) - query_tokens)
+        scored_candidates.append((
+            overlap_count,
+            -absent_specialty_count,
+            -len(tokens),
+            clean_text(item.get("id")),
+            item,
+        ))
+    scored_candidates.sort(reverse=True)
+    if scored_candidates and (len(scored_candidates) == 1 or scored_candidates[0][:3] > scored_candidates[1][:3]):
+        return scored_candidates[0][4]
     return None
 
 
-def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def normalize_line_items(payload: dict[str, Any], use_catalog: bool = True) -> list[dict[str, Any]]:
     raw_items = payload.get("line_items")
     if not isinstance(raw_items, list):
         return []
 
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if use_catalog else {}
     items: list[dict[str, Any]] = []
     for raw in raw_items:
         if not isinstance(raw, dict):
@@ -5139,8 +5276,10 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
     for item in payload.get("items") or []:
         if not isinstance(item, dict):
             continue
-        aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+        item = pricing_reference_enrichment.enrich_pricing_reference_item(dict(item))
+        aliases = catalog_item_alias_values(item)
         remarks = item.get("remarks") if isinstance(item.get("remarks"), list) else []
+        object_families = item.get("object_families") if isinstance(item.get("object_families"), list) else []
         row = {
             "id": clean_text(item.get("id")),
             "section": clean_text(item.get("section")),
@@ -5157,6 +5296,11 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
                 clean_text(alias)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
                 for alias in aliases[:MAX_PROMPT_CATALOG_ALIASES]
                 if clean_text(alias)
+            ],
+            "object_families": [
+                clean_text(term)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for term in object_families[:MAX_PROMPT_CATALOG_ALIASES]
+                if clean_text(term)
             ],
         }
         visual_metadata = visual_reference_prompt_metadata(item.get("visual_references"))
@@ -5195,8 +5339,10 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
         markup = parse_float_or_none(raw.get("markup_multiplier"))
         if not description or cost is None or cost <= 0 or markup is None or markup <= 0:
             continue
-        aliases = raw.get("aliases") if isinstance(raw.get("aliases"), list) else []
+        raw = pricing_reference_enrichment.enrich_pricing_reference_item(dict(raw))
+        aliases = catalog_item_alias_values(raw)
         remarks = raw.get("remarks") if isinstance(raw.get("remarks"), list) else []
+        object_families = raw.get("object_families") if isinstance(raw.get("object_families"), list) else []
         item = {
             "id": safe_section_id(raw.get("id"), f"local-item-{len(items) + 1}"),
             "section": clean_text(raw.get("section")),
@@ -5216,6 +5362,11 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
                 clean_text(alias)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
                 for alias in aliases[:MAX_PROMPT_CATALOG_ALIASES]
                 if clean_text(alias)
+            ],
+            "object_families": [
+                clean_text(term)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for term in object_families[:MAX_PROMPT_CATALOG_ALIASES]
+                if clean_text(term)
             ],
         }
         visual_references = resolve_visual_references(raw.get("visual_references"), visual_base_dir)
@@ -5323,16 +5474,7 @@ def catalog_visual_prompt_text(images: list[dict[str, Any]]) -> str:
 
 def legacy_pricing_catalog_id_aliases(item_id: str) -> set[str]:
     aliases: set[str] = set()
-    typo_pairs = (
-        ("platform", "platfrom"),
-        ("partition", "parition"),
-        ("system", "sytem"),
-        ("downlight", "dowlight"),
-        ("length", "lenght"),
-        ("width", "widht"),
-        ("height", "heigth"),
-    )
-    for correct, typo in typo_pairs:
+    for typo, correct in pricing_reference_cleanup.import_word_replacements().items():
         if correct in item_id:
             aliases.add(item_id.replace(correct, typo))
         if typo in item_id:
@@ -5350,6 +5492,7 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
     for item in payload_json.get("items") or []:
         if not isinstance(item, dict):
             continue
+        item = pricing_reference_enrichment.enrich_pricing_reference_item(dict(item))
         item_id = clean_text(item.get("id"))
         if not item_id:
             continue
@@ -5369,6 +5512,16 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
                 clean_text(alias)
                 for alias in (item.get("aliases") if isinstance(item.get("aliases"), list) else [])
                 if clean_text(alias)
+            ],
+            "match_terms": [
+                clean_text(term)
+                for term in (item.get("match_terms") if isinstance(item.get("match_terms"), list) else [])
+                if clean_text(term)
+            ],
+            "object_families": [
+                clean_text(term)
+                for term in (item.get("object_families") if isinstance(item.get("object_families"), list) else [])
+                if clean_text(term)
             ],
         }
         for alias_id in legacy_pricing_catalog_id_aliases(item_id):
@@ -5951,6 +6104,11 @@ def quote_basis_sections_with_catalog_exact_lines(
     def line_signature(line: dict[str, Any]) -> str:
         pricing_keyword = clean_text(line.get("pricing_keyword"))
         if pricing_keyword:
+            bracketed = bracketed_catalog_reference_parts(line.get("text"))
+            if bracketed and bracketed[1]:
+                detail_key = re.sub(r"[^a-z0-9]+", " ", clean_customer_quote_line_text(bracketed[1]).casefold()).strip()
+                if detail_key:
+                    return f"pricing:{pricing_keyword.casefold()}:{detail_key}"
             return f"pricing:{pricing_keyword.casefold()}"
         text = clean_customer_quote_line_text(line.get("text")).casefold()
         text = re.sub(r"[^a-z0-9]+", " ", text).strip()
@@ -6130,14 +6288,15 @@ def quote_basis_sections_with_catalog_exact_lines(
         return tokens
 
     def catalog_match_values(item: dict[str, Any]) -> list[str]:
-        aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+        aliases = catalog_item_alias_values(item)
+        match_terms = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+        object_families = item.get("object_families") if isinstance(item.get("object_families"), list) else []
         values = [
-            item.get("id"),
-            item.get("section"),
-            item.get("reference_section"),
             item.get("description"),
             item.get("pricing_reference_description"),
             *aliases,
+            *match_terms,
+            *object_families,
         ]
         return [clean_text(value) for value in values if clean_text(value)]
 
@@ -6152,12 +6311,16 @@ def quote_basis_sections_with_catalog_exact_lines(
 
     def score_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any], section: dict[str, Any] | None = None) -> int:
         line_text = clean_customer_quote_line_text(line.get("text"))
+        if line_has_exclusion_scope(line_text):
+            return 0
         line_tokens = catalog_match_tokens(line_text)
         if not line_tokens:
             return 0
         item_tokens: set[str] = set()
         phrase_bonus = 0
         normalized_line = clean_text(line_text).lower()
+        line_families = catalog_object_families(line_text)
+        item_families = catalog_item_object_families(item)
         for value in catalog_match_values(item):
             normalized_value = clean_text(value).lower()
             value_tokens = catalog_match_tokens(value)
@@ -6168,17 +6331,20 @@ def quote_basis_sections_with_catalog_exact_lines(
                 phrase_bonus = max(phrase_bonus, 10)
         section_bonus = 2 if isinstance(section, dict) and section_matches_item(section, item) else 0
         overlap = line_tokens & item_tokens
-        family_bonus = 3 if section_bonus and "display" in line_tokens and "display" in item_tokens else 0
+        family_overlap = line_families & item_families & CATALOG_BROAD_MATCH_FAMILIES
+        family_bonus = 5 + min(len(family_overlap), 3) if section_bonus and family_overlap and overlap else 0
         catalog_like_bonus = 0
         if section_bonus and not line_has_exclusion_scope(line_text):
-            service_tokens = {"supply", "beverage", "drink", "coffee", "tea"}
-            if "supply" in line_tokens and (item_tokens & service_tokens) and len(overlap) >= 2:
+            service_tokens = {"supply", "beverage", "drink", "coffee", "tea", "service", "package"}
+            if (line_families & item_families & {"beverage_service"}) and (item_tokens & service_tokens) and len(overlap) >= 1:
                 catalog_like_bonus = max(catalog_like_bonus, 4)
-            structure_tokens = {"fascia", "partition", "pillar", "plant"}
-            if line_tokens & item_tokens & structure_tokens:
+            structure_tokens = {"fascia", "partition", "pillar", "plant", "water", "graphics", "display"}
+            if line_families & item_families & structure_tokens and overlap:
                 catalog_like_bonus = max(catalog_like_bonus, 4)
         line_ratio = len(overlap) / max(len(line_tokens), 1)
         if not phrase_bonus and not family_bonus and not catalog_like_bonus and line_ratio < 0.75:
+            return 0
+        if family_bonus and len(overlap) < 2 and not phrase_bonus and not catalog_like_bonus:
             return 0
         return len(overlap) + phrase_bonus + section_bonus + family_bonus + catalog_like_bonus
 
@@ -6471,6 +6637,91 @@ def quote_basis_sections_with_catalog_exact_lines(
         section for section in merge_duplicate_sections(next_sections)
         if [line for line in (section.get("lines") or []) if isinstance(line, dict) and clean_text(line.get("text"))]
     ]
+
+
+def line_items_with_resolved_basis_catalog(
+    line_items: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    catalog_lookup: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not line_items or not sections or not catalog_lookup:
+        return line_items
+
+    basis_catalog_lines_by_id: dict[str, dict[str, Any]] = {}
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            if normalize_basis_tag(line.get("tag")) in {"Custom", "Exclude"}:
+                continue
+            pricing_keyword = clean_text(line.get("pricing_keyword"))
+            if not pricing_keyword or pricing_keyword not in catalog_lookup:
+                continue
+            for key in (line.get("id"), line.get("source_line_item_id")):
+                source_id = safe_resource_id(key, "")
+                if source_id:
+                    basis_catalog_lines_by_id[source_id] = line
+
+    if not basis_catalog_lines_by_id:
+        return line_items
+
+    resolved_items: list[dict[str, Any]] = []
+    for item in line_items:
+        if not isinstance(item, dict):
+            continue
+        source_id = safe_resource_id(item.get("source_basis_line_id"), "")
+        basis_line = basis_catalog_lines_by_id.get(source_id)
+        pricing_keyword = clean_text(item.get("pricing_keyword"))
+        if pricing_keyword and pricing_keyword in catalog_lookup:
+            resolved_items.append(item)
+            continue
+        if not basis_line:
+            resolved_items.append(item)
+            continue
+        catalog_item = catalog_lookup.get(clean_text(basis_line.get("pricing_keyword")))
+        if not catalog_item:
+            resolved_items.append(item)
+            continue
+        catalog_reference_description = clean_text(
+            catalog_item.get("pricing_reference_description")
+            or catalog_item.get("catalog_description")
+            or catalog_item.get("description")
+        )
+        catalog_description = clean_customer_quote_line_text(catalog_reference_description)
+        detail = clean_customer_quote_line_text(item.get("description"))
+        bracketed = bracketed_catalog_reference_parts(basis_line.get("text"))
+        if bracketed and bracketed[1]:
+            detail = bracketed[1]
+        next_item = {**item}
+        next_item["pricing_keyword"] = clean_text(catalog_item.get("id"))
+        if catalog_description:
+            next_item["catalog_description"] = catalog_description
+            next_item["description"] = display_description_from_catalog_reference(catalog_description, detail or catalog_description)
+        if catalog_reference_description:
+            next_item["pricing_reference_description"] = catalog_reference_description
+        section = normalize_catalog_section(catalog_item.get("section"))
+        if section:
+            next_item["section"] = section
+        unit = clean_text(basis_line.get("unit") or catalog_item_unit_hint(catalog_item))
+        if unit:
+            next_item["unit"] = normalize_pricing_unit(unit)
+        catalog_unit_price = parse_float_or_none(catalog_item.get("catalog_unit_price") or catalog_item.get("sale_unit_price"))
+        if catalog_unit_price is not None:
+            next_item["catalog_unit_price"] = catalog_unit_price
+        for order_key in ("category_order", "item_order"):
+            order_value = (
+                pricing_reference_order_number(basis_line.get(order_key))
+                or pricing_reference_order_number(catalog_item.get(order_key))
+                or pricing_reference_order_number(item.get(order_key))
+            )
+            if order_value is not None:
+                next_item[order_key] = order_value
+        if clean_text(catalog_item.get("reference_section")):
+            next_item["reference_section"] = clean_basis_section_title(catalog_item.get("reference_section"))
+        resolved_items.append(next_item)
+    return resolved_items
 
 
 def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) -> list[dict[str, Any]]:
@@ -6823,15 +7074,16 @@ def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = 
     raw_line_items = parsed.get("line_items") if isinstance(parsed.get("line_items"), list) else []
     raw_project = parsed.get("project") if isinstance(parsed.get("project"), dict) else {}
     dimensions = booth_dimensions_from_payload({"project": raw_project}) if raw_project else {}
-    pricing_reference_sections = pricing_reference_section_names_for_payload(payload)
-    line_items = normalize_line_items({**payload, "line_items": raw_line_items})
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    pricing_reference_sections = pricing_reference_section_names_for_payload(payload) if has_payload_context else []
+    line_items = normalize_line_items({**payload, "line_items": raw_line_items}, use_catalog=has_payload_context)
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if has_payload_context else {}
     sections = quote_basis_sections_with_catalog_exact_lines(
         confirm_only_basis_sections(normalize_quote_basis_sections(parsed, pricing_reference_sections)),
         line_items,
         list(catalog_lookup.values()),
         mark_unmatched_confirm_custom=has_payload_context,
     )
+    line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
     line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
     sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
     legacy_basis = quote_basis_from_sections(sections)
@@ -7058,15 +7310,17 @@ def data_url_inline_image(data_url: str) -> dict[str, str] | None:
 def unpack_ai_draft(ai_draft: dict[str, Any], payload: dict[str, Any] | None = None) -> tuple[dict[str, str], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
     has_payload_context = payload is not None
     payload = payload or {}
-    line_items = normalize_line_items({**payload, "line_items": ai_draft.get("line_items")})
+    line_items = normalize_line_items({**payload, "line_items": ai_draft.get("line_items")}, use_catalog=has_payload_context)
     pricing_reference_sections = pricing_reference_section_names_for_payload(payload)
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if has_payload_context else {}
     sections = quote_basis_sections_with_catalog_exact_lines(
         confirm_only_basis_sections(normalize_quote_basis_sections(ai_draft, pricing_reference_sections)),
         line_items,
         list(catalog_lookup.values()),
         mark_unmatched_confirm_custom=has_payload_context,
     )
+    line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
+    line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
     require_basis_confidence(sections, provider=clean_text(ai_draft.get("source")) or "AI")
     raw_basis = quote_basis_from_sections(sections)
     basis = {
@@ -7109,6 +7363,7 @@ def finalized_remote_draft_result(
     fallback_project: dict[str, Any],
     fallback_line_items: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    has_payload_context = payload is not None
     basis, line_items, project, sections = unpack_ai_draft(ai_basis, payload)
     blockers = normalize_blocking_clarification_questions(ai_basis.get("blocking_clarification_questions"))
     if blockers:
@@ -7130,13 +7385,15 @@ def finalized_remote_draft_result(
         sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
         project,
     )
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if has_payload_context else {}
     adjusted_sections = quote_basis_sections_with_catalog_exact_lines(
         adjusted_sections,
         line_items,
         list(catalog_lookup.values()),
         mark_unmatched_confirm_custom=True,
     )
+    line_items = line_items_with_resolved_basis_catalog(line_items, adjusted_sections, catalog_lookup)
+    line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
     adjusted_sections = sort_quote_basis_sections_by_pricing_reference_order(payload, adjusted_sections)
     for section in adjusted_sections:
         for line in section.get("lines") or []:

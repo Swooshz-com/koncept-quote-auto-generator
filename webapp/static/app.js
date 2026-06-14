@@ -4017,6 +4017,27 @@ function basisPillTitle(line = {}, tag = "") {
   return basisCatalogReferenceTitle(line);
 }
 
+function catalogBackedBasisDisplayParts(line = {}) {
+  const text = String(line.text || "").trim();
+  const match = text.match(/^\[\s*([\s\S]*?)\s*\]\s*-\s*([\s\S]+)$/);
+  if (!match) return null;
+  const reference = String(match[1] || "").trim();
+  const detail = String(match[2] || "").trim();
+  if (!reference || !detail) return null;
+  return { reference, detail };
+}
+
+function basisLineTextHtml(line = {}) {
+  const displayParts = catalogBackedBasisDisplayParts(line);
+  if (!displayParts) return escapeHtml(line.text);
+  return `
+    <span class="basis-line-catalog-display">
+      <span class="basis-line-catalog-reference">[ ${escapeHtml(displayParts.reference)} ]</span>
+      <span class="basis-line-catalog-detail"><span class="basis-line-catalog-arrow">--&gt;</span> ${escapeHtml(displayParts.detail)}</span>
+    </span>
+  `;
+}
+
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
   const customPricing = isCustomPricingBasisLine(line);
@@ -4047,7 +4068,7 @@ function renderBasisLine(section, line, index) {
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
         <span class="basis-quantity-text">${escapeHtml(quantityLabel)}</span>
       </span>
-      <span class="basis-line-text"${lineTitleAttribute}>${escapeHtml(line.text)}</span>
+      <span class="basis-line-text"${lineTitleAttribute}>${basisLineTextHtml(line)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>

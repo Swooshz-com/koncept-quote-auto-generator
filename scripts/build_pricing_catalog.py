@@ -15,6 +15,8 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 import generate_quote as quote
+import pricing_reference_cleanup
+import pricing_reference_enrichment
 
 
 CATALOG_SCHEMA_VERSION = 1
@@ -56,29 +58,8 @@ def normalized_text(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def normalize_word_slash_spacing(value: Any) -> str:
-    return re.sub(r"(?<=[A-Za-z])\s*/\s*(?=[A-Za-z])", " / ", normalized_text(value))
-
-
 def apply_pricing_workbook_text_fixes(value: Any) -> str:
-    text = normalize_word_slash_spacing(value)
-    replacements = {
-        "platfrom": "platform",
-        "parition": "partition",
-        "sytem": "system",
-        "dowlight": "downlight",
-        "lenght": "length",
-        "widht": "width",
-        "heigth": "height",
-    }
-
-    def replace(match: re.Match[str]) -> str:
-        replacement = replacements[match.group(0).lower()]
-        return replacement[:1].upper() + replacement[1:] if match.group(0)[:1].isupper() else replacement
-
-    for typo in replacements:
-        text = re.sub(rf"\b{re.escape(typo)}\b", replace, text, flags=re.IGNORECASE)
-    return normalized_text(text)
+    return normalized_text(pricing_reference_cleanup.apply_import_text_cleanup(value))
 
 
 def numeric_value(value: Any) -> float | None:
@@ -224,6 +205,7 @@ def finalize_item(item: dict[str, Any], items: list[dict[str, Any]]) -> None:
             "sale_unit_price": round(float(item["internal_cost"]) * float(item["markup_multiplier"]), 2),
         }
     )
+    pricing_reference_enrichment.enrich_pricing_reference_item(item)
     items.append(item)
 
 
@@ -504,6 +486,12 @@ def catalog_to_ai_reference_markdown(catalog: dict[str, Any], catalog_name: str 
         aliases = item.get("aliases") or []
         if aliases:
             lines.append(f"- **Search aliases:** {'; '.join(str(value) for value in aliases[:12])}")
+        match_terms = item.get("match_terms") or []
+        if match_terms:
+            lines.append(f"- **Match terms:** {'; '.join(str(value) for value in match_terms[:12])}")
+        object_families = item.get("object_families") or []
+        if object_families:
+            lines.append(f"- **Object families:** {'; '.join(str(value) for value in object_families[:8])}")
         extra_values = item.get("extra_values") or []
         if extra_values:
             values = "; ".join(str(value) for value in extra_values[:8])

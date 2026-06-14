@@ -221,41 +221,48 @@ Production gates:
 Use this prompt for UI polish:
 
 ```text
-You are improving the current Swooshz quote generator web app UI for an MVP.
-Do not redesign it into a marketing landing page. Keep the first screen as the
-actual quote workflow.
+You are polishing the existing Swooshz quote generator UI.
 
-Audience: exhibition/booth quotation operators who repeatedly upload render
-PDFs/images, review AI quote basis lines, choose pricing references, and generate
-customer-ready Excel quotations.
+Important: do not redesign the app. The current general feel, layout direction,
+visual language, and workflow are good. Keep the existing product identity and
+only improve clarity, spacing, consistency, responsiveness, and interaction
+details.
 
-Design goals:
-- Make the app feel like a focused professional operations tool.
-- Keep information dense but calm and scannable.
-- Preserve the existing workflow: Images, Customer, Quote Company, Basis, Output.
-- Make pricing-reference-backed lines visually distinct from AI proposal/custom
-  lines without making the UI noisy.
-- Make warnings and missing-confirmation states obvious.
-- Improve spacing, alignment, hierarchy, buttons, side panels, modal layout,
-  table readability, and mobile responsiveness.
-- Do not add decorative hero sections, marketing blocks, gradient blobs, or
-  card-heavy landing-page styling.
-- Use icon buttons where appropriate for actions like accept, reject, revise,
-  download, delete, settings, and close.
-- Keep cards only for repeated rows/modals/tool surfaces. Do not nest cards.
-- Ensure all text fits on desktop and mobile; no overlapping buttons or labels.
-- Keep company/account/user management and pricing reference management feeling
-  like admin tools, not marketing pages.
+Preserve:
+- Existing workflow: Images, Customer, Quote Company, Basis, Output.
+- Existing overall look and feel.
+- Existing app structure, page density, and operational-tool vibe.
+- Existing element IDs, data attributes, and app behavior.
+- Current visual hierarchy unless there is a clear usability issue.
 
-Important product rule:
-The pricing reference is the customer's owned offer catalog. The quote-basis UI
-should make catalog-backed rows feel like the normal/default outcome. AI
-proposal/custom rows should feel like optional suggestions or manual-pricing
-exceptions that require extra attention.
+Improve only:
+- Alignment, spacing, sizing, and scanability.
+- Button consistency and icon affordances.
+- Modal and side-panel polish.
+- Quote basis row readability.
+- Pricing-reference-backed vs AI proposal/custom row clarity.
+- Empty/loading/error/review states.
+- Mobile/tablet responsiveness.
+- Text wrapping so labels/buttons never overlap or clip.
+- Small visual inconsistencies that make the UI feel unfinished.
+
+Product rule:
+The pricing reference is the customer’s owned offer catalog. Catalog-backed rows
+should feel like the normal/default outcome. AI proposal/custom rows should feel
+like exceptions or optional suggestions needing extra attention.
+
+Do not:
+- Create a landing page.
+- Add hero sections, marketing blocks, decorative gradients, blobs, or big visual
+  flourishes.
+- Change the core workflow.
+- Replace the current visual style with a new design system.
+- Remove security, permission, upload-limit, pricing-reference, or quote-generation
+  guards.
+- Hide important review states just to make the UI cleaner.
 
 Deliver:
-- Updated CSS/layout/component polish only.
-- Preserve existing element IDs and data attributes unless absolutely necessary.
-- Do not remove security, permission, upload-limit, or quote-generation guards.
-- Include before/after screenshots for desktop and mobile.
+- Minimal CSS/layout/component polish.
+- Before/after screenshots for desktop and mobile.
+- A short summary of exactly what was changed and why.
 ```

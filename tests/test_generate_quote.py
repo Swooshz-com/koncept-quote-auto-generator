@@ -404,7 +404,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 100)
         self.assertEqual(rows[0].pricing_id, "floor-design.needle-punch-carpet-in-colour")
         self.assertEqual(rows[0].section, "Floor Design")
-        self.assertEqual(rows[0].description, "m2 needle punch carpet in colour")
+        self.assertEqual(rows[0].description, "sqm needle punch carpet in colour")
         self.assertEqual(rows[0].unit_hint, "sqm")
         self.assertEqual(rows[0].cost, 7)
         self.assertEqual(rows[0].gst_multiplier, 1.09)
@@ -416,7 +416,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(wall_row.remark, "Backwall or any partition; PAINTED")
 
         graphics_row = next(row for row in rows if row.pricing_id == "graphics.vinyl-printed-graphics")
-        self.assertEqual(graphics_row.description, "m2 of vinyl printed graphics")
+        self.assertEqual(graphics_row.description, "sqm of vinyl printed graphics")
         self.assertIn("printed graphics on wall", graphics_row.remark.lower())
 
     def test_catalog_id_pricing_keyword_matches_exact_catalog_item(self):

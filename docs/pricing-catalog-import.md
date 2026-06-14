@@ -38,6 +38,26 @@ Real catalogs may split one pricing item across physical rows. Import should det
 
 The stitcher must preserve casing, all-caps remarks, dimensions, units, and technical wording. It must not merge independent priced rows such as rigging points when those rows include their own unit, cost, markup, or other pricing identity.
 
+For Koncept V1.1 workbooks, bullet or note-style continuation rows belong in remarks, not in the customer-facing pricing reference description.
+
+Import cleanup has two layers:
+
+- Deterministic local rules in `pricing-references/import-cleanup-rules.json` handle safe known cleanup such as typography, word-slash spacing, customer-facing `m2` to `sqm`, and audited typo replacements.
+- AI normalization for messy/unrecognized workbooks should infer additional obvious spelling, OCR, spacing, and unit cleanup from that workbook's own repeated terms, nearby rows, section headings, and standard unit notation. AI must not paraphrase, market-polish, simplify, or rename technical catalog descriptions.
+
+After save, the pricing reference text is authoritative. Later quote-basis and output logic must use the saved customer-facing description word for word.
+
+## Saved order and matching metadata
+
+Saved pricing rows carry:
+
+- `category_order`: the source category index, or first-seen category order when the source has no numeric index.
+- `item_order`: the source row order.
+- `match_terms`: deterministic item-level search terms derived from the saved description, aliases, remarks, and unit.
+- `object_families`: broad catalog families such as graphics, display, water, partition, fascia, or beverage_service.
+
+Quote-basis sorting should prefer `category_order` and `item_order` when the selected sorting mode follows the pricing reference. AI matching and repair should use saved `match_terms` and `object_families` from the pricing reference instead of adding customer/sample-specific runtime keyword patches.
+
 ## AI normalization schema
 
 AI normalization returns rows with these fields:
@@ -49,9 +69,11 @@ AI normalization returns rows with these fields:
 - `markup_multiplier`
 - `remarks`
 - `aliases`
+- `match_terms`
+- `object_families`
 - `warning` or `status`
 
-AI should preserve short technical catalog rows, include aliases/remarks useful for retrieval, and keep commercial notes in remarks instead of the main customer-facing description.
+AI should preserve short technical catalog rows, include aliases/remarks useful for retrieval, and keep commercial notes in remarks instead of the main customer-facing description. Deterministic import enrichment may regenerate `match_terms` and `object_families` on save, so AI-provided values are suggestions, not authority.
 
 ## Editable preview table
 

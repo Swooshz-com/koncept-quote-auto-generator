@@ -515,7 +515,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(items[0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(items[0]["catalog_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(items[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
+        self.assertEqual(items[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
         self.assertEqual(items[0]["catalog_unit_price"], 10.5)
         self.assertNotIn("unit_price_override", items[0])
 
@@ -870,12 +870,12 @@ class WebappServerTest(unittest.TestCase):
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(lines[0]["text"], "[ sqm needle punch carpet in colour ] - AI says green carpet across the whole booth.")
         self.assertEqual(lines[0]["catalog_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(lines[0]["pricing_reference_description"], "m2 needle punch carpet in colour")
+        self.assertEqual(lines[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
         self.assertEqual(lines[0]["catalog_unit_price"], 10.5)
         self.assertEqual(lines[1]["text"], "Use a 6m x 6m booth footprint for area takeoff.")
         self.assertEqual(draft["line_items"][0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "m2 needle punch carpet in colour")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm needle punch carpet in colour")
 
     def test_normalize_ai_draft_appends_missing_catalog_backed_basis_lines(self):
         parsed = {
@@ -967,7 +967,7 @@ class WebappServerTest(unittest.TestCase):
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(lines[0]["text"], "[ sqm 100mm raised platform with aluminum edging ]")
-        self.assertEqual(lines[1]["text"], "100mm raised platform detail edge")
+        self.assertEqual(lines[1]["text"], "[ sqm 100mm raised platform with aluminum edging ] - 100mm raised platform detail edge")
         self.assertEqual(draft["line_items"][0]["description"], "[ sqm 100mm raised platform with aluminum edging ]")
 
     def test_normalize_ai_draft_trusts_leading_item_count_before_dimensions(self):
@@ -1204,7 +1204,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Custom printed graphic panels for front and side feature walls")
         self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(line["pricing_reference_description"], "m2 of vinyl printed graphics")
+        self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
         self.assertNotIn("custom_pricing", line)
 
     def test_normalize_ai_draft_preserves_basis_text_when_line_item_is_catalog_text(self):
@@ -1244,7 +1244,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
         self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(line["pricing_reference_description"], "m2 of vinyl printed graphics")
+        self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
 
     def test_normalize_ai_draft_does_not_copy_invented_keyword_into_catalog_metadata(self):
         text = "printed brand fascia graphics with BRASIL artwork"
@@ -1281,9 +1281,12 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
-        self.assertEqual(line["text"], text)
-        self.assertNotIn("catalog_description", line)
-        self.assertNotIn("pricing_reference_description", line)
+        self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
+        self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm of vinyl printed graphics")
 
     def test_normalize_ai_draft_marks_unmatched_invented_keyword_for_custom_review(self):
         text = "White round cocktail tables with chrome pedestal bases for open discussion areas"
@@ -1328,7 +1331,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("pricing_reference_description", line)
         self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
 
-    def test_normalize_ai_draft_does_not_use_invented_id_like_keyword_to_force_wrong_catalog_match(self):
+    def test_normalize_ai_draft_replaces_invented_id_like_keyword_with_matching_catalog_row(self):
         text = "Glass-top coffee table with dark frame for lounge area"
         parsed = {
             "quote_basis_sections": [
@@ -1363,13 +1366,14 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
-        self.assertEqual(line["tag"], "Custom")
-        self.assertTrue(line["custom_pricing"])
-        self.assertEqual(line["text"], text)
-        self.assertNotIn("pricing_keyword", line)
-        self.assertNotIn("catalog_description", line)
-        self.assertNotIn("pricing_reference_description", line)
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
+        self.assertEqual(line["tag"], "Confirm")
+        self.assertNotIn("custom_pricing", line)
+        self.assertEqual(line["text"], "[ nos. Round Glass Low Table (90cm) ] - Glass-top coffee table with dark frame for lounge area")
+        self.assertEqual(line["pricing_keyword"], "furniture-rental.round-glass-low-table-90cm")
+        self.assertEqual(line["catalog_description"], "nos. Round Glass Low Table (90cm)")
+        self.assertEqual(line["pricing_reference_description"], "nos. Round Glass Low Table (90cm)")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "furniture-rental.round-glass-low-table-90cm")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "nos. Round Glass Low Table (90cm)")
 
     def test_normalize_ai_draft_drops_valid_keyword_when_object_family_contradicts_line(self):
         parsed = {
@@ -1568,6 +1572,89 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["pricing_reference_description"], "Coffee / Tea and supplies for 100 people per day")
         self.assertTrue(line["text"].startswith("[ Coffee / Tea and supplies for 100 people per day ] - "))
         self.assertNotIn("custom_pricing", line)
+
+    def test_normalize_ai_draft_maps_positive_water_connection_to_catalog_row(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "water-connection",
+                    "title": "Water Connection",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "Water connection allowance for coffee counter, subject to venue and organiser approval",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 58,
+                        }
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        line = draft["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Confirm")
+        self.assertEqual(line["pricing_keyword"], "water-connection.water-inlet-and-outlet")
+        self.assertEqual(line["pricing_reference_description"], "nos. water inlet and outlet")
+        self.assertEqual(line["unit"], "nos")
+        self.assertEqual(line["quantity"], "1")
+        self.assertTrue(line["text"].startswith("[ nos. water inlet and outlet ] - "))
+        self.assertNotIn("custom_pricing", line)
+
+    def test_normalize_ai_draft_maps_positive_graphics_proposals_to_catalog_rows(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "graphics",
+                    "title": "Graphics",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "Kent logo, website and tagline graphics for dark blue fascia bands and wall surfaces",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 92,
+                        },
+                        {
+                            "tag": "Custom",
+                            "text": "Large printed graphic panels for white wall display areas",
+                            "quantity": 4,
+                            "unit": "nos",
+                            "confidence_pct": 88,
+                        },
+                        {
+                            "tag": "Custom",
+                            "text": "Counter front logo graphics and slogan panels for reception, coffee and information counters",
+                            "quantity": 3,
+                            "unit": "nos",
+                            "confidence_pct": 86,
+                        },
+                        {
+                            "tag": "Custom",
+                            "text": "Large Kent brand-shape graphic panels at right-side feature wall",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 84,
+                        },
+                    ],
+                }
+            ],
+            "line_items": [],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(len(lines), 4)
+        for line in lines:
+            self.assertEqual(line["tag"], "Confirm")
+            self.assertTrue(line["pricing_keyword"].startswith("graphics."))
+            self.assertIn("pricing_reference_description", line)
+            self.assertNotIn("custom_pricing", line)
+        self.assertIn("graphics.vinyl-printed-graphics", {line["pricing_keyword"] for line in lines})
 
     def test_normalize_ai_draft_rehomes_broad_booth_structure_to_catalog_families_without_one_metre_quantity(self):
         parsed = {
@@ -2034,7 +2121,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
-        self.assertEqual(result["items"][0]["id"], "booth-structure-white-painted-walling")
+        self.assertEqual(result["items"][0]["id"], "booth-structure.white-painted-walling")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
@@ -2056,7 +2143,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
         self.assertEqual(result["layout"], "normalized-pricing-reference")
-        self.assertEqual(result["items"][0]["id"], "custom-wall-white-painted")
+        self.assertEqual(result["items"][0]["id"], "custom.wall.white-painted")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
@@ -2270,6 +2357,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Only create a new section", prompt)
         self.assertIn("Preserve the source category order and source row order.", prompt)
         self.assertIn("assign category_order by first-seen section in the source rows and item_order by source row order", prompt)
+        self.assertIn("Clean obvious spelling, OCR, spacing, and unit wording errors only when the workbook itself makes the correction unambiguous", prompt)
+        self.assertIn("Do not paraphrase, market-polish, simplify, or rename technical catalog descriptions", prompt)
         self.assertNotIn("Use normalized sections such as", prompt)
 
     def test_pricing_reference_validation_uses_first_seen_category_order(self):
@@ -2467,12 +2556,35 @@ class WebappServerTest(unittest.TestCase):
         current_descriptions = [(item["id"], item["description"]) for item in current["items"]]
 
         self.assertEqual(current_descriptions, generated_descriptions)
-        self.assertIn(("floor-design.100mm-raised-platform-with-aluminum-edging", "m2 100mm raised platform with aluminum edging"), current_descriptions)
+        self.assertIn(("floor-design.100mm-raised-platform-with-aluminum-edging", "sqm 100mm raised platform with aluminum edging"), current_descriptions)
         self.assertIn(("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
         self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
         catalog_text = json.dumps(current, ensure_ascii=False).lower()
-        for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth"):
+        for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth", "plumbling"):
             self.assertNotIn(token, catalog_text)
+
+    def test_koncept_pricing_reference_import_persists_matching_metadata(self):
+        raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
+        preview = webapp.pricing_reference_import_preview_from_v11_workbook(raw, "Quotation-Cost-Template-V1.1.xlsx")
+        items = {item["id"]: item for item in preview["items"]}
+
+        water = items["water-connection.water-inlet-and-outlet"]
+        sink = items["water-connection.sink-connection"]
+        graphics = items["graphics.vinyl-printed-graphics"]
+        logo = items["graphics.3d-vinyl-logo-on-foam"]
+        tv = items["av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd"]
+
+        self.assertIn("water", water["object_families"])
+        self.assertIn("water inlet", water["match_terms"])
+        self.assertNotIn("sink connection", water["match_terms"])
+        self.assertIn("sink connection", sink["match_terms"])
+        self.assertIn("plumbing", sink["match_terms"])
+        self.assertIn("graphics", graphics["object_families"])
+        self.assertIn("printed graphics", graphics["match_terms"])
+        self.assertIn("logo graphics", logo["match_terms"])
+        self.assertNotIn("printed graphics", logo["match_terms"])
+        self.assertIn("display", tv["object_families"])
+        self.assertIn("screen display", tv["match_terms"])
 
     def test_customer_quote_text_sanitization_preserves_dimensions_and_units(self):
         cleaned = webapp.clean_customer_quote_line_text("Booth size taken from quotation title: 6m x 6m.")
@@ -2530,8 +2642,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertEqual([item["id"] for item in result["items"]], [
-            "booth-structure-white-painted-walling",
-            "booth-structure-white-painted-walling-2",
+            "booth-structure.white-painted-walling",
+            "booth-structure.white-painted-walling-2",
         ])
         self.assertIn("painted wall", [alias.lower() for alias in result["items"][0]["aliases"]])
 
@@ -7560,6 +7672,8 @@ eval([
             "basisCatalogReferenceTitle",
             "basisLineTitle",
             "basisPillTitle",
+            "catalogBackedBasisDisplayParts",
+            "basisLineTextHtml",
             "renderBasisLine",
             "quoteBasisFromSections",
             "cloneQuoteBasisSections",
@@ -7591,11 +7705,11 @@ const catalogBackedLine = normalizeBasisLines({
   text: "Custom printed graphic panels for front and side feature walls",
   pricing_keyword: "graphics.vinyl-printed-graphics",
   catalog_description: "sqm of vinyl printed graphics",
-  pricing_reference_description: "m2 of vinyl printed graphics",
+  pricing_reference_description: "sqm of vinyl printed graphics",
 })[0];
 assert.strictEqual(catalogBackedLine.pricing_keyword, "graphics.vinyl-printed-graphics");
 assert.strictEqual(catalogBackedLine.catalog_description, "sqm of vinyl printed graphics");
-assert.strictEqual(catalogBackedLine.pricing_reference_description, "m2 of vinyl printed graphics");
+assert.strictEqual(catalogBackedLine.pricing_reference_description, "sqm of vinyl printed graphics");
 assert.strictEqual(basisCatalogReferenceTitle(catalogBackedLine), "");
 assert.strictEqual(basisLineTitle(catalogBackedLine), "");
 assert.strictEqual(basisPillTitle(catalogBackedLine, "Confirm"), "");
@@ -7651,7 +7765,24 @@ const catalogLineHtml = renderBasisLine(
   catalogBackedLine,
   0
 );
-assert.ok(!catalogLineHtml.includes("Pricing reference: m2 of vinyl printed graphics"));
+assert.ok(!catalogLineHtml.includes("Pricing reference: sqm of vinyl printed graphics"));
+const bracketedCatalogLineHtml = renderBasisLine(
+  { id: "floor-design", title: "Floor Design" },
+  {
+    tag: "Confirm",
+    text: "[ sqm needle punch carpet in colour ] - Grey carpet finish across 9m x 10.5m booth footprint",
+    confidence: 92,
+    quantity: 94.5,
+    unit: "sqm",
+    pricing_reference_description: "sqm needle punch carpet in colour",
+  },
+  0
+);
+assert.ok(bracketedCatalogLineHtml.includes("basis-line-catalog-reference"));
+assert.ok(bracketedCatalogLineHtml.includes("[ sqm needle punch carpet in colour ]"));
+assert.ok(bracketedCatalogLineHtml.includes("basis-line-catalog-arrow"));
+assert.ok(bracketedCatalogLineHtml.includes("--&gt;"));
+assert.ok(bracketedCatalogLineHtml.includes("Grey carpet finish across 9m x 10.5m booth footprint"));
 state.quoteBasisSections[0].lines[1].tag = "Include";
 assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), []);
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");

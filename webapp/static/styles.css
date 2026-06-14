@@ -2104,6 +2104,24 @@ select:focus {
   font-size: 14px;
 }
 
+.basis-line-catalog-display {
+  display: grid;
+  gap: 3px;
+}
+
+.basis-line-catalog-reference {
+  color: #1f2d3d;
+}
+
+.basis-line-catalog-detail {
+  color: #274963;
+}
+
+.basis-line-catalog-arrow {
+  color: #60758d;
+  font-weight: 750;
+}
+
 .basis-line-actions {
   display: grid;
   grid-template-columns: 32px 32px 38px;
