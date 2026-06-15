@@ -8004,6 +8004,89 @@ assert.ok(normalizedSource.includes("setPricingReferenceSaveButtonState({\n     
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_pricing_reference_preview_attention_flags_actionable_issues(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const CURRENCY_OPTIONS = [
+  ["SGD", "Singapore Dollar"],
+  ["USD", "US Dollar"],
+];
+
+eval([
+  "isStandardCurrencyCode",
+  "humanizeImportLayoutLabel",
+  "pricingReferenceRowIssues",
+  "compactPreviewList",
+  "pricingReferencePreviewAttention",
+  "pricingReferencePreviewNextStep",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(isStandardCurrencyCode("SGD"), true);
+assert.strictEqual(isStandardCurrencyCode("GAY"), false);
+assert.strictEqual(humanizeImportLayoutLabel("v2-sectioned-pricing-workbook"), "Sectioned pricing workbook");
+
+const result = {
+  items: [
+    { warning: "OK" },
+    { warning: "unit_hint required" },
+    { warning: "internal_cost must be positive" },
+  ],
+  missing: ["markup_multiplier"],
+  errors: ["Missing required columns: markup_multiplier."],
+  warnings: ["2 rows skipped during sanitizing."],
+  skipped: 2,
+};
+const attention = pricingReferencePreviewAttention(result, {
+  currency: "GAY",
+  currencyNeedsReview: !isStandardCurrencyCode("GAY"),
+});
+
+assert.ok(attention.some((item) => item.label === "Missing required columns" && item.text === "markup_multiplier"));
+assert.ok(attention.some((item) => item.label === "2 rows need edit" && item.text.includes("row 2: unit_hint required")));
+assert.ok(attention.some((item) => item.label === "Currency review" && item.text.includes("\"GAY\"")));
+assert.ok(attention.some((item) => item.label === "Skipped rows" && item.text.includes("2 rows were skipped")));
+assert.strictEqual(pricingReferencePreviewNextStep(result, attention), "Fix the flagged import issues, then review the rows again.");
+
+const cleanAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0 }, {
+  currency: "SGD",
+  currencyNeedsReview: false,
+});
+assert.deepStrictEqual(cleanAttention, []);
+assert.strictEqual(pricingReferencePreviewNextStep({ items: [{ warning: "OK" }] }, cleanAttention), "Review 1 imported row once before saving.");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_pricing_reference_row_status_clears_after_edit(self):
         node = require_node(self)
 

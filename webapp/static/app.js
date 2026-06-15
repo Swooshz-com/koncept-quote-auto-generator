@@ -1171,7 +1171,12 @@ function selectedPricingReferenceCurrency() {
 
 function supportedCurrencyLabel(value = DEFAULT_CURRENCY_LABEL) {
   const normalized = normalizeCurrencyLabel(value);
-  return CURRENCY_OPTIONS.some(([code]) => code === normalized) ? normalized : DEFAULT_CURRENCY_LABEL;
+  return isStandardCurrencyCode(normalized) ? normalized : DEFAULT_CURRENCY_LABEL;
+}
+
+function isStandardCurrencyCode(value = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return CURRENCY_OPTIONS.some(([code]) => code === normalized);
 }
 
 function normalizedCustomCurrencyInput() {
@@ -2595,7 +2600,7 @@ function pricingReferenceSaveGuidance(result = state.pendingPricingReference) {
   if (!result) return "";
   const reason = pricingReferenceSaveBlockReason(result);
   return result.canSave
-    ? "Rows are ready to save."
+    ? "Basic row checks passed. Review any attention notes before saving."
     : `Fix all flagged problems before saving this reference.${reason ? ` ${reason}` : ""}`;
 }
 
@@ -2604,6 +2609,93 @@ function pricingReferenceTableSummaryText(result = state.pendingPricingReference
   return items.length
     ? `${items.length} editable pricing row${items.length === 1 ? "" : "s"}. ${pricingReferenceSaveGuidance(result)}`
     : "Upload a pricing catalog to review editable rows.";
+}
+
+function humanizeImportLayoutLabel(value = "") {
+  const text = String(value || "normalized pricing reference")
+    .trim()
+    .replace(/^v\d+(?:\.\d+)?[-_\s]*/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "Normalized pricing reference";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function pricingReferenceRowIssues(items = []) {
+  return items
+    .map((item, index) => ({
+      index: index + 1,
+      status: String(item.warning || "").trim(),
+    }))
+    .filter((item) => item.status && item.status.toLowerCase() !== "ok");
+}
+
+function compactPreviewList(values = [], limit = 3) {
+  const visible = values.slice(0, limit);
+  const hidden = Math.max(0, values.length - visible.length);
+  return `${visible.join("; ")}${hidden ? `; +${hidden} more` : ""}`;
+}
+
+function pricingReferencePreviewAttention(result = {}, context = {}) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  const missing = Array.isArray(result.missing) ? result.missing.filter(Boolean) : [];
+  const errors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
+  const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
+  const skipped = Number(result.skipped || 0);
+  const rowIssues = pricingReferenceRowIssues(items);
+  const attention = [];
+  errors
+    .filter((message) => !(missing.length && /^missing required columns:/i.test(String(message))))
+    .forEach((message) => attention.push({ tone: "error", label: "Import error", text: message }));
+  if (missing.length) {
+    attention.push({
+      tone: "error",
+      label: "Missing required columns",
+      text: missing.join(", "),
+    });
+  }
+  if (rowIssues.length) {
+    attention.push({
+      tone: "error",
+      label: `${rowIssues.length} row${rowIssues.length === 1 ? "" : "s"} need edit`,
+      text: `Open Review Rows. Examples: ${compactPreviewList(rowIssues.map((issue) => `row ${issue.index}: ${issue.status}`))}.`,
+    });
+  }
+  warnings
+    .filter((message) => !(skipped && /\bskipped\b/i.test(String(message))))
+    .forEach((message) => attention.push({ tone: "warn", label: "Import warning", text: message }));
+  if (context.currencyNeedsReview) {
+    attention.push({
+      tone: "warn",
+      label: "Currency review",
+      text: `"${context.currency || "Custom"}" is not in the standard currency selector. Confirm it is correct or choose another currency before saving.`,
+    });
+  }
+  if (skipped) {
+    attention.push({
+      tone: "warn",
+      label: "Skipped rows",
+      text: `${skipped} row${skipped === 1 ? "" : "s"} were skipped. Check the workbook if this is unexpected.`,
+    });
+  }
+  if (!items.length && !errors.length) {
+    attention.push({
+      tone: "error",
+      label: "No pricing rows",
+      text: "No editable pricing rows were found in this upload.",
+    });
+  }
+  return attention;
+}
+
+function pricingReferencePreviewNextStep(result = {}, attention = []) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  const hasFixes = attention.some((item) => item.tone === "error");
+  if (hasFixes) return "Fix the flagged import issues, then review the rows again.";
+  if (attention.length) return "Review the attention notes, then save when the pricing reference is correct.";
+  if (items.length) return `Review ${items.length} imported row${items.length === 1 ? "" : "s"} once before saving.`;
+  return "Upload a pricing catalog to start the import check.";
 }
 
 function updatePricingReferenceGuidanceDisplays(result = state.pendingPricingReference) {
@@ -2685,12 +2777,12 @@ function renderPricingReferencePreview(result = null, options = {}) {
     return;
   }
   result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
+  if (options.syncCurrencyControls && result.currency) setPricingReferenceCurrencyControls(result.currency);
   const selectedCurrencyMode = elements.pricingReferenceCurrency?.value;
   const modalCurrency = pricingReferenceModalCurrency();
   const currency = selectedCurrencyMode === CUSTOM_CURRENCY_VALUE
     ? modalCurrency || "Custom"
     : normalizeCurrencyLabel(result.currency || modalCurrency || DEFAULT_CURRENCY_LABEL);
-  if (options.syncCurrencyControls && result.currency) setPricingReferenceCurrencyControls(result.currency);
   refreshPricingReferencePreviewValidity(result);
   const required = pricingReferenceRequiredColumns();
   const missing = Array.isArray(result.missing) ? result.missing : [];
@@ -2699,31 +2791,46 @@ function renderPricingReferencePreview(result = null, options = {}) {
   const warnings = result.warnings || [];
   const canSave = Boolean(result.canSave);
   const isAiNormalizationState = String(result.layout || "").startsWith("ai-normalization");
-  const displayMessages = errors.length && isAiNormalizationState
-    ? [genericFailureMessage(result)]
-    : errors.concat(warnings);
-  const tone = errors.length ? "error" : warnings.length || !canSave ? "warn" : "ok";
-  const title = isAiNormalizationState && errors.length ? "Import preview failed" : isAiNormalizationState ? "AI import needs setup" : errors.length ? "Import preview needs review" : canSave ? "Editable import preview" : "Template preview";
   const rowCount = result.rowCount ?? result.items.length;
-  const statusLabel = canSave ? "Ready" : errors.length ? "Needs fix" : "Review";
+  const currencyNeedsReview = Boolean(currency) && !isStandardCurrencyCode(currency);
+  const rowIssues = pricingReferenceRowIssues(result.items);
+  const attention = pricingReferencePreviewAttention(result, { currency, currencyNeedsReview });
+  const hasFixes = attention.some((item) => item.tone === "error") || !canSave;
+  const hasReviewNotes = attention.length > 0;
+  const tone = hasFixes ? "error" : hasReviewNotes || warnings.length ? "warn" : "ok";
+  const title = isAiNormalizationState && errors.length
+    ? "Import preview failed"
+    : hasFixes
+      ? "Import preview needs fixes"
+      : hasReviewNotes
+        ? "Import preview needs review"
+        : "Import preview ready";
+  const statusLabel = hasFixes ? "Needs fix" : hasReviewNotes ? "Review" : "Ready";
+  const readyRows = Math.max(0, result.items.length - rowIssues.length);
+  const requiredColumnText = missing.length ? `${found.length}/${required.length} found` : "All required found";
   const metrics = [
-    ["Layout", result.layout || "normalized pricing reference"],
-    ["Currency", currency],
-    ["Rows detected", rowCount],
+    ["Rows ready", readyRows],
+    ["Need fix", rowIssues.length],
+    ["Required columns", requiredColumnText],
+    ["Skipped", result.skipped || 0],
+    ["Currency", currencyNeedsReview ? `${currency} - review` : currency],
+    ["Layout", humanizeImportLayoutLabel(result.layout)],
     ...(isAiNormalizationState ? [] : [
-      ["Columns found", found.join(", ") || "None"],
-      ["Columns missing", missing.join(", ") || "None"],
+      ["Rows detected", rowCount],
     ]),
-    ["Skipped rows", result.skipped || 0],
   ];
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
     <div class="pricing-reference-preview-header">
       <div>
-        <span class="pricing-reference-preview-kicker">Import check</span>
+        <span class="pricing-reference-preview-kicker">Import health</span>
         <strong class="pricing-reference-preview-title">${escapeHtml(title)}</strong>
       </div>
       <span class="pricing-reference-preview-status-badge">${escapeHtml(statusLabel)}</span>
+    </div>
+    <div class="pricing-reference-preview-next-step">
+      <span>Next step</span>
+      <strong>${escapeHtml(pricingReferencePreviewNextStep(result, attention))}</strong>
     </div>
     <div class="pricing-reference-preview-metrics">
       ${metrics.map(([label, value]) => `
@@ -2733,7 +2840,19 @@ function renderPricingReferencePreview(result = null, options = {}) {
         </div>
       `).join("")}
     </div>
-    ${displayMessages.length ? `<div class="pricing-reference-preview-messages">${displayMessages.map((message) => `<p>${escapeHtml(message)}</p>`).join("")}</div>` : ""}
+    <div class="pricing-reference-attention ${attention.length ? "" : "is-clear"}">
+      <strong>${attention.length ? "Needs attention" : "No missing required info detected"}</strong>
+      ${attention.length ? `
+        <ul>
+          ${attention.map((item) => `
+            <li class="${item.tone === "error" ? "is-error" : "is-warn"}">
+              <span>${escapeHtml(item.label)}</span>
+              <p>${escapeHtml(item.text)}</p>
+            </li>
+          `).join("")}
+        </ul>
+      ` : `<p>Required columns are present and imported rows pass the basic checks.</p>`}
+    </div>
     <p class="pricing-reference-save-guidance ${canSave ? "is-ok" : "is-blocked"}">${escapeHtml(pricingReferenceSaveGuidance(result))}</p>
     ${result.items.length ? `<button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review ${result.items.length} Row${result.items.length === 1 ? "" : "s"}</button>` : ""}
   `;
