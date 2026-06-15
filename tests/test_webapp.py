@@ -7448,6 +7448,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("openSettingsModal", js)
         save_reference_body = js.split("async function savePricingReferenceFromModal", 1)[1].split("async function deleteRepoPricingReference", 1)[0]
         self.assertIn("state.pricingReferenceSaveBusy = true;", save_reference_body)
+        self.assertIn("try {", save_reference_body)
+        self.assertIn("} catch (error) {", save_reference_body)
+        self.assertIn("state.pricingReferenceSaveBusy = false;", save_reference_body)
+        self.assertIn("Saved, but the settings list could not refresh.", save_reference_body)
         self.assertIn("state.pricingReferenceSavedNotice", save_reference_body)
         self.assertIn("state.pricingReferenceId = savedReference.id || \"\";", save_reference_body)
         self.assertLess(
@@ -7466,8 +7470,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricingReferenceDeleteSection", html)
         self.assertIn("deletePricingReferenceSelect", html)
         self.assertIn("Delete Reference", html)
-        self.assertIn("editPricingReferenceButton", html)
-        self.assertIn("Edit Rows", html)
+        self.assertNotIn("editPricingReferenceButton", html)
+        self.assertNotIn("Edit Rows", html)
         self.assertIn("Save Changes", js)
         self.assertIn("deleteRepoPricingReference", js)
         delete_reference_body = js.split("async function deleteRepoPricingReference", 1)[1].split("async function deleteSelectedPricingReference", 1)[0]
@@ -7527,17 +7531,23 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("max-width: none;", upload_note_style)
         self.assertIn("color: #52677e;", upload_note_style)
         self.assertIn("font-weight: 500;", upload_note_style)
+        self.assertIn("pricingReferenceMetadataSetup", html)
+        self.assertIn("pricingReferenceMetadataSetup", js)
+        self.assertIn(".pricing-reference-metadata-setup", css)
+        self.assertIn("!state.pricingReferenceImportBusy", js)
+        self.assertIn("elements.pricingReferenceMetadataSetup.hidden = !showMetadataSetup;", js)
         self.assertIn("align-content: start;", css)
         self.assertIn("grid-auto-rows: max-content;", css)
         self.assertIn("box-shadow: var(--shadow-xs);", css)
-        self.assertIn(".pricing-reference-editor-body > .tax-settings-grid {\n  margin-top: 4px;", css)
+        self.assertIn(".pricing-reference-metadata-setup > .tax-settings-grid {\n  margin-top: 4px;", css)
         self.assertIn(".pricing-reference-delete-section", css)
         self.assertIn(".pricing-reference-delete-section {\n  border-color: #cfe0ef;", css)
         self.assertIn("background: #f8fbff;", css)
         self.assertIn(".pricing-reference-delete-section .pricing-reference-field-title {\n  color: #2d3b4f;", css)
-        self.assertIn("grid-template-columns: minmax(260px, 1fr) auto auto;", css)
+        self.assertIn("grid-template-columns: minmax(260px, 1fr) auto;", css)
         self.assertIn(".pricing-reference-delete-controls .compact-control {\n  margin: 0;\n  width: 100%;", css)
-        self.assertIn(".pricing-reference-edit-button,\n.pricing-reference-delete-button {\n  min-width: 118px;\n  min-height: 40px;", css)
+        self.assertNotIn(".pricing-reference-edit-button", css)
+        self.assertIn(".pricing-reference-delete-button {\n  min-width: 118px;\n  min-height: 40px;", css)
         self.assertIn(".pricing-reference-delete-button {\n  min-width: 138px;\n}", css)
         self.assertIn(".pricing-reference-settings-tabs", css)
         self.assertIn(".pricing-reference-settings-tab.is-active", css)
@@ -7560,23 +7570,49 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricingReferenceTableOverlay", html)
         self.assertIn("pricingReferenceTableBody", html)
         self.assertIn("Review Imported Rows", html)
+        self.assertIn("pricingReferenceAddRowButton", html)
+        self.assertIn("pricingReferenceUndoButton", html)
+        self.assertIn("<th>Status</th><th>Actions</th>", html)
+        self.assertIn("pricing-reference-col-actions", html)
         self.assertNotIn("Match terms", html)
         self.assertNotIn("Object families", html)
         self.assertIn("openPricingReferenceTableOverlay", js)
+        self.assertIn("addPricingReferenceTableRow", js)
+        self.assertIn("removePricingReferenceTableRow", js)
+        self.assertIn("undoPricingReferenceTableEdit", js)
+        self.assertIn("pricingReferenceEditUndoStack", js)
+        self.assertIn("pricingReferenceItemChangeCount", js)
+        self.assertIn("pricing row${changedRows === 1 ? \"\" : \"s\"} amended in Review Rows.", js)
+        self.assertIn("data-pricing-reference-remove-row", js)
+        self.assertIn("No editable rows yet. Use Add Row below to create the first pricing reference row.", js)
+        self.assertIn(': "Review Rows"', js)
+        self.assertIn("editSelectedPricingReference({ openTable: false });", js)
+        self.assertNotIn("elements.editPricingReferenceButton", js)
         self.assertIn("pricing-reference-table-open", js)
         self.assertIn(".pricing-reference-table-panel", css)
         self.assertIn(".pricing-reference-table-wrap", css)
+        self.assertIn(".pricing-reference-full-table {\n  min-width: 1120px;", css)
+        self.assertIn(".pricing-reference-col-description {\n  width: 300px;", css)
+        self.assertIn(".pricing-reference-col-remarks {\n  width: 185px;", css)
+        self.assertIn(".pricing-reference-col-status {\n  width: 92px;", css)
+        self.assertIn(".pricing-reference-col-actions", css)
+        self.assertIn(".pricing-reference-row-actions", css)
+        self.assertIn(".pricing-reference-row-remove", css)
+        self.assertIn(".pricing-reference-table-actions", css)
         self.assertIn("pricingReferenceStatusClass", js)
         self.assertIn("updatePricingReferenceGuidanceDisplays", js)
         self.assertIn("pricing-reference-preview-actions", js)
-        self.assertIn("pricing-reference-preview-summary", js)
+        self.assertNotIn("pricing-reference-preview-summary", js)
+        self.assertNotIn("pricing-reference-preview-next-step", js)
+        self.assertNotIn("pricing-reference-preview-status-badge", js)
         self.assertIn("pricingReferenceSaveProgressMarkup", js)
         self.assertIn("Saving pricing reference", js)
         self.assertNotIn("pricing-reference-preview-metrics", js)
         self.assertNotIn("pricing-reference-preview-metric", js)
-        self.assertIn(".pricing-reference-preview-status-badge", css)
+        self.assertNotIn(".pricing-reference-preview-status-badge", css)
+        self.assertNotIn(".pricing-reference-preview-next-step", css)
         self.assertIn(".pricing-reference-preview-actions", css)
-        self.assertIn(".pricing-reference-preview-summary", css)
+        self.assertNotIn(".pricing-reference-preview-summary", css)
         self.assertIn(".pricing-reference-preview.importing,\n.pricing-reference-preview.saving", css)
         self.assertIn(".pricing-reference-manage-status.is-saving", css)
         self.assertIn("justify-items: stretch;", css)
@@ -7922,9 +7958,15 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn("analysisConfirmHighQualityButton", html)
         self.assertIn("Run High Quality", html)
         self.assertIn("Run Analysis", html)
+        analysis_modal = html.split('id="analysisConfirmModal"', 1)[1].split("</section>", 1)[0]
+        self.assertLess(analysis_modal.index("analysisConfirmHighQualityButton"), analysis_modal.index("analysisConfirmCancelButton"))
+        self.assertLess(analysis_modal.index("analysisConfirmCancelButton"), analysis_modal.index("analysisConfirmStartButton"))
+        self.assertIn('class="secondary-button sample-button" type="button" id="analysisConfirmHighQualityButton"', html)
         self.assertIn("analysis_mode: normalizeAnalysisMode", js)
         self.assertIn("analyseAgainButton", html)
         self.assertIn("Re-Analyse", html)
+        self.assertNotIn("analyseHighQualityButton", html)
+        self.assertNotIn("analyseHighQualityButton", js)
         self.assertIn('id="pricingReferenceCurrency"', html)
         self.assertIn('id="pricingReferenceCurrencyCustom"', html)
         self.assertIn('id="selectedPricingReferenceCurrency"', html)
@@ -7942,16 +7984,18 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertNotIn("analysis-mode-badge", css)
         self.assertIn('requestStartAnalysis("standard")', js)
         self.assertIn('confirmStartAnalysis("high_quality")', js)
-        self.assertIn('requestStartAnalysis("high_quality")', js)
+        self.assertNotIn('requestStartAnalysis("high_quality")', js)
         self.assertNotIn("data-analysis-rerun", js)
         self.assertIn("AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?", html)
         self.assertIn(".modal-panel > .modal-actions", css)
         self.assertIn(".analysis-confirm-panel > .modal-actions", css)
-        self.assertIn("width: min(720px, calc(100vw - 32px));", css)
+        self.assertIn(".analysis-mode-actions {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto auto;", css)
+        self.assertIn(".analysis-mode-actions .sample-button {\n  justify-self: start;", css)
+        self.assertIn("width: min(680px, calc(100vw - 48px));", css)
         self.assertIn(".pricing-reference-pill {\n  width: 76px;", css)
         self.assertIn(".currency-control-row {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
         self.assertNotIn(".secondary-button.ai-mode-button", css)
-        self.assertIn(".secondary-button.panel-analyse-quality-button", css)
+        self.assertNotIn(".secondary-button.panel-analyse-quality-button", css)
         self.assertIn(".secondary-button.panel-analyse-button", css)
         self.assertIn("max-height: min(88dvh, 720px);", css)
         self.assertIn("z-index: 100;", css)
@@ -8318,10 +8362,13 @@ eval([
   "normalizeTaxRate",
   "normalizeCurrencyLabel",
   "orderNumber",
+  "pricingReferenceSnapshotItem",
   "sortPricingReferencePreviewItems",
   "pricingReferenceRowStatus",
   "normalizePricingReferencePreviewItem",
   "pricingReferencePreviewFromReference",
+  "pricingReferenceDraftUndoSnapshot",
+  "pricingReferenceItemChangeCount",
 ].map(extractFunction).join("\n"));
 
 const reference = {
@@ -8359,6 +8406,11 @@ assert.strictEqual(preview.items[0].remarks, "Printed Graphics on wall");
 assert.strictEqual(preview.items[0].match_terms, "printed graphics");
 assert.strictEqual(preview.items[0].object_families, "printed_graphics");
 assert.strictEqual(preview.items[0].warning, "OK");
+
+const beforeSnapshot = pricingReferenceDraftUndoSnapshot(preview);
+const amendedPreview = JSON.parse(JSON.stringify(preview));
+amendedPreview.items[0].description = "sqm printed graphics amended";
+assert.strictEqual(pricingReferenceItemChangeCount(beforeSnapshot, amendedPreview), 1);
 
 assert.ok(normalizedSource.includes("state.editingPricingReferenceId = reference.id || \"\";"));
 const editStart = normalizedSource.indexOf("async function editSelectedPricingReference");

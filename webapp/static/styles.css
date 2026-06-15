@@ -886,15 +886,7 @@ h3 {
   box-shadow: var(--shadow-xs);
 }
 
-.secondary-button.panel-analyse-quality-button {
-  border-color: #8bb6a5;
-  background: linear-gradient(180deg, #f5fbf8, #e4f4ec);
-  color: #0d5a3f;
-  box-shadow: var(--shadow-xs);
-}
-
 .workspace-pane-header-actions .panel-analyse-button,
-.workspace-pane-header-actions .panel-analyse-quality-button,
 .workspace-pane-header-actions .panel-clear-button {
   width: 132px;
 }
@@ -903,12 +895,6 @@ h3 {
   border-color: #2563eb;
   background: #dbeafe;
   color: #0b3b76;
-}
-
-.secondary-button.panel-analyse-quality-button:hover:not(:disabled):not([aria-disabled="true"]) {
-  border-color: #16805b;
-  background: #dff3e9;
-  color: #0d5a3f;
 }
 
 .secondary-button.panel-clear-button {
@@ -3268,6 +3254,15 @@ td input {
   display: none;
 }
 
+.pricing-reference-metadata-setup {
+  display: grid;
+  gap: 14px;
+}
+
+.pricing-reference-metadata-setup[hidden] {
+  display: none;
+}
+
 .pricing-reference-field-title {
   color: #2d3b4f;
   font-size: 14px;
@@ -3283,7 +3278,7 @@ td input {
   line-height: 1.4;
 }
 
-.pricing-reference-editor-body > .tax-settings-grid {
+.pricing-reference-metadata-setup > .tax-settings-grid {
   margin-top: 4px;
 }
 
@@ -3324,7 +3319,7 @@ td input {
 
 .pricing-reference-delete-controls {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: 10px;
   align-items: end;
 }
@@ -3334,7 +3329,6 @@ td input {
   width: 100%;
 }
 
-.pricing-reference-edit-button,
 .pricing-reference-delete-button {
   min-width: 118px;
   min-height: 40px;
@@ -3701,6 +3695,16 @@ body.privacy-page {
   padding: 8px 20px 20px;
 }
 
+.analysis-mode-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.analysis-mode-actions .sample-button {
+  justify-self: start;
+}
+
 .analysis-confirm-panel > .modal-actions button {
   min-width: 98px;
 }
@@ -3805,45 +3809,6 @@ body.privacy-page {
   animation: spin 900ms linear infinite;
 }
 
-.pricing-reference-preview-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
-  min-width: 0;
-}
-
-.pricing-reference-preview-kicker {
-  display: block;
-  margin-bottom: 2px;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.pricing-reference-preview-title {
-  display: block;
-  color: #10223b;
-  font-size: 15px;
-  font-weight: 850;
-  line-height: 1.2;
-}
-
-.pricing-reference-preview-status-badge {
-  min-width: 74px;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 850;
-  text-align: center;
-  white-space: nowrap;
-}
-
 .pricing-reference-preview-actions {
   display: flex;
   align-items: center;
@@ -3854,58 +3819,6 @@ body.privacy-page {
 
 .pricing-reference-preview-actions .pricing-reference-table-open {
   margin-top: 0;
-}
-
-.pricing-reference-preview.ok .pricing-reference-preview-status-badge {
-  border-color: #a9d7c8;
-  background: #dff6ee;
-  color: #047857;
-}
-
-.pricing-reference-preview.warn .pricing-reference-preview-status-badge {
-  border-color: var(--amber-border);
-  background: #fff1d6;
-  color: #b45309;
-}
-
-.pricing-reference-preview.error .pricing-reference-preview-status-badge {
-  border-color: var(--red-border);
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.pricing-reference-preview-next-step {
-  display: grid;
-  gap: 4px;
-}
-
-.pricing-reference-preview-next-step span {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 850;
-  text-transform: uppercase;
-}
-
-.pricing-reference-preview-next-step strong {
-  color: #10223b;
-  font-size: 14px;
-  font-weight: 850;
-  line-height: 1.35;
-}
-
-.pricing-reference-preview-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  min-width: 0;
-}
-
-.pricing-reference-preview-summary span {
-  color: #43566e;
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .pricing-reference-preview-messages {
@@ -4033,35 +3946,39 @@ body.privacy-page {
 }
 
 .pricing-reference-full-table {
-  min-width: 1540px;
+  min-width: 1120px;
 }
 
 .pricing-reference-col-section {
-  width: 145px;
+  width: 138px;
 }
 
 .pricing-reference-col-description {
-  width: 330px;
+  width: 300px;
 }
 
 .pricing-reference-col-unit {
-  width: 80px;
+  width: 76px;
 }
 
 .pricing-reference-col-cost {
-  width: 96px;
+  width: 90px;
 }
 
 .pricing-reference-col-markup {
-  width: 116px;
+  width: 104px;
 }
 
 .pricing-reference-col-remarks {
-  width: 235px;
+  width: 185px;
 }
 
 .pricing-reference-col-status {
-  width: 138px;
+  width: 92px;
+}
+
+.pricing-reference-col-actions {
+  width: 78px;
 }
 
 .pricing-reference-full-table thead th {
@@ -4079,9 +3996,16 @@ body.privacy-page {
 }
 
 .pricing-reference-table-actions {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  justify-content: start;
   padding: 14px 18px 18px;
   border-top: 1px solid var(--line-subtle);
   background: #ffffff;
+}
+
+.pricing-reference-table-actions [data-pricing-reference-table-close] {
+  justify-self: end;
 }
 
 .pricing-reference-preview-table {
@@ -4113,6 +4037,19 @@ body.privacy-page {
   font-size: 12px;
   font-weight: 650;
   overflow-wrap: anywhere;
+}
+
+.pricing-reference-row-actions {
+  text-align: center;
+}
+
+.pricing-reference-row-remove {
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #a32626;
+  font-size: 12px;
 }
 
 .pricing-preview-status.is-ok {
@@ -4470,8 +4407,7 @@ body.privacy-page {
 
   .pricing-reference-delete-section,
   .pricing-reference-delete-controls,
-  .pricing-reference-manage-status,
-  .pricing-reference-preview-header {
+  .pricing-reference-manage-status {
     grid-template-columns: 1fr;
   }
 
@@ -4520,7 +4456,6 @@ body.privacy-page {
 
   .workspace-pane-header-actions .sample-button,
   .workspace-pane-header-actions .panel-analyse-button,
-  .workspace-pane-header-actions .panel-analyse-quality-button,
   .workspace-pane-header-actions .panel-clear-button,
   .pricing-reference-panel .settings-note,
   .company-preset-panel .settings-note {
@@ -4688,6 +4623,10 @@ body.privacy-page {
 
   .analysis-confirm-panel > .modal-actions button {
     width: 100%;
+  }
+
+  .analysis-mode-actions .sample-button {
+    justify-self: stretch;
   }
 
   h1 {
