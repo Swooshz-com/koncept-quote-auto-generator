@@ -61,7 +61,7 @@ AI provider routing:
 - Pricing import normalization and metadata enrichment use `AI_PRICING_IMPORT_PROVIDER` when set.
 - When `DEEPSEEK_API_KEY` is present and no explicit provider override is set, DeepSeek is tried first with `DEEPSEEK_MODEL`.
 - OpenAI remains the fallback provider and uses `OPENAI_BASIS_LINE_MODEL`.
-- DeepSeek pricing import normalization uses a shorter failover timeout, `DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS` (default 20 seconds), so malformed or stalled messy-import responses can fall back to OpenAI quickly. Other DeepSeek routes continue to use `DEEPSEEK_REQUEST_TIMEOUT_SECONDS`.
+- DeepSeek pricing import normalization uses a dedicated failover timeout, `DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS` (default 60 seconds), so messy imports give DeepSeek a full bounded attempt before malformed or stalled responses fall back to OpenAI. Other DeepSeek routes continue to use `DEEPSEEK_REQUEST_TIMEOUT_SECONDS`.
 
 ## Saved order and matching metadata
 

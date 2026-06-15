@@ -5310,7 +5310,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["messages"][1]["role"], "user")
         self.assertEqual(enriched[0]["object_families"], ["flooring"])
 
-    def test_deepseek_pricing_import_uses_short_configurable_timeout(self):
+    def test_deepseek_pricing_import_default_timeout_allows_full_attempt(self):
+        with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
+            self.assertEqual(webapp.configured_deepseek_pricing_import_timeout_seconds(), 60)
+
+    def test_deepseek_pricing_import_uses_configurable_timeout(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
             "choices": [
