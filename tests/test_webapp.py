@@ -184,8 +184,7 @@ def fake_ai_metadata_enriched_items(items: list[dict]) -> list[dict]:
     for item in items:
         next_item = dict(item)
         item_id = str(next_item.get("id") or "item").replace(".", " ")
-        existing_terms = next_item.get("match_terms") if isinstance(next_item.get("match_terms"), list) else []
-        next_item["match_terms"] = [f"ai metadata {item_id}", *existing_terms]
+        next_item["match_terms"] = [f"ai metadata {item_id}"]
         next_item["object_families"] = ["ai_family"]
         enriched.append(next_item)
     return enriched
@@ -198,6 +197,14 @@ def with_required_pricing_metadata(item: dict) -> dict:
         "match_terms": item.get("match_terms") or [description.lower()],
         "object_families": item.get("object_families") or ["test_family"],
     }
+
+
+def mock_pricing_metadata_enrichment():
+    return mock.patch.object(
+        webapp,
+        "ai_pricing_reference_metadata_enrichment",
+        side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
+    )
 
 
 def write_test_pricing_reference(root: Path, reference_id: str, items: list[dict]) -> Path:
@@ -2412,9 +2419,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Coffee / Tea and supplies for 100 people per day", result["items"][0]["aliases"])
         self.assertNotIn("Coffee/ Tea and supplies for 100 people per day", result["items"][0]["aliases"])
 
-    def test_pricing_reference_save_blocks_rows_without_ai_metadata(self):
-        with self.assertRaisesRegex(ValueError, "AI pricing metadata is missing"):
-            webapp.normalize_pricing_reference_payload({
+    def test_pricing_reference_save_regenerates_hidden_ai_metadata(self):
+        with mock.patch.object(
+            webapp,
+            "ai_pricing_reference_metadata_enrichment",
+            side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
+        ) as metadata_enrichment:
+            reference = webapp.normalize_pricing_reference_payload({
                 "id": "weak-ref",
                 "label": "Weak Ref",
                 "items": [{
@@ -2424,10 +2435,35 @@ class WebappServerTest(unittest.TestCase):
                     "unit_hint": "sqm",
                     "internal_cost": 10,
                     "markup_multiplier": 2,
-                    "match_terms": ["printed graphics"],
-                    "object_families": [],
+                    "match_terms": ["stale user-facing term"],
+                    "object_families": ["stale_family"],
                 }],
             })
+
+        metadata_enrichment.assert_called_once()
+        self.assertIn("ai metadata row-1", reference["items"][0]["match_terms"])
+        self.assertNotIn("stale user-facing term", reference["items"][0]["match_terms"])
+        self.assertEqual(reference["items"][0]["object_families"], ["ai_family"])
+
+    def test_pricing_reference_save_blocks_when_required_ai_metadata_fails(self):
+        with mock.patch.object(
+            webapp,
+            "ai_pricing_reference_metadata_enrichment",
+            return_value=([], [webapp.AI_PRICING_METADATA_NOT_CONFIGURED]),
+        ):
+            with self.assertRaisesRegex(ValueError, webapp.AI_PRICING_METADATA_NOT_CONFIGURED):
+                webapp.normalize_pricing_reference_payload({
+                    "id": "weak-ref",
+                    "label": "Weak Ref",
+                    "items": [{
+                        "id": "row-1",
+                        "section": "Graphics",
+                        "description": "Printed graphics",
+                        "unit_hint": "sqm",
+                        "internal_cost": 10,
+                        "markup_multiplier": 2,
+                    }],
+                })
 
     def test_pricing_reference_save_blocks_rows_without_unit_hint(self):
         with self.assertRaisesRegex(ValueError, "Pricing unit_hint is missing"):
@@ -2451,18 +2487,14 @@ class WebappServerTest(unittest.TestCase):
             ",wooden construct in painted finished as per design proposal,,,,PAINTED,\n"
             "Rigging Point,nos. rigging point for Overhead Structure or Aluminium Box Truss,nos,300,1.5,Prices are not inclusive of truss,RIGGING POINT|Overhead Structure|Aluminium Box Truss|rigging point|truss\n"
         ).encode("utf-8")
-        with mock.patch.object(
-            webapp,
-            "ai_pricing_reference_metadata_enrichment",
-            side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
-        ) as metadata_enrichment:
+        with mock.patch.object(webapp, "ai_pricing_reference_metadata_enrichment") as metadata_enrichment:
             result = webapp.pricing_reference_import_preview({
                 "filename": "messy.csv",
                 "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
                 "tax": {"label": "GST", "rate": 0.09},
             })
 
-        metadata_enrichment.assert_called_once()
+        metadata_enrichment.assert_not_called()
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 2)
         hanging = result["items"][0]
@@ -2477,7 +2509,6 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("RIGGING POINT", rigging["aliases"])
         self.assertIn("truss", rigging["aliases"])
         self.assertEqual(result["tax"], {"label": "GST", "rate": 0.09})
-        self.assertEqual(hanging["object_families"], ["ai_family"])
 
     def test_markdown_pricing_reference_import_without_ai_is_clear_and_not_saved(self):
         raw = b"# Messy catalog\n\n- m run of hanging structure x 1m height"
@@ -2509,33 +2540,25 @@ class WebappServerTest(unittest.TestCase):
         }
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
                 mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed) as request_import, \
-                mock.patch.object(
-                    webapp,
-                    "ai_pricing_reference_metadata_enrichment",
-                    side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
-                ) as metadata_enrichment:
+                mock.patch.object(webapp, "ai_pricing_reference_metadata_enrichment") as metadata_enrichment:
             result = webapp.pricing_reference_import_preview({
                 "filename": "messy.csv",
                 "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
             })
 
         request_import.assert_called_once()
-        metadata_enrichment.assert_called_once()
+        metadata_enrichment.assert_not_called()
         self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["items"][0]["aliases"], ["white wall"])
         self.assertIn("painted walling", result["items"][0]["match_terms"])
-        self.assertEqual(result["items"][0]["object_families"], ["ai_family"])
+        self.assertEqual(result["items"][0]["object_families"], ["wall_system"])
 
-    def test_v11_pricing_workbook_import_is_deterministic_then_requires_ai_metadata(self):
+    def test_v11_pricing_workbook_import_is_deterministic_and_defers_ai_metadata_until_save(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
         with mock.patch.object(webapp, "request_openai_pricing_catalog_import") as openai_import, \
-                mock.patch.object(
-                    webapp,
-                    "ai_pricing_reference_metadata_enrichment",
-                    side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
-                ) as metadata_enrichment:
+                mock.patch.object(webapp, "ai_pricing_reference_metadata_enrichment") as metadata_enrichment:
             result = webapp.pricing_reference_import_preview({
                 "filename": "Quotation-Cost-Template-V1.1.xlsx",
                 "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
@@ -2544,7 +2567,7 @@ class WebappServerTest(unittest.TestCase):
             })
 
         openai_import.assert_not_called()
-        metadata_enrichment.assert_called_once()
+        metadata_enrichment.assert_not_called()
         self.assertEqual(result["layout"], "sectioned-pricing-workbook")
         self.assertEqual(result["errors"], [])
         self.assertGreater(result["rowCount"], 20)
@@ -2556,39 +2579,22 @@ class WebappServerTest(unittest.TestCase):
         truss = next(item for item in result["items"] if item["description"] == "m rental of 300mm x 300mm Aluminium Box Truss")
         self.assertEqual(truss["unit_hint"], "m")
         self.assertNotIn("data_url", result)
-        self.assertEqual(result["items"][0]["object_families"], ["ai_family"])
-
-    def test_v11_pricing_workbook_import_fails_without_required_ai_metadata(self):
-        raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
-        with mock.patch.object(
-            webapp,
-            "ai_pricing_reference_metadata_enrichment",
-            return_value=([], [webapp.AI_PRICING_METADATA_NOT_CONFIGURED]),
-        ):
-            result = webapp.pricing_reference_import_preview({
-                "filename": "Quotation-Cost-Template-V1.1.xlsx",
-                "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
-                + base64.b64encode(raw).decode("ascii"),
-            })
-
-        self.assertFalse(result["canSave"])
-        self.assertEqual(result["layout"], "ai-metadata-enrichment-required")
-        self.assertIn(webapp.AI_PRICING_METADATA_NOT_CONFIGURED, result["errors"])
 
     def test_pricing_reference_save_preserves_user_edited_description_text(self):
         user_edited_description = "m2 Custom platfrom wording with 42\u201d display \u2013 user edited"
-        reference = webapp.normalize_pricing_reference_payload({
-            "id": "edited-ref",
-            "label": "Edited Ref",
-            "items": [with_required_pricing_metadata({
-                "id": "row-1",
-                "section": "Floor Design",
-                "description": user_edited_description,
-                "unit_hint": "sqm",
-                "internal_cost": 10,
-                "markup_multiplier": 2,
-            })],
-        })
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "edited-ref",
+                "label": "Edited Ref",
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Floor Design",
+                    "description": user_edited_description,
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                })],
+            })
 
         self.assertEqual(
             reference["items"][0]["description"],
@@ -2673,9 +2679,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("assign category_order by first-seen section in the source rows and item_order by source row order", prompt)
         self.assertIn("Clean obvious spelling, OCR, spacing, and unit wording errors only when the workbook itself makes the correction unambiguous", prompt)
         self.assertIn("Do not paraphrase, market-polish, simplify, or rename technical catalog descriptions", prompt)
-        self.assertIn("Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, match_terms, object_families", prompt)
-        self.assertIn("Derive match_terms and object_families from this uploaded catalog's own wording", prompt)
-        self.assertIn("do not invent a fixed taxonomy", prompt)
+        self.assertIn("Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases", prompt)
+        self.assertIn("Do not generate match_terms or object_families in this import step", prompt)
+        self.assertIn("Do not invent a fixed taxonomy", prompt)
         self.assertNotIn("Use normalized sections such as", prompt)
 
     def test_pricing_reference_validation_uses_first_seen_category_order(self):
@@ -7434,14 +7440,18 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Edit Rows", html)
         self.assertIn("Save Changes", js)
         self.assertIn("deleteRepoPricingReference", js)
+        delete_reference_body = js.split("async function deleteRepoPricingReference", 1)[1].split("async function deleteSelectedPricingReference", 1)[0]
+        self.assertIn("clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });", delete_reference_body)
+        self.assertIn("await loadProfiles();", delete_reference_body)
         self.assertIn("editSelectedPricingReference", js)
         self.assertIn("pricingReferencePreviewFromReference", js)
         self.assertIn("fetchPricingReferenceDetail", js)
         self.assertIn('/api/settings/pricing-references/${encodeURIComponent(referenceId)}', js)
-        self.assertIn('"match_terms"', js)
-        self.assertIn('"object_families"', js)
-        self.assertIn("AI match_terms required", js)
-        self.assertIn("AI object_families required", js)
+        self.assertIn("match_terms", js)
+        self.assertIn("object_families", js)
+        self.assertIn("PRICING_REFERENCE_METADATA_STALE_FIELDS", js)
+        self.assertNotIn("AI match_terms required", js)
+        self.assertNotIn("AI object_families required", js)
         self.assertIn("editingPricingReferenceId", js)
         self.assertIn("protectedPricingReferenceReason", js)
         self.assertNotIn("data-settings-delete-pricing-reference", js)
@@ -7467,14 +7477,17 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricing-reference-upload-field pricing-reference-delete-section", pricing_reference_modal)
         self.assertIn("pricing-reference-field-title", pricing_reference_modal)
         self.assertIn("pricing-reference-template-footer", pricing_reference_modal)
+        self.assertIn("is-placeholder", js)
         self.assertNotIn("pricing-reference-footer-note", pricing_reference_modal)
         self.assertIn(".pricing-reference-modal-panel .modal-form", css)
-        self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: auto;", css)
-        self.assertIn("max-height: calc(100dvh - 48px);", css)
+        self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: calc(100dvh - 32px);", css)
+        self.assertIn("max-height: calc(100dvh - 32px);", css)
         self.assertIn("grid-template-rows: minmax(0, 1fr) auto;", css)
         self.assertIn(".pricing-reference-editor-body {\n  display: grid;\n  gap: 14px;\n  align-content: start;\n  grid-auto-rows: max-content;\n  min-height: 0;", css)
         self.assertIn("scroll-padding-bottom: 28px;", css)
         self.assertIn(".pricing-reference-upload-field {\n  display: grid;", css)
+        self.assertIn(".pricing-reference-import-setup", css)
+        self.assertIn('id="pricingReferenceImportSetup"', html)
         self.assertIn(".pricing-reference-field-title {\n  color: #2d3b4f;", css)
         self.assertIn(".pricing-reference-upload-field .settings-note {\n  max-width: 62ch;\n  color: #52677e;\n  font-weight: 500;", css)
         self.assertIn("align-content: start;", css)
@@ -7503,14 +7516,15 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-template-download:hover:not(:disabled):not([aria-disabled=\"true\"])", css)
         self.assertIn("background: #dbeafe;", css)
         self.assertIn(".pricing-reference-template-footer .pricing-template-download,\n.pricing-reference-action-buttons .secondary-button,\n.pricing-reference-action-buttons .primary-button {\n  min-height: 48px;", css)
+        self.assertIn(".pricing-reference-template-footer.is-placeholder", css)
         self.assertIn(".modal-actions.pricing-reference-modal-actions {\n    grid-template-columns: 1fr;", css)
         self.assertIn(".pricing-reference-action-buttons .primary-button", css)
         self.assertIn("pricing-reference-preview-table", html)
         self.assertIn("pricingReferenceTableOverlay", html)
         self.assertIn("pricingReferenceTableBody", html)
         self.assertIn("Review Imported Rows", html)
-        self.assertIn("Match terms", html)
-        self.assertIn("Object families", html)
+        self.assertNotIn("Match terms", html)
+        self.assertNotIn("Object families", html)
         self.assertIn("openPricingReferenceTableOverlay", js)
         self.assertIn("pricing-reference-table-open", js)
         self.assertIn(".pricing-reference-table-panel", css)
@@ -7519,7 +7533,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("updatePricingReferenceGuidanceDisplays", js)
         self.assertIn("pricing-reference-preview-metrics", js)
         self.assertIn(".pricing-reference-preview-status-badge", css)
-        self.assertIn(".pricing-reference-col-match-terms,\n.pricing-reference-col-object-families", css)
+        self.assertNotIn("pricing-reference-col-match-terms", html)
+        self.assertNotIn("pricing-reference-col-match-terms", css)
+        self.assertNotIn("pricing-reference-col-object-families", html)
+        self.assertNotIn("pricing-reference-col-object-families", css)
         self.assertIn("Fix all flagged problems before saving this reference.", js)
         self.assertIn("openPricingReferenceTableOverlay();", js)
         self.assertIn("pricing-reference-col-description", html)
@@ -8089,7 +8106,7 @@ assert.strictEqual(saveButton.attributes["aria-disabled"], "true");
 
 setPricingReferenceSaveButtonState({ busy: true, reason: "Import preview is still being prepared." });
 assert.strictEqual(saveButton.disabled, true);
-assert.strictEqual(saveButton.textContent, "Importing...");
+assert.strictEqual(saveButton.textContent, "Saving...");
 assert.strictEqual(saveButton.title, "Import preview is still being prepared.");
 assert.strictEqual(closeButton.disabled, true);
 assert.strictEqual(cancelButton.disabled, true);
@@ -8097,6 +8114,9 @@ assert.strictEqual(fileInput.disabled, true);
 assert.strictEqual(templateButton.attributes["aria-disabled"], "true");
 assert.strictEqual(templateButton.attributes.tabindex, "-1");
 assert.strictEqual(modalClassList.contains("is-busy"), true);
+
+setPricingReferenceSaveButtonState({ busy: true, busyLabel: "Importing...", reason: "Import preview is still being prepared." });
+assert.strictEqual(saveButton.textContent, "Importing...");
 
 setPricingReferenceSaveButtonState({ canSave: true });
 assert.strictEqual(saveButton.disabled, false);
@@ -8146,7 +8166,7 @@ assert.strictEqual(prevented, true);
 assert.strictEqual(stopped, true);
 
 assert.ok(normalizedSource.includes('elements.pricingReferenceModal.addEventListener("click", blockPricingReferenceBusyInteraction, true);'));
-assert.ok(normalizedSource.includes("setPricingReferenceSaveButtonState({\n      busy: true,\n      reason: \"Import preview is still being prepared.\",\n    });"));
+assert.ok(normalizedSource.includes("setPricingReferenceSaveButtonState({\n      busy: true,\n      busyLabel: \"Importing...\",\n      reason: \"Import preview is still being prepared.\",\n    });"));
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -8169,7 +8189,7 @@ const normalizedSource = source.replace(/\r\n/g, "\n");
 const DEFAULT_TAX_LABEL = "GST";
 const DEFAULT_TAX_RATE = 0.09;
 const DEFAULT_CURRENCY_LABEL = "SGD";
-const PRICING_REFERENCE_PREVIEW_FIELDS = ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "match_terms", "object_families"];
+const PRICING_REFERENCE_PREVIEW_FIELDS = ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks"];
 
 function extractFunction(name) {
   const marker = `function ${name}`;
@@ -9134,21 +9154,22 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
 
     def test_public_company_pricing_reference_redacts_internal_costs(self):
-        reference = webapp.normalize_pricing_reference_payload({
-            "id": "company-ref",
-            "label": "Company Ref",
-            "tax": {"label": "VAT", "rate": 0.2},
-            "items": [with_required_pricing_metadata({
-                "id": "row-1",
-                "section": "Graphics",
-                "description": "Printed graphics",
-                "unit_hint": "sqm",
-                "internal_cost": 10,
-                "markup_multiplier": 2,
-                "remarks": "supplier-only note",
-                "aliases": "printed graphics",
-            })],
-        })
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "company-ref",
+                "label": "Company Ref",
+                "tax": {"label": "VAT", "rate": 0.2},
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                    "remarks": "supplier-only note",
+                    "aliases": "printed graphics",
+                })],
+            })
 
         public_reference = webapp.public_company_pricing_reference(reference)
         serialized = json.dumps(public_reference)
@@ -9162,19 +9183,20 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
     def test_company_pricing_reference_preserves_visual_references_server_side(self):
         data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
-        reference = webapp.normalize_pricing_reference_payload({
-            "id": "company-ref",
-            "label": "Company Ref",
-            "items": [with_required_pricing_metadata({
-                "id": "chair-row",
-                "section": "Furniture Rental",
-                "description": "nos. Eames Replica Chair (White)",
-                "unit_hint": "nos",
-                "internal_cost": 30,
-                "markup_multiplier": 1.5,
-                "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
-            })],
-        })
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "company-ref",
+                "label": "Company Ref",
+                "items": [with_required_pricing_metadata({
+                    "id": "chair-row",
+                    "section": "Furniture Rental",
+                    "description": "nos. Eames Replica Chair (White)",
+                    "unit_hint": "nos",
+                    "internal_cost": 30,
+                    "markup_multiplier": 1.5,
+                    "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
+                })],
+            })
 
         item = reference["items"][0]
         self.assertEqual(item["visual_references"], [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}])
@@ -9214,21 +9236,22 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
     def test_save_pricing_reference_pack_writes_repo_reference_files_and_images(self):
         data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
-        reference = webapp.normalize_pricing_reference_payload({
-            "id": "repo-ref",
-            "label": "Repo Ref",
-            "description": "Imported from test workbook.",
-            "tax": {"label": "GST", "rate": 0.09},
-            "items": [with_required_pricing_metadata({
-                "id": "chair-row",
-                "section": "Furniture Rental",
-                "description": "nos. Eames Replica Chair (White)",
-                "unit_hint": "nos",
-                "internal_cost": 30,
-                "markup_multiplier": 1.5,
-                "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
-            })],
-        })
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "repo-ref",
+                "label": "Repo Ref",
+                "description": "Imported from test workbook.",
+                "tax": {"label": "GST", "rate": 0.09},
+                "items": [with_required_pricing_metadata({
+                    "id": "chair-row",
+                    "section": "Furniture Rental",
+                    "description": "nos. Eames Replica Chair (White)",
+                    "unit_hint": "nos",
+                    "internal_cost": 30,
+                    "markup_multiplier": 1.5,
+                    "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
+                })],
+            })
 
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
@@ -9276,7 +9299,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         }
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)), mock_pricing_metadata_enrichment():
                 with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
                     with LocalRunnerServer() as runner:
                         session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
@@ -9298,20 +9321,21 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(metadata["label"], "Endpoint Ref")
 
     def test_pricing_reference_detail_endpoint_returns_editable_repo_pack(self):
-        reference = webapp.normalize_pricing_reference_payload({
-            "id": "detail-ref",
-            "label": "Detail Ref",
-            "tax": {"label": "VAT", "rate": 0.2},
-            "currency": "USD",
-            "items": [with_required_pricing_metadata({
-                "id": "row-1",
-                "section": "Graphics",
-                "description": "Printed graphics",
-                "unit_hint": "sqm",
-                "internal_cost": 10,
-                "markup_multiplier": 2,
-            })],
-        })
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "detail-ref",
+                "label": "Detail Ref",
+                "tax": {"label": "VAT", "rate": 0.2},
+                "currency": "USD",
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                })],
+            })
 
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
@@ -9330,19 +9354,20 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(detail["items"][0]["description"], "Printed graphics")
 
     def test_pricing_reference_delete_endpoint_removes_repo_pack(self):
-        reference = webapp.normalize_pricing_reference_payload({
-            "id": "delete-me-ref",
-            "label": "Delete Me Ref",
-            "tax": {"label": "GST", "rate": 0.09},
-            "items": [with_required_pricing_metadata({
-                "id": "row-1",
-                "section": "Graphics",
-                "description": "Printed graphics",
-                "unit_hint": "sqm",
-                "internal_cost": 10,
-                "markup_multiplier": 2,
-            })],
-        })
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "delete-me-ref",
+                "label": "Delete Me Ref",
+                "tax": {"label": "GST", "rate": 0.09},
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                })],
+            })
 
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
@@ -9530,8 +9555,9 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "markup_multiplier": 2,
             })],
         }
-        vat = webapp.normalize_pricing_reference_payload({**base, "tax": {"label": "VAT", "rate": "20"}})
-        gst = webapp.normalize_pricing_reference_payload({**base, "id": "gst-ref", "tax": {"label": "GST", "rate": "9"}})
+        with mock_pricing_metadata_enrichment():
+            vat = webapp.normalize_pricing_reference_payload({**base, "tax": {"label": "VAT", "rate": "20"}})
+            gst = webapp.normalize_pricing_reference_payload({**base, "id": "gst-ref", "tax": {"label": "GST", "rate": "9"}})
         self.assertEqual(vat["tax"], {"label": "VAT", "rate": 0.2})
         self.assertEqual(gst["tax"], {"label": "GST", "rate": 0.09})
 

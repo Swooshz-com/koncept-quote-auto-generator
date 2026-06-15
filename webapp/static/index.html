@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=46">
+    <link rel="stylesheet" href="/static/styles.css?v=47">
   </head>
   <body>
     <div class="app-shell">
@@ -633,42 +633,44 @@
                     <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
                   </span>
                 </label>
-                <label>
-                  Pricing reference name
-                  <input id="pricingReferenceName" type="text" autocomplete="off">
-                </label>
-                <div class="form-grid compact tax-settings-grid">
-                  <label class="field-control">
-                    <span>Tax label</span>
-                    <select id="pricingReferenceTaxLabel" required>
-                      <option value="GST">GST</option>
-                      <option value="VAT">VAT</option>
-                    </select>
+                <div class="pricing-reference-import-setup" id="pricingReferenceImportSetup" hidden>
+                  <label>
+                    Pricing reference name
+                    <input id="pricingReferenceName" type="text" autocomplete="off">
                   </label>
-                  <label class="field-control">
-                    <span>Tax rate (%)</span>
-                    <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
-                  </label>
-                  <label class="field-control currency-field">
-                    <span>Currency</span>
-                    <span class="currency-control-row">
-                      <select id="pricingReferenceCurrency" required>
-                        <option value="SGD">SGD - Singapore Dollar</option>
-                        <option value="AUD">AUD - Australian Dollar</option>
-                        <option value="CNY">CNY - Chinese Yuan</option>
-                        <option value="EUR">EUR - Euro</option>
-                        <option value="GBP">GBP - Pound Sterling</option>
-                        <option value="IDR">IDR - Indonesian Rupiah</option>
-                        <option value="MYR">MYR - Malaysian Ringgit</option>
-                        <option value="THB">THB - Thai Baht</option>
-                        <option value="USD">USD - US Dollar</option>
-                        <option value="__CUSTOM__">Custom - Enter currency code</option>
+                  <div class="form-grid compact tax-settings-grid">
+                    <label class="field-control">
+                      <span>Tax label</span>
+                      <select id="pricingReferenceTaxLabel" required>
+                        <option value="GST">GST</option>
+                        <option value="VAT">VAT</option>
                       </select>
-                      <input id="pricingReferenceCurrencyCustom" class="currency-custom-input" type="text" maxlength="3" pattern="[A-Za-z]{3}" autocomplete="off" placeholder="e.g. JPY" hidden>
-                    </span>
-                  </label>
+                    </label>
+                    <label class="field-control">
+                      <span>Tax rate (%)</span>
+                      <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
+                    </label>
+                    <label class="field-control currency-field">
+                      <span>Currency</span>
+                      <span class="currency-control-row">
+                        <select id="pricingReferenceCurrency" required>
+                          <option value="SGD">SGD - Singapore Dollar</option>
+                          <option value="AUD">AUD - Australian Dollar</option>
+                          <option value="CNY">CNY - Chinese Yuan</option>
+                          <option value="EUR">EUR - Euro</option>
+                          <option value="GBP">GBP - Pound Sterling</option>
+                          <option value="IDR">IDR - Indonesian Rupiah</option>
+                          <option value="MYR">MYR - Malaysian Ringgit</option>
+                          <option value="THB">THB - Thai Baht</option>
+                          <option value="USD">USD - US Dollar</option>
+                          <option value="__CUSTOM__">Custom - Enter currency code</option>
+                        </select>
+                        <input id="pricingReferenceCurrencyCustom" class="currency-custom-input" type="text" maxlength="3" pattern="[A-Za-z]{3}" autocomplete="off" placeholder="e.g. JPY" hidden>
+                      </span>
+                    </label>
+                  </div>
+                  <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
                 </div>
-                <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
               </section>
             </div>
             <div class="modal-actions pricing-reference-modal-actions">
@@ -703,11 +705,9 @@
                 <col class="pricing-reference-col-cost">
                 <col class="pricing-reference-col-markup">
                 <col class="pricing-reference-col-remarks">
-                <col class="pricing-reference-col-match-terms">
-                <col class="pricing-reference-col-object-families">
                 <col class="pricing-reference-col-status">
               </colgroup>
-              <thead><tr><th>Section</th><th>Description</th><th>Unit</th><th>Cost</th><th>Markup</th><th>Remarks</th><th>Match terms</th><th>Object families</th><th>Warning/status</th></tr></thead>
+              <thead><tr><th>Section</th><th>Description</th><th>Unit</th><th>Cost</th><th>Markup</th><th>Remarks</th><th>Warning/status</th></tr></thead>
               <tbody id="pricingReferenceTableBody"></tbody>
             </table>
           </div>
@@ -734,6 +734,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=56"></script>
+    <script src="/static/app.js?v=57"></script>
   </body>
 </html>

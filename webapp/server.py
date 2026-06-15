@@ -2692,7 +2692,7 @@ def pricing_reference_import_preview_from_sectioned_workbook(raw: bytes, filenam
     result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows) or DEFAULT_CURRENCY_LABEL
     if result.get("errors") == ["Missing required columns: section, description, unit_hint, internal_cost, markup_multiplier."]:
         result["errors"] = []
-    return pricing_reference_result_with_required_ai_metadata(result, filename)
+    return result
 
 
 def rows_from_csv_bytes(raw: bytes) -> tuple[list[str], list[dict[str, Any]]]:
@@ -2869,6 +2869,14 @@ def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, An
     required_field_errors = pricing_reference_required_field_errors(items)
     if required_field_errors:
         raise ValueError(" ".join(required_field_errors))
+    enriched_items, enrichment_errors = ai_pricing_reference_metadata_enrichment(
+        clean_text(payload.get("label")) or reference_id,
+        items,
+    )
+    if enrichment_errors:
+        raise ValueError(" ".join(enrichment_errors))
+    items = sorted_pricing_reference_items(enriched_items)
+    ensure_pricing_reference_order_fields(items)
     metadata_errors = pricing_reference_metadata_quality_errors(items)
     if metadata_errors:
         raise ValueError(" ".join(metadata_errors))
@@ -3210,15 +3218,15 @@ def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dic
     sections = pricing_reference_section_names()
     return (
         "Normalize an uploaded pricing catalog into Swooshz pricing reference rows. Return only JSON with currency and an items array. "
-        "Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, match_terms, object_families, and warning/status when useful. "
+        "Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, and warning/status when useful. "
         "Identify continuation rows and stitch them into the previous item; do not drop continuation description or remarks. "
         "Do not merge independent priced rows. Preserve short technical rows such as nos. rigging point for Overhead Structure or Aluminium Box Truss. "
         "Commercial notes such as Prices are not inclusive of truss belong in remarks. Preserve all-caps remarks. "
         "Extract sensible unit prefixes including m run, m, sqm, nos, and lot. Neutralize formula-like text beginning with =, +, -, or @ by treating it as literal text. "
         "Clean obvious spelling, OCR, spacing, and unit wording errors only when the workbook itself makes the correction unambiguous through repeated terms, nearby rows, section headings, or standard unit notation. "
         "Do not paraphrase, market-polish, simplify, or rename technical catalog descriptions; preserve the supplier/customer catalog wording after any clearly justified cleanup. "
-        "Derive match_terms and object_families from this uploaded catalog's own wording, nearby rows, remarks, headers, and product context. "
-        "Use concise lowercase search terms/family labels that help future quote matching, but do not invent a fixed taxonomy and do not copy terms from unrelated examples. "
+        "Do not generate match_terms or object_families in this import step; hidden matching metadata is generated separately when the user saves the reviewed pricing reference. "
+        "Do not invent a fixed taxonomy and do not copy terms from unrelated examples. "
         "Use these pricing reference sections first and match each priced row to the closest provided section. "
         "Only create a new section when none of the provided pricing reference sections fits the row. "
         "Preserve the source category order and source row order. When no category order exists, assign category_order by first-seen section in the source rows and item_order by source row order. "
@@ -3386,8 +3394,7 @@ def merge_pricing_reference_ai_metadata(
         next_item = copy.deepcopy(item)
         metadata = metadata_by_id.get(clean_text(item.get("id")), {})
         ai_match_terms = sanitize_pricing_reference_terms(metadata.get("match_terms"))
-        existing_match_terms = sanitize_pricing_reference_terms(next_item.get("match_terms"))
-        next_item["match_terms"] = unique_clean_list([*ai_match_terms, *existing_match_terms])[:36]
+        next_item["match_terms"] = unique_clean_list(ai_match_terms)[:36]
         ai_families = sanitize_pricing_reference_families(metadata.get("object_families"))
         if ai_families:
             next_item["object_families"] = ai_families
@@ -3433,23 +3440,6 @@ def ai_pricing_reference_metadata_enrichment(filename: str, items: list[dict[str
     if missing_key_errors and len(missing_key_errors) == len(errors):
         return [], [AI_PRICING_METADATA_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
     return [], safe_error_messages(errors or [AI_PRICING_METADATA_NOT_CONFIGURED])
-
-
-def pricing_reference_result_with_required_ai_metadata(result: dict[str, Any], filename: str) -> dict[str, Any]:
-    if result.get("errors") or not result.get("items"):
-        return result
-    enriched_items, errors = ai_pricing_reference_metadata_enrichment(filename, result.get("items") if isinstance(result.get("items"), list) else [])
-    if errors:
-        next_result = {**result}
-        next_result["errors"] = errors
-        next_result["canSave"] = False
-        next_result["layout"] = "ai-metadata-enrichment-required" if AI_PRICING_METADATA_NOT_CONFIGURED in errors else "ai-metadata-enrichment-failed"
-        return next_result
-    next_result = {**result}
-    next_result["items"] = enriched_items
-    next_result["rowCount"] = len(enriched_items)
-    next_result["canSave"] = bool(enriched_items)
-    return next_result
 
 
 def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[str, Any]) -> dict[str, Any]:
@@ -3502,7 +3492,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
     result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
     result["layout"] = "ai-normalized-pricing-reference"
     result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
-    return pricing_reference_result_with_required_ai_metadata(result, filename)
+    return result
 
 
 def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3515,7 +3505,6 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
         detected_currency = clean_text(result.get("currency"))
         if result.get("canSave"):
             result["layout"] = "normalized-pricing-reference"
-            result = pricing_reference_result_with_required_ai_metadata(result, filename)
         elif result.get("missing"):
             try:
                 raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)

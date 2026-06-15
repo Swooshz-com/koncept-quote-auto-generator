@@ -3148,8 +3148,8 @@ td input {
 .pricing-reference-modal-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: auto;
-  max-height: calc(100dvh - 48px);
+  height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 32px);
   background: #ffffff;
   overflow: hidden;
 }
@@ -3166,7 +3166,7 @@ td input {
 
 .pricing-reference-settings-panel {
   width: min(720px, calc(100vw - 32px));
-  height: auto;
+  height: calc(100dvh - 32px);
   max-height: calc(100dvh - 32px);
   margin: 0 auto;
   border-radius: var(--radius-md);
@@ -3257,6 +3257,15 @@ td input {
   border-radius: var(--radius-md);
   background: #f8fbff;
   box-shadow: var(--shadow-xs);
+}
+
+.pricing-reference-import-setup {
+  display: grid;
+  gap: 14px;
+}
+
+.pricing-reference-import-setup[hidden] {
+  display: none;
 }
 
 .pricing-reference-field-title {
@@ -3581,6 +3590,11 @@ body.privacy-page {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.pricing-reference-template-footer.is-placeholder {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .pricing-reference-action-buttons {
@@ -4024,11 +4038,6 @@ body.privacy-page {
   width: 235px;
 }
 
-.pricing-reference-col-match-terms,
-.pricing-reference-col-object-families {
-  width: 200px;
-}
-
 .pricing-reference-col-status {
   width: 138px;
 }
@@ -4431,6 +4440,10 @@ body.privacy-page {
   .pricing-reference-template-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .pricing-reference-template-footer.is-placeholder {
+    display: none;
   }
 
   .pricing-reference-delete-section,
