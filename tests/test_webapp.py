@@ -7674,7 +7674,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-row-actions", css)
         self.assertIn(".pricing-reference-row-remove", css)
         self.assertIn(".pricing-reference-table-actions", css)
-        self.assertIn(".pricing-reference-table-actions .secondary-button,\n.pricing-reference-table-actions .primary-button {\n  min-height: 36px;", css)
+        self.assertIn(".pricing-reference-table-actions .secondary-button,\n.pricing-reference-table-actions .primary-button {\n  min-height: 48px;", css)
+        self.assertIn(".pricing-reference-table-actions .primary-button {\n  min-width: 168px;", css)
         self.assertIn("pricingReferenceStatusClass", js)
         self.assertIn("updatePricingReferenceGuidanceDisplays", js)
         self.assertIn("pricing-reference-preview-actions", js)
@@ -7715,6 +7716,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('startElapsedTimer("pricingReferenceImportElapsed"', js)
         self.assertIn('stopElapsedTimer("pricingReferenceImportElapsed")', js)
         self.assertIn("Rows need review", js)
+        self.assertIn("pricingReferenceImportNameConflictMessage", js)
+        self.assertIn("update_existing", js)
+        self.assertIn("editing_reference_id", js)
         self.assertIn("pricing-reference-import-overlay", js)
         self.assertNotIn("Example rows ignored", js)
         self.assertNotIn("exampleRows", js)
@@ -8261,7 +8265,7 @@ const elements = {
   pricingReferenceModal: { classList: modalClassList, hidden: false },
 };
 function pricingReferenceSaveBlockReason() {
-  return "Upload a pricing catalog file before saving.";
+  return state.pendingPricingReference ? "" : "Upload a pricing catalog file before saving.";
 }
 function normalizePricingReferenceSettingsMode(value = "") {
   return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
@@ -8446,6 +8450,8 @@ eval([
   "pricingReferenceSnapshotItem",
   "sortPricingReferencePreviewItems",
   "pricingReferenceRowStatus",
+  "pricingReferenceDuplicateRowKey",
+  "pricingReferenceDuplicateMarkers",
   "normalizePricingReferencePreviewItem",
   "pricingReferencePreviewFromReference",
   "pricingReferenceDraftUndoSnapshot",
@@ -8487,6 +8493,36 @@ assert.strictEqual(preview.items[0].remarks, "Printed Graphics on wall");
 assert.strictEqual(preview.items[0].match_terms, "printed graphics");
 assert.strictEqual(preview.items[0].object_families, "printed_graphics");
 assert.strictEqual(preview.items[0].warning, "OK");
+
+const duplicateReference = {
+  id: "duplicate-ref",
+  label: "Duplicate Ref",
+  items: [
+    {
+      id: "furniture-rental-aluminum-bistro-table-square",
+      section: "Furniture Rental",
+      description: "nos. Aluminum Bistro Table (Square)",
+      unit_hint: "nos",
+      internal_cost: 75,
+      markup_multiplier: 1.5,
+      remarks: ["BISTRO TABLE HIGH"],
+    },
+    {
+      id: "furniture-rental-aluminum-bistro-table-square-2",
+      section: "Furniture Rental",
+      description: "nos. Aluminum Bistro Table (Square)",
+      unit_hint: "nos",
+      internal_cost: "75",
+      markup_multiplier: "1.5",
+      remarks: ["BISTRO TABLE HIGH"],
+    },
+  ],
+};
+const duplicatePreview = pricingReferencePreviewFromReference(duplicateReference);
+assert.strictEqual(duplicatePreview.canSave, false);
+assert.strictEqual(duplicatePreview.items.length, 2);
+assert.ok(duplicatePreview.items.every((item) => item.warning.includes("duplicate pricing row")));
+assert.ok(duplicatePreview.items.every((item) => !item.warning.includes("duplicate id")));
 
 const beforeSnapshot = pricingReferenceDraftUndoSnapshot(preview);
 const amendedPreview = JSON.parse(JSON.stringify(preview));
@@ -8789,6 +8825,7 @@ function normalizePricingReferenceSettingsMode(value = "") {
 function syncPricingReferenceSettingsMode() {}
 function pricingReferenceOperationBusy() { return Boolean(state.pricingReferenceImportBusy || state.pricingReferenceSaveBusy); }
 function pricingReferenceHasPendingChanges() { return true; }
+function pricingReferenceImportNameConflictMessage() { return ""; }
 
 eval([
   "safeId",
@@ -8805,6 +8842,8 @@ eval([
   "pricingReferenceSaveBlockReason",
   "sortPricingReferencePreviewItems",
   "normalizePricingReferencePreviewItem",
+  "pricingReferenceDuplicateRowKey",
+  "pricingReferenceDuplicateMarkers",
   "setPricingReferenceModalBusyState",
   "setPricingReferenceSaveButtonState",
   "refreshPricingReferencePreviewValidity",
@@ -9738,6 +9777,82 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(body["status"], "unchanged")
         self.assertTrue(body["unchanged"])
         self.assertEqual(body["pricing_reference"]["id"], "unchanged-ref")
+
+    def test_pricing_reference_save_endpoint_blocks_import_overwrite_by_name(self):
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "existing-ref",
+                "label": "Existing Ref",
+                "tax": {"label": "GST", "rate": 0.09},
+                "currency": "SGD",
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                })],
+            })
+
+        import_payload = {
+            "id": "existing-ref",
+            "label": "Existing Ref",
+            "tax": {"label": "GST", "rate": 0.09},
+            "currency": "SGD",
+            "items": [with_required_pricing_metadata({
+                "id": "row-2",
+                "section": "Furniture",
+                "description": "Imported chair",
+                "unit_hint": "nos",
+                "internal_cost": 30,
+                "markup_multiplier": 1.5,
+            })],
+        }
+
+        edit_payload = {
+            **import_payload,
+            "update_existing": True,
+            "editing_reference_id": "existing-ref",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                with mock_pricing_metadata_enrichment():
+                    with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                        with LocalRunnerServer() as runner:
+                            session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                            headers = {
+                                "Content-Type": "application/json",
+                                session["csrf_header"]: session["csrf_token"],
+                            }
+                            blocked_request = urllib.request.Request(
+                                f"{runner.base_url}/api/settings/pricing-references",
+                                data=json.dumps(import_payload).encode("utf-8"),
+                                headers=headers,
+                                method="POST",
+                            )
+                            with self.assertRaises(urllib.error.HTTPError) as blocked:
+                                urllib.request.urlopen(blocked_request, timeout=3)
+                            blocked_body = json.loads(blocked.exception.read().decode("utf-8"))
+                            catalog_after_blocked = json.loads(
+                                (Path(tmp) / "existing-ref" / "pricing-catalog.json").read_text(encoding="utf-8")
+                            )
+
+                            allowed_request = urllib.request.Request(
+                                f"{runner.base_url}/api/settings/pricing-references",
+                                data=json.dumps(edit_payload).encode("utf-8"),
+                                headers=headers,
+                                method="POST",
+                            )
+                            allowed_response = urllib.request.urlopen(allowed_request, timeout=3)
+                            allowed_body = json.loads(allowed_response.read().decode("utf-8"))
+
+        self.assertEqual(blocked.exception.code, 400)
+        self.assertIn("already exists", " ".join(blocked_body["errors"]))
+        self.assertEqual(catalog_after_blocked["items"][0]["description"], "Printed graphics")
+        self.assertEqual(allowed_body["status"], "saved")
 
     def test_pricing_reference_detail_endpoint_returns_editable_repo_pack(self):
         with mock_pricing_metadata_enrichment():

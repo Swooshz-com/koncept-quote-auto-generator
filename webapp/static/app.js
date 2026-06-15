@@ -2609,18 +2609,76 @@ function markPricingReferenceDraftChanged() {
   renderPricingReferenceManageStatus(state.pendingPricingReference);
 }
 
+function pricingReferenceNameId(value = "") {
+  return safeId(value, "");
+}
+
+function pricingReferenceById(referenceId = "") {
+  const normalizedId = String(referenceId || "").trim();
+  if (!normalizedId) return null;
+  return (Array.isArray(state.pricingReferences) ? state.pricingReferences : [])
+    .find((reference) => String(reference?.id || "").trim() === normalizedId) || null;
+}
+
+function pricingReferenceImportNameConflict(name = elements.pricingReferenceName?.value || "") {
+  const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  if (mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT || state.editingPricingReferenceId) return null;
+  return pricingReferenceById(pricingReferenceNameId(name));
+}
+
+function pricingReferenceImportNameConflictMessage(name = elements.pricingReferenceName?.value || "") {
+  const conflict = pricingReferenceImportNameConflict(name);
+  if (!conflict) return "";
+  const label = conflict.label || conflict.id || name;
+  return `A pricing reference named "${label}" already exists. Choose a different pricing reference name, or switch to Manage to edit it.`;
+}
+
+function pricingReferenceDuplicateRowKey(item = {}) {
+  const section = normalizeCategoryTitle(item.section || item.reference_section || "").trim().toLowerCase();
+  const description = cleanCustomerQuoteLineText(item.description || "").trim().toLowerCase();
+  const unitHint = normalizeUnit(item.unit_hint || item.unit || "").trim().toLowerCase();
+  const internalCost = numberOrNull(item.internal_cost ?? item.cost);
+  const markupMultiplier = numberOrNull(item.markup_multiplier ?? item.markup);
+  const remarks = String(item.remarks || "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!section && !description && !unitHint && internalCost === null && markupMultiplier === null && !remarks) return "";
+  return [
+    section,
+    description,
+    unitHint,
+    internalCost === null ? "" : String(internalCost),
+    markupMultiplier === null ? "" : String(markupMultiplier),
+    remarks,
+  ].join("\u001f");
+}
+
+function pricingReferenceDuplicateMarkers(items = []) {
+  const ids = new Set();
+  const rowKeys = new Set();
+  const duplicateIds = new Set();
+  const duplicateRowKeys = new Set();
+  items.forEach((item) => {
+    const id = String(item?.id || "").trim();
+    if (id) {
+      if (ids.has(id)) duplicateIds.add(id);
+      ids.add(id);
+    }
+    const rowKey = pricingReferenceDuplicateRowKey(item);
+    if (rowKey) {
+      if (rowKeys.has(rowKey)) duplicateRowKeys.add(rowKey);
+      rowKeys.add(rowKey);
+    }
+  });
+  return { duplicateIds, duplicateRowKeys };
+}
+
 function pricingReferencePreviewFromReference(reference = {}) {
   const items = sortPricingReferencePreviewItems((Array.isArray(reference.items) ? reference.items : [])
     .map(normalizePricingReferencePreviewItem));
-  const ids = new Set();
-  const duplicateIds = new Set();
-  items.forEach((item) => {
-    if (ids.has(item.id)) duplicateIds.add(item.id);
-    ids.add(item.id);
-  });
+  const { duplicateIds, duplicateRowKeys } = pricingReferenceDuplicateMarkers(items);
   const invalid = items.flatMap((item) => {
     const warnings = pricingReferenceRowStatus(item);
     if (duplicateIds.has(item.id)) warnings.push("duplicate id");
+    if (duplicateRowKeys.has(pricingReferenceDuplicateRowKey(item))) warnings.push("duplicate pricing row");
     item.warning = warnings.join("; ") || "OK";
     return warnings;
   });
@@ -2904,6 +2962,8 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && !pricingReferenceHasPendingChanges(result)) {
     return state.pricingReferenceSavedNotice ? "Saved." : "No changes to save.";
   }
+  const nameConflict = pricingReferenceImportNameConflictMessage();
+  if (nameConflict) return nameConflict;
   if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !customCurrencyInputIsValid()) {
     return "Enter a 3-letter currency code before saving.";
   }
@@ -2983,11 +3043,12 @@ function setPricingReferenceSaveButtonState(options = {}) {
   const isImportSave = mode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT && !state.editingPricingReferenceId;
   const hasChanges = pricingReferenceHasPendingChanges(state.pendingPricingReference);
   const workflowAllowsSave = (isImportSave && Boolean(state.pendingPricingReference)) || (isEditingSave && hasChanges);
-  const workflowReason = workflowAllowsSave ? "" : pricingReferenceSaveBlockReason(state.pendingPricingReference);
+  const blockReason = pricingReferenceSaveBlockReason(state.pendingPricingReference);
+  const workflowReason = workflowAllowsSave ? "" : blockReason;
   const reason = canManage
-    ? String((busy ? options.reason || workflowReason : workflowReason || options.reason) || "").trim()
+    ? String((busy ? options.reason || blockReason : blockReason || workflowReason || options.reason) || "").trim()
     : pricingReferenceNoAccessReason();
-  const canSave = canManage && workflowAllowsSave && Boolean(options.canSave) && !busy;
+  const canSave = canManage && workflowAllowsSave && Boolean(options.canSave) && !busy && !reason;
   const disabled = busy || !canManage || !canSave;
   button.disabled = disabled;
   button.textContent = busy
@@ -3055,19 +3116,15 @@ function normalizePricingReferencePreviewItem(item = {}, index = 0) {
 
 function refreshPricingReferencePreviewValidity(result = state.pendingPricingReference) {
   if (!result) return false;
-  const ids = new Set();
-  const duplicateIds = new Set();
   result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
   if (result.items.length && Array.isArray(result.errors)) {
     result.errors = result.errors.filter((message) => !/(at least one|no editable pricing rows|no pricing rows)/i.test(String(message || "")));
   }
-  result.items.forEach((item) => {
-    if (ids.has(item.id)) duplicateIds.add(item.id);
-    ids.add(item.id);
-  });
+  const { duplicateIds, duplicateRowKeys } = pricingReferenceDuplicateMarkers(result.items);
   const invalid = result.items.flatMap((item) => {
     const warnings = pricingReferenceRowStatus(item);
     if (duplicateIds.has(item.id)) warnings.push("duplicate id");
+    if (duplicateRowKeys.has(pricingReferenceDuplicateRowKey(item))) warnings.push("duplicate pricing row");
     item.warning = warnings.join("; ") || "OK";
     return warnings;
   });
@@ -3150,6 +3207,8 @@ function pricingReferenceStatusClass(status = "") {
 
 function pricingReferenceSaveGuidance(result = state.pendingPricingReference) {
   if (!result) return "";
+  const nameConflict = pricingReferenceImportNameConflictMessage();
+  if (nameConflict) return "Choose a different pricing reference name before saving.";
   const reason = pricingReferenceSaveBlockReason(result);
   return result.canSave
     ? "Basic row checks passed. Review any attention notes before saving."
@@ -3230,6 +3289,13 @@ function pricingReferencePreviewAttention(result = {}, context = {}) {
       tone: "warn",
       label: "Currency review",
       text: `"${context.currency || "Custom"}" is not in the standard currency selector. Confirm it is correct or choose another currency before saving.`,
+    });
+  }
+  if (context.nameConflict) {
+    attention.push({
+      tone: "error",
+      label: "Name already exists",
+      text: context.nameConflict,
     });
   }
   if (skipped) {
@@ -3383,7 +3449,8 @@ function renderPricingReferencePreview(result = null, options = {}) {
   const warnings = result.warnings || [];
   const canSave = Boolean(result.canSave);
   const currencyNeedsReview = Boolean(currency) && !isValidCurrencyCode(currency);
-  const attention = pricingReferencePreviewAttention(result, { currency, currencyNeedsReview });
+  const nameConflict = pricingReferenceImportNameConflictMessage();
+  const attention = pricingReferencePreviewAttention(result, { currency, currencyNeedsReview, nameConflict });
   const hasFixes = attention.some((item) => item.tone === "error") || !canSave;
   const hasReviewNotes = attention.length > 0;
   const tone = hasFixes ? "error" : hasReviewNotes || warnings.length ? "warn" : "ok";
@@ -3636,6 +3703,8 @@ async function savePricingReferenceFromModal(event) {
       tax,
       currency,
       items: result.items,
+      update_existing: Boolean(state.editingPricingReferenceId),
+      editing_reference_id: state.editingPricingReferenceId || "",
     });
     state.pricingReferenceSaveBusy = false;
     if (!ok) {
@@ -6730,6 +6799,8 @@ function wireEvents() {
   elements.pricingReferenceFile.addEventListener("change", async () => {
     setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
     const file = elements.pricingReferenceFile.files?.[0];
+    const previousEditingReferenceId = state.editingPricingReferenceId;
+    const currentNameId = pricingReferenceNameId(elements.pricingReferenceName?.value || "");
     state.pricingReferenceImportFileSelected = Boolean(file);
     state.pricingReferenceSaveBusy = false;
     state.pricingReferenceEditSnapshot = "";
@@ -6747,6 +6818,9 @@ function wireEvents() {
       renderPricingReferencePreview(null);
       syncPricingReferenceImportSetupVisibility();
       return;
+    }
+    if (previousEditingReferenceId && currentNameId === previousEditingReferenceId && elements.pricingReferenceName) {
+      elements.pricingReferenceName.value = "";
     }
     state.editingPricingReferenceId = "";
     const importToken = `${Date.now()}-${file.name}-${file.size}`;
@@ -6813,7 +6887,10 @@ function wireEvents() {
     }
   });
   elements.pricingReferenceName?.addEventListener("input", () => {
-    if (state.pendingPricingReference) markPricingReferenceDraftChanged();
+    if (state.pendingPricingReference) {
+      markPricingReferenceDraftChanged();
+      renderPricingReferencePreview(state.pendingPricingReference);
+    }
   });
   elements.pricingReferencePreview?.addEventListener("input", (event) => {
     handlePricingReferencePreviewInput(event);

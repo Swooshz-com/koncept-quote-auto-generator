@@ -4246,6 +4246,12 @@ def pricing_reference_payload_matches_existing_pack(payload: dict[str, Any], exi
     return payload_signature == existing_signature
 
 
+def pricing_reference_payload_updates_existing_pack(payload: dict[str, Any], reference_id: str) -> bool:
+    if payload.get("update_existing") is not True:
+        return False
+    return safe_resource_id(payload.get("editing_reference_id"), "") == safe_resource_id(reference_id, "")
+
+
 def draft_analysis_mode(payload: dict[str, Any] | None = None) -> str:
     raw = clean_text((payload or {}).get("analysis_mode")).lower()
     if raw in {DRAFT_ANALYSIS_MODE_HIGH_QUALITY, "xhigh", "high_accuracy"}:
@@ -8557,6 +8563,12 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                         "unchanged": True,
                     })
                     return
+                if existing and not pricing_reference_payload_updates_existing_pack(payload, reference_id):
+                    label = clean_text(existing.get("label")) or reference_id
+                    raise ValueError(
+                        f'A pricing reference named "{label}" already exists. '
+                        "Choose a different pricing reference name, or switch to Manage to edit it."
+                    )
                 reference = normalize_pricing_reference_payload(payload)
                 saved = save_pricing_reference_pack(reference)
             except ValueError as exc:
