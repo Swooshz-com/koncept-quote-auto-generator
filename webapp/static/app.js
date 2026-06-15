@@ -2310,11 +2310,22 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
   const hasChanges = pricingReferenceHasPendingChanges(result);
   const savedNotice = String(state.pricingReferenceSavedNotice || "").trim();
   const editNotice = String(state.pricingReferenceEditNotice || "").trim();
-  const statusText = savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
+  const rowIssues = pricingReferenceRowIssues(result.items || []);
+  const resultErrors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
   const noUnsavedChanges = !savedNotice && !editNotice && !hasChanges;
   const rowCount = Array.isArray(result.items) ? result.items.length : Number(result.rowCount || 0);
-  const hasBlockingIssues = pricingReferenceRowIssues(result.items || []).length > 0
-    || (Array.isArray(result.errors) && result.errors.length > 0)
+  const blockingStatusText = rowIssues.length
+    ? `${rowIssues.length} pricing row${rowIssues.length === 1 ? "" : "s"} still need edit before saving.`
+    : resultErrors.length
+      ? resultErrors.join(" ")
+      : rowCount <= 0
+        ? "Add at least one valid pricing row before saving."
+        : "";
+  const statusText = !savedNotice && editNotice && blockingStatusText
+    ? `${editNotice} ${blockingStatusText}`
+    : savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
+  const hasBlockingIssues = rowIssues.length > 0
+    || resultErrors.length > 0
     || rowCount <= 0;
   const isBlocked = hasBlockingIssues && !noUnsavedChanges && !savedNotice;
   const isReady = !hasBlockingIssues && Boolean(savedNotice);
@@ -5091,6 +5102,9 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
     `;
   }
   const statusText = aiFailed ? "AI failed" : source === "edited" ? "Edited draft" : "Needs review";
+  const qualityPill = normalizeAnalysisMode(state.lastAnalysisMode) === ANALYSIS_MODE_HIGH_QUALITY
+    ? `<span class="quote-basis-quality-pill">High Quality</span>`
+    : "";
   const sections = basisSections(state.quoteBasisSections.length ? state.quoteBasisSections : normalizeQuoteBasisSections(basis));
   return `
     <div class="assistant-card quote-basis-card ${aiFailed ? "quote-basis-card-failed" : ""}">
@@ -5099,6 +5113,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <div class="quote-basis-title-row">
             <h3>Quote Basis</h3>
             <span>${escapeHtml(statusText)}</span>
+            ${qualityPill}
           </div>
           <p>${aiFailed ? GENERIC_FAILURE_MESSAGE : "Please review the AI takeoff and revise individual lines where needed."}</p>
         </div>

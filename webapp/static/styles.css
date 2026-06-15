@@ -1664,6 +1664,12 @@ select:focus {
   font-weight: 850;
 }
 
+.quote-basis-title-row .quote-basis-quality-pill {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .output-page-header {
   margin: 17px 17px 16px;
   padding: 0 0 16px;

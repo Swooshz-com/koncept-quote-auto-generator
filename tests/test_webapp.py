@@ -9038,6 +9038,164 @@ assert.strictEqual(saveButton.title, "");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_pricing_reference_manage_status_keeps_blocking_reason_after_amend(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const status = {
+  hidden: true,
+  innerHTML: "",
+  className: "",
+  classList: {
+    values: new Set(),
+    remove(name) { this.values.delete(name); },
+    toggle(name, enabled) { if (enabled) this.values.add(name); else this.values.delete(name); },
+    contains(name) { return this.values.has(name); },
+  },
+};
+const state = {
+  editingPricingReferenceId: "koncept-exhibition-quotation",
+  pricingReferenceSaveBusy: false,
+  pricingReferenceSavedNotice: "",
+  pricingReferenceEditNotice: "2 pricing rows amended in Review Rows.",
+};
+const elements = {
+  pricingReferenceManageStatus: status,
+  pricingReferenceName: { value: "Koncept Exhibition Quotation" },
+};
+function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char])); }
+function pricingReferenceSaveBlockReason(result = {}) { return result.canSave ? "" : "Fix the highlighted pricing-reference rows before saving."; }
+function pricingReferenceHasPendingChanges() { return true; }
+
+eval([
+  "pricingReferenceRowIssues",
+  "pricingReferenceEditStatusText",
+  "renderPricingReferenceManageStatus",
+].map(extractFunction).join("\n"));
+
+renderPricingReferenceManageStatus({
+  sourceName: "Koncept Exhibition Quotation",
+  canSave: false,
+  items: [
+    { warning: "OK" },
+    { warning: "duplicate pricing row" },
+    { warning: "duplicate pricing row" },
+  ],
+  errors: [],
+});
+
+assert.strictEqual(status.hidden, false);
+assert.strictEqual(status.classList.contains("is-blocked"), true);
+assert.ok(status.innerHTML.includes("2 pricing rows amended in Review Rows."));
+assert.ok(status.innerHTML.includes("2 pricing rows still need edit before saving."));
+assert.ok(status.innerHTML.includes("Review Rows"));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_quote_basis_high_quality_pill_follows_analysis_mode(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const ANALYSIS_MODE_STANDARD = "standard";
+const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const GENERIC_FAILURE_MESSAGE = "Failed.";
+const state = {
+  aiFailed: false,
+  lastAnalysisMode: ANALYSIS_MODE_HIGH_QUALITY,
+  quoteBasis: {},
+  quoteBasisSections: [{
+    id: "graphics",
+    title: "Graphics",
+    lines: [{ tag: "Include", text: "sqm printed graphics" }],
+  }],
+};
+function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char])); }
+function outputPricingSourceLabel() { return "Pricing reference"; }
+function basisSections() { return state.quoteBasisSections; }
+function renderAnalysisFindings() { return ""; }
+function basisTotalLineCount(sections = []) { return sections.reduce((total, section) => total + (section.lines || []).length, 0); }
+function basisTotalLineLabel(count = 0) { return `Total lines: ${count}`; }
+function renderBasisConfirmSummary() { return ""; }
+function renderBasisTagLegend() { return ""; }
+function renderBasisLine(section, line) { return `<li>${escapeHtml(line.text)}</li>`; }
+function normalizeQuoteBasisSections() { return state.quoteBasisSections; }
+
+eval([
+  "normalizeAnalysisMode",
+  "renderQuoteBasisMessage",
+].map(extractFunction).join("\n"));
+
+const highQualityHtml = renderQuoteBasisMessage(state.quoteBasis, "openai");
+assert.ok(highQualityHtml.includes('class="quote-basis-quality-pill"'));
+assert.ok(highQualityHtml.includes(">High Quality<"));
+
+state.lastAnalysisMode = ANALYSIS_MODE_STANDARD;
+const standardHtml = renderQuoteBasisMessage(state.quoteBasis, "openai");
+assert.ok(!standardHtml.includes("quote-basis-quality-pill"));
+assert.ok(!standardHtml.includes(">High Quality<"));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_quote_basis_footer_confirmation_requires_resolved_confirm_lines(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
