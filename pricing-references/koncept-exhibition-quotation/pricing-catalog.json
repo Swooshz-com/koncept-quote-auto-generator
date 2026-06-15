@@ -17,18 +17,25 @@
       "item_order": 4,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "needle punch carpet",
+        "needle punch floor",
+        "needlepunch carpet",
+        "needle-punched carpet",
+        "needle punch flooring",
+        "floor design",
         "needle punch carpet in colour",
         "needle punch",
         "needle punch carpet in colour sqm",
-        "floor",
         "carpet",
         "colour",
+        "design",
+        "floor",
         "needle",
         "punch",
         "sqm"
       ],
       "object_families": [
-        "floor"
+        "needle_punch_carpet"
       ],
       "reference_section": "Floor Design",
       "remarks": [
@@ -54,17 +61,24 @@
       "item_order": 6,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "needle velour carpet",
+        "velour carpet",
+        "needle punch velour carpet",
+        "velour floor covering",
+        "velour flooring",
+        "floor design",
         "needle velour carpet in colour",
         "needle velour carpet in colour sqm",
-        "floor",
         "carpet",
         "colour",
+        "design",
+        "floor",
         "needle",
         "sqm",
         "velour"
       ],
       "object_families": [
-        "floor"
+        "needle_velour_carpet"
       ],
       "reference_section": "Floor Design",
       "remarks": [
@@ -90,20 +104,27 @@
       "item_order": 8,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "100mm raised platform with aluminum edging",
+        "100mm raised platform",
+        "low raised floor",
+        "aluminum edged platform",
+        "platform with aluminum trim",
+        "raised platform with aluminum edging",
         "platform only",
+        "floor design",
+        "100mm raised platform with aluminum edging",
         "100mm raised platform with aluminum edging sqm",
-        "floor",
         "100mm",
         "aluminum",
+        "design",
         "edging",
+        "floor",
         "only",
         "platform",
         "raised",
         "sqm"
       ],
       "object_families": [
-        "floor"
+        "raised_platform"
       ],
       "reference_section": "Floor Design",
       "remarks": [
@@ -129,9 +150,16 @@
       "item_order": 10,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "white laminate flooring",
+        "white laminated floor",
+        "laminate floor white",
+        "white laminate plank",
+        "white laminate floor covering",
+        "floor design",
         "white laminated flooring on raised platform",
         "white laminate",
         "white laminated flooring on raised platform sqm",
+        "design",
         "floor",
         "flooring",
         "laminate",
@@ -142,7 +170,7 @@
         "white"
       ],
       "object_families": [
-        "floor"
+        "laminated_flooring"
       ],
       "reference_section": "Floor Design",
       "remarks": [
@@ -168,9 +196,15 @@
       "item_order": 12,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "wood grain laminate flooring",
+        "timber look laminate flooring",
+        "wood grain laminated floor",
+        "laminate floor wood grain",
+        "floor design",
         "wood grain laminated flooring on raised platform",
         "wood grain laminate",
         "wood grain laminated flooring on raised platform sqm",
+        "design",
         "floor",
         "flooring",
         "grain",
@@ -182,7 +216,7 @@
         "wood"
       ],
       "object_families": [
-        "floor"
+        "laminated_flooring"
       ],
       "reference_section": "Floor Design",
       "remarks": [
@@ -208,10 +242,17 @@
       "item_order": 14,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "2mm pvc flooring",
+        "2mm vinyl flooring",
+        "pvc floor covering",
+        "vinyl floor sheet",
+        "pvc floor tile",
+        "floor design",
         "2mm pvc flooring on raised platform",
         "2mm pvc flooring on raised platform sqm",
-        "floor",
         "2mm",
+        "design",
+        "floor",
         "flooring",
         "platform",
         "pvc",
@@ -219,7 +260,7 @@
         "sqm"
       ],
       "object_families": [
-        "floor"
+        "pvc_flooring"
       ],
       "reference_section": "Floor Design",
       "remarks": [
@@ -247,27 +288,35 @@
       "item_order": 19,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "single side partition wall",
+        "single sided partition",
+        "2.4m partition wall",
+        "2.4m painted partition",
+        "painted wooden partition",
+        "backwall",
+        "partition wall painted",
+        "single side wooden wall",
+        "booth structure",
         "single side partition wall at height 2.4m",
         "wooden construct in painted finished as per design proposal",
         "backwall or any partition",
         "wooden construct in painted finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
         "any",
+        "booth",
         "construct",
         "design",
         "finished",
         "length",
         "painted",
+        "partition",
         "side",
         "single",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "single_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -296,27 +345,33 @@
       "item_order": 22,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "single side partition wall laminated",
+        "single sided laminated partition",
+        "2.4m laminated wall",
+        "laminated backwall",
+        "laminated wooden partition",
+        "booth structure",
         "single side partition wall at height 2.4m",
         "wooden construct in laminated finished as per design proposal",
         "backwall or any partition",
         "wooden construct in laminated finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
         "any",
+        "backwall",
+        "booth",
         "construct",
         "design",
         "finished",
         "laminated",
         "length",
+        "partition",
         "side",
         "single",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "single_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -345,27 +400,31 @@
       "item_order": 25,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "double side partition wall",
+        "double sided partition",
+        "2.4m double side wall",
+        "double sided painted partition",
+        "painted double partition",
+        "booth structure",
         "double side partition wall at height 2.4m",
         "wooden construct in painted finished as per design proposal",
-        "double sided partition",
         "wooden construct in painted finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "design",
         "double",
         "finished",
         "length",
         "painted",
+        "partition",
         "side",
         "sided",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "double_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -394,15 +453,16 @@
       "item_order": 28,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "double side laminated partition",
+        "double sided laminated wall",
+        "2.4m laminated double wall",
+        "laminated double sided partition",
+        "booth structure",
         "double side partition wall at height 2.4m",
         "wooden construct in laminated finished as per design proposal",
         "double sided partition",
         "wooden construct in laminated finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "design",
         "double",
@@ -410,12 +470,15 @@
         "laminate",
         "laminated",
         "length",
+        "partition",
         "side",
         "sided",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "double_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -444,28 +507,34 @@
       "item_order": 31,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "single side partition wall 4m",
+        "4m single sided partition",
+        "4m painted partition",
+        "4m backwall",
+        "4m wooden wall painted",
+        "booth structure",
         "single side partition wall at height 4m",
         "wooden construct in painted finished as per design proposal",
         "single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "backwall or any partition",
         "wooden construct in painted finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
         "any",
+        "backwall",
+        "booth",
         "construct",
         "design",
         "finished",
         "length",
         "painted",
+        "partition",
         "side",
         "single",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "single_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -494,27 +563,31 @@
       "item_order": 34,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "single side 4m laminated partition",
+        "4m laminated single sided wall",
+        "4m laminated backwall",
+        "booth structure",
         "single side partition wall at height 4m",
         "wooden construct in laminated finished as per design proposal",
         "backwall or any partition",
         "wooden construct in laminated finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
         "any",
+        "backwall",
+        "booth",
         "construct",
         "design",
         "finished",
         "laminated",
         "length",
+        "partition",
         "side",
         "single",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "single_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -543,28 +616,32 @@
       "item_order": 37,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "double side 4m partition",
+        "4m double sided partition",
+        "4m double wall painted",
+        "4m painted double partition",
+        "booth structure",
         "double side partition wall at height 4m",
         "wooden construct in painted finished as per design proposal",
         "double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "double sided partition",
         "wooden construct in painted finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "design",
         "double",
         "finished",
         "length",
         "painted",
+        "partition",
         "side",
         "sided",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "double_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -593,15 +670,15 @@
       "item_order": 40,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "double side 4m laminated partition",
+        "4m laminated double sided wall",
+        "4m laminated double partition",
+        "booth structure",
         "double side partition wall at height 4m",
         "wooden construct in laminated finished as per design proposal",
         "double sided partition",
         "wooden construct in laminated finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "design",
         "double",
@@ -609,12 +686,15 @@
         "laminate",
         "laminated",
         "length",
+        "partition",
         "side",
         "sided",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "double_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -643,18 +723,23 @@
       "item_order": 44,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "top fascia structure",
+        "fascia structure painted",
+        "3.99m fascia",
+        "top booth fascia",
+        "painted fascia",
+        "booth fascia painted",
+        "booth structure",
         "top fascia structure at height 3.99m",
         "wooden construct in painted finished as per design proposal",
         "top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
         "top booth structure",
         "wooden construct in painted finished as per design proposal m length",
-        "fascia",
-        "canopy",
-        "header",
         "99m",
         "booth",
         "construct",
         "design",
+        "fascia",
         "finished",
         "length",
         "painted",
@@ -663,7 +748,7 @@
         "wooden"
       ],
       "object_families": [
-        "fascia"
+        "top_fascia_structure"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -692,18 +777,21 @@
       "item_order": 47,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "top fascia laminated",
+        "laminated fascia structure",
+        "3.99m laminated fascia",
+        "booth fascia laminated",
+        "booth structure",
         "top fascia structure at height 3.99m",
         "wooden construct in laminated finished as per design proposal",
         "top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
         "top booth structure",
         "wooden construct in laminated finished as per design proposal m length",
-        "fascia",
-        "canopy",
-        "header",
         "99m",
         "booth",
         "construct",
         "design",
+        "fascia",
         "finished",
         "laminated",
         "length",
@@ -712,7 +800,7 @@
         "wooden"
       ],
       "object_families": [
-        "fascia"
+        "top_fascia_structure"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -741,15 +829,17 @@
       "item_order": 50,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "double side meeting room partition",
+        "2.5m meeting room wall",
+        "painted meeting room partition",
+        "meeting room double sided wall",
+        "2.5m double side partition meeting room",
+        "booth structure",
         "double side partition wall at height 2.5m for meeting room",
         "wooden construct in painted finished as per design proposal",
         "partition for meeting room",
         "wooden construct in painted finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "design",
         "double",
@@ -757,12 +847,15 @@
         "length",
         "meeting",
         "painted",
+        "partition",
         "room",
         "side",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "double_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -791,15 +884,15 @@
       "item_order": 53,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "double side laminated meeting room partition",
+        "2.5m laminated meeting room wall",
+        "laminated meeting room partition",
+        "booth structure",
         "double side partition wall at height 2.5m for meeting room",
         "wooden construct in laminated finished as per design proposal",
         "partition for meeting room",
         "wooden construct in laminated finished as per design proposal m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "design",
         "double",
@@ -808,12 +901,15 @@
         "laminated",
         "length",
         "meeting",
+        "partition",
         "room",
         "side",
+        "structure",
+        "wall",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "double_sided_partition_wall"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -840,24 +936,27 @@
       "item_order": 56,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "wooden construct low partition ready in painted finished",
+        "low partition",
         "low dividing partition",
+        "wooden low partition",
+        "painted low partition",
+        "low wall partition",
+        "booth structure",
+        "wooden construct low partition ready in painted finished",
         "wooden construct low partition ready in painted finished nos",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "dividing",
         "finished",
         "low",
         "nos",
         "painted",
+        "partition",
+        "structure",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "low_partition"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -884,24 +983,27 @@
       "item_order": 59,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "low partition laminated",
+        "laminated low partition",
+        "wooden low laminated partition",
+        "low dividing partition laminated",
+        "booth structure",
         "wooden construct low partition ready in laminated finished",
         "low dividing partition",
         "wooden construct low partition ready in laminated finished nos",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "construct",
         "dividing",
         "finished",
         "laminated",
         "low",
         "nos",
+        "partition",
+        "structure",
         "wooden"
       ],
       "object_families": [
-        "partition"
+        "low_partition"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -928,26 +1030,33 @@
       "item_order": 62,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "system profile partition",
+        "acrylic partition",
+        "octanorm partition",
+        "1m x 2.5m partition",
+        "clear acrylic panel",
+        "partition with acrylic",
+        "booth structure",
         "1mw x 2.5mh system profile partition with clear acrylic panel",
         "acrylic system partition",
         "1mw x 2.5mh system profile partition with clear acrylic panel m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
         "1mw",
         "5mh",
         "acrylic",
+        "booth",
         "clear",
         "length",
         "octanorm",
         "panel",
+        "partition",
         "profile",
+        "structure",
         "system"
       ],
       "object_families": [
-        "partition"
+        "booth_partition",
+        "system_profile_partition",
+        "acrylic_partition"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -974,19 +1083,26 @@
       "item_order": 65,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "vertical support pillars in painted finished",
+        "vertical support pillar",
+        "painted pillar",
         "support pillar",
+        "painted support pillar",
+        "booth structure",
+        "vertical support pillars in painted finished",
         "vertical support pillars in painted finished nos",
-        "pillar",
-        "column",
-        "support",
+        "booth",
         "finished",
         "nos",
         "painted",
+        "pillar",
+        "structure",
+        "support",
         "vertical"
       ],
       "object_families": [
-        "pillar"
+        "support_pillar",
+        "vertical_support",
+        "painted_pillar"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -1013,19 +1129,26 @@
       "item_order": 68,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "vertical support pillars in laminated finished",
+        "vertical support pillar",
+        "laminated pillar",
         "support pillar",
+        "laminated support pillar",
+        "booth structure",
+        "vertical support pillars in laminated finished",
         "vertical support pillars in laminated finished nos",
-        "pillar",
-        "column",
-        "support",
+        "booth",
         "finished",
         "laminated",
         "nos",
+        "pillar",
+        "structure",
+        "support",
         "vertical"
       ],
       "object_families": [
-        "pillar"
+        "support_pillar",
+        "vertical_support",
+        "laminated_pillar"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -1052,18 +1175,25 @@
       "item_order": 71,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "planter box in painted finished",
+        "planter box",
         "plant box",
+        "painted planter box",
+        "planter box painted",
+        "booth structure",
+        "planter box in painted finished",
         "planter box in painted finished nos",
-        "plant",
+        "booth",
         "box",
         "finished",
         "nos",
         "painted",
-        "planter"
+        "plant",
+        "planter",
+        "structure"
       ],
       "object_families": [
-        "plant"
+        "planter_box",
+        "painted_planter_box"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -1090,19 +1220,26 @@
       "item_order": 74,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "planter box in laminated finished",
+        "planter box",
         "plant box",
+        "laminated planter box",
+        "planter box laminated",
+        "booth structure",
+        "planter box in laminated finished",
         "planter box in laminated finished nos",
-        "plant",
+        "booth",
         "box",
         "finished",
         "laminated",
         "nos",
         "painted",
-        "planter"
+        "plant",
+        "planter",
+        "structure"
       ],
       "object_families": [
-        "plant"
+        "planter_box",
+        "laminated_planter_box"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -1128,19 +1265,21 @@
       "item_order": 77,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "x 2.5m height glass partition",
         "glass partition",
+        "2.5m height glass partition",
+        "glass panel partition",
+        "booth structure",
+        "x 2.5m height glass partition",
         "x 2.5m height glass partition m length",
-        "partition",
-        "backwall",
-        "enclosure",
-        "room build",
-        "wall",
+        "booth",
         "glass",
-        "length"
+        "length",
+        "partition",
+        "structure"
       ],
       "object_families": [
-        "partition"
+        "glass_partition",
+        "booth_partition"
       ],
       "reference_section": "Booth Structure",
       "remarks": [
@@ -1168,12 +1307,19 @@
       "item_order": 83,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "information counter",
+        "lockable information counter",
+        "wooden information counter",
+        "painted information counter",
+        "laminated top information counter",
+        "1m information counter",
+        "counters and cabinets",
         "1m length x 1m height x 0.5m width lockable information counter",
         "wooden construct in painted finished and laminated top as per design proposal",
-        "information counter",
         "x 1m height x 0.5m width lockable information counter",
-        "counter",
+        "cabinet",
         "construct",
+        "counter",
         "design",
         "finished",
         "information",
@@ -1187,7 +1333,10 @@
         "wooden"
       ],
       "object_families": [
-        "counter"
+        "information_counter",
+        "wooden_counter",
+        "painted_counter",
+        "lockable_counter"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1216,13 +1365,20 @@
       "item_order": 86,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "information counter",
+        "lockable information counter",
+        "wooden information counter",
+        "laminated information counter",
+        "fully laminated information counter",
+        "1m information counter",
+        "counters and cabinets",
         "1m length x 1m height x 0.5m width lockable information counter",
         "wooden construct in laminated finished as per design proposal",
-        "information counter",
         "full laminated",
         "x 1m height x 0.5m width lockable information counter",
-        "counter",
+        "cabinet",
         "construct",
+        "counter",
         "design",
         "finished",
         "full",
@@ -1235,7 +1391,10 @@
         "wooden"
       ],
       "object_families": [
-        "counter"
+        "information_counter",
+        "wooden_counter",
+        "laminated_counter",
+        "lockable_counter"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1264,10 +1423,17 @@
       "item_order": 89,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "lockable counter",
+        "wooden counter",
+        "painted counter",
+        "laminated top counter",
+        "1m counter",
+        "counters and cabinets",
         "1m length x 1m height x 0.5m width lockable counter",
         "wooden construct in painted finished and laminated top as per design proposal",
-        "counter",
+        "cabinet",
         "construct",
+        "counter",
         "design",
         "finished",
         "laminated",
@@ -1280,7 +1446,10 @@
         "wooden"
       ],
       "object_families": [
-        "counter"
+        "counter",
+        "lockable_counter",
+        "painted_counter",
+        "wooden_counter"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1309,12 +1478,19 @@
       "item_order": 92,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "lockable counter",
+        "wooden counter",
+        "laminated counter",
+        "fully laminated counter",
+        "1m counter",
+        "counters and cabinets",
         "1m length x 1m height x 0.5m width lockable counter",
         "wooden construct in laminated finished as per design proposal",
         "full laminated",
         "wooden construct in laminated finished as per design proposal nos",
-        "counter",
+        "cabinet",
         "construct",
+        "counter",
         "design",
         "finished",
         "full",
@@ -1326,7 +1502,10 @@
         "wooden"
       ],
       "object_families": [
-        "counter"
+        "counter",
+        "lockable_counter",
+        "laminated_counter",
+        "wooden_counter"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1355,17 +1534,20 @@
       "item_order": 95,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "lockable counter with glass display top",
+        "glass display counter",
+        "wooden display counter",
+        "painted display counter",
+        "1m display counter",
+        "counters and cabinets",
         "1m length x 1m height x 0.5m width lockable counter with glass display top",
         "wooden construct in painted finished and laminated top as per design proposal",
         "counter with glass top",
-        "display",
-        "monitor",
-        "screen",
-        "television",
-        "tv",
-        "counter",
+        "cabinet",
         "construct",
+        "counter",
         "design",
+        "display",
         "finished",
         "glass",
         "laminated",
@@ -1375,16 +1557,13 @@
         "painted",
         "top",
         "width",
-        "wooden",
-        "tv display",
-        "led tv",
-        "monitor display",
-        "screen display",
-        "wall mounted display"
+        "wooden"
       ],
       "object_families": [
-        "display",
-        "counter"
+        "display_counter",
+        "glass_display_counter",
+        "lockable_counter",
+        "painted_counter"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1413,18 +1592,22 @@
       "item_order": 98,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "lockable counter with glass display top",
+        "glass display counter",
+        "wooden display counter",
+        "laminated display counter",
+        "fully laminated display counter",
+        "1m display counter",
+        "counters and cabinets",
         "1m length x 1m height x 0.5m width lockable counter with glass display top",
         "wooden construct in laminated finished as per design proposal",
         "full laminated",
         "wooden construct in laminated finished as per design proposal nos",
-        "display",
-        "monitor",
-        "screen",
-        "television",
-        "tv",
-        "counter",
+        "cabinet",
         "construct",
+        "counter",
         "design",
+        "display",
         "finished",
         "full",
         "glass",
@@ -1434,16 +1617,13 @@
         "nos",
         "top",
         "width",
-        "wooden",
-        "tv display",
-        "led tv",
-        "monitor display",
-        "screen display",
-        "wall mounted display"
+        "wooden"
       ],
       "object_families": [
-        "display",
-        "counter"
+        "display_counter",
+        "glass_display_counter",
+        "lockable_counter",
+        "laminated_counter"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1468,17 +1648,24 @@
       "item_order": 101,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "professional engineer endorsement",
+        "pe endorsement",
+        "structural endorsement",
+        "engineer certification",
+        "structure above 4m endorsement",
+        "counters and cabinets",
         "professional engineer endorsement for structure above 4m",
-        "rigging",
         "above",
+        "cabinet",
+        "counter",
         "endorsement",
         "engineer",
         "professional",
         "structure"
       ],
       "object_families": [
-        "counter",
-        "rigging"
+        "professional_engineer_endorsement",
+        "structural_endorsement"
       ],
       "reference_section": "COUNTERS AND CABINETS",
       "remarks": [
@@ -1502,15 +1689,25 @@
       "item_order": 106,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "300mm x 300mm aluminium box truss",
+        "aluminium box truss",
+        "box truss",
+        "truss rental",
+        "300mm truss",
+        "hanging structure",
         "m rental of 300mm x 300mm aluminium box truss",
-        "rigging",
         "300mm",
         "aluminium",
         "box",
+        "hanging",
+        "structure",
         "truss"
       ],
       "object_families": [
-        "rigging"
+        "aluminium_box_truss",
+        "truss",
+        "box_truss",
+        "hanging_truss"
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
@@ -1537,25 +1734,31 @@
       "item_order": 108,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "rigging point for overhead structure or aluminium box truss",
         "rigging point",
+        "overhead rigging point",
+        "truss rigging point",
+        "hanging point",
+        "hanging structure",
+        "rigging point for overhead structure or aluminium box truss",
         "\u2022 prices are not inclusive of truss",
         "rigging point for overhead structure or aluminium box truss nos",
-        "rigging",
         "aluminium",
         "are",
         "box",
+        "hanging",
         "inclusive",
         "nos",
         "not",
         "overhead",
         "point",
         "price",
+        "rigging",
         "structure",
         "truss"
       ],
       "object_families": [
-        "rigging"
+        "rigging_point",
+        "hanging_point"
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
@@ -1584,15 +1787,20 @@
       "match_terms": [
         "manual chain hoist",
         "manual hoist",
-        "manual chain hoist nos",
-        "rigging",
-        "chain",
+        "chain hoist",
         "hoist",
+        "hanging structure",
+        "manual chain hoist nos",
+        "chain",
+        "hanging",
         "manual",
-        "nos"
+        "nos",
+        "structure"
       ],
       "object_families": [
-        "rigging"
+        "manual_chain_hoist",
+        "hoist",
+        "chain_hoist"
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
@@ -1620,21 +1828,30 @@
       "item_order": 113,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "boom lift",
+        "boom lift rental",
+        "boom lift for rigging",
+        "mandatory boom lift charge",
+        "hanging structure",
         "boom lift for rigging (mandatory charge per booth)",
         "boom lift only for expo",
         "boom lift for rigging (mandatory charge per booth) lot",
-        "rigging",
         "boom",
         "booth",
         "charge",
         "expo",
+        "hanging",
         "lift",
         "lot",
         "mandatory",
-        "only"
+        "only",
+        "rigging",
+        "structure"
       ],
       "object_families": [
-        "rigging"
+        "boom_lift",
+        "lifting_equipment",
+        "rigging_equipment"
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
@@ -1663,10 +1880,14 @@
       "item_order": 115,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "hanging structure wooden painted",
+        "wooden hanging structure",
+        "1m height hanging structure",
+        "painted hanging structure",
+        "hanging structure",
         "hanging structure x 1m height",
         "wooden construct in painted finished as per design proposal",
         "hanging structure x 1m height; wooden construct in painted finished as per design proposal",
-        "wooden hanging structure",
         "construct",
         "design",
         "finished",
@@ -1676,7 +1897,11 @@
         "structure",
         "wooden"
       ],
-      "object_families": [],
+      "object_families": [
+        "hanging_structure",
+        "wooden_hanging_structure",
+        "painted_hanging_structure"
+      ],
       "reference_section": "Hanging Structure",
       "remarks": [
         "Wooden hanging structure",
@@ -1705,6 +1930,11 @@
       "item_order": 118,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "hanging structure wooden laminated",
+        "wooden hanging structure laminated",
+        "laminated hanging structure",
+        "1m height hanging structure laminated",
+        "hanging structure",
         "hanging structure x 1m height",
         "wooden construct in laminated finished as per design proposal",
         "hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
@@ -1719,7 +1949,11 @@
         "structure",
         "wooden"
       ],
-      "object_families": [],
+      "object_families": [
+        "hanging_structure",
+        "wooden_hanging_structure",
+        "laminated_hanging_structure"
+      ],
       "reference_section": "Hanging Structure",
       "remarks": [
         "Wooden hanging structure",
@@ -1748,11 +1982,15 @@
       "item_order": 121,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "hanging structure aluminum fabric",
+        "aluminum profile hanging structure",
+        "fabric printed hanging structure",
+        "tube with printed fabric",
+        "hanging structure fabric print",
+        "hanging structure",
         "hanging structure x 1m height",
         "aluminum profile construct in fabric finished as per design proposal",
         "including fabric print",
-        "tube with printed fabric",
-        "graphics",
         "aluminum",
         "construct",
         "design",
@@ -1764,14 +2002,12 @@
         "profile",
         "run",
         "structure",
-        "tube",
-        "brand graphics",
-        "wall graphics",
-        "graphic panels",
-        "printed graphics"
+        "tube"
       ],
       "object_families": [
-        "graphics"
+        "hanging_structure",
+        "aluminum_hanging_structure",
+        "fabric_hanging_structure"
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
@@ -1795,15 +2031,22 @@
       "item_order": 125,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "professional engineer endorsement",
+        "pe endorsement",
+        "hanging structure engineer endorsement",
+        "engineer stamp for hanging structure",
+        "pe certification for hanging",
+        "hanging structure",
         "professional engineer endorsement for hanging",
-        "rigging",
         "endorsement",
         "engineer",
         "hanging",
-        "professional"
+        "professional",
+        "structure"
       ],
       "object_families": [
-        "rigging"
+        "engineering_endorsement",
+        "hanging_structure_engineering"
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
@@ -1830,15 +2073,26 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "10w led spotlight",
+        "led spotlight 10w",
+        "10 watt led spotlight",
+        "spotlight 10w led",
+        "electrical fittings ( excluding connection fees by organiser)",
         "10w led spotlight nos",
-        "lighting",
         "10w",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "led",
         "nos",
+        "organiser",
         "spotlight"
       ],
       "object_families": [
-        "lighting"
+        "led_spotlight",
+        "spotlight",
+        "lighting_fixture"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -1873,17 +2127,28 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "10w arm led spotlight",
+        "adjustable led spotlight 10w",
+        "arm led spotlight",
+        "10w adjustable spotlight",
+        "electrical fittings ( excluding connection fees by organiser)",
         "arm spotlight",
         "10w arm led spotlight nos",
-        "lighting",
         "10w",
         "arm",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "led",
         "nos",
+        "organiser",
         "spotlight"
       ],
       "object_families": [
-        "lighting"
+        "adjustable_led_spotlight",
+        "spotlight",
+        "lighting_fixture"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -1910,19 +2175,31 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "70w led arm floodlight",
+        "adjustable led floodlight 70w",
+        "arm floodlight 70w led",
+        "led arm floodlight",
+        "electrical fittings ( excluding connection fees by organiser)",
         "arm flood light",
         "70w led arm floodlight nos",
-        "lighting",
         "70w",
         "arm",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "flood",
         "floodlight",
         "led",
         "light",
-        "nos"
+        "nos",
+        "organiser"
       ],
       "object_families": [
-        "lighting"
+        "led_floodlight",
+        "adjustable_floodlight",
+        "floodlight",
+        "lighting_fixture"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -1957,14 +2234,29 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "150w hqi floodlight",
+        "hqi floodlight 150w",
+        "metal halide floodlight 150w",
+        "150w metal halide floodlight",
+        "electrical fittings ( excluding connection fees by organiser)",
         "hqi floodlight",
         "150w hqi floodlight nos",
         "150w",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "floodlight",
         "hqi",
-        "nos"
+        "nos",
+        "organiser"
       ],
-      "object_families": [],
+      "object_families": [
+        "hqi_floodlight",
+        "metal_halide_floodlight",
+        "floodlight",
+        "lighting_fixture"
+      ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
         "HQI Floodlight"
@@ -1989,16 +2281,28 @@
       "item_order": 138,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "3 inch led recess downlight",
+        "3\" led downlight",
+        "recessed led downlight 3 inch",
+        "3\" recessed downlight",
+        "electrical fittings ( excluding connection fees by organiser)",
         "led recess downlight 3\"",
         "led recess downlight 3\" nos",
-        "lighting",
+        "connection",
         "downlight",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "led",
         "nos",
+        "organiser",
         "recess"
       ],
       "object_families": [
-        "lighting"
+        "recessed_led_downlight",
+        "downlight",
+        "lighting_fixture"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -2024,16 +2328,28 @@
       "item_order": 140,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "6 inch led recess downlight",
+        "6\" led downlight",
+        "recessed led downlight 6 inch",
+        "6\" recessed downlight",
+        "electrical fittings ( excluding connection fees by organiser)",
         "led recess downlight 6\"",
         "led recess downlight 6\" nos",
-        "lighting",
+        "connection",
         "downlight",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "led",
         "nos",
+        "organiser",
         "recess"
       ],
       "object_families": [
-        "lighting"
+        "recessed_led_downlight",
+        "downlight",
+        "lighting_fixture"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -2068,26 +2384,40 @@
       "item_order": 142,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "13a socket",
+        "230v socket",
+        "sp 50hz socket",
+        "800w socket",
+        "powerpoint 13a",
+        "non-lighting socket",
+        "electrical fittings ( excluding connection fees by organiser)",
         "nos.13amp",
         "230v sp 50hz ac socket (max 800w) (not for lighting use)",
         "nos.13amp/230v sp 50hz ac socket (max 800w) (not for lighting use)",
         "230v sp 50hz ac socket (max 800w) (not for lighting use) nos",
         "nos.13amp/230v sp 50hz ac socket (max 800w) (not for lighting use) nos",
-        "socket",
-        "lighting",
         "13amp",
         "230v",
         "50hz",
         "800w",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
+        "lighting",
         "max",
         "nos",
         "not",
+        "organiser",
         "powerpoint",
+        "socket",
         "use"
       ],
       "object_families": [
-        "socket",
-        "lighting"
+        "power_outlet",
+        "ac_socket",
+        "electrical_fitting"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -2115,27 +2445,41 @@
       "item_order": 144,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "13a socket 24hr supply",
+        "always on 13a socket",
+        "230v socket 24hr",
+        "24hr power outlet",
+        "non-lighting 24hr socket",
+        "electrical fittings ( excluding connection fees by organiser)",
         "230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use)",
         "13amp/230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use)",
         "230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use) nos",
         "13amp/230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use) nos",
-        "socket",
-        "lighting",
         "13amp",
         "230v",
         "24hr",
         "50hz",
         "800w",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
+        "lighting",
         "max",
         "nos",
         "not",
+        "organiser",
         "powerpoint",
+        "socket",
         "supply",
         "use"
       ],
       "object_families": [
-        "socket",
-        "lighting"
+        "24hr_power_outlet",
+        "uninterrupted_power_socket",
+        "power_outlet",
+        "electrical_fitting"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -2161,18 +2505,32 @@
       "item_order": 146,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "led strip for coves",
+        "cove led strip light",
+        "led tape coves",
+        "cove lighting strip",
+        "led strip light cove",
+        "electrical fittings ( excluding connection fees by organiser)",
         "led strip light for coves",
         "led strips",
         "led strip light for coves m run",
-        "lighting",
+        "connection",
         "cove",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "led",
         "light",
+        "organiser",
         "run",
         "strip"
       ],
       "object_families": [
-        "lighting"
+        "led_strip_light",
+        "cove_lighting",
+        "linear_lighting",
+        "architectural_lighting"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -2198,20 +2556,31 @@
       "item_order": 148,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "led bar backlit",
+        "backlight led bar",
+        "graphic backlight bar",
         "led bar for backlit graphics",
+        "backlit led bar",
+        "electrical fittings ( excluding connection fees by organiser)",
         "led bar",
         "led bar for backlit graphics m run",
-        "graphics",
-        "lighting",
         "backlit",
         "bar",
+        "connection",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "graphic",
         "led",
+        "organiser",
         "run"
       ],
       "object_families": [
-        "graphics",
-        "lighting"
+        "led_bar",
+        "backlighting",
+        "graphic_backlight",
+        "linear_lighting"
       ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
@@ -2237,16 +2606,32 @@
       "item_order": 150,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "single line drawing db box",
+        "single line diagram distribution board",
+        "db box sld",
+        "single line drawing for db",
+        "electrical fittings ( excluding connection fees by organiser)",
         "single line drawing for db box",
         "single line drawing",
         "single line drawing for db box nos",
         "box",
+        "connection",
         "drawing",
+        "electrical",
+        "excluding",
+        "fee",
+        "fitting",
         "line",
         "nos",
+        "organiser",
         "single"
       ],
-      "object_families": [],
+      "object_families": [
+        "single_line_diagram",
+        "electrical_drawing",
+        "db_documentation",
+        "engineering_service"
+      ],
       "reference_section": "Electrical Fittings ( Excluding connection fees by Organiser)",
       "remarks": [
         "Single Line Drawing"
@@ -2271,15 +2656,20 @@
       "item_order": 154,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "bistro chairs",
+        "bistro chair",
         "bistro low chair",
+        "low bistro chair",
+        "bistro chairs",
         "bistro chairs nos",
-        "chair",
         "bistro",
+        "chair",
+        "furniture",
         "low",
         "nos"
       ],
       "object_families": [
+        "bistro_chair",
+        "seating",
         "chair"
       ],
       "reference_section": "Furniture Rental",
@@ -2314,18 +2704,26 @@
       "item_order": 156,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "eames replica chair white",
+        "white eames chair",
+        "eames chair replica",
+        "eames style chair white",
         "eames replica chair (white)",
         "bistro low chair",
         "eames replica chair (white) nos",
-        "chair",
         "bistro",
+        "chair",
         "eame",
+        "furniture",
         "low",
         "nos",
         "replica",
         "white"
       ],
       "object_families": [
+        "eames_style_chair",
+        "designer_chair",
+        "replica_chair",
         "chair"
       ],
       "reference_section": "Furniture Rental",
@@ -2367,16 +2765,21 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "low lidas chair",
+        "lidas chair",
+        "low lidas",
         "bistro low chair",
         "low lidas chair nos",
-        "chair",
         "bistro",
+        "chair",
+        "furniture",
         "lida",
         "low",
         "nos"
       ],
       "object_families": [
-        "chair"
+        "lidas_chair",
+        "low_chair",
+        "seating"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2411,16 +2814,21 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "chair with cushion",
+        "cushion chair",
+        "padded chair",
         "bistro low chair",
         "chair with cushion nos",
-        "chair",
         "bistro",
+        "chair",
         "cushion",
+        "furniture",
         "low",
         "nos"
       ],
       "object_families": [
-        "chair"
+        "cushioned_chair",
+        "chair",
+        "seating"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2454,20 +2862,28 @@
       "item_order": 162,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "eames style arm chair black",
+        "black eames armchair",
+        "eames replica arm chair black",
+        "eames armchair replica",
         "eames-style replica arm chair (black)",
         "bistro low chair",
         "eames-style replica arm chair (black) nos",
-        "chair",
         "arm",
         "bistro",
         "black",
+        "chair",
         "eame",
+        "furniture",
         "low",
         "nos",
         "replica",
         "style"
       ],
       "object_families": [
+        "eames_armchair",
+        "designer_armchair",
+        "replica_armchair",
         "chair"
       ],
       "reference_section": "Furniture Rental",
@@ -2502,16 +2918,22 @@
       "item_order": 164,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "seating chair grey",
+        "grey chair",
+        "grey seating",
         "seating chair (grey)",
         "seating chair",
         "seating chair (grey) nos",
         "chair",
+        "furniture",
         "grey",
         "nos",
         "seating"
       ],
       "object_families": [
-        "chair"
+        "seating_chair",
+        "chair",
+        "seating"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2545,10 +2967,14 @@
       "item_order": 166,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "opel replica chair white",
+        "white opel chair",
+        "replica opel chair",
         "opel replica chairs (white)",
         "seating chair",
         "opel replica chairs (white) nos",
         "chair",
+        "furniture",
         "nos",
         "opel",
         "replica",
@@ -2556,7 +2982,9 @@
         "white"
       ],
       "object_families": [
-        "chair"
+        "opel_chair",
+        "replica_chair",
+        "seating"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2590,15 +3018,20 @@
       "item_order": 168,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "white folding chairs",
+        "white folding chair",
+        "folding chair white",
         "folding chair",
+        "white folding chairs",
         "white folding chairs nos",
         "chair",
         "folding",
+        "furniture",
         "nos",
         "white"
       ],
       "object_families": [
+        "folding_chair",
+        "portable_chair",
         "chair"
       ],
       "reference_section": "Furniture Rental",
@@ -2625,19 +3058,22 @@
       "item_order": 170,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "eames-style bar stool (replica)",
+        "eames bar stool",
+        "eames style bar stool",
+        "replica eames bar stool",
         "bar stool",
+        "eames-style bar stool (replica)",
         "eames-style bar stool (replica) nos",
-        "chair",
         "bar",
         "eame",
+        "furniture",
         "nos",
         "replica",
         "stool",
         "style"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2678,17 +3114,19 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "max white bar stool",
+        "max bar stool",
+        "white bar stool",
         "bar stool",
         "max white bar stool nos",
-        "chair",
         "bar",
+        "furniture",
         "max",
         "nos",
         "stool",
         "white"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2714,12 +3152,17 @@
       "item_order": 174,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "jay white bar stool with high back rest",
+        "jay white bar stool",
+        "jay bar stool",
+        "bar stool with high back rest",
+        "high back bar stool",
+        "white bar stool with back rest",
         "bar stool",
+        "jay white bar stool with high back rest",
         "jay white bar stool with high back rest nos",
-        "chair",
         "back",
         "bar",
+        "furniture",
         "high",
         "jay",
         "nos",
@@ -2728,7 +3171,7 @@
         "white"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2769,17 +3212,19 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "don white bar stool",
+        "don bar stool",
+        "white bar stool",
         "bar stool",
         "don white bar stool nos",
-        "chair",
         "bar",
         "don",
+        "furniture",
         "nos",
         "stool",
         "white"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2813,18 +3258,21 @@
       "item_order": 178,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "saffron bar stool (black)",
+        "saffron bar stool",
+        "saffron black bar stool",
+        "black bar stool",
         "bar stool",
+        "saffron bar stool (black)",
         "saffron bar stool (black) nos",
-        "chair",
         "bar",
         "black",
+        "furniture",
         "nos",
         "saffron",
         "stool"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2850,18 +3298,21 @@
       "item_order": 180,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "roudy bar stool (black)",
+        "roudy bar stool",
+        "roudy black bar stool",
+        "black bar stool",
         "bar stool",
+        "roudy bar stool (black)",
         "roudy bar stool (black) nos",
-        "chair",
         "bar",
         "black",
+        "furniture",
         "nos",
         "roudy",
         "stool"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2901,18 +3352,21 @@
       "item_order": 182,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "roudy bar stool (white)",
+        "roudy bar stool",
+        "roudy white bar stool",
+        "white bar stool",
         "bar stool",
+        "roudy bar stool (white)",
         "roudy bar stool (white) nos",
-        "chair",
         "bar",
+        "furniture",
         "nos",
         "roudy",
         "stool",
         "white"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2941,14 +3395,14 @@
         "juliette bar stool",
         "bar stool",
         "juliette bar stool nos",
-        "chair",
         "bar",
+        "furniture",
         "juliette",
         "nos",
         "stool"
       ],
       "object_families": [
-        "chair"
+        "bar_stool"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -2989,14 +3443,18 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "conference chair",
+        "conf chair",
+        "meeting chair",
+        "boardroom chair",
         "conference chairs",
         "conference chair nos",
         "chair",
         "conference",
+        "furniture",
         "nos"
       ],
       "object_families": [
-        "chair"
+        "conference_chair"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3023,20 +3481,25 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "faux leather black chair twin seating",
+        "faux leather twin seating chair",
+        "sofa chair",
+        "twin seating chair",
+        "black twin seating",
+        "faux leather chair",
         "sofa chairs",
         "faux leather black chair twin seating nos",
-        "chair",
-        "sofa",
         "black",
+        "chair",
         "faux",
+        "furniture",
         "leather",
         "nos",
         "seating",
+        "sofa",
         "twin"
       ],
       "object_families": [
-        "chair",
-        "sofa"
+        "twin_seating_chair"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3070,20 +3533,26 @@
       "item_order": 190,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "modular faux leather white sofa",
+        "modular white sofa",
+        "white sofa unit",
+        "sofa seat",
+        "faux leather sofa",
         "modular faux leather white sofa per unit",
         "sofa seats",
         "modular faux leather white sofa per unit nos",
-        "sofa",
         "faux",
+        "furniture",
         "leather",
         "modular",
         "nos",
         "seat",
+        "sofa",
         "unit",
         "white"
       ],
       "object_families": [
-        "sofa"
+        "modular_sofa"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3118,17 +3587,21 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "high top table white",
+        "white high table",
+        "white bistro table",
+        "high table",
         "bistro table high",
         "high top table white nos",
-        "table",
         "bistro",
+        "furniture",
         "high",
         "nos",
+        "table",
         "top",
         "white"
       ],
       "object_families": [
-        "table"
+        "bistro_table"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3162,18 +3635,23 @@
       "item_order": 194,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "aluminum bistro table round",
+        "round bistro table",
+        "aluminum high table",
+        "bistro table",
         "aluminum bistro table (round)",
         "bistro table high",
         "aluminum bistro table (round) nos",
-        "table",
         "aluminum",
         "bistro",
+        "furniture",
         "high",
         "nos",
-        "round"
+        "round",
+        "table"
       ],
       "object_families": [
-        "table"
+        "bistro_table"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3213,18 +3691,23 @@
       "item_order": 196,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "aluminum bistro table square",
+        "square bistro table",
+        "aluminum high table",
+        "bistro table",
         "aluminum bistro table (square)",
         "bistro table high",
         "aluminum bistro table (square) nos",
-        "table",
         "aluminum",
         "bistro",
+        "furniture",
         "high",
         "nos",
-        "square"
+        "square",
+        "table"
       ],
       "object_families": [
-        "table"
+        "bistro_table"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3250,18 +3733,23 @@
       "item_order": 198,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "aluminum bistro table square",
+        "square bistro table",
+        "aluminum high table",
+        "bistro table",
         "aluminum bistro table (square)",
         "bistro table high",
         "aluminum bistro table (square) nos",
-        "table",
         "aluminum",
         "bistro",
+        "furniture",
         "high",
         "nos",
-        "square"
+        "square",
+        "table"
       ],
       "object_families": [
-        "table"
+        "bistro_table"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3295,19 +3783,25 @@
       "item_order": 200,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "white tulip table",
+        "tulip table 60cm",
+        "round low table",
+        "white round table",
         "white tulip table (60cm)",
         "roundtable low",
         "white tulip table (60cm) nos",
-        "table",
         "60cm",
+        "furniture",
         "low",
         "nos",
         "roundtable",
+        "table",
         "tulip",
         "white"
       ],
       "object_families": [
-        "table"
+        "tulip_table",
+        "low_table"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3341,19 +3835,24 @@
       "item_order": 202,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "round glass low table",
+        "glass round table 90cm",
+        "glass low table",
+        "round glass table",
         "round glass low table (90cm)",
         "glass roundtable low",
         "round glass low table (90cm) nos",
-        "table",
         "90cm",
+        "furniture",
         "glass",
         "low",
         "nos",
         "round",
-        "roundtable"
+        "roundtable",
+        "table"
       ],
       "object_families": [
-        "table"
+        "glass_low_table"
       ],
       "reference_section": "Furniture Rental",
       "remarks": [
@@ -3381,14 +3880,19 @@
       "match_terms": [
         "aluminum foldable brochure stand",
         "brochure stand",
+        "foldable brochure stand",
+        "aluminum brochure stand",
         "aluminum foldable brochure stand nos",
         "aluminum",
         "brochure",
         "foldable",
+        "item",
         "nos",
         "stand"
       ],
-      "object_families": [],
+      "object_families": [
+        "brochure_stand"
+      ],
       "reference_section": "Rental Items",
       "remarks": [
         "Brochure stand"
@@ -3428,16 +3932,21 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "aluminum foldable magazine stand",
+        "magazine stand",
+        "foldable magazine stand",
         "brochure stand",
         "aluminum foldable magazine stand nos",
         "aluminum",
         "brochure",
         "foldable",
+        "item",
         "magazine",
         "nos",
         "stand"
       ],
-      "object_families": [],
+      "object_families": [
+        "magazine_stand"
+      ],
       "reference_section": "Rental Items",
       "remarks": [
         "Brochure stand"
@@ -3462,14 +3971,23 @@
       "item_order": 212,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "queue pole 1m silver",
+        "queue pole",
+        "q pole",
+        "silver queue pole",
+        "1m queue pole",
+        "stanchion",
         "queue pole 1m (silver)",
         "queue pole 1m (silver) nos",
+        "item",
         "nos",
         "pole",
         "queue",
         "silver"
       ],
-      "object_families": [],
+      "object_families": [
+        "queue_pole"
+      ],
       "reference_section": "Rental Items",
       "remarks": [
         "Q POLES"
@@ -3508,14 +4026,25 @@
       "item_order": 214,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "queue pole",
+        "stanchion",
+        "q pole",
+        "1m pole",
+        "black queue pole",
+        "crowd control pole",
         "queue pole 1m (black)",
         "queue pole 1m (black) nos",
         "black",
+        "item",
         "nos",
         "pole",
         "queue"
       ],
-      "object_families": [],
+      "object_families": [
+        "queue_pole",
+        "stanchion",
+        "crowd_control"
+      ],
       "reference_section": "Rental Items",
       "remarks": [
         "Q POLES"
@@ -3540,16 +4069,23 @@
       "item_order": 216,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "420l freezer (mini fridge)",
+        "freezer",
         "mini fridge",
+        "420l freezer",
+        "mini freezer",
+        "refrigerator",
+        "420l freezer (mini fridge)",
         "420l freezer (mini fridge) nos",
         "420l",
-        "freezer",
         "fridge",
+        "item",
         "mini",
         "nos"
       ],
-      "object_families": [],
+      "object_families": [
+        "freezer",
+        "mini_fridge"
+      ],
       "reference_section": "Rental Items",
       "remarks": [
         "MINI FRIDGE"
@@ -3582,16 +4118,20 @@
       "item_order": 218,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "550l refrigerator",
+        "refrigerator",
         "mini fridge",
+        "550l refrigerator",
+        "fridge",
         "550l refrigerator nos",
         "550l",
-        "fridge",
+        "item",
         "mini",
-        "nos",
-        "refrigerator"
+        "nos"
       ],
-      "object_families": [],
+      "object_families": [
+        "refrigerator",
+        "mini_fridge"
+      ],
       "reference_section": "Rental Items",
       "remarks": [
         "MINI FRIDGE"
@@ -3625,18 +4165,17 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "sink with cabinet",
-        "sink with cabinet nos",
-        "counter",
-        "water",
-        "cabinet",
-        "nos",
         "sink",
-        "water connection",
-        "sink connection"
+        "kitchen sink",
+        "cabinet sink",
+        "sink with cabinet nos",
+        "cabinet",
+        "item",
+        "nos"
       ],
       "object_families": [
-        "counter",
-        "water"
+        "sink_with_cabinet",
+        "sink"
       ],
       "reference_section": "Rental Items",
       "remarks": [
@@ -3662,25 +4201,27 @@
       "item_order": 225,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "42 inch led tv",
+        "42 tv monitor",
+        "led tv",
+        "full hd monitor",
+        "tv with speaker",
+        "av equipment rental items",
         "42\" led tv monitor (with speaker - full hd)",
         "42\" led tv monitor (with speaker - full hd) nos",
-        "display",
-        "monitor",
-        "screen",
-        "television",
-        "tv",
+        "equipment",
         "full",
+        "item",
         "led",
+        "monitor",
         "nos",
         "speaker",
-        "tv display",
-        "led tv",
-        "monitor display",
-        "screen display",
-        "wall mounted display"
+        "tv"
       ],
       "object_families": [
-        "display"
+        "led_tv_monitor",
+        "tv",
+        "monitor"
       ],
       "reference_section": "AV Equipment Rental Items",
       "remarks": [
@@ -3706,25 +4247,25 @@
       "item_order": 227,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "55 inch led tv",
+        "55 tv monitor",
+        "led tv",
+        "full hd tv",
+        "av equipment rental items",
         "55\" led tv monitor (with speaker - full hd)",
         "55\" led tv monitor (with speaker - full hd) nos",
-        "display",
-        "monitor",
-        "screen",
-        "television",
-        "tv",
+        "equipment",
         "full",
+        "item",
         "led",
+        "monitor",
         "nos",
         "speaker",
-        "tv display",
-        "led tv",
-        "monitor display",
-        "screen display",
-        "wall mounted display"
+        "tv"
       ],
       "object_families": [
-        "display"
+        "led_tv_monitor",
+        "tv"
       ],
       "reference_section": "AV Equipment Rental Items",
       "remarks": [
@@ -3750,25 +4291,25 @@
       "item_order": 229,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "65 inch led tv",
+        "65 tv monitor",
+        "led tv",
+        "large led tv",
+        "av equipment rental items",
         "65\" led tv monitor (with speaker - full hd)",
         "65\" led tv monitor (with speaker - full hd) nos",
-        "display",
-        "monitor",
-        "screen",
-        "television",
-        "tv",
+        "equipment",
         "full",
+        "item",
         "led",
+        "monitor",
         "nos",
         "speaker",
-        "tv display",
-        "led tv",
-        "monitor display",
-        "screen display",
-        "wall mounted display"
+        "tv"
       ],
       "object_families": [
-        "display"
+        "led_tv_monitor",
+        "tv"
       ],
       "reference_section": "AV Equipment Rental Items",
       "remarks": [
@@ -3794,25 +4335,25 @@
       "item_order": 231,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "85 inch led tv",
+        "85 tv monitor",
+        "led tv",
+        "extra large tv",
+        "av equipment rental items",
         "85\" led tv monitor (with speaker - full hd)",
         "85\" led tv monitor (with speaker - full hd) nos",
-        "display",
-        "monitor",
-        "screen",
-        "television",
-        "tv",
+        "equipment",
         "full",
+        "item",
         "led",
+        "monitor",
         "nos",
         "speaker",
-        "tv display",
-        "led tv",
-        "monitor display",
-        "screen display",
-        "wall mounted display"
+        "tv"
       ],
       "object_families": [
-        "display"
+        "led_tv_monitor",
+        "tv"
       ],
       "reference_section": "AV Equipment Rental Items",
       "remarks": [
@@ -3840,15 +4381,17 @@
       "match_terms": [
         "3d backlit logo",
         "backlit logo",
+        "illuminated logo",
+        "3d sign",
         "3d backlit logo nos",
-        "graphics",
         "backlit",
+        "graphic",
         "logo",
-        "nos",
-        "logo graphics"
+        "nos"
       ],
       "object_families": [
-        "graphics"
+        "backlit_logo",
+        "3d_sign"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -3877,19 +4420,21 @@
       "match_terms": [
         "3d backlit lettering",
         "backlit lettering",
+        "illuminated letters",
+        "channel letters",
         "note: per set max 2m long",
         "3d backlit lettering set",
-        "graphics",
         "backlit",
+        "graphic",
         "lettering",
         "long",
         "max",
         "note",
-        "set",
-        "lettering graphics"
+        "set"
       ],
       "object_families": [
-        "graphics"
+        "backlit_lettering",
+        "illuminated_letters"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -3917,18 +4462,19 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "2d backlit logo",
+        "backlit logo",
+        "flat backlit sign",
         "backlit lettering",
         "2d backlit logo nos",
-        "graphics",
         "backlit",
+        "graphic",
         "lettering",
         "logo",
-        "nos",
-        "logo graphics",
-        "lettering graphics"
+        "nos"
       ],
       "object_families": [
-        "graphics"
+        "backlit_logo",
+        "2d_sign"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -3954,21 +4500,25 @@
       "item_order": 245,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "3d vinyl logo",
+        "foam logo",
+        "cut-out logo",
+        "dimensional logo",
         "3d vinyl logo on foam",
         "3d cut-out logo",
         "3d vinyl logo on foam nos",
-        "graphics",
         "cut",
         "foam",
+        "graphic",
         "logo",
         "nos",
         "out",
-        "vinyl",
-        "vinyl graphics",
-        "logo graphics"
+        "vinyl"
       ],
       "object_families": [
-        "graphics"
+        "vinyl_logo",
+        "3d_logo",
+        "foam_sign"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -3995,25 +4545,27 @@
       "item_order": 247,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "3d vinyl lettering",
+        "foam lettering",
+        "dimensional letters",
         "3d vinyl lettering on foam",
         "3d cut-out lettering",
         "note: per set max 2m long",
         "3d vinyl lettering on foam set",
-        "graphics",
         "cut",
         "foam",
+        "graphic",
         "lettering",
         "long",
         "max",
         "note",
         "out",
         "set",
-        "vinyl",
-        "vinyl graphics",
-        "lettering graphics"
+        "vinyl"
       ],
       "object_families": [
-        "graphics"
+        "vinyl_lettering",
+        "3d_lettering"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4041,13 +4593,17 @@
       "item_order": 250,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "die-cut vinyl logo",
+        "vinyl logo",
+        "decal logo",
+        "cut vinyl logo",
         "die-cut vinyl logo including lettering",
         "3d cut-out lettering",
         "note: per set max 2m long",
         "die-cut vinyl logo including lettering nos",
-        "graphics",
         "cut",
         "die",
+        "graphic",
         "lettering",
         "logo",
         "long",
@@ -4056,13 +4612,12 @@
         "note",
         "out",
         "set",
-        "vinyl",
-        "vinyl graphics",
-        "logo graphics",
-        "lettering graphics"
+        "vinyl"
       ],
       "object_families": [
-        "graphics"
+        "die_cut_vinyl",
+        "vinyl_decal",
+        "logo"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4090,22 +4645,20 @@
       "markup_multiplier": 1.5,
       "match_terms": [
         "vinyl printed graphics",
+        "printed vinyl",
+        "wall graphics",
+        "adhesive vinyl print",
         "printed graphics on wall",
         "vinyl printed graphics sqm",
-        "graphics",
         "graphic",
         "printed",
         "sqm",
         "vinyl",
-        "wall",
-        "brand graphics",
-        "wall graphics",
-        "graphic panels",
-        "printed graphics",
-        "vinyl graphics"
+        "wall"
       ],
       "object_families": [
-        "graphics"
+        "printed_vinyl",
+        "wall_graphics"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4131,24 +4684,22 @@
       "item_order": 255,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "vinyl printed graphics on foam",
+        "printed foam graphics",
+        "foam mounted print",
         "vinyl printed graphics on flex foam",
         "printed graphics on foam",
         "vinyl printed graphics on flex foam sqm",
-        "graphics",
         "flex",
         "foam",
         "graphic",
         "printed",
         "sqm",
-        "vinyl",
-        "brand graphics",
-        "wall graphics",
-        "graphic panels",
-        "printed graphics",
-        "vinyl graphics"
+        "vinyl"
       ],
       "object_families": [
-        "graphics"
+        "printed_foam_graphic",
+        "foam_mounted_vinyl"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4176,13 +4727,16 @@
       "item_order": 257,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "digital print graphic",
+        "system panel graphic",
+        "shell scheme graphic",
+        "exhibition panel print",
         "digital print graphic mounted directly onto system panels",
         "(size 950mml x 2340mmh)",
         "digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh)",
         "for shell scheme",
         "(size 950mml x 2340mmh) nos",
         "digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh) nos",
-        "graphics",
         "2340mmh",
         "950mml",
         "digital",
@@ -4196,14 +4750,11 @@
         "scheme",
         "shell",
         "size",
-        "system",
-        "brand graphics",
-        "wall graphics",
-        "graphic panels",
-        "printed graphics"
+        "system"
       ],
       "object_families": [
-        "graphics"
+        "panel_graphic",
+        "digital_print"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4230,13 +4781,16 @@
       "item_order": 260,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "seamless wall graphic",
+        "flex foam graphic",
+        "large wall graphic",
+        "shell scheme graphic",
         "nos.seamless wall graphic on flex foam",
         "(size 3000mml x 2500mmh)",
         "nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh)",
         "for shell scheme",
         "(size 3000mml x 2500mmh) nos",
         "nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh) nos",
-        "graphics",
         "2500mmh",
         "3000mml",
         "flex",
@@ -4250,7 +4804,8 @@
         "wall"
       ],
       "object_families": [
-        "graphics"
+        "seamless_graphic",
+        "foam_graphic"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4276,26 +4831,26 @@
       "item_order": 263,
       "markup_multiplier": 1.5,
       "match_terms": [
-        "poster print on foam for exhibitor wall at approx. 1ml x 1.2mh",
         "poster on foam",
+        "foam poster",
+        "mounted poster",
+        "exhibitor wall poster",
+        "poster print on foam for exhibitor wall at approx. 1ml x 1.2mh",
         "poster print on foam for exhibitor wall at approx. 1ml x 1.2mh nos",
-        "graphics",
         "1ml",
         "2mh",
         "approx",
         "exhibitor",
         "foam",
+        "graphic",
         "nos",
         "poster",
         "print",
-        "wall",
-        "brand graphics",
-        "wall graphics",
-        "graphic panels",
-        "printed graphics"
+        "wall"
       ],
       "object_families": [
-        "graphics"
+        "foam_poster",
+        "poster_print"
       ],
       "reference_section": "Graphics",
       "remarks": [
@@ -4323,17 +4878,18 @@
       "match_terms": [
         "water inlet and outlet",
         "water connection",
+        "water supply and drain",
+        "plumbing connection",
         "water inlet and outlet nos",
-        "water",
         "connection",
         "inlet",
         "nos",
         "outlet",
-        "water inlet",
-        "water outlet"
+        "water"
       ],
       "object_families": [
-        "water"
+        "water_connection",
+        "plumbing"
       ],
       "reference_section": "Water Connection",
       "remarks": [
@@ -4360,16 +4916,20 @@
       "markup_multiplier": 1.2,
       "match_terms": [
         "sink connection",
+        "sink hookup",
+        "sink water connection",
+        "sink plumbing connection",
+        "water connection",
         "sink connection nos",
-        "water",
         "connection",
         "nos",
         "plumbing",
         "sink",
-        "water connection"
+        "water"
       ],
       "object_families": [
-        "water"
+        "sink_connection",
+        "plumbing_connection"
       ],
       "reference_section": "Water Connection",
       "remarks": [
@@ -4395,26 +4955,29 @@
       "item_order": 276,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "coffee tea supplies",
+        "coffee tea per day",
+        "coffee tea for 100 people",
+        "coffee tea service",
+        "tea (subject to approval by venue owner and organiser)",
+        "coffee / tea (subject to approval by venue owner and organiser)",
         "tea and supplies for 100 people per day",
         "coffee / tea and supplies for 100 people per day",
         "coffee per day",
-        "beverage_service",
-        "beverage",
-        "drink",
-        "package",
-        "service",
+        "approval",
         "coffee",
         "day",
+        "organiser",
+        "owner",
         "people",
+        "subject",
         "supply",
         "tea",
-        "coffee tea service",
-        "coffee tea package",
-        "coffee tea supplies",
-        "beverage service"
+        "venue"
       ],
       "object_families": [
-        "beverage_service"
+        "coffee_tea_service",
+        "catering_beverage"
       ],
       "reference_section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
       "remarks": [
@@ -4438,19 +5001,32 @@
       "item_order": 278,
       "markup_multiplier": 1.5,
       "match_terms": [
+        "water cooler",
+        "3 gallon water dispenser",
+        "hot cold water cooler",
+        "drinking water dispenser",
+        "tea (subject to approval by venue owner and organiser)",
+        "coffee / tea (subject to approval by venue owner and organiser)",
         "water cooler and heating equipment for 3 gallons",
         "drinking water",
-        "water",
+        "approval",
+        "coffee",
         "cooler",
         "drinking",
         "equipment",
         "gallon",
         "heating",
-        "water connection"
+        "organiser",
+        "owner",
+        "subject",
+        "tea",
+        "venue",
+        "water"
       ],
       "object_families": [
-        "water",
-        "beverage_service"
+        "water_cooler",
+        "water_dispenser",
+        "drinking_water_equipment"
       ],
       "reference_section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
       "remarks": [

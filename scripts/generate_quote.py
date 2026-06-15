@@ -307,27 +307,10 @@ def extract_price_rows(template_path: Path) -> list[PriceRow]:
 
 PRICE_MATCH_TOKEN_ALIASES = {
     "aluminium": "aluminum",
-    "bars": "bar",
-    "boxes": "box",
-    "cabinets": "cabinet",
-    "canopy": "fascia",
-    "chairs": "chair",
-    "coves": "cove",
-    "counters": "counter",
-    "downlights": "downlight",
-    "floodlights": "floodlight",
-    "frames": "frame",
-    "graphics": "graphic",
-    "lighting": "light",
-    "panels": "panel",
-    "print": "printed",
-    "planters": "planter",
-    "plants": "plant",
-    "plinths": "counter",
-    "sockets": "socket",
-    "stools": "stool",
-    "tables": "table",
-    "walls": "wall",
+    "m2": "sqm",
+    "printed": "print",
+    "printing": "print",
+    "prints": "print",
 }
 
 
@@ -440,18 +423,6 @@ def find_price_match(query: str, price_rows: list[PriceRow], section: str = "", 
 
 
 LINEAR_TAKEOFF_UNITS = {"m", "m length", "m run"}
-SUSPICIOUS_LINEAR_STRUCTURE_TERMS = {
-    "canopy",
-    "fascia",
-    "frame",
-    "framed",
-    "overhead",
-    "partition",
-    "perimeter",
-    "portal",
-    "structure",
-    "wall",
-}
 COUNTER_PER_ITEM_TERMS = {
     "information counter",
     "lockable counter",
@@ -486,15 +457,14 @@ def suspicious_per_item_counter_quantity(
     return quantity > 0 and abs(quantity - round(quantity)) > 0.0001
 
 
-def suspicious_linear_structure_quantity(section: str, description: str, quantity: float | None, unit: str) -> bool:
+def suspicious_linear_catalog_quantity(quantity: float | None, unit: str, match: PriceRow | None = None) -> bool:
     if quantity is None or abs(quantity - 1.0) > 0.0001:
         return False
     if normalize_unit(unit).lower() not in LINEAR_TAKEOFF_UNITS:
         return False
-    text = f"{section} {description}".lower()
-    if "booth structure" not in text and not any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS):
+    if match is None:
         return False
-    return any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS)
+    return normalize_unit(match.unit_hint).lower() in LINEAR_TAKEOFF_UNITS
 
 
 REQUIRED_TOP_LEVEL = ("company_identity", "quote_date", "client", "project", "line_items")
@@ -556,7 +526,7 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             status = "quantity-review"
             match = None
             amount = None
-        elif suspicious_linear_structure_quantity(clean_text(item.get("section")), clean_text(item.get("description")), quantity_num, normalized_unit):
+        elif suspicious_linear_catalog_quantity(quantity_num, normalized_unit, match):
             status = "quantity-review"
             match = None
             amount = None

@@ -1,6 +1,6 @@
 # Current CI/CD Status
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 Source of truth: `.github/workflows/ci.yml`
 
@@ -25,8 +25,9 @@ Source of truth: `.github/workflows/ci.yml`
 - Installs pinned Python dependencies with `python -m pip install --only-binary=:all: -r requirements.txt`.
 - Installs Playwright Chromium.
 - Checks JavaScript syntax for `webapp/static/app.js`, `scripts/playwright-smoke.mjs`, and `scripts/playwright-ai-basis-chat-stress.mjs`.
-- Checks Python syntax for `webapp/server.py`, `scripts/generate_quote.py`, `scripts/live_ai_basis_chat_smoke.py`, `scripts/build_pricing_catalog.py`, and `scripts/validate_local_pdf_dependency_usage.py`.
+- Checks Python syntax for `webapp/server.py`, quote/pricing scripts, and validation guard scripts.
 - Runs `python scripts/validate_local_pdf_dependency_usage.py` to keep `pypdfium2` and `Pillow` usage on the local PDF rendering path only.
+- Runs `python scripts/validate_dynamic_pricing_reference_rules.py` to keep pricing-reference matching data-driven and block source-code semantic family/synonym packs.
 - Runs `python -m unittest discover -s tests`.
 - Runs `npm run playwright:ai-stress`.
 - Runs `npm run playwright:smoke`.
