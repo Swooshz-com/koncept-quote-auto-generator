@@ -3550,6 +3550,53 @@ async function validatePricingReferenceFile(file) {
   };
 }
 
+async function handlePricingReferenceFileChange() {
+  setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
+  const file = elements.pricingReferenceFile.files?.[0];
+  if (!file) {
+    return;
+  }
+  const previousEditingReferenceId = state.editingPricingReferenceId;
+  const currentNameId = pricingReferenceNameId(elements.pricingReferenceName?.value || "");
+  state.pricingReferenceImportFileSelected = true;
+  state.pricingReferenceSaveBusy = false;
+  state.pricingReferenceEditSnapshot = "";
+  state.pricingReferenceSavedNotice = "";
+  if (elements.pricingReferenceFileName) {
+    elements.pricingReferenceFileName.textContent = file.name || "Selected file";
+  }
+  if (previousEditingReferenceId && currentNameId === previousEditingReferenceId && elements.pricingReferenceName) {
+    elements.pricingReferenceName.value = "";
+  }
+  state.editingPricingReferenceId = "";
+  const importToken = `${Date.now()}-${file.name}-${file.size}`;
+  state.pricingReferenceImportToken = importToken;
+  state.pricingReferenceImportBusy = true;
+  setPricingReferenceSaveButtonState({ busy: true, busyLabel: "Importing...", reason: pricingReferenceSaveBlockReason(null) });
+  renderPricingReferencePreview({
+    ...pricingReferenceValidationResult([], [], 0, file.name),
+    layout: "importing",
+    warnings: ["Import preview is still being prepared."],
+    errors: [],
+  });
+  const importStartedAt = Date.now();
+  startElapsedTimer("pricingReferenceImportElapsed", importStartedAt);
+  let result;
+  try {
+    result = await validatePricingReferenceFile(file);
+  } catch (error) {
+    result = {
+      ...pricingReferenceValidationResult([], [], 0, file.name),
+      errors: genericFailureMessages(),
+    };
+  }
+  if (state.pricingReferenceImportToken !== importToken) return;
+  state.pendingPricingReference = result;
+  state.pricingReferenceImportBusy = false;
+  stopElapsedTimer("pricingReferenceImportElapsed");
+  renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
+}
+
 async function downloadPricingReferenceTemplate(event) {
   event.preventDefault();
   if (pricingReferenceOperationBusy() || !canManagePricingReferences()) {
@@ -6819,60 +6866,7 @@ function wireEvents() {
   elements.outputSortMode?.addEventListener("change", () => { state.outputSortMode = elements.outputSortMode.value; renderPricingMatches(state.outputRows); renderMatchSummary({ pricing_matches: state.outputRows }); syncControlStates(); });
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
   elements.pricingReferenceTemplateButton.addEventListener("click", downloadPricingReferenceTemplate);
-  elements.pricingReferenceFile.addEventListener("change", async () => {
-    setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
-    const file = elements.pricingReferenceFile.files?.[0];
-    const previousEditingReferenceId = state.editingPricingReferenceId;
-    const currentNameId = pricingReferenceNameId(elements.pricingReferenceName?.value || "");
-    state.pricingReferenceImportFileSelected = Boolean(file);
-    state.pricingReferenceSaveBusy = false;
-    state.pricingReferenceEditSnapshot = "";
-    state.pricingReferenceSavedNotice = "";
-    if (elements.pricingReferenceFileName) {
-      elements.pricingReferenceFileName.textContent = file?.name || "No file chosen";
-    }
-    if (!file) {
-      state.pendingPricingReference = null;
-      state.editingPricingReferenceId = "";
-      state.pricingReferenceImportBusy = false;
-      state.pricingReferenceSaveBusy = false;
-      state.pricingReferenceImportToken = "";
-      stopElapsedTimer("pricingReferenceImportElapsed");
-      renderPricingReferencePreview(null);
-      syncPricingReferenceImportSetupVisibility();
-      return;
-    }
-    if (previousEditingReferenceId && currentNameId === previousEditingReferenceId && elements.pricingReferenceName) {
-      elements.pricingReferenceName.value = "";
-    }
-    state.editingPricingReferenceId = "";
-    const importToken = `${Date.now()}-${file.name}-${file.size}`;
-    state.pricingReferenceImportToken = importToken;
-    state.pricingReferenceImportBusy = true;
-    setPricingReferenceSaveButtonState({ busy: true, busyLabel: "Importing...", reason: pricingReferenceSaveBlockReason(null) });
-    renderPricingReferencePreview({
-      ...pricingReferenceValidationResult([], [], 0, file.name),
-      layout: "importing",
-      warnings: ["Import preview is still being prepared."],
-      errors: [],
-    });
-    const importStartedAt = Date.now();
-    startElapsedTimer("pricingReferenceImportElapsed", importStartedAt);
-    let result;
-    try {
-      result = await validatePricingReferenceFile(file);
-    } catch (error) {
-      result = {
-        ...pricingReferenceValidationResult([], [], 0, file.name),
-        errors: genericFailureMessages(),
-      };
-    }
-    if (state.pricingReferenceImportToken !== importToken) return;
-    state.pendingPricingReference = result;
-    state.pricingReferenceImportBusy = false;
-    stopElapsedTimer("pricingReferenceImportElapsed");
-    renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
-  });
+  elements.pricingReferenceFile.addEventListener("change", handlePricingReferenceFileChange);
   elements.pricingReferenceCurrency?.addEventListener("change", () => {
     syncPricingReferenceCurrencyCustomInput();
     if (state.pendingPricingReference) {

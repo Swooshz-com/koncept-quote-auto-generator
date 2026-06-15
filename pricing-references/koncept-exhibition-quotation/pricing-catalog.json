@@ -524,7 +524,6 @@
         "booth structure",
         "single side partition wall at height 4m",
         "wooden construct in painted finished as per design proposal",
-        "single side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "backwall or any partition",
         "wooden construct in painted finished as per design proposal m length",
         "any",
@@ -539,7 +538,8 @@
         "single",
         "structure",
         "wall",
-        "wooden"
+        "wooden",
+        "single side partition wall at height 4m; wooden construct in painted finished as per design proposal"
       ],
       "object_families": [
         "booth_partition",
@@ -640,7 +640,6 @@
         "booth structure",
         "double side partition wall at height 4m",
         "wooden construct in painted finished as per design proposal",
-        "double side partition wall at height 4m; wooden construct in painted finished as per design proposal",
         "wooden construct in painted finished as per design proposal m length",
         "booth",
         "construct",
@@ -654,7 +653,8 @@
         "sided",
         "structure",
         "wall",
-        "wooden"
+        "wooden",
+        "double side partition wall at height 4m; wooden construct in painted finished as per design proposal"
       ],
       "object_families": [
         "booth_partition",
@@ -754,7 +754,6 @@
         "booth structure",
         "top fascia structure at height 3.99m",
         "wooden construct in painted finished as per design proposal",
-        "top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
         "wooden construct in painted finished as per design proposal m length",
         "99m",
         "booth",
@@ -766,7 +765,8 @@
         "painted",
         "structure",
         "top",
-        "wooden"
+        "wooden",
+        "top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal"
       ],
       "object_families": [
         "fascia_structure",
@@ -808,7 +808,6 @@
         "booth structure",
         "top fascia structure at height 3.99m",
         "wooden construct in laminated finished as per design proposal",
-        "top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal",
         "wooden construct in laminated finished as per design proposal m length",
         "99m",
         "booth",
@@ -820,7 +819,8 @@
         "length",
         "structure",
         "top",
-        "wooden"
+        "wooden",
+        "top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal"
       ],
       "object_families": [
         "fascia_structure",
@@ -1941,7 +1941,6 @@
         "hanging structure",
         "hanging structure x 1m height",
         "wooden construct in painted finished as per design proposal",
-        "hanging structure x 1m height; wooden construct in painted finished as per design proposal",
         "wooden construct in painted finished as per design proposal m run",
         "construct",
         "design",
@@ -1950,7 +1949,8 @@
         "painted",
         "run",
         "structure",
-        "wooden"
+        "wooden",
+        "hanging structure x 1m height; wooden construct in painted finished as per design proposal"
       ],
       "object_families": [
         "hanging_structure",
@@ -1991,7 +1991,6 @@
         "hanging structure",
         "hanging structure x 1m height",
         "wooden construct in laminated finished as per design proposal",
-        "hanging structure x 1m height; wooden construct in laminated finished as per design proposal",
         "wooden construct in laminated finished as per design proposal m run",
         "construct",
         "design",
@@ -2001,7 +2000,8 @@
         "laminated",
         "run",
         "structure",
-        "wooden"
+        "wooden",
+        "hanging structure x 1m height; wooden construct in laminated finished as per design proposal"
       ],
       "object_families": [
         "hanging_structure",
@@ -3633,43 +3633,6 @@
       "description": "nos. Aluminum Bistro Table (Square)",
       "id": "furniture-rental-aluminum-bistro-table-square",
       "internal_cost": 75.0,
-      "item_order": 196,
-      "markup_multiplier": 1.5,
-      "match_terms": [
-        "aluminum",
-        "bistro",
-        "square",
-        "table",
-        "aluminum bistro table (square)",
-        "bistro table high",
-        "aluminum bistro table (square) nos",
-        "furniture",
-        "high",
-        "nos"
-      ],
-      "object_families": [
-        "bistro_table"
-      ],
-      "reference_section": "Furniture Rental",
-      "remarks": [
-        "BISTRO TABLE HIGH"
-      ],
-      "sale_unit_price": 112.5,
-      "section": "Furniture Rental",
-      "unit_hint": "nos"
-    },
-    {
-      "aliases": [
-        "nos. Aluminum Bistro Table (Square)",
-        "Aluminum Bistro Table (Square)",
-        "BISTRO TABLE HIGH",
-        "Furniture Rental Aluminum Bistro Table (Square)",
-        "Aluminum Bistro Table (Square) nos"
-      ],
-      "category_order": 6,
-      "description": "nos. Aluminum Bistro Table (Square)",
-      "id": "furniture-rental-aluminum-bistro-table-square-2",
-      "internal_cost": 75.0,
       "item_order": 198,
       "markup_multiplier": 1.5,
       "match_terms": [
@@ -4616,7 +4579,6 @@
         "panel mounted graphic",
         "digital print graphic mounted directly onto system panels",
         "(size 950mml x 2340mmh)",
-        "digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh)",
         "for shell scheme",
         "(size 950mml x 2340mmh) nos",
         "2340mmh",
@@ -4632,7 +4594,8 @@
         "scheme",
         "shell",
         "size",
-        "system"
+        "system",
+        "digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh)"
       ],
       "object_families": [
         "system_panel_graphics"
@@ -4666,7 +4629,6 @@
         "shell scheme wall graphic",
         "nos.seamless wall graphic on flex foam",
         "(size 3000mml x 2500mmh)",
-        "nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh)",
         "for shell scheme",
         "(size 3000mml x 2500mmh) nos",
         "2500mmh",
@@ -4679,7 +4641,8 @@
         "seamless",
         "shell",
         "size",
-        "wall"
+        "wall",
+        "nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh)"
       ],
       "object_families": [
         "foam_wall_graphics"

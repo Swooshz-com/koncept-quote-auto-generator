@@ -5312,7 +5312,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_deepseek_pricing_import_default_timeout_allows_full_attempt(self):
         with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
-            self.assertEqual(webapp.configured_deepseek_pricing_import_timeout_seconds(), 60)
+            self.assertEqual(webapp.configured_deepseek_pricing_import_timeout_seconds(), 120)
 
     def test_deepseek_pricing_import_uses_configurable_timeout(self):
         response = mock.MagicMock()
@@ -8699,7 +8699,7 @@ const duplicateReference = {
   label: "Duplicate Ref",
   items: [
     {
-      id: "furniture-rental-aluminum-bistro-table-square",
+      id: "duplicate-pricing-row-a",
       section: "Furniture Rental",
       description: "nos. Aluminum Bistro Table (Square)",
       unit_hint: "nos",
@@ -8708,7 +8708,7 @@ const duplicateReference = {
       remarks: ["BISTRO TABLE HIGH"],
     },
     {
-      id: "furniture-rental-aluminum-bistro-table-square-2",
+      id: "duplicate-pricing-row-b",
       section: "Furniture Rental",
       description: "nos. Aluminum Bistro Table (Square)",
       unit_hint: "nos",
@@ -8842,6 +8842,99 @@ state.pendingPricingReference = {
 syncPricingReferenceImportSetupVisibility();
 assert.strictEqual(importSetup.hidden, false);
 assert.strictEqual(metadataSetup.hidden, false);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_file_picker_cancel_preserves_selected_import(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractPossiblyAsyncFunction(name) {
+  const marker = `function ${name}`;
+  let start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  if (source.slice(Math.max(0, start - 6), start) === "async ") start -= 6;
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
+const state = {
+  pricingReferenceSettingsMode: "",
+  pricingReferenceImportFileSelected: true,
+  pricingReferenceImportBusy: false,
+  pricingReferenceSaveBusy: false,
+  pricingReferenceImportToken: "",
+  pricingReferenceEditSnapshot: "snapshot",
+  pricingReferenceSavedNotice: "notice",
+  editingPricingReferenceId: "",
+  pendingPricingReference: {
+    sourceName: "selected-pricing.xlsx",
+    items: [{ warning: "OK" }],
+    canSave: true,
+  },
+};
+const elements = {
+  pricingReferenceFile: { files: [] },
+  pricingReferenceFileName: { textContent: "selected-pricing.xlsx" },
+  pricingReferenceName: { value: "Selected Pricing" },
+};
+let rendered = false;
+let importSetupSynced = false;
+let elapsedStopped = false;
+function setPricingReferenceSettingsMode(mode) { state.pricingReferenceSettingsMode = mode; }
+function pricingReferenceNameId(value = "") { return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+function stopElapsedTimer(id) { if (id === "pricingReferenceImportElapsed") elapsedStopped = true; }
+function renderPricingReferencePreview() { rendered = true; }
+function syncPricingReferenceImportSetupVisibility() { importSetupSynced = true; }
+function setPricingReferenceSaveButtonState() {}
+function pricingReferenceSaveBlockReason() { return ""; }
+function pricingReferenceValidationResult() { return {}; }
+function startElapsedTimer() {}
+async function validatePricingReferenceFile() { throw new Error("cancel should not re-import"); }
+function genericFailureMessages() { return ["Unexpected failure"]; }
+
+eval(extractPossiblyAsyncFunction("handlePricingReferenceFileChange"));
+
+(async () => {
+  await handlePricingReferenceFileChange();
+  assert.strictEqual(state.pricingReferenceSettingsMode, PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
+  assert.strictEqual(state.pricingReferenceImportFileSelected, true);
+  assert.strictEqual(state.pendingPricingReference.sourceName, "selected-pricing.xlsx");
+  assert.strictEqual(elements.pricingReferenceFileName.textContent, "selected-pricing.xlsx");
+  assert.strictEqual(state.pricingReferenceEditSnapshot, "snapshot");
+  assert.strictEqual(state.pricingReferenceSavedNotice, "notice");
+  assert.strictEqual(state.pricingReferenceImportBusy, false);
+  assert.strictEqual(state.pricingReferenceImportToken, "");
+  assert.strictEqual(rendered, false);
+  assert.strictEqual(importSetupSynced, false);
+  assert.strictEqual(elapsedStopped, false);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
 """
         completed = subprocess.run(
             [node, "-e", script],

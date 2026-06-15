@@ -120,7 +120,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 540.00
 - **Remarks:** Backwall or any partition; PAINTED
 - **Search aliases:** m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 4m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** single side partition wall; 4m partition; single sided wall; backwall; painted partition; painted wooden wall; 4m single sided painted partition; booth structure; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; backwall or any partition
+- **Match terms:** single side partition wall; 4m partition; single sided wall; backwall; painted partition; painted wooden wall; 4m single sided painted partition; booth structure; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; backwall or any partition; wooden construct in painted finished as per design proposal m length
 - **Object families:** booth_partition; single_sided_partition; painted_partition; wooden_partition
 
 ### booth-structure-single-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
@@ -140,7 +140,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 870.00
 - **Remarks:** Double sided partition; PAINTED
 - **Search aliases:** m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; Double sided partition; PAINTED; Booth Structure double side partition wall at height 4m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** double side partition wall; 4m double sided wall; double sided partition; painted partition; painted wooden wall; 4m double sided painted partition; booth structure; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; booth
+- **Match terms:** double side partition wall; 4m double sided wall; double sided partition; painted partition; painted wooden wall; 4m double sided painted partition; booth structure; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; booth; construct
 - **Object families:** booth_partition; double_sided_partition; painted_partition; wooden_partition
 
 ### booth-structure-double-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
@@ -160,7 +160,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 375.00
 - **Remarks:** Top Booth Structure; PAINTED
 - **Search aliases:** m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m; Top Booth Structure; PAINTED; Booth Structure top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** top fascia structure; 3.99m fascia; booth fascia; fascia structure; painted fascia; top booth structure; booth structure; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; 99m
+- **Match terms:** top fascia structure; 3.99m fascia; booth fascia; fascia structure; painted fascia; top booth structure; booth structure; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; 99m; booth
 - **Object families:** fascia_structure; booth_fascia; top_booth_structure
 
 ### booth-structure-top-fascia-structure-at-height-3-99m-wooden-construct-in-laminated-finished-as-per-design-proposal
@@ -170,7 +170,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 675.00
 - **Remarks:** Top Booth Structure; LAMINATED
 - **Search aliases:** m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m; Top Booth Structure; LAMINATED; Booth Structure top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** top fascia structure; 3.99m fascia; booth fascia; fascia structure; laminated fascia; top booth structure; booth structure; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length; 99m
+- **Match terms:** top fascia structure; 3.99m fascia; booth fascia; fascia structure; laminated fascia; top booth structure; booth structure; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length; 99m; booth
 - **Object families:** fascia_structure; booth_fascia; top_booth_structure; laminated_fascia
 
 ### booth-structure-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal
@@ -394,7 +394,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 450.00
 - **Remarks:** Wooden hanging structure; PAINTED
 - **Search aliases:** m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; Wooden hanging structure; PAINTED; Hanging Structure hanging structure x 1m height; wooden construct in painted finished as per design proposal m run
-- **Match terms:** wooden hanging structure; painted hanging structure; hanging wall panel; 1m height hanging wooden; hanging structure; hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m run; construct; design; finished
+- **Match terms:** wooden hanging structure; painted hanging structure; hanging wall panel; 1m height hanging wooden; hanging structure; hanging structure x 1m height; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m run; construct; design; finished; hanging
 - **Object families:** hanging_structure; wooden_hanging; booth_overhead; painted_overhead
 
 ### hanging-structure-hanging-structure-x-1m-height-wooden-construct-in-laminated-finished-as-per-design-proposal
@@ -404,7 +404,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 675.00
 - **Remarks:** Wooden hanging structure; LAMINATE
 - **Search aliases:** m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; Wooden hanging structure; LAMINATE; Hanging Structure hanging structure x 1m height; wooden construct in laminated finished as per design proposal m run
-- **Match terms:** wooden hanging structure; laminated hanging structure; hanging wall panel; 1m height hanging laminated; hanging structure; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m run; construct; design; finished
+- **Match terms:** wooden hanging structure; laminated hanging structure; hanging wall panel; 1m height hanging laminated; hanging structure; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m run; construct; design; finished; hanging
 - **Object families:** hanging_structure; wooden_hanging; booth_overhead; laminated_overhead
 
 ### hanging-structure-hanging-structure-x-1m-height-aluminum-profile-construct-in-fabric-finished-as-per-design-proposal-including-fabric-print
@@ -770,17 +770,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Object families:** bistro_table
 - **Visual references:** pricing-catalog-images/image23.png; pricing-catalog-images/image24.png
 
+
 ### furniture-rental-aluminum-bistro-table-square
-
-- **Item:** nos. Aluminum Bistro Table (Square)
-- **Unit hint:** nos
-- **Sale unit price:** SGD 112.50
-- **Remarks:** BISTRO TABLE HIGH
-- **Search aliases:** nos. Aluminum Bistro Table (Square); Aluminum Bistro Table (Square); BISTRO TABLE HIGH; Furniture Rental Aluminum Bistro Table (Square); Aluminum Bistro Table (Square) nos
-- **Match terms:** aluminum; bistro; square; table; aluminum bistro table (square); bistro table high; aluminum bistro table (square) nos; furniture; high; nos
-- **Object families:** bistro_table
-
-### furniture-rental-aluminum-bistro-table-square-2
 
 - **Item:** nos. Aluminum Bistro Table (Square)
 - **Unit hint:** nos
@@ -1019,7 +1010,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 150.00
 - **Remarks:** For Shell Scheme
 - **Search aliases:** nos. digital print graphic mounted directly onto system panels; (Size 950mmL x 2340mmH); digital print graphic mounted directly onto system panels; For Shell Scheme; Graphics digital print graphic mounted directly onto system panels; (Size 950mmL x 2340mmH) nos
-- **Match terms:** system panel graphic; shell scheme graphic; digital print for panels; panel mounted graphic; digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh); digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh); for shell scheme; (size 950mml x 2340mmh) nos; 2340mmh; 950mml; digital
+- **Match terms:** system panel graphic; shell scheme graphic; digital print for panels; panel mounted graphic; digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh); for shell scheme; (size 950mml x 2340mmh) nos; 2340mmh; 950mml; digital; directly
 - **Object families:** system_panel_graphics
 
 ### graphics-nos-seamless-wall-graphic-on-flex-foam-size-3000mml-x-2500mmh
@@ -1029,7 +1020,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 540.00
 - **Remarks:** For Shell Scheme
 - **Search aliases:** nos.seamless wall graphic on flex foam; (Size 3000mmL x 2500mmH); For Shell Scheme; Graphics nos.seamless wall graphic on flex foam; (Size 3000mmL x 2500mmH) nos
-- **Match terms:** seamless wall graphic; flex foam wall graphic; large foam print; shell scheme wall graphic; nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh); nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh); for shell scheme; (size 3000mml x 2500mmh) nos; 2500mmh; 3000mml; flex
+- **Match terms:** seamless wall graphic; flex foam wall graphic; large foam print; shell scheme wall graphic; nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh); for shell scheme; (size 3000mml x 2500mmh) nos; 2500mmh; 3000mml; flex; foam
 - **Object families:** foam_wall_graphics
 
 ### graphics-poster-print-on-foam-for-exhibitor-wall-at-approx-1ml-x-1-2mh
