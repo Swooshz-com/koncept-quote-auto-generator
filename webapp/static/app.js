@@ -2311,15 +2311,19 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
   const savedNotice = String(state.pricingReferenceSavedNotice || "").trim();
   const editNotice = String(state.pricingReferenceEditNotice || "").trim();
   const statusText = savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
+  const noUnsavedChanges = !savedNotice && !editNotice && !hasChanges;
   const rowCount = Array.isArray(result.items) ? result.items.length : Number(result.rowCount || 0);
   const hasBlockingIssues = pricingReferenceRowIssues(result.items || []).length > 0
     || (Array.isArray(result.errors) && result.errors.length > 0)
     || rowCount <= 0;
+  const isBlocked = hasBlockingIssues && !noUnsavedChanges && !savedNotice;
+  const isReady = !hasBlockingIssues && Boolean(savedNotice);
+  const isWarn = !isBlocked && !isReady;
   status.hidden = false;
   status.classList.remove("is-saving");
-  status.classList.toggle("is-ready", !hasBlockingIssues && Boolean(savedNotice));
-  status.classList.toggle("is-warn", !hasBlockingIssues && !savedNotice);
-  status.classList.toggle("is-blocked", hasBlockingIssues);
+  status.classList.toggle("is-ready", isReady);
+  status.classList.toggle("is-warn", isWarn);
+  status.classList.toggle("is-blocked", isBlocked);
   status.classList.toggle("is-saved", Boolean(savedNotice));
   status.innerHTML = `
     <div>
