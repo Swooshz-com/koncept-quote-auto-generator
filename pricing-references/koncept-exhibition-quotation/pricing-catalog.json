@@ -1673,7 +1673,7 @@
       ],
       "sale_unit_price": 1200.0,
       "section": "COUNTERS AND CABINETS",
-      "unit_hint": ""
+      "unit_hint": "lot"
     },
     {
       "aliases": [
@@ -1715,7 +1715,7 @@
       ],
       "sale_unit_price": 135.0,
       "section": "Hanging Structure",
-      "unit_hint": ""
+      "unit_hint": "m"
     },
     {
       "aliases": [
@@ -2054,7 +2054,7 @@
       ],
       "sale_unit_price": 1200.0,
       "section": "Hanging Structure",
-      "unit_hint": ""
+      "unit_hint": "lot"
     },
     {
       "aliases": [
@@ -4985,7 +4985,7 @@
       ],
       "sale_unit_price": 225.0,
       "section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
-      "unit_hint": ""
+      "unit_hint": "day"
     },
     {
       "aliases": [
@@ -5034,7 +5034,7 @@
       ],
       "sale_unit_price": 375.0,
       "section": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
-      "unit_hint": ""
+      "unit_hint": "nos"
     }
   ],
   "schema_version": 1

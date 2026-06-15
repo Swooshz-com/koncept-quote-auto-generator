@@ -191,6 +191,15 @@ def fake_ai_metadata_enriched_items(items: list[dict]) -> list[dict]:
     return enriched
 
 
+def with_required_pricing_metadata(item: dict) -> dict:
+    description = str(item.get("description") or item.get("id") or "pricing row")
+    return {
+        **item,
+        "match_terms": item.get("match_terms") or [description.lower()],
+        "object_families": item.get("object_families") or ["test_family"],
+    }
+
+
 def write_test_pricing_reference(root: Path, reference_id: str, items: list[dict]) -> Path:
     reference_dir = root / reference_id
     reference_dir.mkdir(parents=True, exist_ok=True)
@@ -2403,6 +2412,38 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Coffee / Tea and supplies for 100 people per day", result["items"][0]["aliases"])
         self.assertNotIn("Coffee/ Tea and supplies for 100 people per day", result["items"][0]["aliases"])
 
+    def test_pricing_reference_save_blocks_rows_without_ai_metadata(self):
+        with self.assertRaisesRegex(ValueError, "AI pricing metadata is missing"):
+            webapp.normalize_pricing_reference_payload({
+                "id": "weak-ref",
+                "label": "Weak Ref",
+                "items": [{
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                    "match_terms": ["printed graphics"],
+                    "object_families": [],
+                }],
+            })
+
+    def test_pricing_reference_save_blocks_rows_without_unit_hint(self):
+        with self.assertRaisesRegex(ValueError, "Pricing unit_hint is missing"):
+            webapp.normalize_pricing_reference_payload({
+                "id": "missing-unit-ref",
+                "label": "Missing Unit Ref",
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                })],
+            })
+
     def test_pricing_reference_import_stitches_multirow_description_remarks_and_keeps_rigging(self):
         raw = (
             "section,description,unit_hint,internal_cost,markup_multiplier,remarks,aliases\n"
@@ -2512,6 +2553,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("nos. 10W LED Spotlight", descriptions)
         self.assertIn("sqm 100mm raised platform with aluminum edging", descriptions)
         self.assertIn('nos. 42" LED TV Monitor (With Speaker - Full HD)', descriptions)
+        truss = next(item for item in result["items"] if item["description"] == "m rental of 300mm x 300mm Aluminium Box Truss")
+        self.assertEqual(truss["unit_hint"], "m")
         self.assertNotIn("data_url", result)
         self.assertEqual(result["items"][0]["object_families"], ["ai_family"])
 
@@ -2537,14 +2580,14 @@ class WebappServerTest(unittest.TestCase):
         reference = webapp.normalize_pricing_reference_payload({
             "id": "edited-ref",
             "label": "Edited Ref",
-            "items": [{
+            "items": [with_required_pricing_metadata({
                 "id": "row-1",
                 "section": "Floor Design",
                 "description": user_edited_description,
                 "unit_hint": "sqm",
                 "internal_cost": 10,
                 "markup_multiplier": 2,
-            }],
+            })],
         })
 
         self.assertEqual(
@@ -3926,6 +3969,29 @@ class WebappServerTest(unittest.TestCase):
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["reasoning"], {"effort": "high"})
+
+    def test_openai_request_uses_high_quality_reasoning_effort_from_env(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({"quote_basis": {}, "line_items": []})
+        }).encode("utf-8")
+        payload = valid_payload()
+        payload["analysis_mode"] = "high_quality"
+
+        def dotenv(name):
+            if name == webapp.OPENAI_DRAFT_REASONING_EFFORT_ENV_NAME:
+                return "medium"
+            if name == webapp.OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT_ENV_NAME:
+                return "xhigh"
+            return ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                webapp.request_openai_quote_basis(payload, "sk-test-redacted")
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["reasoning"], {"effort": "xhigh"})
 
     def test_openai_request_ignores_high_accuracy_mode_and_uses_draft_model(self):
         response = mock.MagicMock()
@@ -7344,6 +7410,14 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("Permissions / Role info", html)
         self.assertIn("pricingReferenceNoAccess", html)
         self.assertIn("pricingReferenceEditorBody", html)
+        self.assertIn("pricingReferenceManageTab", html)
+        self.assertIn("pricingReferenceImportTab", html)
+        self.assertIn("pricingReferenceManagePanel", html)
+        self.assertIn("pricingReferenceImportPanel", html)
+        self.assertIn("pricingReferenceManageStatus", html)
+        self.assertIn("pricingReferenceSettingsMode", js)
+        self.assertIn("setPricingReferenceSettingsMode", js)
+        self.assertIn("renderPricingReferenceManageStatus", js)
         self.assertIn("openSettingsModal", js)
         save_reference_body = js.split("async function savePricingReferenceFromModal", 1)[1].split("async function deleteRepoPricingReference", 1)[0]
         self.assertIn("const previousPricingReferenceId = state.pricingReferenceId;", save_reference_body)
@@ -7356,7 +7430,19 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricingReferenceDeleteSection", html)
         self.assertIn("deletePricingReferenceSelect", html)
         self.assertIn("Delete Reference", html)
+        self.assertIn("editPricingReferenceButton", html)
+        self.assertIn("Edit Rows", html)
+        self.assertIn("Save Changes", js)
         self.assertIn("deleteRepoPricingReference", js)
+        self.assertIn("editSelectedPricingReference", js)
+        self.assertIn("pricingReferencePreviewFromReference", js)
+        self.assertIn("fetchPricingReferenceDetail", js)
+        self.assertIn('/api/settings/pricing-references/${encodeURIComponent(referenceId)}', js)
+        self.assertIn('"match_terms"', js)
+        self.assertIn('"object_families"', js)
+        self.assertIn("AI match_terms required", js)
+        self.assertIn("AI object_families required", js)
+        self.assertIn("editingPricingReferenceId", js)
         self.assertIn("protectedPricingReferenceReason", js)
         self.assertNotIn("data-settings-delete-pricing-reference", js)
         self.assertIn('accept=".xlsx,.csv,.md"', html)
@@ -7372,6 +7458,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.", html)
         self.assertNotIn("Optional starter file for clean manual entry.", html)
         pricing_reference_modal = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
+        self.assertLess(pricing_reference_modal.index("Manage"), pricing_reference_modal.index("Import"))
         self.assertLess(pricing_reference_modal.index("Existing repo references"), pricing_reference_modal.index("Pricing catalog upload"))
         self.assertLess(pricing_reference_modal.index("Pricing catalog upload"), pricing_reference_modal.index("Pricing reference name"))
         self.assertLess(pricing_reference_modal.index("Pricing reference name"), pricing_reference_modal.index("Tax label"))
@@ -7396,9 +7483,14 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("border-color: #f7d7d4;", css)
         self.assertIn("background: #fffdfd;", css)
         self.assertIn(".pricing-reference-delete-section .pricing-reference-field-title {\n  color: #8f2b2b;", css)
-        self.assertIn("grid-template-columns: minmax(320px, 1fr) auto;", css)
+        self.assertIn("grid-template-columns: minmax(260px, 1fr) auto auto;", css)
         self.assertIn(".pricing-reference-delete-controls .compact-control {\n  margin: 0;\n  width: 100%;", css)
-        self.assertIn(".pricing-reference-delete-button {\n  min-width: 138px;\n  min-height: 40px;", css)
+        self.assertIn(".pricing-reference-edit-button,\n.pricing-reference-delete-button {\n  min-width: 118px;\n  min-height: 40px;", css)
+        self.assertIn(".pricing-reference-delete-button {\n  min-width: 138px;\n}", css)
+        self.assertIn(".pricing-reference-settings-tabs", css)
+        self.assertIn(".pricing-reference-settings-tab.is-active", css)
+        self.assertIn(".pricing-reference-mode-panel[hidden]", css)
+        self.assertIn(".pricing-reference-manage-status", css)
         self.assertIn(".secondary-button.danger-button", css)
         self.assertIn(".modal-actions.pricing-reference-modal-actions {\n  display: grid;", css)
         self.assertIn("border-top: 1px solid var(--line-subtle);", css)
@@ -7415,6 +7507,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricingReferenceTableOverlay", html)
         self.assertIn("pricingReferenceTableBody", html)
         self.assertIn("Review Imported Rows", html)
+        self.assertIn("Match terms", html)
+        self.assertIn("Object families", html)
         self.assertIn("openPricingReferenceTableOverlay", js)
         self.assertIn("pricing-reference-table-open", js)
         self.assertIn(".pricing-reference-table-panel", css)
@@ -7423,6 +7517,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("updatePricingReferenceGuidanceDisplays", js)
         self.assertIn("pricing-reference-preview-metrics", js)
         self.assertIn(".pricing-reference-preview-status-badge", css)
+        self.assertIn(".pricing-reference-col-match-terms,\n.pricing-reference-col-object-families", css)
         self.assertIn("Fix all flagged problems before saving this reference.", js)
         self.assertIn("openPricingReferenceTableOverlay();", js)
         self.assertIn("pricing-reference-col-description", html)
@@ -7751,8 +7846,8 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)
         self.assertIn("analysisConfirmModal", html)
-        self.assertNotIn("analysisConfirmHighAccuracyButton", html)
-        self.assertNotIn("Run High Accuracy", html)
+        self.assertIn("analysisConfirmHighQualityButton", html)
+        self.assertIn("Run High Quality", html)
         self.assertIn("Run Analysis", html)
         self.assertIn("analysis_mode: normalizeAnalysisMode", js)
         self.assertIn("analyseAgainButton", html)
@@ -7773,6 +7868,8 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn("lastAnalysisMode", js)
         self.assertNotIn("analysis-mode-badge", css)
         self.assertIn('requestStartAnalysis("standard")', js)
+        self.assertIn('confirmStartAnalysis("high_quality")', js)
+        self.assertIn('requestStartAnalysis("high_quality")', js)
         self.assertNotIn("data-analysis-rerun", js)
         self.assertIn("AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?", html)
         self.assertIn(".modal-panel > .modal-actions", css)
@@ -7781,6 +7878,7 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".pricing-reference-pill {\n  width: 76px;", css)
         self.assertIn(".currency-control-row {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
         self.assertNotIn(".secondary-button.ai-mode-button", css)
+        self.assertIn(".secondary-button.panel-analyse-quality-button", css)
         self.assertIn(".secondary-button.panel-analyse-button", css)
         self.assertIn("max-height: min(88dvh, 720px);", css)
         self.assertIn("z-index: 100;", css)
@@ -7942,10 +8040,14 @@ const modalClassList = {
   toggle(name, enabled) { if (enabled) this.values.add(name); else this.values.delete(name); },
   contains(name) { return this.values.has(name); },
 };
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const state = {
   pricingReferenceImportBusy: false,
   pricingReferenceImportToken: "",
   pendingPricingReference: null,
+  editingPricingReferenceId: "",
+  pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_IMPORT,
   permissions: { canManagePricingReferences: true },
 };
 const elements = {
@@ -7961,6 +8063,12 @@ const elements = {
 function pricingReferenceSaveBlockReason() {
   return "Upload a pricing catalog file before saving.";
 }
+function normalizePricingReferenceSettingsMode(value = "") {
+  return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    ? PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    : PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+}
+function syncPricingReferenceSettingsMode() {}
 
 eval([
   "canManagePricingReferences",
@@ -8037,6 +8145,105 @@ assert.strictEqual(stopped, true);
 
 assert.ok(normalizedSource.includes('elements.pricingReferenceModal.addEventListener("click", blockPricingReferenceBusyInteraction, true);'));
 assert.ok(normalizedSource.includes("setPricingReferenceSaveButtonState({\n      busy: true,\n      reason: \"Import preview is still being prepared.\",\n    });"));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_edit_hydrates_existing_rows(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+const normalizedSource = source.replace(/\r\n/g, "\n");
+const DEFAULT_TAX_LABEL = "GST";
+const DEFAULT_TAX_RATE = 0.09;
+const DEFAULT_CURRENCY_LABEL = "SGD";
+const PRICING_REFERENCE_PREVIEW_FIELDS = ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "match_terms", "object_families"];
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval([
+  "safeId",
+  "basisDisplayTitle",
+  "normalizeUnit",
+  "normalizeCategoryTitle",
+  "cleanCustomerQuoteLineText",
+  "neutralizeFormulaText",
+  "numberOrNull",
+  "normalizeTaxLabel",
+  "normalizeTaxRate",
+  "normalizeCurrencyLabel",
+  "orderNumber",
+  "sortPricingReferencePreviewItems",
+  "pricingReferenceRowStatus",
+  "normalizePricingReferencePreviewItem",
+  "pricingReferencePreviewFromReference",
+].map(extractFunction).join("\n"));
+
+const reference = {
+  id: "repo-ref",
+  label: "Repo Ref",
+  description: "Original saved pack",
+  currency: "USD",
+  tax: { label: "VAT", rate: 0.2 },
+  items: [{
+    id: "graphics.print",
+    section: "Graphics",
+    description: "sqm printed graphics",
+    unit_hint: "sqm",
+    internal_cost: 40,
+    markup_multiplier: 1.5,
+    category_order: 2,
+    item_order: 5,
+    remarks: ["Printed Graphics on wall"],
+    aliases: ["print"],
+    match_terms: ["printed graphics"],
+    object_families: ["printed_graphics"],
+  }],
+};
+
+const preview = pricingReferencePreviewFromReference(reference);
+assert.strictEqual(preview.referenceId, "repo-ref");
+assert.strictEqual(preview.sourceName, "Repo Ref");
+assert.strictEqual(preview.currency, "USD");
+assert.deepStrictEqual(preview.tax, { label: "VAT", rate: 0.2 });
+assert.strictEqual(preview.description, "Original saved pack");
+assert.strictEqual(preview.canSave, true);
+assert.strictEqual(preview.items.length, 1);
+assert.strictEqual(preview.items[0].id, "graphics-print");
+assert.strictEqual(preview.items[0].remarks, "Printed Graphics on wall");
+assert.strictEqual(preview.items[0].match_terms, "printed graphics");
+assert.strictEqual(preview.items[0].object_families, "printed_graphics");
+assert.strictEqual(preview.items[0].warning, "OK");
+
+assert.ok(normalizedSource.includes("state.editingPricingReferenceId = reference.id || \"\";"));
+assert.ok(normalizedSource.includes("openPricingReferenceTableOverlay();"));
+assert.ok(normalizedSource.includes("event.target === elements.pricingReferenceTableOverlay"));
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -8166,6 +8373,8 @@ const saveButton = {
 };
 const state = {
   pricingReferenceImportBusy: false,
+  editingPricingReferenceId: "",
+  pricingReferenceSettingsMode: "import",
   permissions: { canManagePricingReferences: true },
   pendingPricingReference: {
     items: [{
@@ -8175,6 +8384,8 @@ const state = {
       internal_cost: "150",
       markup_multiplier: "1.5",
       remarks: "COFFEE PER DAY",
+      match_terms: "coffee tea service",
+      object_families: "coffee_service",
       warning: "unit_hint required",
     }],
     errors: [],
@@ -8182,6 +8393,8 @@ const state = {
 };
 const classList = { toggle() {} };
 const CUSTOM_CURRENCY_VALUE = "__CUSTOM__";
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const elements = {
   pricingReferenceSaveButton: saveButton,
   pricingReferenceModal: { classList },
@@ -8190,6 +8403,12 @@ const elements = {
   pricingReferenceFile: {},
   pricingReferenceTemplateButton: { setAttribute() {} },
 };
+function normalizePricingReferenceSettingsMode(value = "") {
+  return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    ? PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    : PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+}
+function syncPricingReferenceSettingsMode() {}
 
 eval([
   "safeId",
@@ -8897,14 +9116,14 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "id": "company-ref",
                 "label": "Company Ref",
                 "tax": {"label": "VAT", "rate": 0.2},
-                "items": [{
+                "items": [with_required_pricing_metadata({
                     "id": "row-1",
                     "section": "Graphics",
                     "description": "Printed graphics",
                     "unit_hint": "sqm",
                     "internal_cost": 10,
                     "markup_multiplier": 2,
-                }],
+                })],
             })
             self.assertEqual(reference["id"], "company-ref")
             self.assertTrue((Path(tmp) / "default" / "pricing-references.json").exists())
@@ -8917,7 +9136,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             "id": "company-ref",
             "label": "Company Ref",
             "tax": {"label": "VAT", "rate": 0.2},
-            "items": [{
+            "items": [with_required_pricing_metadata({
                 "id": "row-1",
                 "section": "Graphics",
                 "description": "Printed graphics",
@@ -8926,7 +9145,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "markup_multiplier": 2,
                 "remarks": "supplier-only note",
                 "aliases": "printed graphics",
-            }],
+            })],
         })
 
         public_reference = webapp.public_company_pricing_reference(reference)
@@ -8944,7 +9163,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         reference = webapp.normalize_pricing_reference_payload({
             "id": "company-ref",
             "label": "Company Ref",
-            "items": [{
+            "items": [with_required_pricing_metadata({
                 "id": "chair-row",
                 "section": "Furniture Rental",
                 "description": "nos. Eames Replica Chair (White)",
@@ -8952,7 +9171,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "internal_cost": 30,
                 "markup_multiplier": 1.5,
                 "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
-            }],
+            })],
         })
 
         item = reference["items"][0]
@@ -8998,7 +9217,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             "label": "Repo Ref",
             "description": "Imported from test workbook.",
             "tax": {"label": "GST", "rate": 0.09},
-            "items": [{
+            "items": [with_required_pricing_metadata({
                 "id": "chair-row",
                 "section": "Furniture Rental",
                 "description": "nos. Eames Replica Chair (White)",
@@ -9006,7 +9225,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "internal_cost": 30,
                 "markup_multiplier": 1.5,
                 "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
-            }],
+            })],
         })
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -9044,14 +9263,14 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             "id": "endpoint-ref",
             "label": "Endpoint Ref",
             "tax": {"label": "GST", "rate": 0.09},
-            "items": [{
+            "items": [with_required_pricing_metadata({
                 "id": "row-1",
                 "section": "Graphics",
                 "description": "Printed graphics",
                 "unit_hint": "sqm",
                 "internal_cost": 10,
                 "markup_multiplier": 2,
-            }],
+            })],
         }
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -9076,19 +9295,51 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(body["pricing_reference"]["source"], "bundled")
         self.assertEqual(metadata["label"], "Endpoint Ref")
 
-    def test_pricing_reference_delete_endpoint_removes_repo_pack(self):
+    def test_pricing_reference_detail_endpoint_returns_editable_repo_pack(self):
         reference = webapp.normalize_pricing_reference_payload({
-            "id": "delete-me-ref",
-            "label": "Delete Me Ref",
-            "tax": {"label": "GST", "rate": 0.09},
-            "items": [{
+            "id": "detail-ref",
+            "label": "Detail Ref",
+            "tax": {"label": "VAT", "rate": 0.2},
+            "currency": "USD",
+            "items": [with_required_pricing_metadata({
                 "id": "row-1",
                 "section": "Graphics",
                 "description": "Printed graphics",
                 "unit_hint": "sqm",
                 "internal_cost": 10,
                 "markup_multiplier": 2,
-            }],
+            })],
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        response = urllib.request.urlopen(f"{runner.base_url}/api/settings/pricing-references/detail-ref", timeout=3)
+                        body = json.loads(response.read().decode("utf-8"))
+
+        detail = body["pricing_reference"]
+        self.assertEqual(detail["id"], "detail-ref")
+        self.assertEqual(detail["source"], "bundled")
+        self.assertEqual(detail["currency"], "USD")
+        self.assertEqual(detail["tax"], {"label": "VAT", "rate": 0.2})
+        self.assertEqual(detail["item_count"], 1)
+        self.assertEqual(detail["items"][0]["description"], "Printed graphics")
+
+    def test_pricing_reference_delete_endpoint_removes_repo_pack(self):
+        reference = webapp.normalize_pricing_reference_payload({
+            "id": "delete-me-ref",
+            "label": "Delete Me Ref",
+            "tax": {"label": "GST", "rate": 0.09},
+            "items": [with_required_pricing_metadata({
+                "id": "row-1",
+                "section": "Graphics",
+                "description": "Printed graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 10,
+                "markup_multiplier": 2,
+            })],
         })
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -9143,7 +9394,12 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertTrue(all(item.get("source") == "bundled" for item in payload["pricing_references"]))
 
     def test_settings_read_endpoints_require_management_permission(self):
-        paths = ["/api/settings", "/api/settings/pricing-references", "/api/settings/profiles"]
+        paths = [
+            "/api/settings",
+            "/api/settings/pricing-references",
+            f"/api/settings/pricing-references/{webapp.DEFAULT_PRICING_REFERENCE_ID}",
+            "/api/settings/profiles",
+        ]
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
             with LocalRunnerServer() as runner:
                 for path in paths:
@@ -9263,14 +9519,14 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         base = {
             "id": "tax-ref",
             "label": "Tax Ref",
-            "items": [{
+            "items": [with_required_pricing_metadata({
                 "id": "row-1",
                 "section": "Graphics",
                 "description": "Printed graphics",
                 "unit_hint": "sqm",
                 "internal_cost": 10,
                 "markup_multiplier": 2,
-            }],
+            })],
         }
         vat = webapp.normalize_pricing_reference_payload({**base, "tax": {"label": "VAT", "rate": "20"}})
         gst = webapp.normalize_pricing_reference_payload({**base, "id": "gst-ref", "tax": {"label": "GST", "rate": "9"}})

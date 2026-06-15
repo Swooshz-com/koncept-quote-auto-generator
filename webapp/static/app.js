@@ -10,6 +10,10 @@ const QUOTE_SESSION_FILE_STORE_NAME = "reference_files";
 const QUOTE_SESSION_FILE_DB_VERSION = 1;
 const QUOTE_SESSION_STATE_VERSION = 4;
 const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];
+const ANALYSIS_MODE_STANDARD = "standard";
+const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
@@ -138,8 +142,8 @@ const state = {
   isGenerating: false,
   aiFailed: false,
   draftSource: "",
-  lastAnalysisMode: "standard",
-  pendingAnalysisMode: "standard",
+  lastAnalysisMode: ANALYSIS_MODE_STANDARD,
+  pendingAnalysisMode: ANALYSIS_MODE_STANDARD,
   isBooting: true,
   isPageUnloading: false,
   csrfHeaderName: CSRF_HEADER_NAME,
@@ -151,6 +155,8 @@ const state = {
   pricingIssues: [],
   activeJob: null,
   pendingPricingReference: null,
+  editingPricingReferenceId: "",
+  pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_MANAGE,
   pricingReferenceImportBusy: false,
   pricingReferenceImportToken: "",
   permissions: {
@@ -246,6 +252,7 @@ const elements = {
   clearCustomerButton: qs("#clearCustomerButton"),
   clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
   analyseAgainButton: qs("#analyseAgainButton"),
+  analyseHighQualityButton: qs("#analyseHighQualityButton"),
   resetQuoteBasisButton: qs("#resetQuoteBasisButton"),
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
@@ -265,6 +272,7 @@ const elements = {
   basisChatKeepButton: qs("#basisChatKeepButton"),
   basisChatCloseButton: qs("#basisChatCloseButton"),
   newPricingReferenceButton: qs("#newPricingReferenceButton"),
+  editPricingReferenceButton: qs("#editPricingReferenceButton"),
   deletePricingReferenceButton: qs("#deletePricingReferenceButton"),
   pricingReferenceModal: qs("#pricingReferenceModal"),
   pricingReferenceForm: qs("#pricingReferenceForm"),
@@ -273,6 +281,11 @@ const elements = {
   pricingReferenceFile: qs("#pricingReferenceFile"),
   pricingReferenceFileName: qs("#pricingReferenceFileName"),
   pricingReferencePreview: qs("#pricingReferencePreview"),
+  pricingReferenceManageTab: qs("#pricingReferenceManageTab"),
+  pricingReferenceImportTab: qs("#pricingReferenceImportTab"),
+  pricingReferenceManagePanel: qs("#pricingReferenceManagePanel"),
+  pricingReferenceImportPanel: qs("#pricingReferenceImportPanel"),
+  pricingReferenceManageStatus: qs("#pricingReferenceManageStatus"),
   pricingReferenceNoAccess: qs("#pricingReferenceNoAccess"),
   pricingReferenceEditorBody: qs("#pricingReferenceEditorBody"),
   pricingReferenceDeleteSection: qs("#pricingReferenceDeleteSection"),
@@ -290,23 +303,28 @@ const elements = {
   selectedPricingReferenceCurrency: qs("#selectedPricingReferenceCurrency"),
   selectedPricingReferenceTax: qs("#selectedPricingReferenceTax"),
   outputSortMode: qs("#outputSortMode"),
+  pricingReferenceTemplateFooter: qs("#pricingReferenceTemplateFooter"),
   pricingReferenceSaveButton: qs("#pricingReferenceSaveButton"),
   pricingReferenceCancelButton: qs("#pricingReferenceCancelButton"),
   pricingReferenceCloseButton: qs("#pricingReferenceCloseButton"),
   analysisConfirmModal: qs("#analysisConfirmModal"),
   analysisConfirmCancelButton: qs("#analysisConfirmCancelButton"),
+  analysisConfirmHighQualityButton: qs("#analysisConfirmHighQualityButton"),
   analysisConfirmStartButton: qs("#analysisConfirmStartButton"),
   richTextEditors: Array.from(document.querySelectorAll("[data-rich-text-source]")),
   richTextToolbar: Array.from(document.querySelectorAll("[data-rich-command]")),
 };
 
 function normalizeAnalysisMode(value) {
-  void value;
-  return "standard";
+  const text = String(value || "").trim().toLowerCase();
+  if (["high_quality", "xhigh", "high_accuracy"].includes(text)) return ANALYSIS_MODE_HIGH_QUALITY;
+  return ANALYSIS_MODE_STANDARD;
 }
 
-function analysisRunningMessage() {
-  return "Reading the reference files and preparing the quote basis. Please wait.";
+function analysisRunningMessage(mode = ANALYSIS_MODE_STANDARD) {
+  return normalizeAnalysisMode(mode) === ANALYSIS_MODE_HIGH_QUALITY
+    ? "Running high-quality analysis and preparing the quote basis. Please wait."
+    : "Reading the reference files and preparing the quote basis. Please wait.";
 }
 
 function pricingReferenceSelectValue(reference = {}) {
@@ -1201,6 +1219,15 @@ function setPricingReferenceCurrencyControls(value = DEFAULT_CURRENCY_LABEL) {
     elements.pricingReferenceCurrencyCustom.hidden = isSupported;
     elements.pricingReferenceCurrencyCustom.required = !isSupported;
     elements.pricingReferenceCurrencyCustom.value = isSupported ? "" : normalized;
+  }
+}
+
+function setPricingReferenceTaxControls(tax = {}) {
+  if (elements.pricingReferenceTaxLabel) {
+    elements.pricingReferenceTaxLabel.value = normalizeTaxLabel(tax.label);
+  }
+  if (elements.pricingReferenceTaxRate) {
+    elements.pricingReferenceTaxRate.value = taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE);
   }
 }
 
@@ -2189,6 +2216,113 @@ function canDeleteSelectedPricingReference() {
   return !protectedPricingReferenceReason(deletionPricingReference());
 }
 
+function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
+  if (!reference) return "Select a pricing reference first.";
+  if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
+  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be edited here.";
+  const knownItemCount = Array.isArray(reference.items) ? reference.items.length : Number(reference.item_count);
+  if (Number.isFinite(knownItemCount) && knownItemCount <= 0) return "This pricing reference has no editable rows.";
+  return "";
+}
+
+function canEditSelectedPricingReference() {
+  return !pricingReferenceEditBlockReason(deletionPricingReference());
+}
+
+function normalizePricingReferenceSettingsMode(value = "") {
+  return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    ? PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    : PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+}
+
+function pricingReferenceEditStatusText(result = state.pendingPricingReference) {
+  if (!result || !state.editingPricingReferenceId) return "";
+  const rowCount = Array.isArray(result.items) ? result.items.length : Number(result.rowCount || 0);
+  const issues = pricingReferenceRowIssues(result.items || []);
+  if (issues.length) {
+    return `${rowCount} row${rowCount === 1 ? "" : "s"} loaded. ${issues.length} need edit before saving.`;
+  }
+  return `${rowCount} row${rowCount === 1 ? "" : "s"} loaded and ready to save after review.`;
+}
+
+function renderPricingReferenceManageStatus(result = state.pendingPricingReference) {
+  const status = elements.pricingReferenceManageStatus;
+  if (!status) return;
+  if (!state.editingPricingReferenceId || !result) {
+    status.hidden = true;
+    status.innerHTML = "";
+    return;
+  }
+  const canSave = Boolean(result.canSave) && !pricingReferenceSaveBlockReason(result);
+  const label = elements.pricingReferenceName?.value || result.sourceName || state.editingPricingReferenceId;
+  status.hidden = false;
+  status.classList.toggle("is-ready", canSave);
+  status.classList.toggle("is-blocked", !canSave);
+  status.innerHTML = `
+    <div>
+      <span>Editing reference</span>
+      <strong>${escapeHtml(label)}</strong>
+      <p>${escapeHtml(pricingReferenceEditStatusText(result))}</p>
+    </div>
+    <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review Rows</button>
+  `;
+}
+
+function syncPricingReferenceSettingsMode() {
+  const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  state.pricingReferenceSettingsMode = mode;
+  const tabEntries = [
+    [elements.pricingReferenceManageTab, PRICING_REFERENCE_SETTINGS_MODE_MANAGE],
+    [elements.pricingReferenceImportTab, PRICING_REFERENCE_SETTINGS_MODE_IMPORT],
+  ];
+  tabEntries.forEach(([tab, tabMode]) => {
+    if (!tab) return;
+    const active = tabMode === mode;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  const panelEntries = [
+    [elements.pricingReferenceManagePanel, PRICING_REFERENCE_SETTINGS_MODE_MANAGE],
+    [elements.pricingReferenceImportPanel, PRICING_REFERENCE_SETTINGS_MODE_IMPORT],
+  ];
+  panelEntries.forEach(([panel, panelMode]) => {
+    if (!panel) return;
+    panel.hidden = panelMode !== mode;
+  });
+  if (elements.pricingReferenceTemplateFooter) {
+    elements.pricingReferenceTemplateFooter.hidden = mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT;
+  }
+  renderPricingReferenceManageStatus();
+}
+
+function setPricingReferenceSettingsMode(mode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE, options = {}) {
+  state.pricingReferenceSettingsMode = normalizePricingReferenceSettingsMode(mode);
+  syncPricingReferenceSettingsMode();
+  if (options.focus) {
+    const target = state.pricingReferenceSettingsMode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+      ? elements.pricingReferenceFile
+      : elements.deletePricingReferenceSelect;
+    window.setTimeout(() => target?.focus(), 0);
+  }
+}
+
+function clearPricingReferenceDraft(options = {}) {
+  closePricingReferenceTableOverlay();
+  state.pendingPricingReference = null;
+  state.editingPricingReferenceId = "";
+  state.pricingReferenceImportBusy = false;
+  state.pricingReferenceImportToken = "";
+  if (options.clearFile) {
+    if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
+    if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
+  }
+  if (options.resetMetadata) {
+    if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
+    resetPricingReferenceTaxInputs();
+  }
+  renderPricingReferencePreview(null);
+}
+
 function renderPricingReferenceDeleteOptions() {
   const select = elements.deletePricingReferenceSelect;
   if (!select) return;
@@ -2209,14 +2343,28 @@ function renderPricingReferenceDeleteOptions() {
 
 function updatePricingReferenceDeleteButton() {
   const button = elements.deletePricingReferenceButton;
-  if (!button) return;
   if (elements.pricingReferenceDeleteSection) {
     elements.pricingReferenceDeleteSection.hidden = !canManagePricingReferences();
+  }
+  if (!button) {
+    updatePricingReferenceEditButton();
+    return;
   }
   const reference = deletionPricingReference();
   const reason = protectedPricingReferenceReason(reference);
   button.disabled = Boolean(reason);
   button.title = reason || "Delete this repo pricing reference.";
+  button.setAttribute("aria-disabled", String(button.disabled));
+  updatePricingReferenceEditButton();
+}
+
+function updatePricingReferenceEditButton() {
+  const button = elements.editPricingReferenceButton;
+  if (!button) return;
+  const reference = deletionPricingReference();
+  const reason = pricingReferenceEditBlockReason(reference);
+  button.disabled = Boolean(reason);
+  button.title = reason || "Edit this repo pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
 }
 
@@ -2229,7 +2377,66 @@ function pricingReferenceRequiredColumns() {
   return ["section", "description", "unit_hint", "internal_cost", "markup_multiplier"];
 }
 
-const PRICING_REFERENCE_PREVIEW_FIELDS = ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks"];
+const PRICING_REFERENCE_PREVIEW_FIELDS = [
+  "section",
+  "description",
+  "unit_hint",
+  "internal_cost",
+  "markup_multiplier",
+  "remarks",
+  "match_terms",
+  "object_families",
+];
+
+function pricingReferencePreviewFromReference(reference = {}) {
+  const items = sortPricingReferencePreviewItems((Array.isArray(reference.items) ? reference.items : [])
+    .map(normalizePricingReferencePreviewItem));
+  const ids = new Set();
+  const duplicateIds = new Set();
+  items.forEach((item) => {
+    if (ids.has(item.id)) duplicateIds.add(item.id);
+    ids.add(item.id);
+  });
+  const invalid = items.flatMap((item) => {
+    const warnings = pricingReferenceRowStatus(item);
+    if (duplicateIds.has(item.id)) warnings.push("duplicate id");
+    item.warning = warnings.join("; ") || "OK";
+    return warnings;
+  });
+  return {
+    referenceId: reference.id || "",
+    sourceName: reference.label || reference.id || "Pricing reference",
+    description: reference.description || "",
+    items,
+    rowCount: items.length,
+    headers: PRICING_REFERENCE_PREVIEW_FIELDS,
+    missing: [],
+    skipped: 0,
+    layout: "saved-pricing-reference",
+    errors: [],
+    warnings: [],
+    canSave: !invalid.length && items.length > 0,
+    tax: {
+      label: normalizeTaxLabel(reference.tax?.label),
+      rate: normalizeTaxRate(reference.tax?.rate, DEFAULT_TAX_RATE),
+    },
+    currency: normalizeCurrencyLabel(reference.currency),
+  };
+}
+
+async function fetchPricingReferenceDetail(reference = {}) {
+  const referenceId = String(reference.id || "").trim();
+  if (!referenceId) return null;
+  const { ok, data } = await getJson(`/api/settings/pricing-references/${encodeURIComponent(referenceId)}`);
+  if (!ok || !data || typeof data.pricing_reference !== "object") {
+    return null;
+  }
+  return {
+    ...reference,
+    ...data.pricing_reference,
+    source: reference.source || data.pricing_reference.source || "bundled",
+  };
+}
 
 function normalizeBasisTag(tag = "") {
   const normalized = String(tag || "").trim().toLowerCase();
@@ -2447,10 +2654,17 @@ function sortPricingReferencePreviewItems(items = []) {
 }
 
 function pricingReferenceRowStatus(row = {}) {
+  const hasListText = (value) => (
+    Array.isArray(value)
+      ? value.some((item) => String(item || "").trim())
+      : String(value || "").split(/[|;\n]/).some((item) => item.trim())
+  );
   const warnings = [];
   if (!String(row.section || "").trim()) warnings.push("section required");
   if (!String(row.description || "").trim()) warnings.push("description required");
   if (!String(row.unit_hint || "").trim()) warnings.push("unit_hint required");
+  if (!hasListText(row.match_terms)) warnings.push("AI match_terms required");
+  if (!hasListText(row.object_families)) warnings.push("AI object_families required");
   const cost = numberOrNull(row.internal_cost);
   const markup = numberOrNull(row.markup_multiplier);
   if (cost === null || cost <= 0) warnings.push("internal_cost must be positive");
@@ -2460,7 +2674,18 @@ function pricingReferenceRowStatus(row = {}) {
 
 function pricingReferenceSaveBlockReason(result = state.pendingPricingReference) {
   if (state.pricingReferenceImportBusy) return "Import preview is still being prepared.";
-  if (!result) return "Upload a pricing catalog file before saving.";
+  const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  if (!result) {
+    return mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE
+      ? "Open a pricing reference with Edit Rows before saving changes."
+      : "Upload a pricing catalog file before saving.";
+  }
+  if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && !state.editingPricingReferenceId) {
+    return "Open a pricing reference with Edit Rows before saving changes.";
+  }
+  if (mode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT && state.editingPricingReferenceId) {
+    return "Return to Manage to save existing-reference edits, or upload a pricing catalog file to import.";
+  }
   if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !customCurrencyInputIsValid()) {
     return "Enter a 3-letter currency code before saving.";
   }
@@ -2501,14 +2726,20 @@ function setPricingReferenceSaveButtonState(options = {}) {
   if (!button) return;
   const busy = Boolean(options.busy);
   const canManage = canManagePricingReferences();
-  const canSave = canManage && Boolean(options.canSave) && !busy;
+  const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  const isEditingSave = mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && Boolean(state.editingPricingReferenceId);
+  const isImportSave = mode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT && !state.editingPricingReferenceId;
+  const workflowAllowsSave = isEditingSave || isImportSave;
+  const workflowReason = workflowAllowsSave ? "" : pricingReferenceSaveBlockReason(state.pendingPricingReference);
+  const reason = canManage ? String(workflowReason || options.reason || "").trim() : pricingReferenceNoAccessReason();
+  const canSave = canManage && workflowAllowsSave && Boolean(options.canSave) && !busy;
   const disabled = busy || !canManage || !canSave;
-  const reason = canManage ? String(options.reason || "").trim() : pricingReferenceNoAccessReason();
   button.disabled = disabled;
-  button.textContent = busy ? "Importing..." : "Save Reference";
+  button.textContent = busy ? "Importing..." : isEditingSave ? "Save Changes" : "Save Reference";
   button.title = disabled ? reason : "";
   button.setAttribute("aria-disabled", String(disabled));
   setPricingReferenceModalBusyState(busy, reason);
+  syncPricingReferenceSettingsMode();
 }
 
 function setPricingReferenceModalAccessState() {
@@ -2537,6 +2768,11 @@ function blockPricingReferenceBusyInteraction(event) {
 }
 
 function normalizePricingReferencePreviewItem(item = {}, index = 0) {
+  const listFieldText = (value) => (
+    Array.isArray(value)
+      ? value.map(neutralizeFormulaText).filter(Boolean).join("; ")
+      : neutralizeFormulaText(value || "")
+  );
   return {
     id: safeId(item.id || `${item.section || "item"}-${item.description || index + 1}`, `item-${index + 1}`),
     section: normalizeCategoryTitle(neutralizeFormulaText(item.section || "")),
@@ -2546,8 +2782,10 @@ function normalizePricingReferencePreviewItem(item = {}, index = 0) {
     markup_multiplier: item.markup_multiplier ?? "",
     category_order: orderNumber(item.category_order) ?? "",
     item_order: orderNumber(item.item_order) ?? index + 1,
-    remarks: Array.isArray(item.remarks) ? item.remarks.map(neutralizeFormulaText).join("; ") : neutralizeFormulaText(item.remarks || ""),
-    aliases: Array.isArray(item.aliases) ? item.aliases.map(neutralizeFormulaText).join(" | ") : neutralizeFormulaText(item.aliases || ""),
+    remarks: listFieldText(item.remarks),
+    aliases: listFieldText(item.aliases),
+    match_terms: listFieldText(item.match_terms),
+    object_families: listFieldText(item.object_families),
     visual_references: Array.isArray(item.visual_references) ? item.visual_references : [],
     warning: item.warning || item.status || "",
   };
@@ -2592,7 +2830,7 @@ function pricingReferencePreviewTableRows(result = state.pendingPricingReference
 function pricingReferenceStatusClass(status = "") {
   const text = String(status || "").trim().toLowerCase();
   if (!text || text === "ok") return "is-ok";
-  if (/(required|must|duplicate|missing|invalid|error|failed|empty|positive)/.test(text)) return "is-error";
+  if (/(required|must|duplicate|missing|invalid|error|failed|empty|positive|metadata)/.test(text)) return "is-error";
   return "is-warn";
 }
 
@@ -2716,7 +2954,7 @@ function renderPricingReferenceTableOverlay(result = state.pendingPricingReferen
   updatePricingReferenceGuidanceDisplays(result);
   elements.pricingReferenceTableBody.innerHTML = items.length
     ? pricingReferencePreviewTableRows(result)
-    : `<tr><td colspan="7" class="pricing-reference-table-empty">No imported rows to review.</td></tr>`;
+    : `<tr><td colspan="9" class="pricing-reference-table-empty">No imported rows to review.</td></tr>`;
 }
 
 function openPricingReferenceTableOverlay() {
@@ -2749,6 +2987,7 @@ function handlePricingReferencePreviewInput(event) {
     status.className = `pricing-preview-status ${pricingReferenceStatusClass(statusText)}`;
   }
   updatePricingReferenceGuidanceDisplays(state.pendingPricingReference);
+  renderPricingReferenceManageStatus(state.pendingPricingReference);
 }
 
 function renderPricingReferencePreview(result = null, options = {}) {
@@ -2757,6 +2996,7 @@ function renderPricingReferencePreview(result = null, options = {}) {
     elements.pricingReferencePreview.innerHTML = "";
     renderPricingReferenceTableOverlay(null);
     setPricingReferenceSaveButtonState({ canSave: false, reason: pricingReferenceSaveBlockReason(null) });
+    renderPricingReferenceManageStatus(null);
     return;
   }
   if (String(result.layout || "") === "importing") {
@@ -2774,6 +3014,7 @@ function renderPricingReferencePreview(result = null, options = {}) {
       busy: true,
       reason: "Import preview is still being prepared.",
     });
+    renderPricingReferenceManageStatus(null);
     return;
   }
   result.items = sortPricingReferencePreviewItems((result.items || []).map(normalizePricingReferencePreviewItem));
@@ -2862,6 +3103,7 @@ function renderPricingReferencePreview(result = null, options = {}) {
     busy: state.pricingReferenceImportBusy,
     reason: pricingReferenceSaveBlockReason(result),
   });
+  renderPricingReferenceManageStatus(result);
   if (options.scrollIntoView) {
     window.requestAnimationFrame(() => {
       elements.pricingReferencePreview?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -2884,8 +3126,7 @@ function pricingReferenceModalCurrency() {
 }
 
 function resetPricingReferenceTaxInputs() {
-  if (elements.pricingReferenceTaxLabel) elements.pricingReferenceTaxLabel.value = "GST";
-  if (elements.pricingReferenceTaxRate) elements.pricingReferenceTaxRate.value = "9";
+  setPricingReferenceTaxControls({ label: DEFAULT_TAX_LABEL, rate: DEFAULT_TAX_RATE });
   setPricingReferenceCurrencyControls(DEFAULT_CURRENCY_LABEL);
 }
 
@@ -2917,10 +3158,8 @@ async function downloadPricingReferenceTemplate(event) {
   if (state.pricingReferenceImportBusy || !canManagePricingReferences()) {
     return;
   }
-  state.pendingPricingReference = null;
-  state.pricingReferenceImportBusy = false;
-  state.pricingReferenceImportToken = "";
-  renderPricingReferencePreview(null);
+  setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
+  clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
   const templateUrl = `/api/pricing-reference/template.xlsx?template=examples-v3&t=${Date.now()}`;
   try {
     const link = document.createElement("a");
@@ -2936,6 +3175,8 @@ async function downloadPricingReferenceTemplate(event) {
 
 function openPricingReferenceModal() {
   state.pendingPricingReference = null;
+  state.editingPricingReferenceId = "";
+  state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceImportToken = "";
   if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
@@ -2944,10 +3185,11 @@ function openPricingReferenceModal() {
   resetPricingReferenceTaxInputs();
   renderPricingReferencePreview(null);
   renderPricingReferenceDeleteOptions();
+  syncPricingReferenceSettingsMode();
   elements.pricingReferenceModal.hidden = false;
   elements.pricingReferenceModal.classList.add("is-open");
   const canManage = setPricingReferenceModalAccessState();
-  window.setTimeout(() => (canManage ? elements.pricingReferenceName : elements.pricingReferenceCancelButton)?.focus(), 0);
+  window.setTimeout(() => (canManage ? elements.deletePricingReferenceSelect : elements.pricingReferenceCancelButton)?.focus(), 0);
 }
 
 function closePricingReferenceModal() {
@@ -2958,8 +3200,53 @@ function closePricingReferenceModal() {
   elements.pricingReferenceModal.classList.remove("is-open");
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
+  state.editingPricingReferenceId = "";
+  state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceImportToken = "";
+  syncPricingReferenceSettingsMode();
+}
+
+async function editSelectedPricingReference() {
+  const summaryReference = deletionPricingReference();
+  const reason = pricingReferenceEditBlockReason(summaryReference);
+  if (reason) {
+    updatePricingReferenceEditButton();
+    return;
+  }
+  if (elements.editPricingReferenceButton) {
+    elements.editPricingReferenceButton.disabled = true;
+    elements.editPricingReferenceButton.title = "Loading pricing reference rows.";
+  }
+  state.editingPricingReferenceId = summaryReference.id || "";
+  state.pricingReferenceImportBusy = false;
+  state.pricingReferenceImportToken = "";
+  const reference = await fetchPricingReferenceDetail(summaryReference).catch(() => null);
+  if (!reference || !Array.isArray(reference.items) || !reference.items.length) {
+    state.editingPricingReferenceId = "";
+    renderPricingReferencePreview({
+      ...pricingReferenceValidationResult([], [], 0, summaryReference?.label || "Pricing reference"),
+      errors: ["Could not load editable pricing reference rows."],
+    }, { scrollIntoView: true });
+    updatePricingReferenceEditButton();
+    syncControlStates();
+    return;
+  }
+  const existingIndex = state.pricingReferences.findIndex((item) => (
+    item.id === reference.id && pricingReferenceSelectValue(item) === pricingReferenceSelectValue(summaryReference)
+  ));
+  if (existingIndex >= 0) state.pricingReferences[existingIndex] = reference;
+  state.editingPricingReferenceId = reference.id || "";
+  state.pendingPricingReference = pricingReferencePreviewFromReference(reference);
+  if (elements.pricingReferenceName) elements.pricingReferenceName.value = reference.label || reference.id || "";
+  if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
+  if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "Editing existing reference";
+  setPricingReferenceTaxControls(state.pendingPricingReference.tax);
+  setPricingReferenceCurrencyControls(state.pendingPricingReference.currency);
+  setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_MANAGE);
+  renderPricingReferencePreview(state.pendingPricingReference);
+  openPricingReferenceTableOverlay();
+  syncControlStates();
 }
 
 async function savePricingReferenceFromModal(event) {
@@ -2991,9 +3278,9 @@ async function savePricingReferenceFromModal(event) {
   const previousPricingReferenceId = state.pricingReferenceId;
   const previousPricingReferenceSource = state.pricingReferenceSource;
   const { ok, data } = await postJson("/api/settings/pricing-references", {
-    id: safeId(name, `pricing-ref-${Date.now().toString(36)}`),
+    id: state.editingPricingReferenceId || safeId(name, `pricing-ref-${Date.now().toString(36)}`),
     label: name,
-    description: `Imported from ${result.sourceName || "settings upload"}`,
+    description: result.description || `Imported from ${result.sourceName || "settings upload"}`,
     tax,
     currency,
     items: result.items,
@@ -3078,7 +3365,7 @@ function clearGeneratedQuoteState() {
   state.basisConfirmed = false;
   state.aiFailed = false;
   state.draftSource = "";
-  state.lastAnalysisMode = "standard";
+  state.lastAnalysisMode = ANALYSIS_MODE_STANDARD;
   state.activeJob = null;
   state.originalAnalysisSnapshot = null;
   renderBasisEmptyState();
@@ -5768,12 +6055,14 @@ function updateSidePanelNav() {
   elements.clearCustomerButton.hidden = state.activeSidePanel !== "customer";
   elements.clearQuoteCompanyButton.hidden = state.activeSidePanel !== "quote_company";
   elements.analyseAgainButton.hidden = state.activeSidePanel !== "basis";
+  if (elements.analyseHighQualityButton) elements.analyseHighQualityButton.hidden = state.activeSidePanel !== "basis";
   elements.resetQuoteBasisButton.hidden = state.activeSidePanel !== "basis";
   elements.resetOutputButton.hidden = state.activeSidePanel !== "output";
   elements.resetImagesButton.disabled = busy || !state.images.length;
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
   elements.analyseAgainButton.disabled = busy || !state.images.length;
+  if (elements.analyseHighQualityButton) elements.analyseHighQualityButton.disabled = busy || !state.images.length;
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
   elements.resetOutputButton.disabled = busy || !state.originalOutputRows.length;
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {
@@ -5987,23 +6276,36 @@ function wireEvents() {
   elements.settingsButton?.addEventListener("click", openSettingsModal);
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.newPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
-  elements.deletePricingReferenceSelect?.addEventListener("change", updatePricingReferenceDeleteButton);
+  elements.pricingReferenceManageTab?.addEventListener("click", () => setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_MANAGE, { focus: true }));
+  elements.pricingReferenceImportTab?.addEventListener("click", () => {
+    const wasEditingReference = Boolean(state.editingPricingReferenceId);
+    setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT, { focus: true });
+    if (wasEditingReference) clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
+  });
+  elements.deletePricingReferenceSelect?.addEventListener("change", () => {
+    updatePricingReferenceDeleteButton();
+    updatePricingReferenceEditButton();
+  });
+  elements.editPricingReferenceButton?.addEventListener("click", editSelectedPricingReference);
   elements.deletePricingReferenceButton?.addEventListener("click", deleteSelectedPricingReference);
   elements.outputSortMode?.addEventListener("change", () => { state.outputSortMode = elements.outputSortMode.value; renderPricingMatches(state.outputRows); renderMatchSummary({ pricing_matches: state.outputRows }); syncControlStates(); });
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
   elements.pricingReferenceTemplateButton.addEventListener("click", downloadPricingReferenceTemplate);
   elements.pricingReferenceFile.addEventListener("change", async () => {
+    setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
     const file = elements.pricingReferenceFile.files?.[0];
     if (elements.pricingReferenceFileName) {
       elements.pricingReferenceFileName.textContent = file?.name || "No file chosen";
     }
     if (!file) {
       state.pendingPricingReference = null;
+      state.editingPricingReferenceId = "";
       state.pricingReferenceImportBusy = false;
       state.pricingReferenceImportToken = "";
       renderPricingReferencePreview(null);
       return;
     }
+    state.editingPricingReferenceId = "";
     const importToken = `${Date.now()}-${file.name}-${file.size}`;
     state.pricingReferenceImportToken = importToken;
     state.pricingReferenceImportBusy = true;
@@ -6062,10 +6364,13 @@ function wireEvents() {
   elements.pricingReferencePreview?.addEventListener("click", (event) => {
     if (event.target.closest("[data-pricing-reference-table-open]")) openPricingReferenceTableOverlay();
   });
+  elements.pricingReferenceManageStatus?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-pricing-reference-table-open]")) openPricingReferenceTableOverlay();
+  });
   elements.pricingReferenceTableBody?.addEventListener("input", handlePricingReferencePreviewInput);
   elements.pricingReferenceTableCloseButton?.addEventListener("click", closePricingReferenceTableOverlay);
   elements.pricingReferenceTableOverlay?.addEventListener("click", (event) => {
-    if (event.target.closest("[data-pricing-reference-table-close]")) closePricingReferenceTableOverlay();
+    if (event.target === elements.pricingReferenceTableOverlay || event.target.closest("[data-pricing-reference-table-close]")) closePricingReferenceTableOverlay();
   });
   elements.pricingReferenceCancelButton.addEventListener("click", closePricingReferenceModal);
   elements.pricingReferenceCloseButton.addEventListener("click", closePricingReferenceModal);
@@ -6075,6 +6380,7 @@ function wireEvents() {
   });
   elements.analysisConfirmCancelButton.addEventListener("click", closeAnalysisConfirmModal);
   elements.analysisConfirmStartButton.addEventListener("click", () => confirmStartAnalysis("standard"));
+  elements.analysisConfirmHighQualityButton?.addEventListener("click", () => confirmStartAnalysis("high_quality"));
   elements.analysisConfirmModal.addEventListener("click", (event) => {
     if (event.target.closest("[data-analysis-confirm-close]")) closeAnalysisConfirmModal();
   });
@@ -6088,6 +6394,10 @@ function wireEvents() {
   elements.analyseAgainButton.addEventListener("click", () => {
     state.pendingFeedback = "";
     requestStartAnalysis("standard");
+  });
+  elements.analyseHighQualityButton?.addEventListener("click", () => {
+    state.pendingFeedback = "";
+    requestStartAnalysis("high_quality");
   });
   elements.resetQuoteBasisButton.addEventListener("click", resetQuoteBasisToOriginal);
   elements.resetOutputButton.addEventListener("click", resetOutputDraft);

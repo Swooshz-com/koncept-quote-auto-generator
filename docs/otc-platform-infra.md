@@ -119,8 +119,11 @@ QUOTE_TMP_ROOT=/data/swooshz/tmp
 QUOTE_LOG_ROOT=/data/swooshz/logs
 OPENAI_API_KEY=<openai-key-if-used>
 OPENAI_DRAFT_MODEL=<model-id-or-app-alias>
-# none, minimal, low, medium, high, or xhigh. Use medium/high for cost control.
+# Normal Start Analysis reasoning effort: none, minimal, low, medium, high, or xhigh.
+# Use medium/high for cost control; xhigh is available but can be expensive.
 OPENAI_DRAFT_REASONING_EFFORT=high
+# High Quality button reasoning effort for deliberate expensive reruns.
+OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT=xhigh
 OPENAI_BASIS_LINE_MODEL=<model-id-or-app-alias>
 DEEPSEEK_API_KEY=<deepseek-key-if-used>
 DEEPSEEK_MODEL=deepseek-v4-pro

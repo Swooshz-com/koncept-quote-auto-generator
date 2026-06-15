@@ -886,7 +886,15 @@ h3 {
   box-shadow: var(--shadow-xs);
 }
 
+.secondary-button.panel-analyse-quality-button {
+  border-color: #8bb6a5;
+  background: linear-gradient(180deg, #f5fbf8, #e4f4ec);
+  color: #0d5a3f;
+  box-shadow: var(--shadow-xs);
+}
+
 .workspace-pane-header-actions .panel-analyse-button,
+.workspace-pane-header-actions .panel-analyse-quality-button,
 .workspace-pane-header-actions .panel-clear-button {
   width: 132px;
 }
@@ -895,6 +903,12 @@ h3 {
   border-color: #2563eb;
   background: #dbeafe;
   color: #0b3b76;
+}
+
+.secondary-button.panel-analyse-quality-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #16805b;
+  background: #dff3e9;
+  color: #0d5a3f;
 }
 
 .secondary-button.panel-clear-button {
@@ -3185,6 +3199,44 @@ td input {
   background: #ffffff;
 }
 
+.pricing-reference-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid #d6e4ee;
+  border-radius: var(--radius-md);
+  background: #edf5f8;
+}
+
+.pricing-reference-settings-tab {
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #41566f;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pricing-reference-settings-tab.is-active {
+  border-color: #bed3e5;
+  background: #ffffff;
+  color: #10223b;
+  box-shadow: var(--shadow-xs);
+}
+
+.pricing-reference-mode-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.pricing-reference-mode-panel[hidden] {
+  display: none;
+}
+
 .pricing-reference-upload-field {
   display: grid;
   gap: 8px;
@@ -3250,7 +3302,7 @@ td input {
 
 .pricing-reference-delete-controls {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
   gap: 10px;
   align-items: end;
 }
@@ -3260,11 +3312,69 @@ td input {
   width: 100%;
 }
 
+.pricing-reference-edit-button,
 .pricing-reference-delete-button {
-  min-width: 138px;
+  min-width: 118px;
   min-height: 40px;
   padding: 0 14px;
   font-size: 14px;
+}
+
+.pricing-reference-delete-button {
+  min-width: 138px;
+}
+
+.pricing-reference-manage-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #cfe0ef;
+  border-radius: var(--radius-md);
+  background: #f8fbff;
+  box-shadow: 0 8px 20px rgba(15, 35, 58, 0.08);
+}
+
+.pricing-reference-manage-status[hidden] {
+  display: none;
+}
+
+.pricing-reference-manage-status.is-ready {
+  border-color: #b9dfcb;
+  background: #f3fbf7;
+}
+
+.pricing-reference-manage-status.is-blocked {
+  border-color: #f4c7c3;
+  background: #fff8f7;
+}
+
+.pricing-reference-manage-status div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pricing-reference-manage-status span {
+  color: #5d7187;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.pricing-reference-manage-status strong {
+  color: #10223b;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.pricing-reference-manage-status p {
+  margin: 0;
+  color: #52677e;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 body.privacy-page {
@@ -3875,7 +3985,7 @@ body.privacy-page {
 }
 
 .pricing-reference-full-table {
-  min-width: 1140px;
+  min-width: 1540px;
 }
 
 .pricing-reference-col-section {
@@ -3900,6 +4010,11 @@ body.privacy-page {
 
 .pricing-reference-col-remarks {
   width: 235px;
+}
+
+.pricing-reference-col-match-terms,
+.pricing-reference-col-object-families {
+  width: 200px;
 }
 
 .pricing-reference-col-status {
@@ -4308,9 +4423,15 @@ body.privacy-page {
 
   .pricing-reference-delete-section,
   .pricing-reference-delete-controls,
+  .pricing-reference-manage-status,
   .pricing-reference-preview-header,
   .pricing-reference-preview-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .pricing-reference-manage-status {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .pricing-reference-action-buttons {
@@ -4343,6 +4464,7 @@ body.privacy-page {
 
   .workspace-pane-header-actions .sample-button,
   .workspace-pane-header-actions .panel-analyse-button,
+  .workspace-pane-header-actions .panel-analyse-quality-button,
   .workspace-pane-header-actions .panel-clear-button,
   .pricing-reference-panel .settings-note,
   .company-preset-panel .settings-note {

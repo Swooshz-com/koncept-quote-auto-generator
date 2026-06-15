@@ -241,16 +241,19 @@ RICH_TEXT_DETAIL_KEYS = {
     "termsHeading",
 }
 DRAFT_ANALYSIS_MODE_STANDARD = "standard"
+DRAFT_ANALYSIS_MODE_HIGH_QUALITY = "high_quality"
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_DRAFT_MODEL = "gpt-5.5"
 OPENAI_BASIS_LINE_MODEL = "gpt-5.4-mini"
 OPENAI_BASIS_ANSWER_MODEL = "gpt-5.4-nano"
 OPENAI_DRAFT_REASONING_EFFORT = "high"
+OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT = "xhigh"
 OPENAI_API_KEY_ENV_NAME = "OPENAI_API_KEY"
 OPENAI_DRAFT_MODEL_ENV_NAME = "OPENAI_DRAFT_MODEL"
 OPENAI_BASIS_LINE_MODEL_ENV_NAME = "OPENAI_BASIS_LINE_MODEL"
 OPENAI_BASIS_ANSWER_MODEL_ENV_NAME = "OPENAI_BASIS_ANSWER_MODEL"
 OPENAI_DRAFT_REASONING_EFFORT_ENV_NAME = "OPENAI_DRAFT_REASONING_EFFORT"
+OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT_ENV_NAME = "OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT"
 OPENAI_REQUEST_TIMEOUT_ENV_NAME = "OPENAI_REQUEST_TIMEOUT_SECONDS"
 OPENAI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 AI_PROVIDER_OPENAI = "openai"
@@ -842,7 +845,7 @@ def comparable_catalog_description_key(value: Any) -> str:
 
 def comparable_catalog_description_key_without_leading_unit(value: Any) -> str:
     key = comparable_catalog_description_key(value)
-    return re.sub(r"^(?:m2|sqm|m length|m run|nos|no|lot|sets?)\s+", "", key).strip()
+    return re.sub(r"^(?:m2|sqm|m length|m run|m|nos|no|lot|sets?)\s+", "", key).strip()
 
 
 def bracketed_catalog_reference_parts(value: Any) -> tuple[str, str] | None:
@@ -1861,7 +1864,7 @@ def default_pricing_reference_aliases(section: str, description: str, unit_hint:
             seen.add(key)
 
     add(description)
-    leading_unit_pattern = r"(?i)^(?:m2|sqm|m\s*length|m\s*run|nos?\.?|sets?\s+of|lot\.?)\s+"
+    leading_unit_pattern = r"(?i)^(?:m2|sqm|m\s*length|m\s*run|m\.?|nos?\.?|sets?\s+of|lot\.?)\s+"
     stripped_description = clean_text(re.sub(leading_unit_pattern, "", description))
     add(stripped_description)
     for remark in remarks:
@@ -2182,10 +2185,40 @@ def pricing_reference_validation_result(
     }
 
 
+def pricing_reference_metadata_quality_errors(items: list[dict[str, Any]]) -> list[str]:
+    missing_metadata = [
+        clean_text(item.get("id")) or clean_text(item.get("description")) or f"row {index + 1}"
+        for index, item in enumerate(items)
+        if isinstance(item, dict)
+        and (
+            not sanitize_pricing_reference_terms(item.get("match_terms"))
+            or not sanitize_pricing_reference_families(item.get("object_families"))
+        )
+    ]
+    if not missing_metadata:
+        return []
+    preview = ", ".join(missing_metadata[:5])
+    suffix = f" and {len(missing_metadata) - 5} more" if len(missing_metadata) > 5 else ""
+    return [f"AI pricing metadata is missing for pricing rows: {preview}{suffix}."]
+
+
+def pricing_reference_required_field_errors(items: list[dict[str, Any]]) -> list[str]:
+    missing_units = [
+        clean_text(item.get("id")) or clean_text(item.get("description")) or f"row {index + 1}"
+        for index, item in enumerate(items)
+        if isinstance(item, dict) and not clean_text(item.get("unit_hint") or item.get("unit"))
+    ]
+    if not missing_units:
+        return []
+    preview = ", ".join(missing_units[:5])
+    suffix = f" and {len(missing_units) - 5} more" if len(missing_units) > 5 else ""
+    return [f"Pricing unit_hint is missing for pricing rows: {preview}{suffix}."]
+
+
 
 def infer_unit_prefix(description: Any) -> str:
     text = clean_text(description)
-    match = re.match(r"(?i)^(m\.?\s*run|m\.?\s*length|sqm|m2|nos?\.?|lot\.?|sets?)\b", text)
+    match = re.match(r"(?i)^(m\.?\s*run|m\.?\s*length|m2|sqm|nos?\.?|lot\.?|sets?|m\.?)(?=\s|$)", text)
     if not match:
         return ""
     unit = re.sub(r"\s+", " ", match.group(1).lower().replace(".", " ")).strip()
@@ -2833,6 +2866,12 @@ def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, An
         raise ValueError("At least one valid pricing row is required.")
     ensure_pricing_reference_order_fields(items)
     items = sorted_pricing_reference_items(items)
+    required_field_errors = pricing_reference_required_field_errors(items)
+    if required_field_errors:
+        raise ValueError(" ".join(required_field_errors))
+    metadata_errors = pricing_reference_metadata_quality_errors(items)
+    if metadata_errors:
+        raise ValueError(" ".join(metadata_errors))
     return {
         "id": reference_id,
         "label": sanitize_formula_text(payload.get("label")) or reference_id,
@@ -3960,14 +3999,30 @@ class PricingReferencePack:
         return self.asset_path("pricing_reference", "pricing-catalog.ai-reference.md")
 
     def public_summary(self) -> dict[str, Any]:
+        catalog = load_json_file(self.pricing_catalog_path)
+        items = catalog.get("items") if isinstance(catalog.get("items"), list) else []
         return {
             "id": self.id or DEFAULT_PRICING_REFERENCE_ID,
             "label": clean_text(self.config.get("label")) or self.id or "Pricing Reference",
             "description": clean_text(self.config.get("description")),
             "tax": normalized_tax_config(self.config.get("tax")),
             "currency": normalize_currency_label(self.config.get("currency")),
+            "item_count": len(items),
             "source": "bundled",
         }
+
+    def public_detail(self) -> dict[str, Any]:
+        catalog = load_json_file(self.pricing_catalog_path)
+        raw_items = catalog.get("items") if isinstance(catalog.get("items"), list) else []
+        items = [dict(item) for item in raw_items if isinstance(item, dict)]
+        ensure_pricing_reference_order_fields(items)
+        detail = self.public_summary()
+        detail.update({
+            "schema_version": int(parse_pricing_number(catalog.get("schema_version")) or 1),
+            "items": sorted_pricing_reference_items(items),
+            "item_count": len(items),
+        })
+        return detail
 
 
 def load_profile_pack(profile_id: str | None = None) -> ProfilePack:
@@ -4084,8 +4139,23 @@ def list_pricing_references(company_id: str = DEFAULT_COMPANY_ID) -> list[dict[s
     return list_bundled_pricing_references()
 
 
+def pricing_reference_pack_detail(reference_id: str) -> dict[str, Any] | None:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id:
+        raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+    reference_dir = pricing_reference_pack_dir(safe_id)
+    if not (reference_dir / "reference.json").is_file():
+        return None
+    pack = load_pricing_reference_pack(safe_id)
+    if pack.id != safe_id:
+        return None
+    return pack.public_detail()
+
+
 def draft_analysis_mode(payload: dict[str, Any] | None = None) -> str:
-    _ = payload
+    raw = clean_text((payload or {}).get("analysis_mode")).lower()
+    if raw in {DRAFT_ANALYSIS_MODE_HIGH_QUALITY, "xhigh", "high_accuracy"}:
+        return DRAFT_ANALYSIS_MODE_HIGH_QUALITY
     return DRAFT_ANALYSIS_MODE_STANDARD
 
 
@@ -4094,7 +4164,12 @@ def configured_openai_draft_model(mode: str = DRAFT_ANALYSIS_MODE_STANDARD) -> s
     return safe_segment(read_dotenv_value(OPENAI_DRAFT_MODEL_ENV_NAME), OPENAI_DRAFT_MODEL)
 
 
-def configured_openai_draft_reasoning_effort() -> str:
+def configured_openai_draft_reasoning_effort(mode: str = DRAFT_ANALYSIS_MODE_STANDARD) -> str:
+    if mode == DRAFT_ANALYSIS_MODE_HIGH_QUALITY:
+        raw = clean_text(read_dotenv_value(OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT_ENV_NAME)).lower()
+        if raw in OPENAI_REASONING_EFFORTS:
+            return raw
+        return OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT
     raw = clean_text(read_dotenv_value(OPENAI_DRAFT_REASONING_EFFORT_ENV_NAME)).lower()
     if raw in OPENAI_REASONING_EFFORTS:
         return raw
@@ -7476,10 +7551,11 @@ def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
         for image in catalog_visuals:
             content.append({"type": "input_image", "image_url": image["data_url"], "detail": "low"})
 
+    analysis_mode = draft_analysis_mode(payload)
     body = {
-        "model": configured_openai_draft_model(draft_analysis_mode(payload)),
+        "model": configured_openai_draft_model(analysis_mode),
         "input": [{"role": "user", "content": content}],
-        "reasoning": {"effort": configured_openai_draft_reasoning_effort()},
+        "reasoning": {"effort": configured_openai_draft_reasoning_effort(analysis_mode)},
     }
     request = urllib.request.Request(
         OPENAI_RESPONSES_URL,
@@ -8279,6 +8355,22 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             self.send_json({"pricing_references": list_pricing_references()})
+            return
+        pricing_reference_detail_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", path)
+        if pricing_reference_detail_match:
+            allowed, error = require_permission("canManagePricingReferences")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            try:
+                detail = pricing_reference_pack_detail(pricing_reference_detail_match.group(1))
+            except ValueError as exc:
+                self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
+                return
+            if not detail:
+                self.send_json({"error": "Not found"}, status=404)
+                return
+            self.send_json({"pricing_reference": detail})
             return
         if path == "/api/settings/profiles":
             allowed, error = require_permission("canManageProfiles")

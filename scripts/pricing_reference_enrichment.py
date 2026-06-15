@@ -30,7 +30,7 @@ STOP_TERMS = {
 }
 
 UNIT_PREFIX_RE = re.compile(
-    r"^(?:m2|sqm|m\.?\s*length|m\.?\s*run|nos?\.?|no\.|sets?|lot\.?)\s+(?:of\s+|rental\s+of\s+)?",
+    r"^(?:m2|sqm|m\.?\s*length|m\.?\s*run|m\.?|nos?\.?|no\.|sets?|lot\.?)\s+(?:of\s+|rental\s+of\s+)?",
     flags=re.IGNORECASE,
 )
 

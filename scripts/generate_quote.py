@@ -267,10 +267,10 @@ def resolve_default_output_dir(brief: dict[str, Any], provided_out: Path | None)
 
 def infer_unit(description: str) -> str:
     text = description.lower()
-    leading_unit = re.match(r"^\s*(m2|sqm|m\.?\s*length|m\.?\s*run|nos\.?|no\.|lot\.?|sets?)\b", text)
+    leading_unit = re.match(r"^\s*(m\.?\s*run|m\.?\s*length|m2|sqm|nos\.?|no\.|lot\.?|sets?|m\.?)(?=\s|$)", text)
     if leading_unit:
         return normalize_unit(leading_unit.group(1))
-    for unit in ("m2", "sqm", "m length", "m run", "nos", "no.", "lot", "sets"):
+    for unit in ("m2", "sqm", "m length", "m run", "m", "nos", "no.", "lot", "sets"):
         if unit in text:
             return normalize_unit(unit)
     return ""

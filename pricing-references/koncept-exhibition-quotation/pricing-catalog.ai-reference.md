@@ -338,7 +338,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m
 
 - **Item:** Professional Engineer Endorsement for structure above 4m
-- **Unit hint:** not specified
+- **Unit hint:** lot
 - **Sale unit price:** SGD 1200.00
 - **Remarks:** PE
 - **Search aliases:** Professional Engineer Endorsement for structure above 4m; PE; COUNTERS AND CABINETS Professional Engineer Endorsement for structure above 4m
@@ -350,7 +350,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### hanging-structure.m-rental-of-300mm-x-300mm-aluminium-box-truss
 
 - **Item:** m rental of 300mm x 300mm Aluminium Box Truss
-- **Unit hint:** not specified
+- **Unit hint:** m
 - **Sale unit price:** SGD 135.00
 - **Remarks:** TRUSS
 - **Search aliases:** m rental of 300mm x 300mm Aluminium Box Truss; TRUSS; Hanging Structure m rental of 300mm x 300mm Aluminium Box Truss
@@ -420,7 +420,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### hanging-structure.professional-engineer-endorsement-for-hanging
 
 - **Item:** Professional Engineer Endorsement for hanging
-- **Unit hint:** not specified
+- **Unit hint:** lot
 - **Sale unit price:** SGD 1200.00
 - **Remarks:** PE
 - **Search aliases:** Professional Engineer Endorsement for hanging; PE; Hanging Structure Professional Engineer Endorsement for hanging
@@ -1069,7 +1069,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day
 
 - **Item:** Coffee / Tea and supplies for 100 people per day
-- **Unit hint:** not specified
+- **Unit hint:** day
 - **Sale unit price:** SGD 225.00
 - **Remarks:** COFFEE PER DAY
 - **Search aliases:** Coffee / Tea and supplies for 100 people per day; Coffee; Tea and supplies for 100 people per day; COFFEE PER DAY; Coffee / Tea (Subject to approval by Venue owner and Organiser) Coffee / Tea and supplies for 100 people per day
@@ -1079,7 +1079,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 ### coffee-tea-subject-to-approval-by-venue-owner-and-organiser.water-cooler-and-heating-equipment-for-3-gallons
 
 - **Item:** Water cooler and heating equipment for 3 gallons
-- **Unit hint:** not specified
+- **Unit hint:** nos
 - **Sale unit price:** SGD 375.00
 - **Remarks:** DRINKING WATER
 - **Search aliases:** Water cooler and heating equipment for 3 gallons; DRINKING WATER; Coffee / Tea (Subject to approval by Venue owner and Organiser) Water cooler and heating equipment for 3 gallons

@@ -419,6 +419,10 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(graphics_row.description, "sqm of vinyl printed graphics")
         self.assertIn("printed graphics on wall", graphics_row.remark.lower())
 
+        self.assertFalse([row.pricing_id for row in rows if not row.unit_hint])
+        truss_row = next(row for row in rows if row.pricing_id == "hanging-structure.m-rental-of-300mm-x-300mm-aluminium-box-truss")
+        self.assertEqual(truss_row.unit_hint, "m")
+
     def test_catalog_id_pricing_keyword_matches_exact_catalog_item(self):
         rows = quote.extract_price_rows(KONCEPT_CATALOG)
 
