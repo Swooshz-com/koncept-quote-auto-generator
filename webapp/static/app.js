@@ -195,6 +195,7 @@ const state = {
 
 const qs = (selector) => document.querySelector(selector);
 let analysisElapsedTimerId = 0;
+const elapsedTimerIds = new Map();
 let sessionFileDbPromise = null;
 
 const elements = {
@@ -756,27 +757,47 @@ function formatElapsedDuration(elapsedMs) {
   return `${Math.floor(minutesTotal / 60)}:${minutes}:${seconds}`;
 }
 
+function elapsedStartedMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return parseTimestampMs(value);
+}
+
+function updateElapsedTimer(elementId, startedAt) {
+  const elapsed = document.getElementById(elementId);
+  if (!elapsed) return;
+  const startedMs = elapsedStartedMs(startedAt);
+  elapsed.textContent = `Elapsed ${formatElapsedDuration(startedMs ? Date.now() - startedMs : 0)}`;
+}
+
+function stopElapsedTimer(elementId) {
+  const timerId = elapsedTimerIds.get(elementId);
+  if (timerId) window.clearInterval(timerId);
+  elapsedTimerIds.delete(elementId);
+}
+
+function startElapsedTimer(elementId, startedAt = Date.now()) {
+  stopElapsedTimer(elementId);
+  updateElapsedTimer(elementId, startedAt);
+  elapsedTimerIds.set(elementId, window.setInterval(() => updateElapsedTimer(elementId, startedAt), 1000));
+}
+
 function activeJobStartedAt(job = state.activeJob) {
   return job?.startedAt || job?.created_at || job?.createdAt || "";
 }
 
 function stopAnalysisElapsedTimer() {
-  if (!analysisElapsedTimerId) return;
-  window.clearInterval(analysisElapsedTimerId);
+  stopElapsedTimer("analysisElapsed");
   analysisElapsedTimerId = 0;
 }
 
 function updateAnalysisElapsed(startedAt = activeJobStartedAt()) {
-  const elapsed = qs("#analysisElapsed");
-  if (!elapsed) return;
-  const startedMs = parseTimestampMs(startedAt);
-  elapsed.textContent = `Elapsed ${formatElapsedDuration(startedMs ? Date.now() - startedMs : 0)}`;
+  updateElapsedTimer("analysisElapsed", startedAt);
 }
 
 function startAnalysisElapsedTimer(startedAt = activeJobStartedAt()) {
   stopAnalysisElapsedTimer();
-  updateAnalysisElapsed(startedAt);
-  analysisElapsedTimerId = window.setInterval(() => updateAnalysisElapsed(startedAt), 1000);
+  startElapsedTimer("analysisElapsed", startedAt);
+  analysisElapsedTimerId = elapsedTimerIds.get("analysisElapsed") || 0;
 }
 
 const GENERIC_FAILURE_MESSAGE = "Failed. Please try again. Contact support if this keeps happening.";
@@ -2383,6 +2404,7 @@ function handlePricingReferenceImportTabClick() {
 
 function clearPricingReferenceDraft(options = {}) {
   closePricingReferenceTableOverlay();
+  stopElapsedTimer("pricingReferenceImportElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
   state.pricingReferenceImportFileSelected = false;
@@ -3192,6 +3214,14 @@ function pricingReferencePreviewAttention(result = {}, context = {}) {
       text: `Open Review Rows. Examples: ${compactPreviewList(rowIssues.map((issue) => `row ${issue.index}: ${issue.status}`))}.`,
     });
   }
+  if (result.canSave === false && items.length && !attention.some((item) => item.tone === "error")) {
+    const blockedReason = typeof pricingReferenceSaveBlockReason === "function" ? pricingReferenceSaveBlockReason(result) : "";
+    attention.push({
+      tone: "error",
+      label: "Rows need review",
+      text: blockedReason || "Open Review Rows and fix the highlighted pricing-reference rows before saving.",
+    });
+  }
   warnings
     .filter((message) => !(skipped && /\bskipped\b/i.test(String(message))))
     .forEach((message) => attention.push({ tone: "warn", label: "Import warning", text: message }));
@@ -3323,6 +3353,7 @@ function renderPricingReferencePreview(result = null, options = {}) {
         <span class="pricing-reference-spinner" aria-hidden="true"></span>
         <strong>Preparing import preview</strong>
         <p>Please wait while AI reads the file and builds editable pricing rows.</p>
+        <span class="ai-elapsed pricing-reference-import-elapsed" id="pricingReferenceImportElapsed" aria-live="polite">Elapsed 0:00</span>
       </div>
     `;
     setPricingReferenceSaveButtonState({
@@ -3452,6 +3483,7 @@ async function downloadPricingReferenceTemplate(event) {
 }
 
 function openPricingReferenceModal() {
+  stopElapsedTimer("pricingReferenceImportElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
   state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
@@ -3485,6 +3517,7 @@ function closePricingReferenceModal() {
     return;
   }
   closePricingReferenceTableOverlay();
+  stopElapsedTimer("pricingReferenceImportElapsed");
   elements.pricingReferenceModal.classList.remove("is-open");
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
@@ -3514,6 +3547,7 @@ async function editSelectedPricingReference(options = {}) {
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceImportToken = "";
+  stopElapsedTimer("pricingReferenceImportElapsed");
   state.pricingReferenceEditNotice = "";
   const reference = await fetchPricingReferenceDetail(summaryReference).catch(() => null);
   if (state.pricingReferenceAutoLoadToken !== loadToken) return;
@@ -5119,8 +5153,11 @@ function appendBasisChatTyping() {
   message.dataset.basisChatTyping = "true";
   message.innerHTML = `
     <span class="basis-chat-label">Assistant</span>
-    <span class="basis-chat-typing-dots" role="status" aria-label="Assistant is typing">
-      <i></i><i></i><i></i>
+    <span class="basis-chat-typing-row" role="status" aria-label="Assistant is typing">
+      <span class="basis-chat-typing-dots" aria-hidden="true">
+        <i></i><i></i><i></i>
+      </span>
+      <span class="ai-elapsed basis-chat-elapsed" id="basisChatElapsed" aria-live="polite">Elapsed 0:00</span>
     </span>
   `;
   elements.basisChatMessages.appendChild(message);
@@ -5412,7 +5449,9 @@ async function buildAiBasisChatResponse(text) {
   state.isAnalysisRunning = true;
   setBasisChatBusy(true);
   syncControlStates();
+  const basisChatStartedAt = Date.now();
   const typingMessage = appendBasisChatTyping();
+  startElapsedTimer("basisChatElapsed", basisChatStartedAt);
   try {
     const started = await startJob("basis_chat", basisChatPayload(text));
     if (!started.ok) {
@@ -5432,6 +5471,7 @@ async function buildAiBasisChatResponse(text) {
     }
     return { answer: data.answer || null };
   } finally {
+    stopElapsedTimer("basisChatElapsed");
     removeBasisChatTyping(typingMessage);
     state.isAnalysisRunning = previousRunning;
     setBasisChatBusy(false);
@@ -6703,6 +6743,7 @@ function wireEvents() {
       state.pricingReferenceImportBusy = false;
       state.pricingReferenceSaveBusy = false;
       state.pricingReferenceImportToken = "";
+      stopElapsedTimer("pricingReferenceImportElapsed");
       renderPricingReferencePreview(null);
       syncPricingReferenceImportSetupVisibility();
       return;
@@ -6718,6 +6759,8 @@ function wireEvents() {
       warnings: ["Import preview is still being prepared."],
       errors: [],
     });
+    const importStartedAt = Date.now();
+    startElapsedTimer("pricingReferenceImportElapsed", importStartedAt);
     let result;
     try {
       result = await validatePricingReferenceFile(file);
@@ -6730,6 +6773,7 @@ function wireEvents() {
     if (state.pricingReferenceImportToken !== importToken) return;
     state.pendingPricingReference = result;
     state.pricingReferenceImportBusy = false;
+    stopElapsedTimer("pricingReferenceImportElapsed");
     renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
   });
   elements.pricingReferenceCurrency?.addEventListener("change", () => {

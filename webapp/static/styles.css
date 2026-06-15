@@ -460,11 +460,10 @@ h3 {
   font-weight: 700;
 }
 
-.ai-failure-banner .ai-elapsed {
+.ai-elapsed {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  margin-left: 10px;
   padding: 0 6px;
   border: 1px solid rgba(180, 83, 9, 0.28);
   border-radius: var(--radius-pill);
@@ -473,6 +472,10 @@ h3 {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.ai-failure-banner .ai-elapsed {
+  margin-left: 10px;
 }
 
 /* ============================================================
@@ -2895,11 +2898,25 @@ td input {
   padding: 9px 11px;
 }
 
+.basis-chat-typing-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .basis-chat-typing-dots {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   min-height: 22px;
+}
+
+.basis-chat-message.is-typing .ai-elapsed {
+  min-height: 22px;
+  border-color: #d6e1ec;
+  background: #ffffff;
+  color: #52677e;
+  font-size: 12px;
 }
 
 .basis-chat-typing-dots i {
@@ -3802,6 +3819,12 @@ body.privacy-page {
   line-height: 1.35;
 }
 
+.pricing-reference-import-overlay .ai-elapsed {
+  margin-top: 2px;
+  border-color: #cfe0f4;
+  color: #52677e;
+}
+
 .pricing-reference-spinner {
   width: 26px;
   height: 26px;
@@ -4011,6 +4034,13 @@ body.privacy-page {
   padding: 14px 18px 18px;
   border-top: 1px solid var(--line-subtle);
   background: #ffffff;
+}
+
+.pricing-reference-table-actions .secondary-button,
+.pricing-reference-table-actions .primary-button {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
 }
 
 .pricing-reference-table-actions [data-pricing-reference-table-close] {

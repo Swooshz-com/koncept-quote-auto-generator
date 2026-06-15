@@ -6703,8 +6703,12 @@ assert.strictEqual(rowNeedsManualInput(manualDisplayZeroRow), false);
         self.assertIn("quote_basis_sections: includeDraftContext ?", js)
         self.assertIn("line_items: includeDraftContext ?", js)
         self.assertIn("analysisElapsed", js)
+        self.assertIn("elapsedTimerIds", js)
+        self.assertIn("startElapsedTimer", js)
+        self.assertIn('stopElapsedTimer("analysisElapsed")', js)
         self.assertIn("startAnalysisElapsedTimer", js)
         self.assertIn("formatElapsedDuration", js)
+        self.assertIn(".ai-elapsed", css)
         self.assertIn(".ai-failure-banner .ai-elapsed", css)
 
         node = require_node(self)
@@ -7352,6 +7356,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-chat-selected-line .basis-chat-selected-quantity {\n  width: var(--basis-quantity-pill-width);",
             ".basis-chat-selected-line-confirm .basis-confidence-pill {\n  background: #fff3e0;\n  color: #b45309;\n}",
             ".basis-chat-typing-dots",
+            ".basis-chat-typing-row",
+            ".basis-chat-message.is-typing .ai-elapsed",
             ".basis-chat-message table",
             ".basis-chat-message ul",
             ".basis-chat-proposal-header",
@@ -7365,6 +7371,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
 
         self.assertIn("line_index: state.basisChat.lineIndex", js)
         self.assertIn("line: state.basisChat.line", js)
+        self.assertIn("basisChatElapsed", js)
+        self.assertIn('startElapsedTimer("basisChatElapsed"', js)
+        self.assertIn('stopElapsedTimer("basisChatElapsed")', js)
         self.assertIn("basis-chat-selected-line-${tag.toLowerCase()}", js)
         self.assertIn("elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage", js)
         self.assertNotIn("Rows marked Confirm need a decision", js)
@@ -7665,6 +7674,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-row-actions", css)
         self.assertIn(".pricing-reference-row-remove", css)
         self.assertIn(".pricing-reference-table-actions", css)
+        self.assertIn(".pricing-reference-table-actions .secondary-button,\n.pricing-reference-table-actions .primary-button {\n  min-height: 36px;", css)
         self.assertIn("pricingReferenceStatusClass", js)
         self.assertIn("updatePricingReferenceGuidanceDisplays", js)
         self.assertIn("pricing-reference-preview-actions", js)
@@ -7701,6 +7711,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('String(result.layout || "") === "importing"', js)
         self.assertIn("Preparing import preview", js)
         self.assertIn("Please wait", js)
+        self.assertIn("pricingReferenceImportElapsed", js)
+        self.assertIn('startElapsedTimer("pricingReferenceImportElapsed"', js)
+        self.assertIn('stopElapsedTimer("pricingReferenceImportElapsed")', js)
+        self.assertIn("Rows need review", js)
         self.assertIn("pricing-reference-import-overlay", js)
         self.assertNotIn("Example rows ignored", js)
         self.assertNotIn("exampleRows", js)
@@ -7714,6 +7728,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('status.classList.toggle("is-ready", !hasBlockingIssues && Boolean(savedNotice));', js)
         self.assertIn('status.classList.toggle("is-warn", !hasBlockingIssues && !savedNotice);', js)
         self.assertIn(".pricing-reference-import-overlay", css)
+        self.assertIn(".pricing-reference-import-overlay .ai-elapsed", css)
         self.assertIn(".pricing-reference-spinner", css)
         self.assertNotIn("<th>aliases</th>", js)
         self.assertIn(".output-unit-price-editor", css)
@@ -8676,6 +8691,12 @@ const invalidCurrencyAttention = pricingReferencePreviewAttention({ items: [{ wa
   currencyNeedsReview: !isValidCurrencyCode("GA"),
 });
 assert.ok(invalidCurrencyAttention.some((item) => item.label === "Currency review"));
+
+const blockedRowsAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0, canSave: false }, {
+  currency: "SGD",
+  currencyNeedsReview: false,
+});
+assert.ok(blockedRowsAttention.some((item) => item.tone === "error" && item.label === "Rows need review"));
 
 const cleanAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0 }, {
   currency: "SGD",
