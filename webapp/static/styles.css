@@ -3424,6 +3424,7 @@ td input {
   font-size: 13px;
   font-weight: 650;
   line-height: 1.35;
+  white-space: pre-line;
 }
 
 body.privacy-page {
@@ -3846,7 +3847,7 @@ body.privacy-page {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  align-self: end;
+  align-self: center;
   gap: 8px;
   min-width: 0;
 }
@@ -3924,6 +3925,7 @@ body.privacy-page {
   grid-row: 2;
   margin: 0;
   line-height: 1.4;
+  white-space: pre-line;
 }
 
 .pricing-reference-save-guidance {
@@ -4120,6 +4122,7 @@ body.privacy-page {
   font-size: 13px;
   font-weight: 800;
   line-height: 1.4;
+  white-space: pre-line;
 }
 
 .pricing-reference-save-guidance.is-ok {

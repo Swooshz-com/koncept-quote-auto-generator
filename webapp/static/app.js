@@ -1013,6 +1013,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function sentenceLineBreakText(value) {
+  return String(value ?? "").trim().replace(/([.!?])\s+(?=\S)/g, "$1\n");
+}
+
 function decodeHtmlEntities(value) {
   return String(value ?? "").replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity) => {
     const normalized = entity.toLowerCase();
@@ -2340,9 +2344,9 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
     <div>
       <span>${savedNotice ? "Saved reference" : "Editing reference"}</span>
       <strong>${escapeHtml(label)}</strong>
-      <p>${escapeHtml(statusText)}</p>
+      <p>${escapeHtml(sentenceLineBreakText(statusText))}</p>
     </div>
-    <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review Rows</button>
+    <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review</button>
   `;
 }
 
@@ -3345,7 +3349,7 @@ function updatePricingReferenceGuidanceDisplays(result = state.pendingPricingRef
   }
   const guidance = elements.pricingReferencePreview?.querySelector(".pricing-reference-save-guidance");
   if (guidance) {
-    guidance.textContent = pricingReferenceSaveGuidance(result);
+    guidance.textContent = sentenceLineBreakText(pricingReferenceSaveGuidance(result));
     guidance.classList.toggle("is-ok", Boolean(result?.canSave));
     guidance.classList.toggle("is-blocked", !result?.canSave);
   }
@@ -3484,7 +3488,7 @@ function renderPricingReferencePreview(result = null, options = {}) {
         </ul>
       ` : `<p>Required columns are present and imported rows pass the basic checks.</p>`}
     </div>
-    <p class="pricing-reference-save-guidance ${canSave ? "is-ok" : "is-blocked"}">${escapeHtml(pricingReferenceSaveGuidance(result))}</p>
+    <p class="pricing-reference-save-guidance ${canSave ? "is-ok" : "is-blocked"}">${escapeHtml(sentenceLineBreakText(pricingReferenceSaveGuidance(result)))}</p>
     <div class="pricing-reference-preview-actions">
       <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>${result.items.length ? `Review ${result.items.length} Row${result.items.length === 1 ? "" : "s"}` : "Review Rows"}</button>
     </div>

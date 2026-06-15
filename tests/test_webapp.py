@@ -5756,6 +5756,29 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertTrue(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1001))
         self.assertFalse(webapp.is_rate_limited("127.0.0.1", "/api/jobs", now=1000 + webapp.RATE_LIMIT_WINDOW_SECONDS + 1))
+        for path in (
+            "/api/jobs",
+            "/api/draft",
+            "/api/generate",
+            "/api/line-items/normalize",
+            "/api/pricing-reference/validate",
+            "/api/settings/pricing-references/import-preview",
+            "/api/settings/pricing-references",
+            "/api/settings/pricing-references/example-pack",
+            "/api/settings/profiles",
+            "/api/settings/profiles/example-profile",
+            "/api/log",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(webapp.rate_limit_path_key(path), webapp.POST_RATE_LIMITS)
+
+        webapp.RATE_LIMIT_BUCKETS.clear()
+        dynamic_path = "/api/settings/pricing-references/example-pack"
+        dynamic_key = webapp.rate_limit_path_key(dynamic_path)
+        self.assertEqual(dynamic_key, "/api/settings/pricing-references/:id")
+        for _ in range(webapp.POST_RATE_LIMITS[dynamic_key]):
+            self.assertFalse(webapp.is_rate_limited("127.0.0.1", dynamic_path, now=2000))
+        self.assertTrue(webapp.is_rate_limited("127.0.0.1", "/api/settings/pricing-references/other-pack", now=2001))
 
     def test_http_post_requires_allowed_host_csrf_and_json_content_type(self):
         with LocalRunnerServer() as runner:
@@ -7795,6 +7818,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-settings-tab.is-active", css)
         self.assertIn(".pricing-reference-mode-panel[hidden]", css)
         self.assertIn(".pricing-reference-manage-status", css)
+        manage_status_text_style = css.split(".pricing-reference-manage-status p {", 1)[1].split("}", 1)[0]
+        self.assertIn("white-space: pre-line;", manage_status_text_style)
         self.assertIn(".secondary-button.danger-button", css)
         self.assertIn(".modal-actions.pricing-reference-modal-actions {\n  display: grid;", css)
         self.assertIn("border-top: 1px solid var(--line-subtle);", css)
@@ -7856,6 +7881,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn(".pricing-reference-preview-status-badge", css)
         self.assertNotIn(".pricing-reference-preview-next-step", css)
         self.assertIn(".pricing-reference-preview-actions", css)
+        self.assertIn("align-self: center;", css.split(".pricing-reference-preview-actions {", 1)[1].split("}", 1)[0])
+        preview_guidance_style = css.split(".pricing-reference-preview-messages p,\n.pricing-reference-preview .pricing-reference-save-guidance {", 1)[1].split("}", 1)[0]
+        self.assertIn("white-space: pre-line;", preview_guidance_style)
         self.assertNotIn(".pricing-reference-preview-summary", css)
         self.assertIn(".pricing-reference-preview.importing,\n.pricing-reference-preview.saving", css)
         self.assertIn(".pricing-reference-manage-status.is-saving", css)
@@ -7868,6 +7896,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("pricing-reference-col-object-families", html)
         self.assertNotIn("pricing-reference-col-object-families", css)
         self.assertIn("Fix all flagged problems before saving this reference.", js)
+        self.assertIn("sentenceLineBreakText(pricingReferenceSaveGuidance(result))", js)
         self.assertIn("openPricingReferenceTableOverlay();", js)
         self.assertIn("pricing-reference-col-description", html)
         self.assertIn("pricing-reference-col-remarks", html)
@@ -9090,6 +9119,7 @@ function pricingReferenceSaveBlockReason(result = {}) { return result.canSave ? 
 function pricingReferenceHasPendingChanges() { return true; }
 
 eval([
+  "sentenceLineBreakText",
   "pricingReferenceRowIssues",
   "pricingReferenceEditStatusText",
   "renderPricingReferenceManageStatus",
@@ -9108,9 +9138,10 @@ renderPricingReferenceManageStatus({
 
 assert.strictEqual(status.hidden, false);
 assert.strictEqual(status.classList.contains("is-blocked"), true);
-assert.ok(status.innerHTML.includes("2 pricing rows amended in Review Rows."));
+assert.ok(status.innerHTML.includes("2 pricing rows amended in Review Rows.\n2 pricing rows still need edit before saving."));
 assert.ok(status.innerHTML.includes("2 pricing rows still need edit before saving."));
-assert.ok(status.innerHTML.includes("Review Rows"));
+assert.ok(status.innerHTML.includes(">Review</button>"));
+assert.ok(!status.innerHTML.includes(">Review Rows</button>"));
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -9658,7 +9689,13 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
             "I cannot access or reveal secrets",
         ):
             self.assertIn(expected, js)
-        self.assertNotIn("OPENAI_API_KEY", js)
+        for forbidden_secret_name in (
+            "OPENAI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "OIDC_CLIENT_SECRET",
+            "SESSION_SECRET",
+        ):
+            self.assertNotIn(forbidden_secret_name, js)
 
     def test_static_output_pricing_review_action_block_is_removed(self):
         static_dir = ROOT / "webapp" / "static"

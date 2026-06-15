@@ -203,6 +203,12 @@ POST_RATE_LIMITS = {
     "/api/draft": 15,
     "/api/generate": 15,
     "/api/line-items/normalize": 30,
+    "/api/pricing-reference/validate": 60,
+    "/api/settings/pricing-references/import-preview": 10,
+    "/api/settings/pricing-references": 20,
+    "/api/settings/pricing-references/:id": 20,
+    "/api/settings/profiles": 30,
+    "/api/settings/profiles/:id": 30,
     "/api/log": 180,
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
@@ -3801,12 +3807,22 @@ def is_json_content_type(content_type: str) -> bool:
     return media_type == "application/json"
 
 
+def rate_limit_path_key(path: str) -> str:
+    normalized_path = urlparse(path).path
+    if re.fullmatch(r"/api/settings/pricing-references/[A-Za-z0-9_-]+", normalized_path):
+        return "/api/settings/pricing-references/:id"
+    if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+", normalized_path):
+        return "/api/settings/profiles/:id"
+    return normalized_path
+
+
 def is_rate_limited(client_id: str, path: str, now: float | None = None) -> bool:
-    limit = POST_RATE_LIMITS.get(path)
+    limit_path = rate_limit_path_key(path)
+    limit = POST_RATE_LIMITS.get(limit_path)
     if not limit:
         return False
     timestamp = time.time() if now is None else now
-    key = (client_id or "unknown", path)
+    key = (client_id or "unknown", limit_path)
     with RATE_LIMIT_LOCK:
         bucket = [
             item
