@@ -2265,7 +2265,7 @@ function pricingReferenceSaveProgressMarkup() {
     <div class="pricing-reference-import-overlay" role="status" aria-live="polite">
       <span class="pricing-reference-spinner" aria-hidden="true"></span>
       <strong>Saving pricing reference</strong>
-      <p>Please wait while AI enriches matching metadata and saves the pricing reference.</p>
+      <p>Please wait while reviewed rows are validated and saved.</p>
     </div>
   `;
 }
@@ -2310,14 +2310,27 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
   `;
 }
 
+function pricingReferenceReviewReadyForMetadata(result = state.pendingPricingReference) {
+  if (!result || state.pricingReferenceImportBusy || state.editingPricingReferenceId) return false;
+  const rowCount = Array.isArray(result.items) ? result.items.length : Number(result.rowCount || 0);
+  const errors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
+  return Boolean(result.canSave)
+    && rowCount > 0
+    && errors.length === 0
+    && pricingReferenceRowIssues(result.items || []).length === 0;
+}
+
 function syncPricingReferenceImportSetupVisibility() {
   if (!elements.pricingReferenceImportSetup) return;
   const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  const hasImportDraft = !state.editingPricingReferenceId && Boolean(state.pendingPricingReference);
+  const reviewReady = hasImportDraft && pricingReferenceReviewReadyForMetadata(state.pendingPricingReference);
   const showImportSetup = mode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
-    && (state.pricingReferenceImportFileSelected || state.pricingReferenceImportBusy || Boolean(state.pendingPricingReference));
+    && (state.pricingReferenceImportFileSelected || state.pricingReferenceImportBusy || hasImportDraft);
   const showMetadataSetup = showImportSetup
     && !state.pricingReferenceImportBusy
-    && Boolean(state.pendingPricingReference)
+    && hasImportDraft
+    && reviewReady
     && String(state.pendingPricingReference?.layout || "") !== "importing";
   elements.pricingReferenceImportSetup.hidden = !showImportSetup;
   if (elements.pricingReferenceMetadataSetup) elements.pricingReferenceMetadataSetup.hidden = !showMetadataSetup;
@@ -2362,6 +2375,10 @@ function setPricingReferenceSettingsMode(mode = PRICING_REFERENCE_SETTINGS_MODE_
       : elements.deletePricingReferenceSelect;
     window.setTimeout(() => target?.focus(), 0);
   }
+}
+
+function handlePricingReferenceImportTabClick() {
+  setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT, { focus: true });
 }
 
 function clearPricingReferenceDraft(options = {}) {
@@ -6661,11 +6678,7 @@ function wireEvents() {
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.newPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
   elements.pricingReferenceManageTab?.addEventListener("click", () => setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_MANAGE, { focus: true }));
-  elements.pricingReferenceImportTab?.addEventListener("click", () => {
-    const wasEditingReference = Boolean(state.editingPricingReferenceId);
-    setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_IMPORT, { focus: true });
-    if (wasEditingReference) clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
-  });
+  elements.pricingReferenceImportTab?.addEventListener("click", handlePricingReferenceImportTabClick);
   elements.deletePricingReferenceSelect?.addEventListener("change", () => {
     updatePricingReferenceDeleteButton();
     editSelectedPricingReference({ openTable: false });

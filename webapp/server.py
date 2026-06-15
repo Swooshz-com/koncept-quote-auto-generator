@@ -2736,6 +2736,19 @@ def pricing_reference_import_preview_from_sectioned_workbook(raw: bytes, filenam
     return result
 
 
+def xlsx_rows_for_ai(raw: bytes) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row_number, values in xlsx_rows_with_numbers_from_bytes(raw):
+        non_empty_cells = {
+            xlsx_col_name(index): clean_text(value)
+            for index, value in enumerate(values)
+            if clean_text(value)
+        }
+        if non_empty_cells:
+            rows.append({"row_index": row_number, "non_empty_cells": non_empty_cells})
+    return rows
+
+
 def rows_from_csv_bytes(raw: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     text = raw.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
@@ -2910,13 +2923,8 @@ def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, An
     required_field_errors = pricing_reference_required_field_errors(items)
     if required_field_errors:
         raise ValueError(" ".join(required_field_errors))
-    enriched_items, enrichment_errors = ai_pricing_reference_metadata_enrichment(
-        clean_text(payload.get("label")) or reference_id,
-        items,
-    )
-    if enrichment_errors:
-        raise ValueError(" ".join(enrichment_errors))
-    items = sorted_pricing_reference_items(enriched_items)
+    pricing_reference_enrichment.enrich_pricing_reference_items(items)
+    items = sorted_pricing_reference_items(items)
     ensure_pricing_reference_order_fields(items)
     metadata_errors = pricing_reference_metadata_quality_errors(items)
     if metadata_errors:
@@ -3533,6 +3541,10 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
     result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
     result["layout"] = "ai-normalized-pricing-reference"
     result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
+    if not raw_items:
+        result["errors"] = ["AI did not detect editable pricing rows in this upload. Check that the workbook includes item descriptions, units, costs, and markups, or add rows manually in Review Rows."]
+        result["warnings"] = []
+        result["canSave"] = False
     return result
 
 
@@ -3559,12 +3571,14 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
                         return result
                 if extension == "csv":
                     headers, rows = rows_from_csv_bytes(raw)
+                    ai_rows = pricing_reference_rows_for_ai(headers, rows)
                 else:
                     headers, rows = rows_from_xlsx_bytes(raw)
+                    ai_rows = xlsx_rows_for_ai(raw)
                 detected_currency = detect_currency_from_rows(headers, rows)
                 rows_have_content = any(any(clean_text(value) for value in row.values()) for row in rows)
                 if result.get("missing") or rows_have_content:
-                    result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": pricing_reference_rows_for_ai(headers, rows)}, tax)
+                    result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": ai_rows}, tax)
             except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
                 result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
         result["currency"] = detected_currency or clean_text(result.get("currency")) or currency

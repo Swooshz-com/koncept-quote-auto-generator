@@ -46,6 +46,14 @@ def require_node(test_case: unittest.TestCase) -> str:
     test_case.skipTest(message)
 
 
+def koncept_catalog_sale_unit_price(item_id: str) -> float:
+    catalog = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
+    for item in catalog.get("items", []):
+        if item.get("id") == item_id:
+            return item["sale_unit_price"]
+    raise AssertionError(f"Missing catalog item {item_id}")
+
+
 def valid_payload():
     return {
         "images": [
@@ -568,7 +576,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(items[0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(items[0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(items[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(items[0]["catalog_unit_price"], 10.5)
+        self.assertEqual(
+            items[0]["catalog_unit_price"],
+            koncept_catalog_sale_unit_price("floor-design-needle-punch-carpet-in-colour"),
+        )
         self.assertNotIn("unit_price_override", items[0])
 
     def test_normalize_line_items_infers_catalog_match_from_high_analysis_description(self):
@@ -975,7 +986,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(lines[0]["text"], "[ sqm needle punch carpet in colour ] - AI says green carpet across the whole booth.")
         self.assertEqual(lines[0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(lines[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(lines[0]["catalog_unit_price"], 10.5)
+        self.assertEqual(
+            lines[0]["catalog_unit_price"],
+            koncept_catalog_sale_unit_price("floor-design-needle-punch-carpet-in-colour"),
+        )
         self.assertEqual(lines[1]["text"], "Use a 6m x 6m booth footprint for area takeoff.")
         self.assertEqual(draft["line_items"][0]["description"], "sqm needle punch carpet in colour")
         self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
@@ -2420,11 +2434,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Coffee / Tea and supplies for 100 people per day", result["items"][0]["aliases"])
         self.assertNotIn("Coffee/ Tea and supplies for 100 people per day", result["items"][0]["aliases"])
 
-    def test_pricing_reference_save_regenerates_hidden_ai_metadata(self):
+    def test_pricing_reference_save_derives_metadata_without_live_ai(self):
         with mock.patch.object(
             webapp,
             "ai_pricing_reference_metadata_enrichment",
-            side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
+            side_effect=AssertionError("metadata save should not call live AI"),
         ) as metadata_enrichment:
             reference = webapp.normalize_pricing_reference_payload({
                 "id": "weak-ref",
@@ -2436,35 +2450,12 @@ class WebappServerTest(unittest.TestCase):
                     "unit_hint": "sqm",
                     "internal_cost": 10,
                     "markup_multiplier": 2,
-                    "match_terms": ["stale user-facing term"],
-                    "object_families": ["stale_family"],
                 }],
             })
 
-        metadata_enrichment.assert_called_once()
-        self.assertIn("ai metadata row-1", reference["items"][0]["match_terms"])
-        self.assertNotIn("stale user-facing term", reference["items"][0]["match_terms"])
-        self.assertEqual(reference["items"][0]["object_families"], ["ai_family"])
-
-    def test_pricing_reference_save_blocks_when_required_ai_metadata_fails(self):
-        with mock.patch.object(
-            webapp,
-            "ai_pricing_reference_metadata_enrichment",
-            return_value=([], [webapp.AI_PRICING_METADATA_NOT_CONFIGURED]),
-        ):
-            with self.assertRaisesRegex(ValueError, webapp.AI_PRICING_METADATA_NOT_CONFIGURED):
-                webapp.normalize_pricing_reference_payload({
-                    "id": "weak-ref",
-                    "label": "Weak Ref",
-                    "items": [{
-                        "id": "row-1",
-                        "section": "Graphics",
-                        "description": "Printed graphics",
-                        "unit_hint": "sqm",
-                        "internal_cost": 10,
-                        "markup_multiplier": 2,
-                    }],
-                })
+        metadata_enrichment.assert_not_called()
+        self.assertIn("printed graphics", reference["items"][0]["match_terms"])
+        self.assertIn("printed_graphic", reference["items"][0]["object_families"])
 
     def test_pricing_reference_save_blocks_rows_without_unit_hint(self):
         with self.assertRaisesRegex(ValueError, "Pricing unit_hint is missing"):
@@ -2584,6 +2575,50 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["items"][0]["id"], "structures-white-painted-walling")
+
+    def test_messy_xlsx_import_sends_all_cells_to_ai_context(self):
+        raw = (ROOT / "docs" / "examples" / "super-messy-pricing-reference.xlsx").read_bytes()
+        parsed = {
+            "items": [{
+                "section": "Floor Design",
+                "description": "sqm 100mm platform with aluminium edging",
+                "unit_hint": "sqm",
+                "internal_cost": 40,
+                "markup_multiplier": 1.5,
+                "remarks": ["typo: edgeing should clean to edging"],
+                "aliases": ["raised deck", "platform", "aluminium trim"],
+            }]
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed) as request_import:
+            result = webapp.pricing_reference_import_preview({
+                "filename": "super-messy-pricing-reference.xlsx",
+                "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+                + base64.b64encode(raw).decode("ascii"),
+            })
+
+        request_import.assert_called_once()
+        content = request_import.call_args.args[1]
+        dumped_content = json.dumps(content, ensure_ascii=False)
+        self.assertIn("sqm 100mm platform w aluminium edgeing", dumped_content)
+        self.assertIn("supplier cost each (messy)", dumped_content)
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["rowCount"], 1)
+        self.assertEqual(result["items"][0]["unit_hint"], "sqm")
+
+    def test_ai_import_zero_rows_reports_detection_failure(self):
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value={"items": []}):
+            result = webapp.ai_pricing_reference_import_preview(
+                "empty-ai.xlsx",
+                {"rows": [{"row_index": 1, "non_empty_cells": {"A": "FLOOR stuff"}}]},
+                {"label": "GST", "rate": 0.09},
+            )
+
+        self.assertEqual(result["rowCount"], 0)
+        self.assertFalse(result["canSave"])
+        self.assertIn("AI did not detect editable pricing rows", result["errors"][0])
 
     def test_v11_pricing_workbook_import_is_deterministic_and_defers_ai_metadata_until_save(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
@@ -3151,11 +3186,11 @@ class WebappServerTest(unittest.TestCase):
         logo = items["graphics-3d-vinyl-logo-on-foam"]
         tv = items["av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd"]
 
-        self.assertEqual(water["object_families"], [])
-        self.assertEqual(sink["object_families"], [])
-        self.assertEqual(graphics["object_families"], [])
-        self.assertEqual(logo["object_families"], [])
-        self.assertEqual(tv["object_families"], [])
+        self.assertEqual(water["object_families"], ["water_inlet_outlet", "water_inlet_outlet_nos"])
+        self.assertEqual(sink["object_families"], ["sink_connection", "plumbing", "sink_connection_nos"])
+        self.assertEqual(graphics["object_families"], ["vinyl_printed_graphic", "printed_graphic_wall", "vinyl_printed_graphic_sqm"])
+        self.assertEqual(logo["object_families"], ["vinyl_logo_foam", "cut_out_logo", "vinyl_logo_foam_nos"])
+        self.assertEqual(tv["object_families"], ["led_tv_monitor_speaker_full", "tv"])
         self.assertIn("water inlet and outlet", water["match_terms"])
         self.assertNotIn("sink connection", water["match_terms"])
         self.assertIn("sink connection", sink["match_terms"])
@@ -7538,6 +7573,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertLess(pricing_reference_modal.index("Manage"), pricing_reference_modal.index("Import"))
         self.assertLess(pricing_reference_modal.index("Existing repo references"), pricing_reference_modal.index("Pricing catalog upload"))
         self.assertLess(pricing_reference_modal.index("Pricing catalog upload"), pricing_reference_modal.index("Pricing reference name"))
+        self.assertLess(pricing_reference_modal.index('id="pricingReferencePreview"'), pricing_reference_modal.index("Pricing reference name"))
         self.assertLess(pricing_reference_modal.index("Pricing reference name"), pricing_reference_modal.index("Tax label"))
         self.assertLess(pricing_reference_modal.index("Tax rate (%)"), pricing_reference_modal.index("Download Template"))
         self.assertIn("pricing-reference-upload-field", pricing_reference_modal)
@@ -8453,6 +8489,108 @@ assert.ok(editBody.indexOf("renderPricingReferencePreview(state.pendingPricingRe
 assert.ok(editBody.indexOf("capturePricingReferenceEditSnapshot(state.pendingPricingReference);") < editBody.indexOf("renderPricingReferenceManageStatus(state.pendingPricingReference);"));
 assert.ok(normalizedSource.includes("openPricingReferenceTableOverlay();"));
 assert.ok(normalizedSource.includes("event.target === elements.pricingReferenceTableOverlay"));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_import_tab_preserves_manage_review_draft(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
+const state = {
+  pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_IMPORT,
+  pricingReferenceImportFileSelected: false,
+  pricingReferenceImportBusy: false,
+  pricingReferenceSaveBusy: false,
+  editingPricingReferenceId: "repo-ref",
+  pendingPricingReference: { items: [{ id: "row-1", warning: "OK" }], canSave: true },
+};
+const importSetup = { hidden: false };
+const metadataSetup = { hidden: false };
+const elements = {
+  pricingReferenceImportSetup: importSetup,
+  pricingReferenceMetadataSetup: metadataSetup,
+};
+let clearCalls = 0;
+function clearPricingReferenceDraft() { clearCalls += 1; state.pendingPricingReference = null; state.editingPricingReferenceId = ""; }
+function setPricingReferenceSettingsMode(mode) { state.pricingReferenceSettingsMode = mode; }
+function normalizePricingReferenceSettingsMode(value = "") {
+  return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    ? PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    : PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+}
+
+eval([
+  "pricingReferenceRowIssues",
+  "pricingReferenceReviewReadyForMetadata",
+  "syncPricingReferenceImportSetupVisibility",
+  "handlePricingReferenceImportTabClick",
+].map(extractFunction).join("\n"));
+
+syncPricingReferenceImportSetupVisibility();
+assert.strictEqual(importSetup.hidden, true);
+assert.strictEqual(metadataSetup.hidden, true);
+
+handlePricingReferenceImportTabClick();
+assert.strictEqual(clearCalls, 0);
+assert.strictEqual(state.editingPricingReferenceId, "repo-ref");
+assert.strictEqual(state.pendingPricingReference.items.length, 1);
+assert.strictEqual(state.pricingReferenceSettingsMode, PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
+
+state.editingPricingReferenceId = "";
+state.pricingReferenceImportFileSelected = true;
+state.pendingPricingReference = { items: [], errors: [], warnings: ["Add at least one row."], canSave: false };
+syncPricingReferenceImportSetupVisibility();
+assert.strictEqual(importSetup.hidden, false);
+assert.strictEqual(metadataSetup.hidden, true);
+
+state.pendingPricingReference = {
+  items: [{
+    section: "Graphics",
+    description: "sqm printed graphics",
+    unit_hint: "sqm",
+    internal_cost: 10,
+    markup_multiplier: 1.5,
+    warning: "OK",
+  }],
+  errors: [],
+  warnings: [],
+  canSave: true,
+};
+syncPricingReferenceImportSetupVisibility();
+assert.strictEqual(importSetup.hidden, false);
+assert.strictEqual(metadataSetup.hidden, false);
 """
         completed = subprocess.run(
             [node, "-e", script],

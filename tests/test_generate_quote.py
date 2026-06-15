@@ -406,7 +406,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(rows[0].section, "Floor Design")
         self.assertEqual(rows[0].description, "sqm needle punch carpet in colour")
         self.assertEqual(rows[0].unit_hint, "sqm")
-        self.assertEqual(rows[0].cost, 7)
+        first_catalog_item = json.loads(catalog_path.read_text(encoding="utf-8"))["items"][0]
+        self.assertEqual(rows[0].cost, first_catalog_item["internal_cost"])
         self.assertEqual(rows[0].gst_multiplier, 1.0)
         self.assertEqual(rows[0].markup, 1.5)
         self.assertIn("needle punch", rows[0].aliases)

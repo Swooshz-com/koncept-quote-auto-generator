@@ -71,6 +71,17 @@ def tokens_for_text(value: Any) -> set[str]:
     return tokens
 
 
+def ordered_tokens_for_text(value: Any) -> list[str]:
+    tokens: list[str] = []
+    for raw in re.findall(r"[a-z0-9]+", normalized_text(value).lower()):
+        next_token = token(raw)
+        if (len(next_token) <= 2 and next_token != "tv") or next_token in STOP_TERMS:
+            continue
+        if next_token not in tokens:
+            tokens.append(next_token)
+    return tokens
+
+
 def add_unique(values: list[str], value: Any, *, limit: int | None = None) -> None:
     text = normalized_text(value).lower()
     if not text:
@@ -112,6 +123,20 @@ def clean_string_list(value: Any) -> list[str]:
     return result
 
 
+def family_candidates(value: Any) -> list[str]:
+    candidates: list[str] = []
+    phrases = phrase_candidates(value)
+    if not phrases:
+        phrases = [stripped_unit_phrase(value)]
+    for phrase in phrases:
+        tokens = ordered_tokens_for_text(phrase)
+        if len(tokens) >= 2:
+            add_unique(candidates, "_".join(tokens[:5]), limit=80)
+        elif len(tokens) == 1:
+            add_unique(candidates, tokens[0], limit=80)
+    return candidates
+
+
 def enrich_pricing_reference_item(item: dict[str, Any]) -> dict[str, Any]:
     section = normalized_text(item.get("reference_section") or item.get("section"))
     section_key = section.lower()
@@ -139,7 +164,15 @@ def enrich_pricing_reference_item(item: dict[str, Any]) -> dict[str, Any]:
             add_unique(match_terms, term, limit=80)
 
     item["match_terms"] = match_terms[:36]
-    item["object_families"] = clean_string_list(item.get("object_families"))[:12]
+    object_families = clean_string_list(item.get("object_families"))
+    if not object_families:
+        for value in [
+            item.get("description"),
+            *aliases,
+        ]:
+            for candidate in family_candidates(value):
+                add_unique(object_families, candidate, limit=80)
+    item["object_families"] = object_families[:12]
     return item
 
 
