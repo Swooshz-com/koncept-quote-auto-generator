@@ -132,9 +132,17 @@ Rules to preserve:
   shape, colour, finish, material, size, capacity, and mounting still matter.
 - Pricing-reference imports must save a deterministic metadata baseline
   (`match_terms` and `object_families`) from row wording, aliases, remarks,
-  units, sections, and visuals. Live AI metadata enrichment must not block Save;
-  if richer AI enrichment is added later, run it as an optional or async job with
-  full AI-call metadata logging and deterministic fallback.
+  units, sections, and visuals. This baseline must be generic across industries,
+  not tuned to furniture, exhibitions, or any single sample catalog.
+- After the deterministic baseline is saved, run AI metadata enrichment when a
+  provider is configured to improve generic synonyms and object-family coverage
+  for unfamiliar industries. This enrichment must be post-save, optional/manual,
+  or async; it must never block Save.
+- AI metadata enrichment output must be validated row-by-row, must not rewrite
+  descriptions, prices, units, ids, sections, or remarks, and must fall back to
+  deterministic metadata if the provider fails or returns weak output. Every
+  enrichment attempt must be logged as an AI call with the same privacy-safe
+  metadata rules as other AI features.
 
 ## Data Model
 
