@@ -3653,7 +3653,7 @@ function sortOutputRows(rows = state.outputRows) {
 
 function resetOutputSortModeToPricingReference() {
   state.outputSortMode = "pricing_reference";
-  if (elements.outputSortMode) elements.outputSortMode.value = state.outputSortMode;
+  if (typeof elements !== "undefined" && elements.outputSortMode) elements.outputSortMode.value = state.outputSortMode;
 }
 
 function outputCellDisplayValue(row = {}, field = "") {
