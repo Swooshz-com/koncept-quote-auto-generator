@@ -1384,6 +1384,33 @@ def normalize_basis_tag(value: Any) -> str:
     return "Confirm"
 
 
+def is_informational_dimension_text(value: Any) -> bool:
+    text = clean_text(value).lower()
+    if not text or bracketed_catalog_reference_parts(text):
+        return False
+    starts_as_dimension_note = bool(
+        re.search(r"^\s*(?:use\s+)?(?:a\s+|the\s+)?(?:booth|stand|space)\s+(?:footprint|dimensions?|size)\b", text)
+        or re.search(r"^\s*(?:booth\s+)?floor\s+area\b", text)
+        or ("area takeoff" in text and re.search(r"\b(?:booth|stand|space)\b", text))
+    )
+    if not starts_as_dimension_note:
+        return False
+    return bool(
+        re.search(r"\b\d+(?:\.\d+)?\s*(?:m(?:w|d)?|sqm|sqft|ft)\b", text)
+        or re.search(r"\b\d+(?:\.\d+)?\s*[x\u00d7]\s*\d+(?:\.\d+)?\b", text)
+    )
+
+
+def is_informational_dimension_basis_line(line: dict[str, Any]) -> bool:
+    if not isinstance(line, dict):
+        return False
+    if clean_text(line.get("pricing_keyword")):
+        return False
+    if clean_text(line.get("pricing_reference_description") or line.get("catalog_description")):
+        return False
+    return is_informational_dimension_text(line.get("text") or line.get("description"))
+
+
 def normalize_confidence_percent(value: Any) -> int | None:
     if value in (None, ""):
         return None
@@ -6154,20 +6181,8 @@ def quote_basis_sections_with_catalog_exact_lines(
     def item_has_catalog_reference(item: dict[str, Any]) -> bool:
         return bool(clean_text(item.get("pricing_reference_description")) or clean_text(item.get("catalog_description")))
 
-    def can_remain_confirm_without_catalog(line: dict[str, Any]) -> bool:
-        text = clean_text(line.get("text")).lower()
-        return (
-            "booth size defaults" in text
-            or "default booth size" in text
-            or ("default" in text and ("booth dimensions" in text or "booth size" in text))
-            or (
-                ("booth footprint" in text or "booth dimensions" in text or "quotation takeoff" in text)
-                and not clean_text(line.get("pricing_keyword"))
-            )
-        )
-
     def is_default_dimension_basis_line(line: dict[str, Any]) -> bool:
-        return can_remain_confirm_without_catalog(line)
+        return is_informational_dimension_basis_line(line)
 
     def mark_line_custom_for_manual_pricing(line: dict[str, Any]) -> None:
         bracketed = bracketed_catalog_reference_parts(line.get("text"))
@@ -6734,7 +6749,7 @@ def quote_basis_sections_with_catalog_exact_lines(
                     continue
                 if line.get("quantity") in (None, "") and not clean_text(line.get("unit")):
                     continue
-                if item_has_catalog_reference(line) or can_remain_confirm_without_catalog(line):
+                if item_has_catalog_reference(line) or is_default_dimension_basis_line(line):
                     continue
                 mark_line_custom_for_manual_pricing(line)
     return [
@@ -6846,6 +6861,47 @@ def line_items_aligned_to_quote_basis(
         text = bracketed[0] if bracketed else value
         text = clean_customer_quote_line_text(text).casefold()
         return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    non_output_source_ids: set[str] = set()
+    non_output_description_keys: set[str] = set()
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for line in section.get("lines") or []:
+            if not is_informational_dimension_basis_line(line):
+                continue
+            for value in (line.get("id"), line.get("source_line_item_id")):
+                source_id = safe_resource_id(value, "")
+                if not source_id:
+                    continue
+                non_output_source_ids.add(source_id)
+            description_key = comparable_description(line.get("text"))
+            if description_key:
+                non_output_description_keys.add(description_key)
+
+    if non_output_source_ids or non_output_description_keys:
+        filtered_line_items = []
+        for item in line_items:
+            if not isinstance(item, dict):
+                continue
+            item_source_ids = {
+                safe_resource_id(value, "")
+                for value in (item.get("source_basis_line_id"), item.get("id"), item.get("source_line_item_id"))
+                if safe_resource_id(value, "")
+            }
+            description_key = comparable_description(item.get("description"))
+            has_catalog = bool(clean_text(item.get("pricing_keyword") or item.get("pricing_reference_description") or item.get("catalog_description")))
+            if item_source_ids & non_output_source_ids:
+                continue
+            if not has_catalog and (
+                (description_key and description_key in non_output_description_keys)
+                or is_informational_dimension_text(item.get("description"))
+            ):
+                continue
+            filtered_line_items.append(item)
+        line_items = filtered_line_items
+        if not line_items:
+            return []
 
     for index, item in enumerate(line_items):
         if not isinstance(item, dict):

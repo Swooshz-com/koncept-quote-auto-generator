@@ -964,6 +964,42 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm needle punch carpet in colour")
 
+    def test_normalize_ai_draft_keeps_booth_footprint_note_out_of_output_rows(self):
+        parsed = {
+            "quote_basis_sections": [
+                {
+                    "id": "floor-design",
+                    "title": "Floor Design",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "Booth footprint 9mW x 10.5mD; floor area 94.5 sqm",
+                            "quantity": 94.5,
+                            "unit": "sqm",
+                            "confidence_pct": 100,
+                        },
+                    ],
+                }
+            ],
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "description": "Booth footprint 9mW x 10.5mD; floor area 94.5 sqm",
+                    "quantity": 94.5,
+                    "unit": "sqm",
+                    "pricing_keyword": "",
+                }
+            ],
+        }
+
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+
+        lines = draft["quote_basis_sections"][0]["lines"]
+        self.assertEqual(lines[0]["text"], "Booth footprint 9mW x 10.5mD; floor area 94.5 sqm")
+        self.assertEqual(lines[0]["tag"], "Custom")
+        self.assertEqual(lines[0].get("custom_pricing"), True)
+        self.assertEqual(draft["line_items"], [])
+
     def test_normalize_ai_draft_appends_missing_catalog_backed_basis_lines(self):
         parsed = {
             "quote_basis_sections": [
@@ -7111,6 +7147,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
             ".basis-line-include .basis-quantity-text",
             ".basis-line-include .basis-line-icon::before",
             ".basis-line-exclude .basis-line-text",
+            ".basis-line-exclude .basis-line-catalog-reference",
+            ".basis-line-exclude .basis-line-catalog-detail",
+            ".basis-line-exclude .basis-line-catalog-arrow",
             ".basis-line-exclude .basis-confidence-pill",
             ".basis-line-exclude .basis-quantity-text",
             ".basis-line-exclude .basis-line-icon::before",
@@ -7536,6 +7575,9 @@ eval([
   "normalizeLineItem",
   "normalizeOutputRow",
   "outputComparableText",
+  "isInformationalDimensionText",
+  "basisLineIsInformationalDimension",
+  "outputRowIsInformationalDimension",
   "outputRowSectionMatchesBasis",
   "outputRowCoversBasisLine",
   "outputRowCoversBasisEntry",
@@ -7551,6 +7593,7 @@ eval([
   "pricingReferenceOrder",
   "compareOrderValues",
   "sortOutputRows",
+  "resetOutputSortModeToPricingReference",
   "refreshOutputRowsFromLineItems",
   "ensureOutputRowsFromLineItems",
 ].map(extractFunction).join("\n"));
@@ -7600,6 +7643,7 @@ state.quoteBasisSections = [{
 state.lineItems = [];
 state.outputRows = [];
 refreshOutputRowsFromLineItems();
+assert.strictEqual(state.outputSortMode, "pricing_reference");
 assert.strictEqual(state.outputRows.length, 1);
 assert.strictEqual(state.outputRows[0].catalog_unit_price, 60);
 assert.strictEqual(state.outputRows[0].amount, 2160);
@@ -8678,6 +8722,8 @@ assert.ok(!source.includes('startJob("draft", buildPayload())'));
         self.assertIn('value="pricing_reference" selected', html)
         self.assertIn('const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];', js)
         self.assertIn('outputSortMode: "pricing_reference"', js)
+        self.assertIn("resetOutputSortModeToPricingReference", js)
+        self.assertIn('state.outputSortMode = "pricing_reference";', js)
         self.assertIn('categoryOrderValue', js)
         self.assertIn('pricingReferenceOrder', js)
 

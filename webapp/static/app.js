@@ -1830,7 +1830,7 @@ async function restoreSessionState() {
   state.outputRows = Array.isArray(saved.outputRows) ? saved.outputRows.map(normalizeOutputRow) : [];
   state.originalOutputRows = Array.isArray(saved.originalOutputRows) ? saved.originalOutputRows.map(normalizeOutputRow) : [];
   state.outputErrors = Array.isArray(saved.outputErrors) ? saved.outputErrors : [];
-  state.outputSortMode = OUTPUT_SORT_MODES.includes(saved.outputSortMode) ? saved.outputSortMode : "pricing_reference";
+  state.outputSortMode = "pricing_reference";
   state.analysisFindings = Array.isArray(saved.analysisFindings) ? saved.analysisFindings : [];
   state.blockingClarificationQuestions = Array.isArray(saved.blockingClarificationQuestions) ? saved.blockingClarificationQuestions : [];
   state.boothDimensions = normalizeBoothDimensions(saved.boothDimensions || saved.quoteDetails?.project || {});
@@ -3353,6 +3353,28 @@ function outputComparableText(value = "") {
     .trim();
 }
 
+function isInformationalDimensionText(value = "") {
+  const rawText = cleanCustomerQuoteLineText(value);
+  if (bracketedCatalogReferenceParts(rawText)) return false;
+  const text = rawText.toLowerCase();
+  const startsAsDimensionNote = /^\s*(?:use\s+)?(?:a\s+|the\s+)?(?:booth|stand|space)\s+(?:footprint|dimensions?|size)\b/.test(text)
+    || /^\s*(?:booth\s+)?floor\s+area\b/.test(text)
+    || (text.includes("area takeoff") && /\b(?:booth|stand|space)\b/.test(text));
+  if (!startsAsDimensionNote) return false;
+  return /\b\d+(?:\.\d+)?\s*(?:m(?:w|d)?|sqm|sqft|ft)\b/.test(text)
+    || /\b\d+(?:\.\d+)?\s*[x\u00d7]\s*\d+(?:\.\d+)?\b/.test(text);
+}
+
+function basisLineIsInformationalDimension(line = {}) {
+  if (line.pricing_keyword || line.pricing_reference_description || line.catalog_description) return false;
+  return isInformationalDimensionText(line.text || line.description || "");
+}
+
+function outputRowIsInformationalDimension(row = {}) {
+  if (row.pricing_keyword || row.pricing_reference_description || row.catalog_description) return false;
+  return isInformationalDimensionText(row.description || "");
+}
+
 function outputRowSectionMatchesBasis(row = {}, sectionTitle = "") {
   if (!String(sectionTitle || "").trim()) return true;
   const basisSection = sectionTitleKey(normalizeQuoteBasisTitle(sectionTitle));
@@ -3393,6 +3415,7 @@ function basisLineAllowsOutput(line = {}) {
 }
 
 function outputRowAllowedByBasis(row = {}) {
+  if (outputRowIsInformationalDimension(row)) return false;
   const reviewedSections = normalizeQuoteBasisSections(state.quoteBasisSections);
   const hasReviewedBasis = reviewedSections.some((section) => (section.lines || []).length > 0);
   const sections = hasReviewedBasis ? reviewedSections : basisSections(state.quoteBasisSections);
@@ -3491,6 +3514,7 @@ function includedBasisOutputRows(existingRows = []) {
     (section.lines || []).forEach((line) => {
       const customPricing = isCustomPricingBasisLine(line);
       if (!basisLineAllowsOutput(line)) return;
+      if (basisLineIsInformationalDimension(line)) return;
       const text = String(line.text || "").trim();
       if (!text) return;
       const description = customPricing ? text : outputCatalogDescription(line);
@@ -3627,6 +3651,11 @@ function sortOutputRows(rows = state.outputRows) {
   return copy.map((item) => item.row);
 }
 
+function resetOutputSortModeToPricingReference() {
+  state.outputSortMode = "pricing_reference";
+  if (elements.outputSortMode) elements.outputSortMode.value = state.outputSortMode;
+}
+
 function outputCellDisplayValue(row = {}, field = "") {
   if (field === "price_mode") return row.price_mode === "Included" ? "Included" : "Priced";
   if (field === "unit_price_override") {
@@ -3700,6 +3729,7 @@ function ensureOutputRowsFromLineItems() {
 }
 
 function refreshOutputRowsFromLineItems() {
+  resetOutputSortModeToPricingReference();
   const generatedRows = state.lineItems.map(outputRowFromLineItem);
   const allowedRows = dedupeOutputRows(generatedRows.filter(outputRowAllowedByBasis).map(inheritBasisOutputFields));
   state.outputRows = sortOutputRows([...allowedRows, ...includedBasisOutputRows(allowedRows)]);

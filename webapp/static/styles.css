@@ -2090,6 +2090,12 @@ select:focus {
   color: #a1382f;
 }
 
+.basis-line-exclude .basis-line-catalog-reference,
+.basis-line-exclude .basis-line-catalog-detail,
+.basis-line-exclude .basis-line-catalog-arrow {
+  color: #a1382f;
+}
+
 .basis-line-exclude .basis-quantity-text {
   color: #a1382f;
 }
