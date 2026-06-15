@@ -39,7 +39,7 @@ Real catalogs may split one pricing item across physical rows. Import should det
 
 The stitcher must preserve casing, all-caps remarks, dimensions, units, and technical wording. It must not merge independent priced rows such as rigging points when those rows include their own unit, cost, markup, or other pricing identity.
 
-For Koncept V1.1 workbooks, bullet or note-style continuation rows belong in remarks, not in the customer-facing pricing reference description.
+For recognized section-numbered pricing workbooks, bullet or note-style continuation rows belong in remarks, not in the customer-facing pricing reference description.
 
 Import cleanup has two layers:
 

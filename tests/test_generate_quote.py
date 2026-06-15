@@ -291,9 +291,9 @@ def generate_layout_workbook(brief_updates=None):
             "date_label": "Date:",
         },
         "signature": {
-            "koncept_signatory": "Francies Cheng",
-            "koncept_title": "Director",
-            "koncept_date_label": "Date:",
+            "company_signatory": "Francies Cheng",
+            "company_title": "Director",
+            "company_date_label": "Date:",
         },
     }
     if brief_updates:
@@ -906,9 +906,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "date_label": "Date:",
             },
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
-                "koncept_date_label": "Date:",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
             },
         }
         price = quote.PriceRow(1, "Electrical", "nos. 10W LED Spotlight", "nos", 45, 1.09, 1, "")
@@ -968,8 +968,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             "line_items": [],
             "payment_terms": [],
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
             },
         }
         price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
@@ -1021,8 +1021,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             "line_items": [],
             "payment_terms": [],
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
             },
         }
         price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
@@ -1072,8 +1072,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             "line_items": [],
             "payment_terms": [],
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
             },
         }
         price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
@@ -1389,9 +1389,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "date_label": "Signed date:",
             },
             "signature": {
-                "koncept_signatory": "Morgan Lee",
-                "koncept_title": "Sales Lead",
-                "koncept_date_label": "Company signed date:",
+                "company_signatory": "Morgan Lee",
+                "company_title": "Sales Lead",
+                "company_date_label": "Company signed date:",
             },
         }
         price = quote.PriceRow(1, "Floor", "m2 needle punch carpet in colour", "sqm", 7, 1.09, 1.5, "")

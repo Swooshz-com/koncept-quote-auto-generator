@@ -41,7 +41,7 @@ COL_REMARKS = 11
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert a Koncept pricing workbook into a root-level pricing reference catalog.")
+    parser = argparse.ArgumentParser(description="Convert a pricing workbook into a root-level pricing reference catalog.")
     parser.add_argument("--source", required=True, type=Path, help="Pricing source .xlsx file.")
     parser.add_argument("--source-label", help=argparse.SUPPRESS)
     parser.add_argument("--out", required=True, type=Path, help="Output pricing catalog JSON path.")
@@ -71,11 +71,9 @@ def numeric_value(value: Any) -> float | None:
     return parsed
 
 
-COUNTER_PER_ITEM_TERMS = {
-    "information counter",
-    "lockable counter",
-    "lockable information counter",
-}
+PIECE_DIMENSION_DESCRIPTION_RE = re.compile(
+    r"(?i)^(?:nos\.?\s+of\s+1m\s+length\s+x|m\.?\s*length\s*x)\b"
+)
 
 
 def positive_order(value: Any) -> int | None:
@@ -85,16 +83,14 @@ def positive_order(value: Any) -> int | None:
     return int(parsed)
 
 
-def is_per_item_counter_text(section: Any, description: Any) -> bool:
-    text = f"{normalized_text(section)} {normalized_text(description)}".lower()
-    if "counter" not in text and "cabinet" not in text:
-        return False
-    return any(term in text for term in COUNTER_PER_ITEM_TERMS)
-
-
-def normalize_per_item_counter_description(section: Any, description: Any) -> str:
+def is_piece_dimension_description(description: Any) -> bool:
     text = normalized_text(description)
-    if not is_per_item_counter_text(section, text):
+    return bool(PIECE_DIMENSION_DESCRIPTION_RE.search(text)) and len(re.findall(r"(?i)\bx\b", text)) >= 2
+
+
+def normalize_piece_dimension_description(description: Any) -> str:
+    text = normalized_text(description)
+    if not is_piece_dimension_description(text):
         return text
     return re.sub(
         r"(?i)^m\.?\s*length\s*x\b",
@@ -190,9 +186,9 @@ def finalize_item(item: dict[str, Any], items: list[dict[str, Any]]) -> None:
     description_parts = item.pop("description_parts")
     remarks = item["remarks"]
     section = item["section"]
-    description = normalize_per_item_counter_description(section, "; ".join(description_parts))
+    description = normalize_piece_dimension_description("; ".join(description_parts))
     unit_hint = quote.infer_unit(description)
-    if is_per_item_counter_text(section, description):
+    if is_piece_dimension_description(description):
         unit_hint = "nos"
     alias_description_parts = [description, *[part for part in description_parts if normalized_text(part) != description]]
     existing_ids = {existing["id"] for existing in items}

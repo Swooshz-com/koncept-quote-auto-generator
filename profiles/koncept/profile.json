@@ -24,13 +24,13 @@
           "date_label": "Date:"
         },
         "signature": {
-          "koncept_date_label": "Date:"
+          "company_date_label": "Date:"
         },
         "rich_text": {
           "termsHeading": "<div>Terms &amp; Conditions:</div>",
           "notesHeading": "<div>Note:</div>",
           "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
-          "konceptDateLabel": "<div>Date:</div>",
+          "companyDateLabel": "<div>Date:</div>",
           "personLabel": "<div>Person in charge</div>",
           "stampLabel": "<div>Company name &amp; stamp</div>",
           "dateLabel": "<div>Date:</div>"
@@ -85,17 +85,17 @@
           "notesHeading": "<div><strong>Note:</strong></div>",
           "standardNotes": "<div>The above contract does not include application fees to any relevant authorities and electrical connection fees.</div><div>Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.</div><div>Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.</div><div>All designs and dimensions are subject to final site verification.</div><div>For production purpose, quotation must be confirmed minimum 20 working days before date of event</div><div>20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.</div><div>Design and Artwork of the graphics are not included in this contract.</div><div>Cancellation of agreement is subject to 75% of the agreement amount.</div><div>All deposit are non-refundable upon of cancellation of agreement.</div>",
           "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
-          "konceptSignatory": "<div>Francies Cheng</div>",
-          "konceptTitle": "<div>Director</div>",
-          "konceptDateLabel": "<div>Date:</div>",
+          "companySignatory": "<div>Francies Cheng</div>",
+          "companyTitle": "<div>Director</div>",
+          "companyDateLabel": "<div>Date:</div>",
           "personLabel": "<div>Person in charge</div>",
           "stampLabel": "<div>Company name &amp; stamp</div>",
           "dateLabel": "<div>Date:</div>"
         },
         "signature": {
-          "koncept_signatory": "Francies Cheng",
-          "koncept_title": "Director",
-          "koncept_date_label": "Date:"
+          "company_signatory": "Francies Cheng",
+          "company_title": "Director",
+          "company_date_label": "Date:"
         }
       }
     }

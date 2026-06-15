@@ -21,6 +21,22 @@ EXCLUDED_FILES = {
 }
 
 BANNED_LITERAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("hardcoded Koncept default profile", re.compile(r"\bDEFAULT_PROFILE_ID\s*=\s*[\"']koncept[\"']")),
+    ("hardcoded Koncept default pricing reference", re.compile(r"\bDEFAULT_PRICING_REFERENCE_ID\s*=\s*[\"']koncept-exhibition-quotation[\"']")),
+    ("hardcoded Koncept profile path", re.compile(r"""profiles["']?\s*/\s*["']koncept["']""")),
+    ("hardcoded Koncept pricing-reference path", re.compile(r"""pricing-references["']?\s*/\s*["']koncept-exhibition-quotation["']""")),
+    ("hardcoded reference section alias map", re.compile(r"\bREFERENCE_SECTION_ALIASES\b")),
+    ("legacy customer signature field", re.compile(r"\bkoncept(?:Signatory|Title|DateLabel|_signatory|_title|_date_label)\b")),
+    ("hardcoded V1.1 parser naming", re.compile(r"\b(?:V11_|v11_|v1\.1-pricing-workbook)\b", re.IGNORECASE)),
+    ("hardcoded catalog visual section rank", re.compile(r"\bcatalog_visual_section_rank\b")),
+    ("hardcoded counter-specific quantity guard", re.compile(r"\b(?:COUNTER_PER_ITEM_TERMS|per_item_counter|is_per_item_counter|suspicious_per_item_counter)\b")),
+    (
+        "hardcoded pricing reference section title",
+        re.compile(
+            r"""["'](?:COUNTERS AND CABINETS|Floor Design|Booth Structure|AV Equipment Rental Items|Furniture Rental|Rental Items|Water Connection|Coffee / Tea \(Subject to approval by Venue owner and Organiser\)|Electrical Fittings \( Excluding connection fees by Organiser\))["']""",
+            re.IGNORECASE,
+        ),
+    ),
     ("hardcoded semantic group constant", re.compile(r"\bSEMANTIC_GROUPS\b")),
     ("hardcoded family expansion constant", re.compile(r"\bEXPANDED_TERMS_BY_FAMILY\b")),
     ("hardcoded catalog object-family token map", re.compile(r"\bCATALOG_OBJECT_FAMILY_TOKENS\b")),

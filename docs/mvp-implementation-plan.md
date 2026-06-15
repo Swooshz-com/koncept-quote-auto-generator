@@ -17,7 +17,7 @@ the company may choose to source or ignore.
   `app.swooshz.com`.
 - Use one identity layer for all Swooshz products, then let users enter the
   quote generator through SSO/session handoff.
-- Treat Koncept Images as the first tenant/company seed, not as a global app
+- Treat bundled customer data as seed/demo data only, not as a global app
   default for every future customer.
 - Keep pricing references, presets, quote jobs, uploaded files, generated files,
   usage logs, and billing status scoped to a company/account.
@@ -46,10 +46,8 @@ Rules to preserve:
 - Catalog-backed lines must preserve exact pricing-reference wording.
 - AI proposal/custom lines are only for truly weird, special, or optional
   suggested scope outside the pricing reference.
-- Avoid broad custom rows like "booth structure 1 lot" when pricing-reference
-  rows exist for partition walls, fascia, support pillars, planter boxes, glass
-  partitions, AV, electrical, furniture, coffee/tea, water connection, or
-  graphics.
+- Avoid broad one-lot custom rows when pricing-reference rows exist for the
+  observed category, material, equipment, service, or connection scope.
 - Do not force unsafe matches. Distinguishing attributes such as object family,
   shape, colour, finish, material, size, capacity, and mounting still matter.
 

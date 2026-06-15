@@ -109,9 +109,9 @@ def valid_payload():
             }
         ],
         "signature": {
-            "koncept_signatory": "Francies Cheng",
-            "koncept_title": "Director",
-            "koncept_date_label": "Date:",
+            "company_signatory": "Francies Cheng",
+            "company_title": "Director",
+            "company_date_label": "Date:",
         },
         "rich_text": {
             "quoteDate": "<div><strong>06/06/2026</strong></div>",
@@ -365,7 +365,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(brief["notes_heading"], "Editable Notes")
         self.assertEqual(brief["standard_notes"], ["Editable note one", "Editable note two"])
         self.assertEqual(brief["acceptance"]["text"], "Accepted by customer")
-        self.assertEqual(brief["signature"]["koncept_date_label"], "Date:")
+        self.assertEqual(brief["signature"]["company_date_label"], "Date:")
         self.assertEqual(brief["line_items"][0]["section"], "Floor Design")
         self.assertEqual(brief["line_items"][0]["quantity"], 12.0)
         self.assertEqual(brief["line_items"][0]["unit"], "sqm")
@@ -448,8 +448,8 @@ class WebappServerTest(unittest.TestCase):
 
         sections = webapp.normalize_quote_basis_sections(payload)
 
-        self.assertEqual(sections[0]["id"], "booth-structure")
-        self.assertEqual(sections[0]["title"], "Booth Structure")
+        self.assertEqual(sections[0]["id"], "walls-structures")
+        self.assertEqual(sections[0]["title"], "Walls / Structures")
         self.assertEqual(
             sections[0]["lines"],
             [
@@ -469,7 +469,7 @@ class WebappServerTest(unittest.TestCase):
                 "graphics": "Note: Artwork pending.",
             }
         })
-        self.assertEqual([section["title"] for section in legacy], ["Surfaces / Structures", "Graphics"])
+        self.assertEqual([section["title"] for section in legacy], ["Surfaces / Structures", "Graphics / Signage"])
         self.assertEqual(legacy[0]["lines"][1], {"tag": "Confirm", "text": "Colour to confirm."})
         self.assertEqual(legacy[1]["lines"][0], {"tag": "Confirm", "text": "Artwork pending."})
 
@@ -480,7 +480,7 @@ class WebappServerTest(unittest.TestCase):
             }
         })
         self.assertEqual([section["id"] for section in dynamic_basis], ["brazil-feature-wall", "flooring-zone"])
-        self.assertEqual([section["title"] for section in dynamic_basis], ["Booth Structure", "Floor Design"])
+        self.assertEqual([section["title"] for section in dynamic_basis], ["Brazil Feature Wall", "Flooring Zone"])
         self.assertEqual(dynamic_basis[0]["lines"][0]["text"], "Curved yellow framed display wall.")
 
     def test_normalize_line_items_uses_customer_facing_sqm_text(self):
@@ -2150,7 +2150,7 @@ class WebappServerTest(unittest.TestCase):
 
         brief = webapp.payload_to_brief(payload)
 
-        self.assertIn("Booth Structure:", brief["notes"][1])
+        self.assertIn("Walls / Structures:", brief["notes"][1])
         self.assertIn("Include: White painted walling.", brief["notes"][1])
         self.assertIn("Exclude: Rigging above booth.", brief["notes"][1])
 
@@ -2310,7 +2310,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
-        self.assertEqual(result["items"][0]["id"], "booth-structure.white-painted-walling")
+        self.assertEqual(result["items"][0]["id"], "structures.white-painted-walling")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
@@ -2393,7 +2393,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(hanging["section"], "Hanging Structure")
         self.assertEqual(hanging["description"], "m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal")
         self.assertEqual(hanging["remarks"], ["Wooden hanging structure", "PAINTED"])
-        self.assertEqual(rigging["section"], "Hanging Structure")
+        self.assertEqual(rigging["section"], "Rigging Point")
         self.assertEqual(rigging["description"], "nos. rigging point for Overhead Structure or Aluminium Box Truss")
         self.assertEqual(rigging["unit_hint"], "nos")
         self.assertEqual(rigging["remarks"], ["Prices are not inclusive of truss"])
@@ -2468,7 +2468,7 @@ class WebappServerTest(unittest.TestCase):
 
         openai_import.assert_not_called()
         metadata_enrichment.assert_called_once()
-        self.assertEqual(result["layout"], "v1.1-pricing-workbook")
+        self.assertEqual(result["layout"], "sectioned-pricing-workbook")
         self.assertEqual(result["errors"], [])
         self.assertGreater(result["rowCount"], 20)
         descriptions = [item["description"] for item in result["items"]]
@@ -3007,7 +3007,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_v11_deterministic_rows_use_literal_matching_metadata_before_ai(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
-        rows = webapp.v11_pricing_reference_rows_from_xlsx_bytes(raw)
+        rows = webapp.sectioned_pricing_reference_rows_from_xlsx_bytes(raw)
         preview = webapp.validate_pricing_reference_rows(rows, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS), "Quotation-Cost-Template-V1.1.xlsx")
         items = {item["id"]: item for item in preview["items"]}
 
@@ -3046,27 +3046,42 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("as seen in render", dumped)
         self.assertNotIn("AI detected", dumped)
 
-    def test_category_normalization_keeps_counters_and_hanging_separate(self):
+    def test_category_normalization_preserves_generic_section_text(self):
         expectations = {
-            "Booth Dimensions": "Booth Structure",
-            "Booth Structures": "Booth Structure",
-            "Walls": "Booth Structure",
-            "Partitions": "Booth Structure",
-            "Fascia": "Booth Structure",
-            "Counters": "COUNTERS AND CABINETS",
-            "Cabinets": "COUNTERS AND CABINETS",
-            "Graphics / Signage": "Graphics",
-            "Furniture / Decor": "Furniture Rental",
-            "Furniture": "Furniture Rental",
-            "Plants": "Rental Items",
-            "Electrical / AV": "Electrical Fittings ( Excluding connection fees by Organiser)",
-            "Lighting": "Electrical Fittings ( Excluding connection fees by Organiser)",
-            "Rigging Point": "Hanging Structure",
-            "Overhead Structure": "Hanging Structure",
+            "Booth Dimensions": "Booth Dimensions",
+            "Counters": "Counters",
+            "Graphics / Signage": "Graphics / Signage",
+            "Electrical / AV": "Electrical / AV",
+            "Rigging Point": "Rigging Point",
+            "": "General",
         }
         for raw, expected in expectations.items():
             self.assertEqual(webapp.normalize_catalog_section(raw), expected)
-        self.assertNotEqual(webapp.normalize_catalog_section("Counters"), "Booth Structure")
+
+    def test_section_title_resolution_uses_active_reference_sections(self):
+        reference_sections = [
+            "Walls and Build Items",
+            "Counters and Storage",
+            "Audio Visual Hire",
+            "Printed Brand Surfaces",
+        ]
+
+        self.assertEqual(
+            webapp.normalize_quote_basis_section_title("Counters", reference_sections),
+            "Counters and Storage",
+        )
+        self.assertEqual(
+            webapp.normalize_quote_basis_section_title("Audio Visual", reference_sections),
+            "Audio Visual Hire",
+        )
+        self.assertEqual(
+            webapp.normalize_quote_basis_section_title("Printed Brand Surfaces", reference_sections),
+            "Printed Brand Surfaces",
+        )
+        self.assertEqual(
+            webapp.normalize_quote_basis_section_title("Lighting", reference_sections),
+            "Lighting",
+        )
 
     def test_pricing_catalog_prompt_rows_include_rigging_aliases_and_remarks(self):
         rows = webapp.pricing_catalog_prompt_rows("koncept")
@@ -3092,8 +3107,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertEqual([item["id"] for item in result["items"]], [
-            "booth-structure.white-painted-walling",
-            "booth-structure.white-painted-walling-2",
+            "structures.white-painted-walling",
+            "structures.white-painted-walling-2",
         ])
         self.assertIn("painted wall", [alias.lower() for alias in result["items"][0]["aliases"]])
 
@@ -3110,11 +3125,21 @@ class WebappServerTest(unittest.TestCase):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
 
-        self.assertTrue(webapp.PRICING_REFERENCE_TEMPLATE_PATH.exists())
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
         self.assertNotIn("aliases", headers)
         self.assertGreaterEqual(len(rows), 2)
         self.assertTrue(rows[0]["id"].startswith("example."))
+        template_text = json.dumps(rows, ensure_ascii=False).lower()
+        for customer_specific in (
+            "koncept",
+            "booth structure",
+            "floor design",
+            "vinyl printed graphics",
+            "led tv monitor",
+            "partition wall",
+            "fascia",
+        ):
+            self.assertNotIn(customer_specific, template_text)
 
         with LocalRunnerServer() as runner:
             with urllib.request.urlopen(f"{runner.base_url}/api/pricing-reference/template.xlsx", timeout=3) as response:
@@ -3309,7 +3334,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("All cheques should be crossed and made payable to <strong>Koncept Images Pte. Ltd.</strong>", preset_rich_text["paymentTerms"])
         self.assertIn("<strong>Note:</strong>", preset_rich_text["notesHeading"])
         self.assertEqual(preset_rich_text["acceptanceText"], "<div>We accept the quotation amount and the terms</div>")
-        self.assertEqual(preset_rich_text["konceptDateLabel"], "<div>Date:</div>")
+        self.assertEqual(preset_rich_text["companyDateLabel"], "<div>Date:</div>")
         for key in (
             "quoteCompanyName",
             "headerDetails",
@@ -3318,9 +3343,9 @@ class WebappServerTest(unittest.TestCase):
             "notesHeading",
             "standardNotes",
             "acceptanceText",
-            "konceptSignatory",
-            "konceptTitle",
-            "konceptDateLabel",
+            "companySignatory",
+            "companyTitle",
+            "companyDateLabel",
             "personLabel",
             "stampLabel",
             "dateLabel",
@@ -3638,7 +3663,7 @@ class WebappServerTest(unittest.TestCase):
                     result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "openai")
-        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Floor Design", "Booth Structure"])
+        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Floor Design", "Brazil Feature Wall", "Flooring Zone"])
         self.assertIn("brazil-feature-wall", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
@@ -4432,11 +4457,11 @@ class WebappServerTest(unittest.TestCase):
         section = proposal["quote_basis_sections"][0]
         line = section["lines"][0]
         self.assertEqual(result["type"], "proposal")
-        self.assertEqual(section["title"], "Floor Design")
+        self.assertEqual(section["title"], "Flooring & Platform")
         self.assertEqual(line["tag"], "Confirm")
         self.assertEqual(line["confidence"], 90)
         self.assertEqual(line["text"], "Full 200mm raised platform visible across entire 6.0m x 6.0m footprint.")
-        self.assertIn("Confirm: Full 200mm raised platform", proposal["quote_basis"]["floor-design"])
+        self.assertIn("Confirm: Full 200mm raised platform", proposal["quote_basis"]["flooring-platform"])
 
     def test_basis_chat_replacement_preserves_quantity_and_unit_when_only_text_changes(self):
         payload = valid_payload()
@@ -5587,7 +5612,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "acceptanceText",
             "personLabel",
             "stampLabel",
-            "konceptDateLabel",
+            "companyDateLabel",
             "dateLabel",
             "sideWorkspace",
             "sideDrawerTitle",
@@ -5767,7 +5792,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertLess(html.index("Quotation Company"), html.index("Company signatory"))
         self.assertLess(html.index("Quotation Company"), html.index("Acceptance text"))
         self.assertLess(html.index("Company signatory"), html.index("Signatory title"))
-        self.assertLess(html.index('id="konceptTitle"'), html.index('id="konceptDateLabel"'))
+        self.assertLess(html.index('id="companyTitle"'), html.index('id="companyDateLabel"'))
         self.assertLess(html.index("Person label"), html.index("Stamp label"))
         self.assertLess(html.index("Stamp label"), html.rindex("Date label"))
         self.assertNotIn("Customer Section", html)
@@ -5806,7 +5831,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('contenteditable="true"', html)
         self.assertIn('data-rich-text-source="headerDetails"', html)
         self.assertIn('data-rich-text-source="quoteCompanyName"', html)
-        self.assertIn('data-rich-text-source="konceptDateLabel"', html)
+        self.assertIn('data-rich-text-source="companyDateLabel"', html)
         self.assertIn('data-rich-text-source="paymentTerms"', html)
         self.assertFalse(any("rich-text-field" in label for label in re.findall(r"<label\b[^>]*>.*?</label>", html, re.DOTALL)))
         self.assertIn("field-control", html)
@@ -5984,7 +6009,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("Quotation company name", html)
         self.assertIn('id="quoteCompanyName"', html)
         self.assertIn("Terms", html)
-        self.assertIn("(Optional — Leave empty)", html)
+        self.assertIn("(Optional - Leave empty)", html)
         self.assertNotIn("(Optional -- Leave empty)", html)
         self.assertIn("Notes", html)
         self.assertIn("Signature", html)
@@ -6137,9 +6162,9 @@ const elements = {
   standardNotes: field("All designs are subject to final site verification."),
   quoteCompanyName: field("Koncept Image Pte Ltd"),
   acceptanceText: field("Accepted by customer"),
-  konceptSignatory: field("Francies Cheng"),
-  konceptTitle: field("Director"),
-  konceptDateLabel: field("Date:"),
+  companySignatory: field("Francies Cheng"),
+  companyTitle: field("Director"),
+  companyDateLabel: field("Date:"),
   personLabel: field("Person in charge"),
   stampLabel: field("Company stamp"),
   dateLabel: field("Date"),
@@ -8113,10 +8138,10 @@ function extractFunction(name) {
 }
 
 const state = {
-  pricingReferenceId: "koncept-exhibition-quotation",
+  pricingReferenceId: "default-ref",
   pricingReferenceSource: "",
   pricingReferences: [
-    { id: "koncept-exhibition-quotation", items: [{ section: "Floor Design" }] },
+    { id: "default-ref", items: [{ section: "Floor Coverings", description: "Raised platform flooring" }] },
   ],
   quoteBasisSections: [
     {
@@ -8200,13 +8225,13 @@ eval([
   "retagBasisSectionConfirmLines",
 ].map(extractFunction).join("\n"));
 
-assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Floor Design: Finish colour."]);
+assert.deepStrictEqual(unresolvedConfirmLines(state.quoteBasisSections), ["Floor Coverings: Finish colour."]);
 const exactReferenceSections = normalizeQuoteBasisSections([{
-  id: "floor-design",
-  title: "Floor Design",
+  id: "floor-coverings",
+  title: "Floor Coverings",
   lines: [{ tag: "Confirm", text: "Raised platform." }],
 }]);
-assert.strictEqual(exactReferenceSections[0].title, "Floor Design");
+assert.strictEqual(exactReferenceSections[0].title, "Floor Coverings");
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
 const customLine = normalizeBasisLines({ tag: "Custom", text: "Manual graphics." })[0];
 assert.strictEqual(customLine.custom_pricing, true);
@@ -8326,7 +8351,7 @@ assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve a
 const pendingAiProposalHtml = renderBasisLine(state.quoteBasisSections[0], state.quoteBasisSections[0].lines[0], 0);
 assert.strictEqual(pendingAiProposalHtml.includes(">AI Confirm</span>"), true);
 assert.strictEqual(pendingAiProposalHtml.includes('data-basis-tag="Custom"'), true);
-assert.strictEqual(pendingAiProposalHtml.includes(">✓</button>") || pendingAiProposalHtml.includes(">&#x2713;</button>"), true);
+assert.strictEqual(pendingAiProposalHtml.includes(">&#x2713;</button>"), true);
 retagBasisLine("graphics", 0, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].tag, "Exclude");
 assert.strictEqual(state.quoteBasisSections[0].lines[0].custom_pricing, true);

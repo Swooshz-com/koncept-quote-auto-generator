@@ -52,11 +52,25 @@ import pricing_reference_enrichment
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 GENERATOR_PATH = PROJECT_ROOT / "scripts" / "generate_quote.py"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-DEFAULT_PROFILE_ID = "koncept"
-DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation"
 PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
 PRICING_REFERENCES_ROOT = PROJECT_ROOT / "pricing-references"
+
+
+def discovered_default_resource_id(root: Path, marker_filename: str, fallback: str = "default") -> str:
+    try:
+        candidates = [
+            path.name
+            for path in sorted(root.iterdir(), key=lambda item: item.name.casefold())
+            if path.is_dir() and PROFILE_ID_RE.fullmatch(path.name) and (path / marker_filename).is_file()
+        ]
+    except OSError:
+        candidates = []
+    return candidates[0] if candidates else fallback
+
+
+DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json")
+DEFAULT_PRICING_REFERENCE_ID = discovered_default_resource_id(PRICING_REFERENCES_ROOT, "reference.json")
 PRICING_REFERENCE_TEMPLATE_PATH = PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
@@ -88,88 +102,43 @@ MAX_PRICING_REFERENCE_VISUALS_PER_ITEM = 3
 MAX_PROMPT_CATALOG_VISUAL_IMAGES = 8
 MAX_PRICING_METADATA_BATCH_ITEMS = 20
 PRICING_REFERENCE_ASSETS_DIR_NAME = "pricing-reference-assets"
-V11_COL_SECTION_NO = 0
-V11_COL_DEFAULT_QUANTITY = 1
-V11_COL_DESCRIPTION = 2
-V11_COL_DEFAULT_ESTIMATE = 5
-V11_COL_COST = 7
-V11_COL_GST = 8
-V11_COL_MARKUP = 9
-V11_COL_REMARKS = 11
+SECTIONED_WORKBOOK_COL_SECTION_NO = 0
+SECTIONED_WORKBOOK_COL_DEFAULT_QUANTITY = 1
+SECTIONED_WORKBOOK_COL_DESCRIPTION = 2
+SECTIONED_WORKBOOK_COL_DEFAULT_ESTIMATE = 5
+SECTIONED_WORKBOOK_COL_COST = 7
+SECTIONED_WORKBOOK_COL_GST = 8
+SECTIONED_WORKBOOK_COL_MARKUP = 9
+SECTIONED_WORKBOOK_COL_REMARKS = 11
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
 PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
-        "example.floor-design.needle-punch-carpet-in-colour",
-        "Floor Design",
-        "sqm needle punch carpet in colour",
+        "example.services.standard-coordination",
+        "Services",
+        "lot standard project coordination",
+        "lot",
+        "100",
+        "1.2",
+        "example service row",
+    ],
+    [
+        "example.materials.standard-surface-finish",
+        "Materials",
+        "sqm standard surface finish",
         "sqm",
-        "7",
+        "25",
         "1.5",
-        "needle punch",
+        "example area-based material row",
     ],
     [
-        "example.floor-design.100mm-raised-platform-with-aluminum-edging",
-        "Floor Design",
-        "sqm 100mm raised platform with aluminum edging",
-        "sqm",
-        "40",
-        "1.5",
-        "Platform ONLY",
-    ],
-    [
-        "example.booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
-        "Booth Structure",
-        "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
-        "m length",
-        "180",
-        "1.5",
-        "Backwall or any partition; PAINTED",
-    ],
-    [
-        "example.counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
-        "COUNTERS AND CABINETS",
-        "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+        "example.equipment.standard-device-rental",
+        "Equipment Rental",
+        "nos. standard device rental",
         "nos",
-        "800",
+        "50",
         "1.5",
-        "INFORMATION COUNTER; PAINTED",
-    ],
-    [
-        "example.electrical-fittings-excluding-connection-fees-by-organiser.10w-led-spotlight",
-        "Electrical Fittings ( Excluding connection fees by Organiser)",
-        "nos. 10W LED Spotlight",
-        "nos",
-        "30",
-        "1.5",
-        "SPOTLIGHT",
-    ],
-    [
-        "example.graphics.vinyl-printed-graphics",
-        "Graphics",
-        "sqm of vinyl printed graphics",
-        "sqm",
-        "40",
-        "1.5",
-        "Printed Graphics on wall",
-    ],
-    [
-        "example.furniture-rental.bistro-chairs",
-        "Furniture Rental",
-        "nos. Bistro Chairs",
-        "nos",
-        "30",
-        "1.5",
-        "Bistro Low Chair",
-    ],
-    [
-        "example.av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
-        "AV Equipment Rental Items",
-        "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
-        "nos",
-        "300",
-        "1.5",
-        "TV",
+        "example rental row",
     ],
 ]
 DOWNLOADABLE_FILES = {"quotation.xlsx"}
@@ -257,9 +226,9 @@ RICH_TEXT_DETAIL_KEYS = {
     "clientTitle",
     "dateLabel",
     "headerDetails",
-    "konceptDateLabel",
-    "konceptSignatory",
-    "konceptTitle",
+    "companyDateLabel",
+    "companySignatory",
+    "companyTitle",
     "notesHeading",
     "paymentTerms",
     "personLabel",
@@ -811,7 +780,7 @@ def normalize_currency_label(value: Any) -> str:
         return "SGD"
     if text in {"US", "USD", "USDOLLAR", "USDOLLARS", "UNITEDSTATESDOLLAR", "UNITEDSTATESDOLLARS"}:
         return "USD"
-    if text in {"EURO", "EUROS", "EUR"}:
+    if text in {"EUR", "EURO", "EUROS"}:
         return "EUR"
     if text in {"GBP", "POUND", "POUNDS", "STERLING"}:
         return "GBP"
@@ -837,8 +806,8 @@ def detected_currency_label(value: Any) -> str:
     patterns = (
         (r"(?i)\bSGD\b|S\$|\bSingapore\s+dollars?\b", "SGD"),
         (r"(?i)\bUSD\b|US\$|\bUS\s+dollars?\b|\bUnited\s+States\s+dollars?\b", "USD"),
-        (r"(?i)\bEUR\b|€|\beuros?\b", "EUR"),
-        (r"(?i)\bGBP\b|£|\bpounds?\b|\bsterling\b", "GBP"),
+        (r"(?i)\bEUR\b|\u20ac|\beuros?\b", "EUR"),
+        (r"(?i)\bGBP\b|\u00a3|\bpounds?\b|\bsterling\b", "GBP"),
         (r"(?i)\bMYR\b|\bRM\s*\d|\bMalaysian\s+ringgit\b|\bringgit\b", "MYR"),
         (r"(?i)\bAUD\b|\bAustralian\s+dollars?\b", "AUD"),
         (r"(?i)\bCNY\b|\bRMB\b|\byuan\b|\brenminbi\b", "CNY"),
@@ -1109,56 +1078,62 @@ def clean_basis_section_title(value: Any) -> str:
 
 def normalize_catalog_section(value: Any) -> str:
     text = clean_basis_section_title(value)
-    lowered = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
-    compact = re.sub(r"\s+", " ", lowered)
-    if not compact:
-        return "General"
-    if re.search(r"\b(counter|counters|cabinet|cabinets|cabinetry|reception counter|storage cabinet|display counter|lockable cabinet)\b", compact):
-        return "COUNTERS AND CABINETS"
-    if re.search(r"\b(rigging|overhead structure|aluminium box truss|aluminum box truss|box truss|truss|suspended structure|hanging frame|hanging structure)\b", compact):
-        return "Hanging Structure"
-    if re.search(r"\b(platform|flooring|floor|carpet|raised platform|vinyl flooring)\b", compact):
-        return "Floor Design"
-    if re.search(r"\b(graphic|graphics|signage|sign|logo|lightbox|print|printed|vinyl)\b", compact):
-        return "Graphics"
-    if re.search(r"\b(furniture|chair|table)\b", compact):
-        return "Furniture Rental"
-    if re.search(r"\b(decor|plant|plants|rental item|loose rental)\b", compact):
-        return "Rental Items"
-    if re.search(r"\b(electrical|power|socket|light|lighting|spotlight)\b", compact):
-        return "Electrical Fittings ( Excluding connection fees by Organiser)"
-    if re.search(r"\b(av|audio|visual|screen|monitor|tv)\b", compact):
-        return "AV Equipment Rental Items"
-    if re.search(r"\b(water|sink|tap|plumbing)\b", compact):
-        return "Water Connection"
-    if re.search(r"\b(coffee|tea|beverage|drink)\b", compact):
-        return "Coffee / Tea (Subject to approval by Venue owner and Organiser)"
-    booth_terms = {
-        "booth", "booth dimension", "booth dimensions", "booth structure", "booth structures",
-        "structure", "structures", "walls", "wall", "partitions", "partition", "fascia",
-        "system profile partitions", "entrance frame", "curved frame", "back wall", "side wall",
-        "header fascia structure", "header",
-    }
-    if compact in booth_terms or re.search(r"\b(booth|wall|walls|partition|partitions|fascia|entrance frame|curved frame|back wall|side wall|system profile|header)\b", compact):
-        return "Booth Structure"
-    return text
+    return text or "General"
 
 
 def section_title_lookup_key(value: Any) -> str:
     text = clean_basis_section_title(value).lower()
-    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+    return " ".join(section_title_tokens(text))
 
 
-REFERENCE_SECTION_ALIASES: dict[str, tuple[str, ...]] = {
-    "floor design": ("Flooring / Platform", "Platform / Flooring", "Flooring", "Platform"),
-    "counters and cabinets": ("Counters & Cabinets", "Counters", "Cabinets"),
-    "graphics": ("Graphics / Signage", "Signage"),
-    "furniture rental": ("Furniture / Decor", "Furniture", "Furniture Decor"),
-    "rental items": ("Decor", "Plant", "Plants", "Loose Rental", "Rental Item"),
-    "av equipment rental items": ("Electrical / AV", "AV", "Audio Visual", "Screens", "Monitor", "TV"),
-    "electrical fittings excluding connection fees by organiser": ("Electrical / AV", "Electrical", "Lighting", "Lights", "Power"),
-    "booth structure": ("Surfaces / Structures", "Walls / Structures", "Walls", "Partitions", "Fascia"),
-}
+SECTION_TITLE_STOP_WORDS = {"and", "or", "the", "of", "for", "with", "by", "to", "in", "at", "per"}
+
+
+def section_title_token(value: str) -> str:
+    token = value.lower()
+    token = pricing_reference_cleanup.import_word_replacements().get(token, token)
+    if token.endswith("ies") and len(token) > 4:
+        token = f"{token[:-3]}y"
+    elif token.endswith("s") and len(token) > 3 and not token.endswith("ss"):
+        token = token[:-1]
+    return pricing_reference_cleanup.import_word_replacements().get(token, token)
+
+
+def section_title_tokens(value: Any) -> list[str]:
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for raw_token in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+        token = section_title_token(raw_token)
+        if not token or token in SECTION_TITLE_STOP_WORDS:
+            continue
+        if token not in seen:
+            tokens.append(token)
+            seen.add(token)
+    return tokens
+
+
+def add_unique_section_alias(aliases: list[str], alias: Any) -> None:
+    cleaned = clean_basis_section_title(alias)
+    if cleaned and all(section_title_lookup_key(existing) != section_title_lookup_key(cleaned) for existing in aliases):
+        aliases.append(cleaned)
+
+
+def section_title_acronym_aliases(value: Any) -> list[str]:
+    tokens = [token for token in section_title_tokens(value) if token and not token.isdigit()]
+    aliases: list[str] = []
+    for length in range(2, min(4, len(tokens)) + 1):
+        acronym = "".join(token[0] for token in tokens[:length] if token)
+        if len(acronym) >= 2:
+            aliases.append(acronym.upper())
+    return aliases
+
+
+def section_title_prefix_aliases(value: Any) -> list[str]:
+    tokens = section_title_tokens(value)
+    aliases: list[str] = []
+    for length in range(1, min(3, len(tokens)) + 1):
+        aliases.append(" ".join(tokens[:length]).title())
+    return aliases
 
 
 def ordered_reference_section_title_aliases(value: Any) -> list[str]:
@@ -1166,16 +1141,13 @@ def ordered_reference_section_title_aliases(value: Any) -> list[str]:
     if not title:
         return []
     aliases: list[str] = []
-
-    def add_alias(alias: Any) -> None:
-        cleaned = clean_basis_section_title(alias)
-        if cleaned and all(section_title_lookup_key(existing) != section_title_lookup_key(cleaned) for existing in aliases):
-            aliases.append(cleaned)
-
-    add_alias(title)
-    add_alias(normalize_catalog_section(title))
-    for alias in REFERENCE_SECTION_ALIASES.get(section_title_lookup_key(title), ()):
-        add_alias(alias)
+    add_unique_section_alias(aliases, title)
+    for part in re.split(r"\s*(?:/|&|\band\b)\s*", title, flags=re.IGNORECASE):
+        add_unique_section_alias(aliases, part)
+    for alias in section_title_prefix_aliases(title):
+        add_unique_section_alias(aliases, alias)
+    for alias in section_title_acronym_aliases(title):
+        add_unique_section_alias(aliases, alias)
     return aliases
 
 
@@ -1188,6 +1160,7 @@ def exact_pricing_reference_section_title(value: Any, pricing_reference_sections
     if not text or not pricing_reference_sections:
         return ""
     lookup: dict[str, str] = {}
+    section_alias_tokens: list[tuple[str, set[str], str]] = []
     for section in pricing_reference_sections:
         title = clean_basis_section_title(section)
         if not title:
@@ -1196,10 +1169,32 @@ def exact_pricing_reference_section_title(value: Any, pricing_reference_sections
             key = section_title_lookup_key(alias)
             if key:
                 lookup.setdefault(key, title)
+                section_alias_tokens.append((title, set(section_title_tokens(alias)), key))
     for candidate in ordered_reference_section_title_aliases(text):
         match = lookup.get(section_title_lookup_key(candidate))
         if match:
             return match
+    input_tokens = set(section_title_tokens(text))
+    if not input_tokens:
+        return ""
+    scored: list[tuple[float, str]] = []
+    for title, alias_tokens, _key in section_alias_tokens:
+        if not alias_tokens:
+            continue
+        overlap = input_tokens & alias_tokens
+        if not overlap:
+            continue
+        input_ratio = len(overlap) / max(len(input_tokens), 1)
+        alias_ratio = len(overlap) / max(len(alias_tokens), 1)
+        if input_ratio < 0.6 and alias_ratio < 0.6:
+            continue
+        scored.append((input_ratio + alias_ratio + len(overlap) * 0.1, title))
+    if not scored:
+        return ""
+    scored.sort(key=lambda item: (-item[0], item[1].casefold()))
+    if len(scored) > 1 and abs(scored[0][0] - scored[1][0]) < 0.001:
+        return ""
+    return scored[0][1]
     return ""
 
 
@@ -1645,23 +1640,19 @@ def normalize_customer_unit_text(value: Any) -> str:
 
 
 LINEAR_TAKEOFF_UNITS = {"m", "m length", "m run"}
-COUNTER_PER_ITEM_TERMS = {
-    "information counter",
-    "lockable counter",
-    "lockable information counter",
-}
+PIECE_DIMENSION_DESCRIPTION_RE = re.compile(
+    r"(?i)^(?:nos\.?\s+of\s+1m\s+length\s+x|m\.?\s*length\s*x)\b"
+)
 
 
-def is_per_item_counter_text(section: Any, description: Any) -> bool:
-    text = f"{clean_text(section)} {clean_text(description)}".lower()
-    if "counter" not in text and "cabinet" not in text:
-        return False
-    return any(term in text for term in COUNTER_PER_ITEM_TERMS)
-
-
-def normalize_per_item_counter_description(section: Any, description: Any) -> str:
+def is_piece_dimension_description(description: Any) -> bool:
     text = clean_text(description)
-    if not is_per_item_counter_text(section, text):
+    return bool(PIECE_DIMENSION_DESCRIPTION_RE.search(text)) and len(re.findall(r"(?i)\bx\b", text)) >= 2
+
+
+def normalize_piece_dimension_description(description: Any) -> str:
+    text = clean_text(description)
+    if not is_piece_dimension_description(text):
         return text
     return re.sub(
         r"(?i)^m\.?\s*length\s*x\b",
@@ -1671,8 +1662,9 @@ def normalize_per_item_counter_description(section: Any, description: Any) -> st
     )
 
 
-def per_item_counter_quantity_needs_review(section: Any, description: Any, quantity: Any, unit: Any) -> bool:
-    if not is_per_item_counter_text(section, description):
+def piece_dimension_quantity_needs_review(description: Any, quantity: Any, unit: Any, catalog_item: dict[str, Any] | None = None) -> bool:
+    catalog_description = clean_text((catalog_item or {}).get("description"))
+    if not is_piece_dimension_description(description) and not is_piece_dimension_description(catalog_description):
         return False
     numeric_quantity = parse_float_or_none(quantity)
     normalized_unit = normalize_pricing_unit(unit).lower()
@@ -1690,7 +1682,7 @@ def line_item_needs_quantity_review(
     unit: Any,
     catalog_item: dict[str, Any] | None = None,
 ) -> bool:
-    if per_item_counter_quantity_needs_review(section, description, quantity, unit):
+    if piece_dimension_quantity_needs_review(description, quantity, unit, catalog_item):
         return True
     numeric_quantity = parse_float_or_none(quantity)
     if numeric_quantity is None or abs(numeric_quantity - 1.0) > 0.0001:
@@ -2052,11 +2044,11 @@ def sanitize_pricing_reference_item(
     reference_section = clean_basis_section_title(
         apply_pricing_workbook_text_fixes(raw_reference_section) if apply_import_text_fixes else raw_reference_section
     )
-    description = normalize_per_item_counter_description(reference_section, description)
+    description = normalize_piece_dimension_description(description)
     section = normalize_catalog_section(reference_section)
     raw_unit_hint = normalize_pricing_unit(sanitize_formula_text(raw.get("unit_hint") or raw.get("unit")))
     unit_hint = reconcile_pricing_reference_unit_hint(description, raw_unit_hint)
-    if is_per_item_counter_text(section or reference_section, description):
+    if is_piece_dimension_description(description):
         unit_hint = "nos"
     internal_cost = parse_pricing_number(raw.get("internal_cost") or raw.get("cost"))
     markup = parse_pricing_number(raw.get("markup_multiplier") or raw.get("markup"))
@@ -2402,17 +2394,17 @@ def pricing_workbook_number(row: list[str], index: int) -> float | None:
     return parse_pricing_number(pricing_workbook_cell(row, index))
 
 
-def is_v11_section_row(row: list[str]) -> bool:
+def is_sectioned_pricing_workbook_section_row(row: list[str]) -> bool:
     return (
-        pricing_workbook_number(row, V11_COL_SECTION_NO) is not None
-        and bool(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-        and pricing_workbook_number(row, V11_COL_COST) is None
+        pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_SECTION_NO) is not None
+        and bool(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+        and pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_COST) is None
     )
 
 
-def is_v11_price_row(row: list[str]) -> bool:
-    cost = pricing_workbook_number(row, V11_COL_COST)
-    return bool(pricing_workbook_cell(row, V11_COL_DESCRIPTION)) and cost is not None and cost > 0
+def is_sectioned_pricing_workbook_price_row(row: list[str]) -> bool:
+    cost = pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_COST)
+    return bool(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION)) and cost is not None and cost > 0
 
 
 def add_unique_text(values: list[str], value: Any) -> None:
@@ -2447,7 +2439,7 @@ def stripped_pricing_unit_text(value: Any) -> str:
     )
 
 
-def v11_alias_candidates(section: str, description: str, remarks: list[str], unit_hint: str) -> list[str]:
+def sectioned_workbook_alias_candidates(section: str, description: str, remarks: list[str], unit_hint: str) -> list[str]:
     aliases: list[str] = []
     for value in [description, *remarks]:
         add_unique_text(aliases, value)
@@ -2563,9 +2555,9 @@ def attach_visual_references_to_pricing_rows(rows: list[dict[str, Any]], visual_
         item_refs.append(visual_ref)
 
 
-def v11_row_to_pricing_reference_row(section: str, section_order: int | None, row_number: int, row: list[str]) -> dict[str, Any]:
-    description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-    remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))]
+def sectioned_workbook_row_to_pricing_reference_row(section: str, section_order: int | None, row_number: int, row: list[str]) -> dict[str, Any]:
+    description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+    remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
     unit_hint = infer_unit_prefix(description)
     return {
@@ -2575,38 +2567,38 @@ def v11_row_to_pricing_reference_row(section: str, section_order: int | None, ro
         "section": section,
         "description": description,
         "unit_hint": unit_hint,
-        "default_quantity": pricing_workbook_number(row, V11_COL_DEFAULT_QUANTITY),
-        "default_quote_amount": pricing_workbook_number(row, V11_COL_DEFAULT_ESTIMATE),
-        "internal_cost": pricing_workbook_number(row, V11_COL_COST),
-        "gst_multiplier": pricing_workbook_number(row, V11_COL_GST),
-        "markup_multiplier": pricing_workbook_number(row, V11_COL_MARKUP) or 1.0,
+        "default_quantity": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_DEFAULT_QUANTITY),
+        "default_quote_amount": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_DEFAULT_ESTIMATE),
+        "internal_cost": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_COST),
+        "gst_multiplier": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_GST),
+        "markup_multiplier": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_MARKUP) or 1.0,
         "remarks": remarks,
-        "aliases": v11_alias_candidates(section, description, remarks, unit_hint),
+        "aliases": sectioned_workbook_alias_candidates(section, description, remarks, unit_hint),
     }
 
 
-def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any]]:
+def sectioned_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any]]:
     rows_with_numbers = xlsx_rows_with_numbers_from_bytes(raw)
     rows: list[dict[str, Any]] = []
     current_section = ""
     current_section_order: int | None = None
     fallback_section_order = 1
     for row_number, row in rows_with_numbers:
-        if is_v11_section_row(row):
-            current_section = clean_basis_section_title(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-            current_section_order = pricing_reference_order_number(pricing_workbook_number(row, V11_COL_SECTION_NO))
+        if is_sectioned_pricing_workbook_section_row(row):
+            current_section = clean_basis_section_title(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+            current_section_order = pricing_reference_order_number(pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_SECTION_NO))
             if current_section_order is None:
                 current_section_order = fallback_section_order
             fallback_section_order = max(fallback_section_order + 1, current_section_order + 1)
             continue
-        if is_v11_price_row(row):
+        if is_sectioned_pricing_workbook_price_row(row):
             if current_section:
-                rows.append(v11_row_to_pricing_reference_row(current_section, current_section_order, row_number, row))
+                rows.append(sectioned_workbook_row_to_pricing_reference_row(current_section, current_section_order, row_number, row))
             continue
         if not rows:
             continue
-        description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-        remark = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))
+        description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+        remark = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))
         if description:
             if description.startswith("\u2022") or description.lower().startswith(("note:", "notes:")):
                 remarks = rows[-1].setdefault("remarks", [])
@@ -2618,7 +2610,7 @@ def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any
             remarks = rows[-1].setdefault("remarks", [])
             add_unique_text(remarks, remark)
         if description or remark:
-            rows[-1]["aliases"] = v11_alias_candidates(
+            rows[-1]["aliases"] = sectioned_workbook_alias_candidates(
                 clean_text(rows[-1].get("section")),
                 clean_text(rows[-1].get("description")),
                 rows[-1].get("remarks") if isinstance(rows[-1].get("remarks"), list) else [],
@@ -2628,15 +2620,15 @@ def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any
     return rows
 
 
-def pricing_reference_import_preview_from_v11_workbook(raw: bytes, filename: str) -> dict[str, Any]:
-    rows = v11_pricing_reference_rows_from_xlsx_bytes(raw)
+def pricing_reference_import_preview_from_sectioned_workbook(raw: bytes, filename: str) -> dict[str, Any]:
+    rows = sectioned_pricing_reference_rows_from_xlsx_bytes(raw)
     if len(rows) < 10:
         return pricing_reference_validation_result([], [], 0, filename) | {
-            "layout": "v1.1-pricing-workbook",
-            "errors": ["Workbook layout was not recognized as a V1.1 pricing workbook."],
+            "layout": "sectioned-pricing-workbook",
+            "errors": ["Workbook layout was not recognized as a section-numbered pricing workbook."],
         }
     result = validate_pricing_reference_rows(rows, list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
-    result["layout"] = "v1.1-pricing-workbook"
+    result["layout"] = "sectioned-pricing-workbook"
     result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows) or DEFAULT_CURRENCY_LABEL
     if result.get("errors") == ["Missing required columns: section, description, unit_hint, internal_cost, markup_multiplier."]:
         result["errors"] = []
@@ -2700,7 +2692,7 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
         ["Swooshz Pricing Reference Import Template"],
         ["Edit or add pricing rows in the Pricing Reference sheet, then upload this workbook in New Pricing Reference."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
-        ["section", "Quotation section, for example Floor Design."],
+        ["section", "Quotation section, for example Services."],
         ["description", "Customer-facing wording. Catalog-backed quote basis and output rows will use this exactly."],
         ["unit_hint", "Examples: sqm, m length, no, lot, set."],
         ["internal_cost", "Number only. This stays internal."],
@@ -2747,8 +2739,6 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
 
 
 def pricing_reference_template_xlsx_bytes() -> bytes:
-    if PRICING_REFERENCE_TEMPLATE_PATH.exists():
-        return PRICING_REFERENCE_TEMPLATE_PATH.read_bytes()
     return generated_pricing_reference_template_xlsx_bytes()
 
 
@@ -3154,7 +3144,6 @@ def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dic
     sections = pricing_reference_section_names()
     return (
         "Normalize an uploaded pricing catalog into Swooshz pricing reference rows. Return only JSON with currency and an items array. "
-        "Set currency to a visible three-letter currency code such as SGD, USD, EUR, GBP, MYR, AUD, CNY, IDR, or THB when the source makes it clear; omit it when unclear. "
         "Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, match_terms, object_families, and warning/status when useful. "
         "Identify continuation rows and stitch them into the previous item; do not drop continuation description or remarks. "
         "Do not merge independent priced rows. Preserve short technical rows such as nos. rigging point for Overhead Structure or Aluminium Box Truss. "
@@ -3465,9 +3454,9 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
             try:
                 raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
                 if extension == "xlsx":
-                    v11_result = pricing_reference_import_preview_from_v11_workbook(raw, filename)
-                    if v11_result.get("canSave") or (v11_result.get("rowCount") and not v11_result.get("missing")):
-                        result = v11_result
+                    sectioned_workbook_result = pricing_reference_import_preview_from_sectioned_workbook(raw, filename)
+                    if sectioned_workbook_result.get("canSave") or (sectioned_workbook_result.get("rowCount") and not sectioned_workbook_result.get("missing")):
+                        result = sectioned_workbook_result
                         result["tax"] = tax
                         result["currency"] = clean_text(result.get("currency")) or currency
                         result["saved"] = False
@@ -5020,8 +5009,8 @@ def normalize_line_items(payload: dict[str, Any], use_catalog: bool = True) -> l
         if catalog_item and clean_text(catalog_item.get("pricing_reference_description")):
             item["pricing_reference_description"] = clean_text(catalog_item.get("pricing_reference_description"))
         needs_quantity_review = line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"], catalog_item)
-        counter_quantity_review = per_item_counter_quantity_needs_review(item["section"], item["description"], item["quantity"], item["unit"])
-        if needs_quantity_review and (not pricing_keyword_was_explicit or counter_quantity_review):
+        piece_dimension_quantity_review = piece_dimension_quantity_needs_review(item["description"], item["quantity"], item["unit"], catalog_item)
+        if needs_quantity_review and (not pricing_keyword_was_explicit or piece_dimension_quantity_review):
             item["status"] = "quantity-review"
             item.pop("catalog_unit_price", None)
         if not item["source_basis_line_id"]:
@@ -5052,9 +5041,9 @@ def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
         ("Header logo", bool(clean_text(company.get("logo_data_url") or company.get("logo") or payload.get("header_logo")))),
         ("Header details", bool(multiline_list(company.get("header_details")))),
         ("Acceptance text", bool(clean_text(acceptance.get("text") or quote_text.get("acceptance_text")))),
-        ("Company signatory", bool(clean_text(signature.get("koncept_signatory")))),
-        ("Signatory title", bool(clean_text(signature.get("koncept_title")))),
-        ("Company date label", bool(clean_text(signature.get("koncept_date_label")))),
+        ("Company signatory", bool(clean_text(signature.get("company_signatory")))),
+        ("Signatory title", bool(clean_text(signature.get("company_title")))),
+        ("Company date label", bool(clean_text(signature.get("company_date_label")))),
         ("Person label", bool(clean_text(acceptance.get("person_label") or quote_text.get("person_label")))),
         ("Stamp label", bool(clean_text(acceptance.get("stamp_label") or quote_text.get("stamp_label")))),
         ("Date label", bool(clean_text(acceptance.get("date_label") or quote_text.get("date_label")))),
@@ -5186,9 +5175,9 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "date_label": clean_text(acceptance.get("date_label") or quote_text.get("date_label")),
         },
         "signature": {
-            "koncept_signatory": clean_text(signature.get("koncept_signatory")),
-            "koncept_title": clean_text(signature.get("koncept_title")),
-            "koncept_date_label": clean_text(signature.get("koncept_date_label")),
+            "company_signatory": clean_text(signature.get("company_signatory")),
+            "company_title": clean_text(signature.get("company_title")),
+            "company_date_label": clean_text(signature.get("company_date_label")),
         },
         "rich_text": quote_detail_rich_text(payload),
         "notes": quote_basis_notes(payload),
@@ -5204,7 +5193,7 @@ def default_quote_basis(payload: dict[str, Any]) -> dict[str, str]:
         "counters": clean_multiline(basis.get("counters")) or clean_multiline(profile_basis.get("counters")) or "Confirm: Please confirm counter, cabinet, and countertop material/finish.",
         "platform": clean_multiline(basis.get("platform")) or clean_multiline(profile_basis.get("platform")) or "Confirm: Please confirm platform height, platform coverage, and flooring finish.",
         "graphics": clean_multiline(basis.get("graphics")) or clean_multiline(profile_basis.get("graphics")) or "Confirm: Please confirm graphic panels, logo signage, lightboxes, and printed features.",
-        "furniture": clean_multiline(basis.get("furniture")) or clean_multiline(profile_basis.get("furniture")) or "Confirm: Please confirm furniture, plants, green walls, AV, and rental items.",
+        "furniture": clean_multiline(basis.get("furniture")) or clean_multiline(profile_basis.get("furniture")) or "Confirm: Please confirm furniture, plants, green walls, AV, and temporary loose items.",
         "electrical": clean_multiline(basis.get("electrical")) or clean_multiline(profile_basis.get("electrical")) or "Confirm: Please confirm lights, 13A sockets, special power, and organiser connection fees.",
     }
     return quote_basis_with_default_dimension_confirmation(defaults, booth_dimensions_from_payload(payload))
@@ -5497,17 +5486,6 @@ def visual_reference_prompt_metadata(value: Any) -> list[dict[str, Any]]:
     return metadata
 
 
-def catalog_visual_section_rank(section: Any) -> int:
-    normalized = normalize_catalog_section(section)
-    ranks = {
-        "Furniture Rental": 0,
-        "AV Equipment Rental Items": 1,
-        "Rental Items": 2,
-        "Electrical Fittings ( Excluding connection fees by Organiser)": 3,
-    }
-    return ranks.get(normalized, 99)
-
-
 def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int = MAX_PROMPT_CATALOG_VISUAL_IMAGES) -> list[dict[str, Any]]:
     try:
         pack = load_pricing_reference_pack(pricing_reference_id_from_payload(payload))
@@ -5518,20 +5496,19 @@ def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int
     else:
         source_items = [item for item in data.get("items") or [] if isinstance(item, dict)]
         visual_base_dir = pack.directory
-    candidates: list[tuple[int, str, dict[str, Any]]] = []
+    candidates: list[tuple[int, int, str, dict[str, Any]]] = []
     for item in source_items:
-        rank = catalog_visual_section_rank(item.get("reference_section") or item.get("section"))
-        if rank >= 99:
-            continue
         refs = resolve_visual_references(item.get("visual_references"), visual_base_dir)
         if not refs:
             continue
         label = clean_text(f"{item.get('id')}: {item.get('description')}")
+        category_order = pricing_reference_order_number(item.get("category_order")) or 10**9
+        item_order = pricing_reference_order_number(item.get("item_order")) or 10**9
         for ref in refs:
             data_url = clean_text(ref.get("data_url"))
             if not data_url:
                 continue
-            candidates.append((rank, label.casefold(), {
+            candidates.append((category_order, item_order, label.casefold(), {
                 "id": clean_text(item.get("id")),
                 "section": clean_text(item.get("reference_section") or item.get("section")),
                 "description": clean_customer_quote_line_text(item.get("description")),
@@ -5539,10 +5516,10 @@ def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int
                 "source": clean_text(ref.get("source")),
                 "data_url": data_url,
             }))
-    candidates.sort(key=lambda item: (item[0], item[1]))
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]))
     images: list[dict[str, Any]] = []
     seen_data: set[str] = set()
-    for _rank, _label, image in candidates:
+    for _category_order, _item_order, _label, image in candidates:
         digest = hashlib.sha256(clean_text(image.get("data_url")).encode("utf-8")).hexdigest()
         if digest in seen_data:
             continue
@@ -5567,7 +5544,7 @@ def catalog_visual_prompt_text(images: list[dict[str, Any]]) -> str:
         for index, image in enumerate(images, start=1)
     ]
     return (
-        "Internal catalog reference images follow. Use them only to recognize the closest pricing_catalog id for visible furniture, AV, rental, or electrical items. "
+        "Internal catalog reference images follow. Use them only to recognize the closest pricing_catalog id for visible catalog-backed items. "
         "Do not copy these images into customer output and do not invent prices from them. If unsure, keep the basis line as AI Confirm/Confirm for operator review. "
         f"Catalog visual image index JSON: {json.dumps(compact, ensure_ascii=True)}"
     )
@@ -5893,7 +5870,7 @@ def basis_chat_required_intent(payload: dict[str, Any]) -> str:
         return "answer"
 
     words = re.findall(r"[A-Za-z0-9]+", lowered)
-    has_fragment_signal = bool(re.search(r"\d|x|×|mm|cm|sqm|sqft|yellow|green|blue|black|white|red|grey|gray|wood|carpet|vinyl|laminate|paint|fabric|glass|metal", lowered))
+    has_fragment_signal = bool(re.search(r"\d|x|\u00d7|mm|cm|sqm|sqft|yellow|green|blue|black|white|red|grey|gray|wood|carpet|vinyl|laminate|paint|fabric|glass|metal", lowered))
     if selected_line and 0 < len(words) <= 8 and has_fragment_signal:
         return "proposal"
     if selected_line and words:
@@ -5963,7 +5940,7 @@ def basis_chat_requested_keywords(question: str) -> list[str]:
     )
     if replacement_match:
         text = replacement_match.group(1)
-    text = re.sub(r"(?<=\d)\s*[x×]\s*(?=\d)", " ", text)
+    text = re.sub(r"(?<=\d)\s*[x\u00d7]\s*(?=\d)", " ", text)
     for token in re.findall(r"[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?", text):
         if token in BASIS_CHAT_EDIT_STOPWORDS or (len(token) < 2 and not token.isdigit()):
             continue

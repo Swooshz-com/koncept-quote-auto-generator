@@ -1,6 +1,6 @@
 const EMPTY_LINE_ITEMS_MESSAGE = "AI analysis will populate line items here.";
-const DEFAULT_PROFILE_ID = "koncept";
-const DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation";
+const DEFAULT_PROFILE_ID = "";
+const DEFAULT_PRICING_REFERENCE_ID = "";
 const DEFAULT_SAMPLE_ID = "kent-group";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const LEGACY_QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
@@ -43,7 +43,7 @@ const DEFAULT_QUOTE_COMPANY_RICH_TEXT = {
   acceptanceText: "<div>We accept the quotation amount and the terms</div>",
   personLabel: "<div>Person in charge</div>",
   stampLabel: "<div>Company name &amp; stamp</div>",
-  konceptDateLabel: "<div>Date:</div>",
+  companyDateLabel: "<div>Date:</div>",
   dateLabel: "<div>Date:</div>",
 };
 const DEFAULT_BOOTH_DIMENSIONS = {
@@ -78,9 +78,9 @@ const RICH_TEXT_SOURCE_IDS = [
   "standardNotes",
   "quoteCompanyName",
   "acceptanceText",
-  "konceptSignatory",
-  "konceptTitle",
-  "konceptDateLabel",
+  "companySignatory",
+  "companyTitle",
+  "companyDateLabel",
   "personLabel",
   "stampLabel",
   "dateLabel",
@@ -216,9 +216,9 @@ const elements = {
   standardNotes: qs("#standardNotes"),
   quoteCompanyName: qs("#quoteCompanyName"),
   acceptanceText: qs("#acceptanceText"),
-  konceptSignatory: qs("#konceptSignatory"),
-  konceptTitle: qs("#konceptTitle"),
-  konceptDateLabel: qs("#konceptDateLabel"),
+  companySignatory: qs("#companySignatory"),
+  companyTitle: qs("#companyTitle"),
+  companyDateLabel: qs("#companyDateLabel"),
   personLabel: qs("#personLabel"),
   stampLabel: qs("#stampLabel"),
   dateLabel: qs("#dateLabel"),
@@ -367,43 +367,49 @@ function basisDisplayTitle(value = "") {
 
 function normalizeCategoryTitle(value = "") {
   const text = basisDisplayTitle(value);
-  const compact = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
-  if (!compact) return "General";
-  if (/\b(counter|counters|cabinet|cabinets|cabinetry|reception counter|storage cabinet|display counter|lockable cabinet)\b/.test(compact)) return "COUNTERS AND CABINETS";
-  if (/\b(rigging|overhead structure|aluminium box truss|aluminum box truss|box truss|truss|suspended structure|hanging frame|hanging structure)\b/.test(compact)) return "Hanging Structure";
-  if (/\b(platform|flooring|floor|carpet|raised platform|vinyl flooring)\b/.test(compact)) return "Floor Design";
-  if (/\b(graphic|graphics|signage|sign|logo|lightbox|print|printed|vinyl)\b/.test(compact)) return "Graphics";
-  if (/\b(furniture|chair|table)\b/.test(compact)) return "Furniture Rental";
-  if (/\b(decor|plant|plants|rental item|loose rental)\b/.test(compact)) return "Rental Items";
-  if (/\b(electrical|power|socket|light|lighting|spotlight)\b/.test(compact)) return "Electrical Fittings ( Excluding connection fees by Organiser)";
-  if (/\b(av|audio|visual|screen|monitor|tv)\b/.test(compact)) return "AV Equipment Rental Items";
-  if (/\b(water|sink|tap|plumbing)\b/.test(compact)) return "Water Connection";
-  if (/\b(coffee|tea|beverage|drink)\b/.test(compact)) return "Coffee / Tea (Subject to approval by Venue owner and Organiser)";
-  const boothTerms = new Set(["booth", "booth dimension", "booth dimensions", "booth structure", "booth structures", "structure", "structures", "walls", "wall", "partitions", "partition", "fascia", "system profile partitions", "entrance frame", "curved frame", "back wall", "side wall", "header fascia structure", "header"]);
-  if (boothTerms.has(compact) || /\b(booth|wall|walls|partition|partitions|fascia|entrance frame|curved frame|back wall|side wall|system profile|header)\b/.test(compact)) return "Booth Structure";
-  return text;
+  return text || "General";
 }
 
 function sectionTitleKey(value = "") {
-  return basisDisplayTitle(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const stopWords = new Set(["and", "or", "the", "of", "for", "with", "by", "to", "in", "at", "per"]);
+  return basisDisplayTitle(value)
+    .toLowerCase()
+    .replace(/\bm\s*(?:2|\^2)\b/g, "sqm")
+    .replace(/\bsq\.?\s*m\.?\b/g, "sqm")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((token) => {
+      if (!token || stopWords.has(token)) return "";
+      if (token.length > 4 && token.endsWith("ies")) return `${token.slice(0, -3)}y`;
+      if (token.length > 3 && token.endsWith("s")) return token.slice(0, -1);
+      return token;
+    })
+    .filter(Boolean)
+    .join(" ");
 }
 
 function referenceSectionTitleAliases(value = "") {
   const title = basisDisplayTitle(value);
   if (!title) return [];
-  const aliasesByTitle = {
-    "floor design": ["Flooring / Platform", "Platform / Flooring", "Flooring", "Platform"],
-    "counters and cabinets": ["Counters & Cabinets", "Counters", "Cabinets"],
-    "graphics": ["Graphics / Signage", "Signage"],
-    "furniture rental": ["Furniture / Decor", "Furniture", "Furniture Decor"],
-    "rental items": ["Decor", "Plant", "Plants", "Loose Rental", "Rental Item"],
-    "av equipment rental items": ["Electrical / AV", "AV", "Audio Visual", "Screens", "Monitor", "TV"],
-    "electrical fittings excluding connection fees by organiser": ["Electrical / AV", "Electrical", "Lighting", "Lights", "Power"],
-    "booth structure": ["Surfaces / Structures", "Walls / Structures", "Walls", "Partitions", "Fascia"],
+  const aliases = [];
+  const addAlias = (alias) => {
+    const cleaned = basisDisplayTitle(alias);
+    if (!cleaned) return;
+    const key = sectionTitleKey(cleaned);
+    if (!aliases.some((existing) => sectionTitleKey(existing) === key)) aliases.push(cleaned);
   };
-  const aliases = new Set([title, normalizeCategoryTitle(title)]);
-  (aliasesByTitle[sectionTitleKey(title)] || []).forEach((alias) => aliases.add(alias));
-  return Array.from(aliases).filter((alias) => basisDisplayTitle(alias));
+  addAlias(title);
+  title.split(/\s*(?:\/|&|\band\b)\s*/i).forEach(addAlias);
+  const tokens = sectionTitleKey(title).split(/\s+/).filter(Boolean);
+  for (let length = 1; length <= Math.min(3, tokens.length); length += 1) {
+    addAlias(tokens.slice(0, length).map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" "));
+  }
+  if (tokens.length >= 2) {
+    const acronym = tokens.slice(0, Math.min(4, tokens.length)).map((token) => token.charAt(0).toUpperCase()).join("");
+    if (acronym.length >= 2) addAlias(acronym);
+  }
+  return aliases;
 }
 
 function exactPricingReferenceSectionTitle(value = "") {
@@ -418,6 +424,7 @@ function exactPricingReferenceSectionTitle(value = "") {
     || null;
   const items = Array.isArray(reference?.items) ? reference.items : [];
   const lookup = new Map();
+  const sectionEvidence = new Map();
   items.forEach((item) => {
     const title = basisDisplayTitle(item?.reference_section || item?.source_section || item?.section || "");
     if (!title) return;
@@ -425,8 +432,45 @@ function exactPricingReferenceSectionTitle(value = "") {
       const key = sectionTitleKey(candidate);
       if (key && !lookup.has(key)) lookup.set(key, title);
     });
+    const evidenceValues = [
+      item?.reference_section,
+      item?.source_section,
+      item?.section,
+      item?.description,
+      ...(Array.isArray(item?.aliases) ? item.aliases : []),
+      ...(Array.isArray(item?.match_terms) ? item.match_terms : []),
+      ...(Array.isArray(item?.object_families) ? item.object_families : []),
+      ...(Array.isArray(item?.remarks) ? item.remarks : []),
+    ];
+    const evidenceTokens = sectionEvidence.get(title) || new Set();
+    evidenceValues.forEach((evidence) => {
+      sectionTitleKey(evidence).split(/\s+/).filter(Boolean).forEach((token) => evidenceTokens.add(token));
+    });
+    sectionEvidence.set(title, evidenceTokens);
   });
-  return referenceSectionTitleAliases(text).map(sectionTitleKey).map((key) => lookup.get(key)).find(Boolean) || "";
+  const inputKeys = referenceSectionTitleAliases(text).map(sectionTitleKey).filter(Boolean);
+  const exact = inputKeys.map((key) => lookup.get(key)).find(Boolean);
+  if (exact) return exact;
+  const inputTokens = new Set(inputKeys.join(" ").split(/\s+/).filter(Boolean));
+  if (!inputTokens.size) return "";
+  let bestTitle = "";
+  let bestScore = 0;
+  let tied = false;
+  sectionEvidence.forEach((tokens, title) => {
+    let overlap = 0;
+    inputTokens.forEach((token) => {
+      if (tokens.has(token)) overlap += 1;
+    });
+    const score = inputTokens.size ? overlap / inputTokens.size : 0;
+    if (score >= 0.6 && score > bestScore) {
+      bestTitle = title;
+      bestScore = score;
+      tied = false;
+    } else if (score >= 0.6 && score === bestScore && title !== bestTitle) {
+      tied = true;
+    }
+  });
+  return tied ? "" : bestTitle;
 }
 
 function normalizeQuoteBasisTitle(value = "") {
@@ -1501,9 +1545,9 @@ function collectQuoteDetails() {
       date_label: elements.dateLabel.value.trim(),
     },
     signature: {
-      koncept_signatory: elements.konceptSignatory.value.trim(),
-      koncept_title: elements.konceptTitle.value.trim(),
-      koncept_date_label: elements.konceptDateLabel.value.trim(),
+      company_signatory: elements.companySignatory.value.trim(),
+      company_title: elements.companyTitle.value.trim(),
+      company_date_label: elements.companyDateLabel.value.trim(),
     },
     rich_text: collectRichTextDetails(),
   };
@@ -1541,9 +1585,9 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(quoteText, "notes_heading", partial)) setInputValue(elements.notesHeading, quoteText.notes_heading);
   if (shouldApply(quoteText, "standard_notes", partial)) setInputValue(elements.standardNotes, linesValue(quoteText.standard_notes));
   if (shouldApply(quoteText, "acceptance_text", partial)) setInputValue(elements.acceptanceText, quoteText.acceptance_text);
-  if (shouldApply(signature, "koncept_signatory", partial)) setInputValue(elements.konceptSignatory, signature.koncept_signatory);
-  if (shouldApply(signature, "koncept_title", partial)) setInputValue(elements.konceptTitle, signature.koncept_title);
-  if (shouldApply(signature, "koncept_date_label", partial)) setInputValue(elements.konceptDateLabel, signature.koncept_date_label);
+  if (shouldApply(signature, "company_signatory", partial)) setInputValue(elements.companySignatory, signature.company_signatory);
+  if (shouldApply(signature, "company_title", partial)) setInputValue(elements.companyTitle, signature.company_title);
+  if (shouldApply(signature, "company_date_label", partial)) setInputValue(elements.companyDateLabel, signature.company_date_label);
   if (shouldApply(quoteText, "person_label", partial)) setInputValue(elements.personLabel, quoteText.person_label);
   if (shouldApply(quoteText, "stamp_label", partial)) setInputValue(elements.stampLabel, quoteText.stamp_label);
   if (shouldApply(quoteText, "date_label", partial)) setInputValue(elements.dateLabel, quoteText.date_label);
@@ -1572,7 +1616,7 @@ function applyDefaultQuoteCompanyFields() {
   setInputValue(elements.termsHeading, DEFAULT_TERMS_HEADING);
   setInputValue(elements.notesHeading, DEFAULT_NOTES_HEADING);
   setInputValue(elements.acceptanceText, DEFAULT_ACCEPTANCE_TEXT);
-  setInputValue(elements.konceptDateLabel, DEFAULT_DATE_LABEL);
+  setInputValue(elements.companyDateLabel, DEFAULT_DATE_LABEL);
   setInputValue(elements.personLabel, DEFAULT_PERSON_LABEL);
   setInputValue(elements.stampLabel, DEFAULT_STAMP_LABEL);
   setInputValue(elements.dateLabel, DEFAULT_DATE_LABEL);
@@ -2020,9 +2064,9 @@ function clearQuoteCompanyDetails() {
   setInputValue(elements.standardNotes, "");
   setInputValue(elements.quoteCompanyName, "");
   setInputValue(elements.acceptanceText, "");
-  setInputValue(elements.konceptSignatory, "");
-  setInputValue(elements.konceptTitle, "");
-  setInputValue(elements.konceptDateLabel, "");
+  setInputValue(elements.companySignatory, "");
+  setInputValue(elements.companyTitle, "");
+  setInputValue(elements.companyDateLabel, "");
   setInputValue(elements.personLabel, "");
   setInputValue(elements.stampLabel, "");
   setInputValue(elements.dateLabel, "");
@@ -3034,9 +3078,9 @@ function buildPayload(options = {}) {
       date_label: elements.dateLabel.value.trim(),
     },
     signature: {
-      koncept_signatory: elements.konceptSignatory.value.trim(),
-      koncept_title: elements.konceptTitle.value.trim(),
-      koncept_date_label: elements.konceptDateLabel.value.trim(),
+      company_signatory: elements.companySignatory.value.trim(),
+      company_title: elements.companyTitle.value.trim(),
+      company_date_label: elements.companyDateLabel.value.trim(),
     },
     rich_text: collectRichTextDetails(),
   };
@@ -4658,9 +4702,9 @@ function missingQuoteCompanyFields() {
   if (!hasLines(elements.headerDetails.value)) missing.push("Header details");
   if (!elements.quoteCompanyName.value.trim()) missing.push("Quotation Company");
   if (!elements.acceptanceText.value.trim()) missing.push("Acceptance text");
-  if (!elements.konceptSignatory.value.trim()) missing.push("Company signatory");
-  if (!elements.konceptTitle.value.trim()) missing.push("Signatory title");
-  if (!elements.konceptDateLabel.value.trim()) missing.push("Company date label");
+  if (!elements.companySignatory.value.trim()) missing.push("Company signatory");
+  if (!elements.companyTitle.value.trim()) missing.push("Signatory title");
+  if (!elements.companyDateLabel.value.trim()) missing.push("Company date label");
   if (!elements.personLabel.value.trim()) missing.push("Person label");
   if (!elements.stampLabel.value.trim()) missing.push("Stamp label");
   if (!elements.dateLabel.value.trim()) missing.push("Date label");
@@ -5924,9 +5968,9 @@ function wireEvents() {
     elements.standardNotes,
     elements.quoteCompanyName,
     elements.acceptanceText,
-    elements.konceptSignatory,
-    elements.konceptTitle,
-    elements.konceptDateLabel,
+    elements.companySignatory,
+    elements.companyTitle,
+    elements.companyDateLabel,
     elements.personLabel,
     elements.stampLabel,
     elements.dateLabel,
