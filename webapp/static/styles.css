@@ -3276,7 +3276,8 @@ td input {
 }
 
 .pricing-reference-upload-field .settings-note {
-  max-width: 62ch;
+  width: 100%;
+  max-width: none;
   color: #52677e;
   font-weight: 500;
   line-height: 1.4;
@@ -3364,6 +3365,16 @@ td input {
 .pricing-reference-manage-status.is-ready {
   border-color: #b9dfcb;
   background: #f3fbf7;
+}
+
+.pricing-reference-manage-status.is-warn {
+  border-color: var(--amber-border);
+  background: #fffaf0;
+}
+
+.pricing-reference-manage-status.is-saved {
+  border-color: #8fd0bd;
+  background: #effaf6;
 }
 
 .pricing-reference-manage-status.is-blocked {
@@ -3732,13 +3743,36 @@ body.privacy-page {
   background: linear-gradient(180deg, #fff1f2, #fffafa);
 }
 
-.pricing-reference-preview.importing {
+.pricing-reference-preview.importing,
+.pricing-reference-preview.saving {
   position: relative;
   min-height: 118px;
   padding: 0;
   border-color: #cfe0f4;
   background: #f7fbff;
   overflow: hidden;
+}
+
+.pricing-reference-manage-status.is-saving {
+  display: grid;
+  align-items: center;
+  justify-items: stretch;
+  justify-content: stretch;
+  min-height: 118px;
+  padding: 0;
+  border-color: #cfe0f4;
+  background: #f7fbff;
+  overflow: hidden;
+}
+
+.pricing-reference-manage-status.is-saving .pricing-reference-import-overlay {
+  width: 100%;
+}
+
+.pricing-reference-manage-status.is-saving .pricing-reference-import-overlay p,
+.pricing-reference-preview.saving .pricing-reference-import-overlay p {
+  max-width: min(620px, calc(100% - 32px));
+  text-align: center;
 }
 
 .pricing-reference-import-overlay {
@@ -3775,7 +3809,7 @@ body.privacy-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: center;
+  align-items: start;
   min-width: 0;
 }
 
@@ -3798,7 +3832,6 @@ body.privacy-page {
 }
 
 .pricing-reference-preview-status-badge {
-  align-self: start;
   min-width: 74px;
   padding: 5px 10px;
   border: 1px solid var(--line);
@@ -3809,6 +3842,18 @@ body.privacy-page {
   font-weight: 850;
   text-align: center;
   white-space: nowrap;
+}
+
+.pricing-reference-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pricing-reference-preview-actions .pricing-reference-table-open {
+  margin-top: 0;
 }
 
 .pricing-reference-preview.ok .pricing-reference-preview-status-badge {
@@ -3832,10 +3877,6 @@ body.privacy-page {
 .pricing-reference-preview-next-step {
   display: grid;
   gap: 4px;
-  padding: 11px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.9);
 }
 
 .pricing-reference-preview-next-step span {
@@ -3852,36 +3893,18 @@ body.privacy-page {
   line-height: 1.35;
 }
 
-.pricing-reference-preview-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+.pricing-reference-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   min-width: 0;
 }
 
-.pricing-reference-preview-metric {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  min-height: 58px;
-  padding: 10px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-}
-
-.pricing-reference-preview-metric span {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.pricing-reference-preview-metric strong {
-  color: #24364b;
-  font-size: 13px;
+.pricing-reference-preview-summary span {
+  color: #43566e;
+  font-size: 12px;
   font-weight: 760;
-  line-height: 1.25;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -3893,10 +3916,9 @@ body.privacy-page {
 .pricing-reference-attention {
   display: grid;
   gap: 8px;
-  padding: 12px;
-  border: 1px solid rgba(245, 158, 11, 0.34);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 251, 235, 0.72);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .pricing-reference-attention > strong {
@@ -3939,8 +3961,8 @@ body.privacy-page {
 }
 
 .pricing-reference-attention.is-clear {
-  border-color: #b7dfce;
-  background: rgba(236, 253, 245, 0.76);
+  border-color: transparent;
+  background: transparent;
 }
 
 .pricing-reference-attention.is-clear > strong {
@@ -4449,9 +4471,18 @@ body.privacy-page {
   .pricing-reference-delete-section,
   .pricing-reference-delete-controls,
   .pricing-reference-manage-status,
-  .pricing-reference-preview-header,
-  .pricing-reference-preview-metrics {
+  .pricing-reference-preview-header {
     grid-template-columns: 1fr;
+  }
+
+  .pricing-reference-preview-actions {
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .pricing-reference-preview-actions .pricing-reference-table-open {
+    width: 100%;
   }
 
   .pricing-reference-manage-status {

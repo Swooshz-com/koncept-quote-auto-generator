@@ -25,6 +25,14 @@ Pricing catalog import lets Settings create a reviewed company pricing reference
 
 Normalized `.xlsx` and `.csv` templates can be parsed deterministically for row data, but every user-facing import preview must complete AI metadata enrichment before Save Reference is enabled. Messy workbook, CSV, and Markdown layouts use AI normalization first, then the same mandatory metadata enrichment step.
 
+## Messy import test fixture
+
+`docs/examples/super-messy-pricing-reference.xlsx` is a deliberately badly formatted workbook for manual import testing. It includes merged title rows, non-standard headers, inconsistent unit wording, continuation rows, typo-heavy descriptions, formula-like text, random notes, and an extra sheet that should be ignored. Use it to verify the AI normalization path before relying on a new import change.
+
+This fixture is not a pricing-reference source of truth and should not be saved as a bundled default reference. If it is saved through Settings during manual testing, delete the generated pricing-reference pack after the test.
+
+Imported repo pricing-reference packs must not become the app-level default merely because their folder name sorts first. The protected default should come from the active profile's `default_pricing_reference`; imported test packs should remain deletable unless a profile explicitly uses them as its default.
+
 ## Safe extraction boundaries
 
 - Upload size is bounded before parsing.

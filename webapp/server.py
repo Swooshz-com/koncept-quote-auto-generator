@@ -69,8 +69,38 @@ def discovered_default_resource_id(root: Path, marker_filename: str, fallback: s
     return candidates[0] if candidates else fallback
 
 
+def safe_boot_resource_id(value: Any, fallback: str = "") -> str:
+    text = str(value or "").strip()
+    return text if PROFILE_ID_RE.fullmatch(text) else fallback
+
+
+def discovered_default_pricing_reference_id(
+    pricing_root: Path,
+    profiles_root: Path,
+    fallback: str = "default",
+) -> str:
+    discovered_reference = discovered_default_resource_id(pricing_root, "reference.json", fallback)
+    try:
+        profile_paths = [
+            path
+            for path in sorted(profiles_root.iterdir(), key=lambda item: item.name.casefold())
+            if path.is_dir() and PROFILE_ID_RE.fullmatch(path.name) and (path / "profile.json").is_file()
+        ]
+    except OSError:
+        profile_paths = []
+    for profile_path in profile_paths:
+        try:
+            profile = json.loads((profile_path / "profile.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        reference_id = safe_boot_resource_id(profile.get("default_pricing_reference"), "")
+        if reference_id and (pricing_root / reference_id / "reference.json").is_file():
+            return reference_id
+    return discovered_reference
+
+
 DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json")
-DEFAULT_PRICING_REFERENCE_ID = discovered_default_resource_id(PRICING_REFERENCES_ROOT, "reference.json")
+DEFAULT_PRICING_REFERENCE_ID = discovered_default_pricing_reference_id(PRICING_REFERENCES_ROOT, PROFILES_ROOT)
 PRICING_REFERENCE_TEMPLATE_PATH = PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
@@ -824,10 +854,17 @@ def detected_currency_label(value: Any) -> str:
 
 
 def detect_currency_from_rows(headers: list[str], rows: list[dict[str, Any]]) -> str:
-    parts = [*headers]
+    parts: list[str] = []
+    header_text = " ".join(clean_text(header) for header in headers)
+    header_currency = detected_currency_label(header_text)
+    if header_currency:
+        return header_currency
+    currency_key_pattern = re.compile(r"(?i)\b(?:currency|curr|ccy)\b")
     for row in rows[:80]:
         if isinstance(row, dict):
-            parts.extend(clean_text(value) for value in row.values())
+            for key, value in row.items():
+                if currency_key_pattern.search(clean_text(key)):
+                    parts.append(clean_text(value))
     return detected_currency_label(" ".join(parts))
 
 
@@ -2218,7 +2255,7 @@ def pricing_reference_required_field_errors(items: list[dict[str, Any]]) -> list
 
 def infer_unit_prefix(description: Any) -> str:
     text = clean_text(description)
-    match = re.match(r"(?i)^(m\.?\s*run|m\.?\s*length|m2|sqm|nos?\.?|lot\.?|sets?|m\.?)(?=\s|$)", text)
+    match = re.match(r"(?i)^(m\.?\s*run|m\.?\s*length|m2|sqm|nos?\.?|no\.?|lot\.?|sets?|m\.?)(?=\s|[.;:/,(]|$)", text)
     if not match:
         return ""
     unit = re.sub(r"\s+", " ", match.group(1).lower().replace(".", " ")).strip()
@@ -2231,9 +2268,19 @@ def infer_unit_prefix(description: Any) -> str:
     return unit
 
 
+def infer_pricing_reference_unit(description: Any) -> str:
+    text = clean_text(description)
+    leading_unit = infer_unit_prefix(text)
+    if leading_unit:
+        return leading_unit
+    if re.search(r"(?i)(?:\bper\s+day\b|\bper-day\b|/day\b)", text):
+        return "day"
+    return ""
+
+
 def reconcile_pricing_reference_unit_hint(description: Any, unit_hint: Any) -> str:
     normalized_unit = normalize_pricing_unit(unit_hint)
-    leading_unit = infer_unit_prefix(description)
+    leading_unit = infer_pricing_reference_unit(description)
     if leading_unit and normalized_unit and leading_unit != normalized_unit:
         return leading_unit
     return normalized_unit or leading_unit
@@ -2269,7 +2316,7 @@ def stitch_pricing_reference_continuation_rows(rows: list[dict[str, Any]]) -> li
                 previous["remarks"] = "; ".join(part for part in ([existing_remarks] if existing_remarks else []) + remarks if part)
             continue
         if description and not clean_text(row.get("unit_hint") or row.get("unit")):
-            unit = infer_unit_prefix(description)
+            unit = infer_pricing_reference_unit(description)
             if unit:
                 row["unit_hint"] = unit
         stitched.append(row)
@@ -2619,7 +2666,7 @@ def sectioned_workbook_row_to_pricing_reference_row(section: str, section_order:
     description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
     remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
-    unit_hint = infer_unit_prefix(description)
+    unit_hint = infer_pricing_reference_unit(description) or ("nos" if description else "")
     return {
         "_source_row": row_number,
         "category_order": section_order,
@@ -2689,7 +2736,7 @@ def pricing_reference_import_preview_from_sectioned_workbook(raw: bytes, filenam
         }
     result = validate_pricing_reference_rows(rows, list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
     result["layout"] = "sectioned-pricing-workbook"
-    result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows) or DEFAULT_CURRENCY_LABEL
+    result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows)
     if result.get("errors") == ["Missing required columns: section, description, unit_hint, internal_cost, markup_multiplier."]:
         result["errors"] = []
     return result
@@ -4139,6 +4186,54 @@ def pricing_reference_pack_detail(reference_id: str) -> dict[str, Any] | None:
     if pack.id != safe_id:
         return None
     return pack.public_detail()
+
+
+def pricing_reference_visible_remarks_signature(value: Any) -> list[str]:
+    remarks: list[str] = []
+    for item in split_pricing_reference_terms(value):
+        text = apply_pricing_workbook_text_fixes(item)
+        if text:
+            remarks.append(text)
+    return remarks
+
+
+def pricing_reference_visible_item_signature(item: dict[str, Any]) -> dict[str, Any]:
+    description = clean_customer_quote_line_text(item.get("description"))
+    unit_hint = reconcile_pricing_reference_unit_hint(
+        description,
+        item.get("unit_hint") or item.get("unit"),
+    )
+    return {
+        "section": clean_basis_section_title(item.get("reference_section") or item.get("section")),
+        "description": description,
+        "unit_hint": unit_hint,
+        "internal_cost": parse_pricing_number(item.get("internal_cost") or item.get("cost")),
+        "markup_multiplier": parse_pricing_number(item.get("markup_multiplier") or item.get("markup")),
+        "remarks": pricing_reference_visible_remarks_signature(item.get("remarks") or item.get("remark")),
+        "category_order": pricing_reference_order_number(item.get("category_order")),
+        "item_order": pricing_reference_order_number(item.get("item_order")),
+    }
+
+
+def pricing_reference_visible_signature(reference: dict[str, Any]) -> dict[str, Any]:
+    raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
+    items = [
+        pricing_reference_visible_item_signature(item)
+        for item in raw_items
+        if isinstance(item, dict)
+    ]
+    return {
+        "label": clean_text(reference.get("label")),
+        "tax": normalized_tax_config(reference.get("tax")),
+        "currency": normalize_currency_label(reference.get("currency")),
+        "items": items,
+    }
+
+
+def pricing_reference_payload_matches_existing_pack(payload: dict[str, Any], existing: dict[str, Any]) -> bool:
+    payload_signature = pricing_reference_visible_signature(payload)
+    existing_signature = pricing_reference_visible_signature(existing)
+    return payload_signature == existing_signature
 
 
 def draft_analysis_mode(payload: dict[str, Any] | None = None) -> str:
@@ -8427,6 +8522,15 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             try:
+                reference_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
+                existing = pricing_reference_pack_detail(reference_id) if reference_id else None
+                if existing and pricing_reference_payload_matches_existing_pack(payload, existing):
+                    self.send_json({
+                        "status": "unchanged",
+                        "pricing_reference": load_pricing_reference_pack(reference_id).public_summary(),
+                        "unchanged": True,
+                    })
+                    return
                 reference = normalize_pricing_reference_payload(payload)
                 saved = save_pricing_reference_pack(reference)
             except ValueError as exc:
