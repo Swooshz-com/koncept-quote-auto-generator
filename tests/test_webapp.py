@@ -5254,7 +5254,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
         self.assertEqual(body["model"], "deepseek-v4-pro")
         self.assertEqual(body["response_format"], {"type": "json_object"})
-        self.assertEqual(body["messages"][0]["role"], "user")
+        self.assertEqual(body["messages"][0]["role"], "system")
+        self.assertIn("Return exactly one valid JSON object", body["messages"][0]["content"])
+        self.assertEqual(body["messages"][1]["role"], "user")
         self.assertNotIn("input", body)
         self.assertEqual(result["type"], "proposal")
 
@@ -5304,7 +5306,101 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
         self.assertEqual(body["model"], "deepseek-v4-pro")
         self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["messages"][0]["role"], "system")
+        self.assertEqual(body["messages"][1]["role"], "user")
         self.assertEqual(enriched[0]["object_families"], ["flooring"])
+
+    def test_deepseek_pricing_import_uses_short_configurable_timeout(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps({
+                            "currency": "SGD",
+                            "items": [
+                                {
+                                    "section": "Floor Design",
+                                    "description": "sqm needle punch carpet in colour",
+                                    "unit_hint": "sqm",
+                                    "internal_cost": "0",
+                                    "markup_multiplier": "1",
+                                    "remarks": "",
+                                    "aliases": [],
+                                }
+                            ],
+                        })
+                    }
+                }
+            ]
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_MODEL_ENV_NAME: "deepseek-test-model",
+                webapp.DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME: "17",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_deepseek_pricing_catalog_import(
+                    "pricing.xlsx",
+                    {"rows": [{"Item": "sqm needle punch carpet in colour"}]},
+                    {"label": "GST", "rate": 0.09},
+                    "ds-test-redacted",
+                )
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 17)
+        self.assertEqual(body["model"], "deepseek-test-model")
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["messages"][0]["role"], "system")
+        self.assertEqual(body["messages"][1]["role"], "user")
+        self.assertEqual(result["currency"], "SGD")
+
+    def test_deepseek_pricing_import_timeout_falls_back_to_openai_quickly(self):
+        good_openai = mock.MagicMock()
+        good_openai.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "currency": "SGD",
+                "items": [
+                    {
+                        "section": "Floor Design",
+                        "description": "sqm needle punch carpet in colour",
+                        "unit_hint": "sqm",
+                        "internal_cost": "0",
+                        "markup_multiplier": "1",
+                        "remarks": "",
+                        "aliases": [],
+                    }
+                ],
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME: "12",
+                webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[TimeoutError("timed out"), good_openai]) as urlopen:
+                with mock.patch.object(webapp.time, "sleep") as sleep:
+                    result = webapp.ai_pricing_reference_import_preview(
+                        "pricing.xlsx",
+                        {"rows": [{"Item": "sqm needle punch carpet in colour"}]},
+                        {"label": "GST", "rate": 0.09},
+                    )
+
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_not_called()
+        self.assertEqual(urlopen.call_args_list[0].kwargs["timeout"], 12)
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["currency"], "SGD")
 
     def test_deepseek_basis_chat_bad_output_falls_back_to_openai(self):
         payload = valid_payload()

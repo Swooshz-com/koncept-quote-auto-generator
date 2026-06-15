@@ -297,6 +297,7 @@ DEEPSEEK_API_KEY_ENV_NAME = "DEEPSEEK_API_KEY"
 DEEPSEEK_MODEL_ENV_NAME = "DEEPSEEK_MODEL"
 DEEPSEEK_BASE_URL_ENV_NAME = "DEEPSEEK_BASE_URL"
 DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME = "DEEPSEEK_REQUEST_TIMEOUT_SECONDS"
+DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME = "DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS"
 AI_BASIS_LINE_PROVIDER_ENV_NAME = "AI_BASIS_LINE_PROVIDER"
 AI_BASIS_ANSWER_PROVIDER_ENV_NAME = "AI_BASIS_ANSWER_PROVIDER"
 AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME = "AI_BASIS_PROPOSAL_PROVIDER"
@@ -318,6 +319,7 @@ SECRET_REDACTION = "sk-..."
 LOCAL_SECRET_REDACTION = "[local-runner-key]"
 OPENAI_REQUEST_TIMEOUT_SECONDS = 1800
 DEEPSEEK_REQUEST_TIMEOUT_SECONDS = 1800
+DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS = 20
 OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 MAX_PROMPT_CATALOG_ROWS = 180
@@ -3326,10 +3328,23 @@ def build_pricing_catalog_metadata_prompt(source_name: str, items: list[dict[str
     )
 
 
-def request_deepseek_chat_completion_json_data(prompt: str, api_key: str, model: str, max_tokens: int, error_context: str) -> dict[str, Any]:
+def request_deepseek_chat_completion_json_data(
+    prompt: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    error_context: str,
+    timeout_seconds: int | None = None,
+) -> dict[str, Any]:
     body = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {
+                "role": "system",
+                "content": "Return exactly one valid JSON object. Do not include markdown, code fences, commentary, or any text outside the JSON object.",
+            },
+            {"role": "user", "content": prompt},
+        ],
         "response_format": {"type": "json_object"},
         "max_tokens": max_tokens,
         "stream": False,
@@ -3343,10 +3358,11 @@ def request_deepseek_chat_completion_json_data(prompt: str, api_key: str, model:
         },
         method="POST",
     )
+    request_timeout = timeout_seconds if timeout_seconds is not None else configured_deepseek_timeout_seconds()
     retry_delays = list(OPENAI_RETRY_DELAYS_SECONDS)
     for attempt in range(len(retry_delays) + 1):
         try:
-            with urllib.request.urlopen(request, timeout=configured_deepseek_timeout_seconds()) as response:
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as exc:
@@ -3364,8 +3380,15 @@ def request_deepseek_chat_completion_json_data(prompt: str, api_key: str, model:
     return data
 
 
-def request_deepseek_json_object(prompt: str, api_key: str, model: str, max_tokens: int, error_context: str) -> dict[str, Any]:
-    data = request_deepseek_chat_completion_json_data(prompt, api_key, model, max_tokens, error_context)
+def request_deepseek_json_object(
+    prompt: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    error_context: str,
+    timeout_seconds: int | None = None,
+) -> dict[str, Any]:
+    data = request_deepseek_chat_completion_json_data(prompt, api_key, model, max_tokens, error_context, timeout_seconds)
     return parse_json_object(chat_completions_output_text(data))
 
 
@@ -3410,6 +3433,7 @@ def request_deepseek_pricing_catalog_import(source_name: str, content: Any, tax:
         configured_deepseek_model(),
         4000,
         "pricing import",
+        configured_deepseek_pricing_import_timeout_seconds(),
     )
 
 
@@ -4519,6 +4543,10 @@ def configured_openai_timeout_seconds() -> int:
 
 def configured_deepseek_timeout_seconds() -> int:
     return configured_timeout_seconds(DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME, DEEPSEEK_REQUEST_TIMEOUT_SECONDS)
+
+
+def configured_deepseek_pricing_import_timeout_seconds() -> int:
+    return configured_timeout_seconds(DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME, DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS)
 
 
 def image_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
