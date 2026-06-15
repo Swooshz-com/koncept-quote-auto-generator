@@ -3837,7 +3837,7 @@ class WebappServerTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], webapp.OPENAI_DRAFT_MODEL)
         self.assertNotIn("temperature", body)
-        self.assertEqual(body["reasoning"], {"effort": "xhigh"})
+        self.assertEqual(body["reasoning"], {"effort": "high"})
         self.assertEqual(result["quote_basis"]["surfaces"], "Confirm: AI surfaces")
 
     def test_openai_request_ignores_client_model_override(self):
@@ -3870,7 +3870,7 @@ class WebappServerTest(unittest.TestCase):
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], "gpt-custom-model")
-        self.assertEqual(body["reasoning"], {"effort": "xhigh"})
+        self.assertEqual(body["reasoning"], {"effort": "high"})
 
     def test_openai_request_uses_draft_reasoning_effort_from_env(self):
         response = mock.MagicMock()
