@@ -222,7 +222,9 @@ ALLOWED_LOG_EVENTS = {
     "openai_basis_chat_failed",
     "openai_draft_completed",
     "openai_draft_failed",
+    "ai_pricing_reference_import_timing",
     "security_event",
+    "server_pricing_reference_import_timing",
     "server_error",
 }
 LOG_OMIT_KEYS = {
@@ -433,6 +435,10 @@ def log_event_category(event_type: str) -> str:
     return "app"
 
 
+def elapsed_milliseconds(started_at: float) -> int:
+    return max(0, int(round((time.perf_counter() - started_at) * 1000)))
+
+
 def sanitize_log_value(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized: dict[str, Any] = {}
@@ -492,6 +498,10 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         meaning = "AI quote-basis drafting completed. Check details counts and section titles to confirm whether the model returned usable quote content."
     elif event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
         meaning = "Remote AI analysis was unavailable or unconfigured, so the app used or offered a local fallback path."
+    elif event == "server_pricing_reference_import_timing":
+        meaning = "Pricing-reference import timing. Check details.timings_ms to see whether local extraction, AI normalization, or validation dominated the wait."
+    elif event == "ai_pricing_reference_import_timing":
+        meaning = "AI pricing-reference import timing. Check details.provider_attempts for provider duration, fallback, and completion status."
     elif event == "abuse_signal":
         meaning = security_reasons.get(reason, "The local runner detected repeated or suspicious local requests.")
     else:
@@ -3492,112 +3502,209 @@ def ai_pricing_reference_metadata_enrichment(filename: str, items: list[dict[str
 
 
 def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[str, Any]) -> dict[str, Any]:
+    started_at = time.perf_counter()
     provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
     parsed: dict[str, Any] | None = None
     errors: list[str] = []
+    provider_attempts: list[dict[str, Any]] = []
+    selected_provider = ""
+    result: dict[str, Any] | None = None
+    validate_rows_ms = 0
+    raw_item_count = 0
     provider_order = [provider]
     if provider != AI_PROVIDER_OPENAI:
         provider_order.append(AI_PROVIDER_OPENAI)
-    for candidate_provider in provider_order:
-        api_key = text_ai_provider_api_key(candidate_provider)
-        if not api_key:
-            errors.append(f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}.")
-            continue
-        try:
-            if candidate_provider == AI_PROVIDER_DEEPSEEK:
-                parsed = request_deepseek_pricing_catalog_import(filename, content, tax, api_key)
-            else:
-                parsed = request_openai_pricing_catalog_import(filename, content, tax, api_key)
-        except OpenAIAnalysisError as exc:
-            errors.append(str(exc))
-            continue
-        if parsed is not None:
-            break
-    if parsed is None:
-        error_reference = new_error_reference()
-        if errors:
-            write_local_log(
-                "server_error",
-                {
-                    "source": "pricing_reference_import",
-                    "error_reference": error_reference,
-                    "selected_provider": provider,
-                    "errors": safe_error_messages(errors),
-                },
+    try:
+        for candidate_provider in provider_order:
+            api_key = text_ai_provider_api_key(candidate_provider)
+            if not api_key:
+                missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
+                errors.append(missing_error)
+                provider_attempts.append({
+                    "provider": candidate_provider,
+                    "status": "missing_api_key",
+                    "duration_ms": 0,
+                    "errors": safe_error_messages([missing_error]),
+                })
+                continue
+            attempt_started_at = time.perf_counter()
+            try:
+                if candidate_provider == AI_PROVIDER_DEEPSEEK:
+                    parsed = request_deepseek_pricing_catalog_import(filename, content, tax, api_key)
+                else:
+                    parsed = request_openai_pricing_catalog_import(filename, content, tax, api_key)
+            except OpenAIAnalysisError as exc:
+                errors.append(str(exc))
+                provider_attempts.append({
+                    "provider": candidate_provider,
+                    "status": "failed",
+                    "duration_ms": elapsed_milliseconds(attempt_started_at),
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            provider_attempts.append({
+                "provider": candidate_provider,
+                "status": "success",
+                "duration_ms": elapsed_milliseconds(attempt_started_at),
+            })
+            selected_provider = candidate_provider
+            if parsed is not None:
+                break
+        if parsed is None:
+            error_reference = new_error_reference()
+            if errors:
+                write_local_log(
+                    "server_error",
+                    {
+                        "source": "pricing_reference_import",
+                        "error_reference": error_reference,
+                        "selected_provider": provider,
+                        "errors": safe_error_messages(errors),
+                    },
+                )
+            missing_key_errors = [error for error in errors if "Missing:" in error]
+            missing_keys_only = bool(missing_key_errors) and len(missing_key_errors) == len(errors)
+            friendly_errors = (
+                [AI_PRICING_IMPORT_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
+                if missing_keys_only
+                else safe_error_messages(errors)
             )
-        missing_key_errors = [error for error in errors if "Missing:" in error]
-        missing_keys_only = bool(missing_key_errors) and len(missing_key_errors) == len(errors)
-        friendly_errors = (
-            [AI_PRICING_IMPORT_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
-            if missing_keys_only
-            else safe_error_messages(errors)
+            result = pricing_reference_validation_result([], [], 0, filename) | {
+                "layout": "ai-normalization-required" if not errors or missing_keys_only else "ai-normalization-failed",
+                "errors": [AI_PRICING_IMPORT_NOT_CONFIGURED, f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}."] if not errors else friendly_errors,
+                "error_reference": error_reference,
+            }
+            return result
+        raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
+        raw_item_count = len(raw_items)
+        validate_started_at = time.perf_counter()
+        result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
+        validate_rows_ms = elapsed_milliseconds(validate_started_at)
+        result["layout"] = "ai-normalized-pricing-reference"
+        result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
+        if not raw_items:
+            result["errors"] = ["AI did not detect editable pricing rows in this upload. Check that the workbook includes item descriptions, units, costs, and markups, or add rows manually in Review Rows."]
+            result["warnings"] = []
+            result["canSave"] = False
+        return result
+    finally:
+        write_local_log(
+            "ai_pricing_reference_import_timing",
+            {
+                "source": "pricing_reference_import",
+                "filename": filename,
+                "selected_provider": provider,
+                "completed_provider": selected_provider,
+                "provider_attempts": provider_attempts,
+                "raw_item_count": raw_item_count,
+                "row_count": result.get("rowCount") if isinstance(result, dict) else 0,
+                "layout": result.get("layout") if isinstance(result, dict) else "",
+                "can_save": result.get("canSave") if isinstance(result, dict) else False,
+                "timings_ms": {
+                    "total": elapsed_milliseconds(started_at),
+                    "validate_rows": validate_rows_ms,
+                },
+            },
         )
-        return pricing_reference_validation_result([], [], 0, filename) | {
-            "layout": "ai-normalization-required" if not errors or missing_keys_only else "ai-normalization-failed",
-            "errors": [AI_PRICING_IMPORT_NOT_CONFIGURED, f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}."] if not errors else friendly_errors,
-            "error_reference": error_reference,
-        }
-    raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
-    result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
-    result["layout"] = "ai-normalized-pricing-reference"
-    result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
-    if not raw_items:
-        result["errors"] = ["AI did not detect editable pricing rows in this upload. Check that the workbook includes item descriptions, units, costs, and markups, or add rows manually in Review Rows."]
-        result["warnings"] = []
-        result["canSave"] = False
-    return result
 
 
 def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
+    started_at = time.perf_counter()
     filename = clean_text(payload.get("filename"))
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     tax = normalized_tax_config(payload.get("tax"))
     currency = normalize_currency_label(payload.get("currency"))
-    if extension in {"csv", "xlsx"}:
-        result = validate_pricing_reference_upload(payload)
-        detected_currency = clean_text(result.get("currency"))
-        if result.get("canSave"):
-            result["layout"] = "normalized-pricing-reference"
-        elif result.get("missing") or int(result.get("rowCount") or 0) == 0:
+    result: dict[str, Any] | None = None
+    route = "unsupported"
+    used_ai = False
+    timings_ms: dict[str, int] = {}
+    try:
+        if extension in {"csv", "xlsx"}:
+            validation_started_at = time.perf_counter()
+            result = validate_pricing_reference_upload(payload)
+            timings_ms["template_validation"] = elapsed_milliseconds(validation_started_at)
+            route = "normalized_template" if result.get("canSave") else "ai_fallback_candidate"
+            detected_currency = clean_text(result.get("currency"))
+            if result.get("canSave"):
+                result["layout"] = "normalized-pricing-reference"
+            elif result.get("missing") or int(result.get("rowCount") or 0) == 0:
+                try:
+                    decode_started_at = time.perf_counter()
+                    raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
+                    timings_ms["decode_upload"] = elapsed_milliseconds(decode_started_at)
+                    if extension == "xlsx":
+                        sectioned_started_at = time.perf_counter()
+                        sectioned_workbook_result = pricing_reference_import_preview_from_sectioned_workbook(raw, filename)
+                        timings_ms["sectioned_workbook_parse"] = elapsed_milliseconds(sectioned_started_at)
+                        if sectioned_workbook_result.get("canSave") or (sectioned_workbook_result.get("rowCount") and not sectioned_workbook_result.get("missing")):
+                            route = "sectioned_workbook"
+                            result = sectioned_workbook_result
+                            result["tax"] = tax
+                            result["currency"] = clean_text(result.get("currency")) or currency
+                            result["saved"] = False
+                            return result
+                    context_started_at = time.perf_counter()
+                    if extension == "csv":
+                        headers, rows = rows_from_csv_bytes(raw)
+                        ai_rows = pricing_reference_rows_for_ai(headers, rows)
+                    else:
+                        headers, rows = rows_from_xlsx_bytes(raw)
+                        ai_rows = xlsx_rows_for_ai(raw)
+                    timings_ms["ai_context_extract"] = elapsed_milliseconds(context_started_at)
+                    detected_currency = detect_currency_from_rows(headers, rows)
+                    rows_have_content = any(any(clean_text(value) for value in row.values()) for row in rows)
+                    if result.get("missing") or rows_have_content:
+                        route = "ai_normalization"
+                        used_ai = True
+                        ai_started_at = time.perf_counter()
+                        result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": ai_rows}, tax)
+                        timings_ms["ai_normalization_total"] = elapsed_milliseconds(ai_started_at)
+                except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
+                    route = "parse_error"
+                    result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
+            result["currency"] = detected_currency or clean_text(result.get("currency")) or currency
+        elif extension == "md":
+            route = "markdown_ai_normalization"
             try:
+                decode_started_at = time.perf_counter()
                 raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
-                if extension == "xlsx":
-                    sectioned_workbook_result = pricing_reference_import_preview_from_sectioned_workbook(raw, filename)
-                    if sectioned_workbook_result.get("canSave") or (sectioned_workbook_result.get("rowCount") and not sectioned_workbook_result.get("missing")):
-                        result = sectioned_workbook_result
-                        result["tax"] = tax
-                        result["currency"] = clean_text(result.get("currency")) or currency
-                        result["saved"] = False
-                        return result
-                if extension == "csv":
-                    headers, rows = rows_from_csv_bytes(raw)
-                    ai_rows = pricing_reference_rows_for_ai(headers, rows)
-                else:
-                    headers, rows = rows_from_xlsx_bytes(raw)
-                    ai_rows = xlsx_rows_for_ai(raw)
-                detected_currency = detect_currency_from_rows(headers, rows)
-                rows_have_content = any(any(clean_text(value) for value in row.values()) for row in rows)
-                if result.get("missing") or rows_have_content:
-                    result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": ai_rows}, tax)
-            except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
+                timings_ms["decode_upload"] = elapsed_milliseconds(decode_started_at)
+                markdown_started_at = time.perf_counter()
+                markdown = markdown_text_from_bytes(raw)
+                timings_ms["markdown_extract"] = elapsed_milliseconds(markdown_started_at)
+                used_ai = True
+                ai_started_at = time.perf_counter()
+                result = ai_pricing_reference_import_preview(filename, {"markdown": markdown}, tax)
+                timings_ms["ai_normalization_total"] = elapsed_milliseconds(ai_started_at)
+                result["currency"] = detected_currency_label(markdown) or clean_text(result.get("currency")) or currency
+            except ValueError as exc:
+                route = "parse_error"
                 result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
-        result["currency"] = detected_currency or clean_text(result.get("currency")) or currency
-    elif extension == "md":
-        try:
-            raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
-            markdown = markdown_text_from_bytes(raw)
-            result = ai_pricing_reference_import_preview(filename, {"markdown": markdown}, tax)
-            result["currency"] = detected_currency_label(markdown) or clean_text(result.get("currency")) or currency
-        except ValueError as exc:
-            result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
-    else:
-        result = pricing_reference_validation_result([], [], 0, filename) | {
-            "errors": ["Upload a .xlsx, .csv, or .md pricing reference file."],
-        }
-    result["tax"] = tax
-    result["currency"] = normalize_currency_label(result.get("currency") or currency)
-    result["saved"] = False
-    return result
+        else:
+            result = pricing_reference_validation_result([], [], 0, filename) | {
+                "errors": ["Upload a .xlsx, .csv, or .md pricing reference file."],
+            }
+        result["tax"] = tax
+        result["currency"] = normalize_currency_label(result.get("currency") or currency)
+        result["saved"] = False
+        return result
+    finally:
+        timings_ms["total"] = elapsed_milliseconds(started_at)
+        write_local_log(
+            "server_pricing_reference_import_timing",
+            {
+                "source": "pricing_reference_import",
+                "filename": filename,
+                "extension": extension,
+                "route": route,
+                "used_ai": used_ai,
+                "layout": result.get("layout") if isinstance(result, dict) else "",
+                "row_count": result.get("rowCount") if isinstance(result, dict) else 0,
+                "can_save": result.get("canSave") if isinstance(result, dict) else False,
+                "error_count": len(result.get("errors") or []) if isinstance(result, dict) else 0,
+                "timings_ms": timings_ms,
+            },
+        )
 
 
 def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]:

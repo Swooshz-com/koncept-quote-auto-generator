@@ -2547,6 +2547,71 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("painted walling", result["items"][0]["match_terms"])
         self.assertEqual(result["items"][0]["object_families"], ["wall_system"])
 
+    def test_pricing_reference_import_logs_timing_for_messy_ai_path(self):
+        raw = "Item,Price\nWhite painted walling per sqm,50\n".encode("utf-8")
+        parsed = {
+            "items": [{
+                "section": "Structures",
+                "description": "White painted walling",
+                "unit_hint": "sqm",
+                "internal_cost": 50,
+                "markup_multiplier": 1.7,
+                "remarks": ["painted wall"],
+                "aliases": ["white wall"],
+            }]
+        }
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed), \
+                mock.patch.object(webapp, "write_local_log") as write_log:
+            result = webapp.pricing_reference_import_preview({
+                "filename": "messy.csv",
+                "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+            })
+
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        log_calls = {call.args[0]: call.args[1] for call in write_log.call_args_list}
+        self.assertIn("server_pricing_reference_import_timing", log_calls)
+        self.assertIn("ai_pricing_reference_import_timing", log_calls)
+        server_log = log_calls["server_pricing_reference_import_timing"]
+        self.assertEqual(server_log["route"], "ai_normalization")
+        self.assertTrue(server_log["used_ai"])
+        self.assertEqual(server_log["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(server_log["row_count"], 1)
+        for key in ("template_validation", "decode_upload", "ai_context_extract", "ai_normalization_total", "total"):
+            self.assertIsInstance(server_log["timings_ms"][key], int)
+        ai_log = log_calls["ai_pricing_reference_import_timing"]
+        self.assertEqual(ai_log["selected_provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(ai_log["completed_provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(ai_log["raw_item_count"], 1)
+        self.assertEqual(ai_log["provider_attempts"][0]["status"], "success")
+        self.assertIsInstance(ai_log["provider_attempts"][0]["duration_ms"], int)
+        self.assertIsInstance(ai_log["timings_ms"]["validate_rows"], int)
+
+    def test_pricing_reference_import_logs_deterministic_timing_without_ai(self):
+        raw = (
+            "id,section,description,unit_hint,internal_cost,markup_multiplier,remarks\n"
+            "row-1,Structures,White painted walling,sqm,50,1.7,painted wall\n"
+        ).encode("utf-8")
+        with mock.patch.object(webapp, "request_openai_pricing_catalog_import") as openai_import, \
+                mock.patch.object(webapp, "write_local_log") as write_log:
+            result = webapp.pricing_reference_import_preview({
+                "filename": "clean.csv",
+                "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+            })
+
+        openai_import.assert_not_called()
+        self.assertEqual(result["layout"], "normalized-pricing-reference")
+        log_calls = {call.args[0]: call.args[1] for call in write_log.call_args_list}
+        self.assertIn("server_pricing_reference_import_timing", log_calls)
+        self.assertNotIn("ai_pricing_reference_import_timing", log_calls)
+        server_log = log_calls["server_pricing_reference_import_timing"]
+        self.assertEqual(server_log["route"], "normalized_template")
+        self.assertFalse(server_log["used_ai"])
+        self.assertEqual(server_log["row_count"], 1)
+        self.assertIsInstance(server_log["timings_ms"]["template_validation"], int)
+        self.assertIsInstance(server_log["timings_ms"]["total"], int)
+        self.assertNotIn("ai_normalization_total", server_log["timings_ms"])
+
     def test_pricing_reference_import_uses_ai_when_required_headers_have_no_valid_rows(self):
         raw = (
             "section,description,unit_hint,internal_cost,markup_multiplier\n"
@@ -5566,6 +5631,8 @@ class WebappServerTest(unittest.TestCase):
             "openai_basis_chat_failed",
             "basis_chat_failed",
             "basis_chat_worker_failed",
+            "server_pricing_reference_import_timing",
+            "ai_pricing_reference_import_timing",
         ):
             self.assertTrue(webapp.is_loggable_event(event), event)
 
