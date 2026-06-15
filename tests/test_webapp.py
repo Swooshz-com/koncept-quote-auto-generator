@@ -507,7 +507,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "m2",
                     "description": "m2 needle-punch carpet and sq. m printed floor panel",
-                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
                 }
             ]
         })
@@ -564,6 +564,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(items[0]["section"], "Floor Design")
         self.assertEqual(items[0]["unit"], "sqm")
+        self.assertEqual(items[0]["pricing_keyword"], "floor-design-needle-punch-carpet-in-colour")
         self.assertEqual(items[0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
         self.assertEqual(items[0]["catalog_description"], "sqm needle punch carpet in colour")
         self.assertEqual(items[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
@@ -584,7 +585,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         })
 
-        self.assertEqual(items[0]["pricing_keyword"], "floor-design.100mm-raised-platform-with-aluminum-edging")
+        self.assertEqual(items[0]["pricing_keyword"], "floor-design-100mm-raised-platform-with-aluminum-edging")
         self.assertEqual(items[0]["catalog_unit_price"], 60.0)
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
@@ -651,7 +652,7 @@ class WebappServerTest(unittest.TestCase):
         reference_id = "av-metadata-test"
         catalog_items = [
             {
-                "id": "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd",
+                "id": "av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd",
                 "section": "AV Equipment Rental Items",
                 "description": 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
                 "unit_hint": "nos",
@@ -661,7 +662,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 2,
             },
             {
-                "id": "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
+                "id": "av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd",
                 "section": "AV Equipment Rental Items",
                 "description": 'nos. 42" LED TV Monitor (With Speaker - Full HD)',
                 "unit_hint": "nos",
@@ -694,12 +695,12 @@ class WebappServerTest(unittest.TestCase):
                     ],
                 })
 
-        self.assertEqual(items[0]["pricing_keyword"], "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd")
+        self.assertEqual(items[0]["pricing_keyword"], "av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd")
         self.assertEqual(
             items[0]["description"],
             '[ nos. 85" LED TV Monitor (With Speaker - Full HD) ] - Large LED video wall or display screen on navy feature wall',
         )
-        self.assertEqual(items[1]["pricing_keyword"], "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd")
+        self.assertEqual(items[1]["pricing_keyword"], "av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd")
         self.assertEqual(
             items[1]["description"],
             '[ nos. 42" LED TV Monitor (With Speaker - Full HD) ] - Wall-mounted LCD monitor for meeting room presentation area',
@@ -721,7 +722,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-6",
+            "electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-6",
         )
         self.assertEqual(items[0]["catalog_unit_price"], 52.5)
 
@@ -729,7 +730,7 @@ class WebappServerTest(unittest.TestCase):
         reference_id = "graphics-unit-metadata-test"
         catalog_items = [
             {
-                "id": "graphics.vinyl-printed-graphics",
+                "id": "graphics-vinyl-printed-graphics",
                 "section": "Graphics",
                 "description": "sqm of vinyl printed graphics",
                 "unit_hint": "sqm",
@@ -739,7 +740,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 1,
             },
             {
-                "id": "graphics.digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+                "id": "graphics-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
                 "section": "Graphics",
                 "description": "nos. digital print graphic mounted directly onto system panels (Size: 950mmL x 2340mmH)",
                 "unit_hint": "nos",
@@ -772,11 +773,11 @@ class WebappServerTest(unittest.TestCase):
                     ],
                 })
 
-        self.assertEqual(items[0]["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(items[0]["pricing_keyword"], "graphics-vinyl-printed-graphics")
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
             items[1]["pricing_keyword"],
-            "graphics.digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+            "graphics-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
         )
         self.assertEqual(items[1]["unit"], "nos")
 
@@ -808,13 +809,13 @@ class WebappServerTest(unittest.TestCase):
             ],
         })
 
-        self.assertEqual(items[0]["pricing_keyword"], "booth-structure.vertical-support-pillars-in-painted-finished")
+        self.assertEqual(items[0]["pricing_keyword"], "booth-structure-vertical-support-pillars-in-painted-finished")
         self.assertEqual(items[0]["catalog_unit_price"], 675.0)
         self.assertEqual(items[1]["pricing_keyword"], "")
         self.assertNotIn("catalog_unit_price", items[1])
         self.assertEqual(
             items[2]["pricing_keyword"],
-            "electrical-fittings-excluding-connection-fees-by-organiser.10w-led-spotlight",
+            "electrical-fittings-excluding-connection-fees-by-organiser-10w-led-spotlight",
         )
         self.assertEqual(items[2]["catalog_unit_price"], 45.0)
 
@@ -827,13 +828,13 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "m",
                     "description": "custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish in green, blue, and yellow",
-                    "pricing_keyword": "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+                    "pricing_keyword": "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
                 }
             ],
         })
 
         self.assertEqual(items[0]["unit"], "m length")
-        self.assertEqual(items[0]["pricing_keyword"], "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
+        self.assertEqual(items[0]["pricing_keyword"], "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
         self.assertEqual(items[0]["catalog_unit_price"], 270.0)
         self.assertNotIn("status", items[0])
 
@@ -917,7 +918,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "electrical-fittings-excluding-connection-fees-by-organiser.led-strip-light-for-coves",
+            "electrical-fittings-excluding-connection-fees-by-organiser-led-strip-light-for-coves",
         )
         self.assertEqual(items[0]["unit"], "m run")
         self.assertEqual(items[0]["catalog_unit_price"], 42.0)
@@ -931,14 +932,14 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 2,
                     "unit": "m",
                     "description": "Branded 1m lockable counters with painted green, blue and yellow finish and laminated top.",
-                    "pricing_keyword": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+                    "pricing_keyword": "counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
                 }
             ],
         })
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+            "counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
         )
         self.assertEqual(items[0]["quantity"], 2.0)
         self.assertEqual(items[0]["unit"], "nos")
@@ -962,7 +963,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased green carpet wording",
-                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
                 }
             ],
         }
@@ -1033,14 +1034,14 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased green carpet wording",
-                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
                 },
                 {
                     "section": "Floor Design",
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased raised platform wording",
-                    "pricing_keyword": "floor-design.100mm-raised-platform-with-aluminum-edging",
+                    "pricing_keyword": "floor-design-100mm-raised-platform-with-aluminum-edging",
                 },
             ],
         }
@@ -1097,7 +1098,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 36,
                     "unit": "sqm",
                     "description": "36 sqm 100mm raised platform with aluminum edging",
-                    "pricing_keyword": "floor-design.100mm-raised-platform-with-aluminum-edging",
+                    "pricing_keyword": "floor-design-100mm-raised-platform-with-aluminum-edging",
                 }
             ],
         }
@@ -1136,7 +1137,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "m",
                     "description": counter_text,
-                    "pricing_keyword": "counters-and-cabinets.1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
+                    "pricing_keyword": "counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
                 }
             ],
         }
@@ -1179,7 +1180,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "lot",
                     "description": "Professional Engineer Endorsement for structure above 4m",
-                    "pricing_keyword": "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m",
+                    "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
                 }
             ],
         }
@@ -1223,7 +1224,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 10,
                     "unit": "nos",
                     "description": "nos. LED recess downlight 3\"",
-                    "pricing_keyword": "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-3",
+                    "pricing_keyword": "electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-3",
                 }
             ],
         }
@@ -1299,7 +1300,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["unit"], "m length")
         self.assertEqual(
             line["pricing_keyword"],
-            "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+            "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
         )
         self.assertNotIn("custom_pricing", line)
 
@@ -1328,7 +1329,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 12,
                     "unit": "sqm",
                     "description": "Custom printed graphic panels for front and side feature walls",
-                    "pricing_keyword": "graphics.vinyl-printed-graphics",
+                    "pricing_keyword": "graphics-vinyl-printed-graphics",
                     "source_basis_line_id": "graphics-front-side",
                 }
             ],
@@ -1341,7 +1342,7 @@ class WebappServerTest(unittest.TestCase):
         line = lines[0]
         self.assertEqual(line["tag"], "Confirm")
         self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Custom printed graphic panels for front and side feature walls")
-        self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(line["pricing_keyword"], "graphics-vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
         self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
         self.assertNotIn("custom_pricing", line)
@@ -1370,7 +1371,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "sqm",
                     "description": "sqm of vinyl printed graphics",
-                    "pricing_keyword": "graphics.vinyl-printed-graphics",
+                    "pricing_keyword": "graphics-vinyl-printed-graphics",
                 }
             ],
         }
@@ -1381,7 +1382,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         line = lines[0]
         self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
-        self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(line["pricing_keyword"], "graphics-vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
         self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
 
@@ -1421,10 +1422,10 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
-        self.assertEqual(line["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(line["pricing_keyword"], "graphics-vinyl-printed-graphics")
         self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
         self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "graphics-vinyl-printed-graphics")
         self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm of vinyl printed graphics")
 
     def test_normalize_ai_draft_marks_unmatched_invented_keyword_for_custom_review(self):
@@ -1439,7 +1440,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "cocktail-table",
                             "tag": "Confirm",
                             "text": text,
-                            "pricing_keyword": "furniture-rental.small-timber-side-table",
+                            "pricing_keyword": "furniture-rental-small-timber-side-table",
                             "quantity": 4,
                             "unit": "nos",
                             "confidence_pct": 82,
@@ -1453,7 +1454,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 4,
                     "unit": "nos",
                     "description": text,
-                    "pricing_keyword": "furniture-rental.small-timber-side-table",
+                    "pricing_keyword": "furniture-rental-small-timber-side-table",
                     "source_basis_line_id": "cocktail-table",
                 }
             ],
@@ -1482,7 +1483,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "coffee-table",
                             "tag": "Confirm",
                             "text": text,
-                            "pricing_keyword": "furniture-rental.glass-coffee-table",
+                            "pricing_keyword": "furniture-rental-glass-coffee-table",
                             "quantity": 1,
                             "unit": "nos",
                             "confidence_pct": 80,
@@ -1496,7 +1497,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "nos",
                     "description": text,
-                    "pricing_keyword": "furniture-rental.glass-coffee-table",
+                    "pricing_keyword": "furniture-rental-glass-coffee-table",
                     "source_basis_line_id": "coffee-table",
                 }
             ],
@@ -1508,10 +1509,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["tag"], "Confirm")
         self.assertNotIn("custom_pricing", line)
         self.assertEqual(line["text"], "[ nos. Round Glass Low Table (90cm) ] - Glass-top coffee table with dark frame for lounge area")
-        self.assertEqual(line["pricing_keyword"], "furniture-rental.round-glass-low-table-90cm")
+        self.assertEqual(line["pricing_keyword"], "furniture-rental-round-glass-low-table-90cm")
         self.assertEqual(line["catalog_description"], "nos. Round Glass Low Table (90cm)")
         self.assertEqual(line["pricing_reference_description"], "nos. Round Glass Low Table (90cm)")
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "furniture-rental.round-glass-low-table-90cm")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "furniture-rental-round-glass-low-table-90cm")
         self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "nos. Round Glass Low Table (90cm)")
 
     def test_normalize_ai_draft_drops_valid_keyword_when_object_family_contradicts_line(self):
@@ -1525,7 +1526,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "meeting-table",
                             "tag": "Confirm",
                             "text": "Meeting table for 6-pax meeting room",
-                            "pricing_keyword": "furniture-rental.white-folding-chairs",
+                            "pricing_keyword": "furniture-rental-white-folding-chairs",
                             "quantity": 1,
                             "unit": "nos",
                             "confidence_pct": 88,
@@ -1539,7 +1540,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "nos",
                     "description": "Meeting table for 6-pax meeting room",
-                    "pricing_keyword": "furniture-rental.white-folding-chairs",
+                    "pricing_keyword": "furniture-rental-white-folding-chairs",
                     "source_basis_line_id": "meeting-table",
                 }
             ],
@@ -1565,7 +1566,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "glass-partition",
                             "tag": "Confirm",
                             "text": "Glass partition and door treatment for meeting room frontage",
-                            "pricing_keyword": "booth-structure.x-2-5m-height-glass-partition",
+                            "pricing_keyword": "booth-structure-x-2-5m-height-glass-partition",
                             "quantity": 8,
                             "unit": "m",
                             "confidence_pct": 82,
@@ -1579,7 +1580,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 8,
                     "unit": "m",
                     "description": "Glass partition and door treatment for meeting room frontage",
-                    "pricing_keyword": "booth-structure.x-2-5m-height-glass-partition",
+                    "pricing_keyword": "booth-structure-x-2-5m-height-glass-partition",
                     "source_basis_line_id": "glass-partition",
                 }
             ],
@@ -1589,12 +1590,12 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["pricing_keyword"], "booth-structure.x-2-5m-height-glass-partition")
+        self.assertEqual(line["pricing_keyword"], "booth-structure-x-2-5m-height-glass-partition")
         self.assertEqual(
             line["text"],
             "[ m length x 2.5m height glass partition ] - Glass partition and door treatment for meeting room frontage",
         )
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "booth-structure.x-2-5m-height-glass-partition")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "booth-structure-x-2-5m-height-glass-partition")
 
     def test_normalize_ai_draft_uses_pricing_keyword_over_overlapping_bracket_text(self):
         parsed = {
@@ -1606,7 +1607,7 @@ class WebappServerTest(unittest.TestCase):
                         {
                             "tag": "Confirm",
                             "text": "[ nos. of Manual Chain Hoist ] - For circular overhead branded hanging sign",
-                            "pricing_keyword": "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth",
+                            "pricing_keyword": "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 58,
@@ -1614,7 +1615,7 @@ class WebappServerTest(unittest.TestCase):
                         {
                             "tag": "Confirm",
                             "text": "[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ] - For overhead hanging sign installation",
-                            "pricing_keyword": "hanging-structure.professional-engineer-endorsement-for-hanging",
+                            "pricing_keyword": "hanging-structure-professional-engineer-endorsement-for-hanging",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 60,
@@ -1628,9 +1629,9 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["pricing_keyword"], "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth")
+        self.assertEqual(lines[0]["pricing_keyword"], "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth")
         self.assertTrue(lines[0]["text"].startswith("[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ]"))
-        self.assertEqual(lines[1]["pricing_keyword"], "hanging-structure.professional-engineer-endorsement-for-hanging")
+        self.assertEqual(lines[1]["pricing_keyword"], "hanging-structure-professional-engineer-endorsement-for-hanging")
         self.assertTrue(lines[1]["text"].startswith("[ Professional Engineer Endorsement for hanging ]"))
 
     def test_normalize_ai_draft_marks_unmatched_service_exclusion_wording_for_custom_review(self):
@@ -1706,7 +1707,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["tag"], "Confirm")
         self.assertEqual(
             line["pricing_keyword"],
-            "coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day",
+            "coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day",
         )
         self.assertEqual(line["pricing_reference_description"], "Coffee / Tea and supplies for 100 people per day")
         self.assertTrue(line["text"].startswith("[ Coffee / Tea and supplies for 100 people per day ] - "))
@@ -1716,7 +1717,7 @@ class WebappServerTest(unittest.TestCase):
         reference_id = "water-metadata-test"
         catalog_items = [
             {
-                "id": "water-connection.water-inlet-and-outlet",
+                "id": "water-connection-water-inlet-and-outlet",
                 "section": "Water Connection",
                 "description": "nos. water inlet and outlet",
                 "unit_hint": "nos",
@@ -1752,7 +1753,7 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["pricing_keyword"], "water-connection.water-inlet-and-outlet")
+        self.assertEqual(line["pricing_keyword"], "water-connection-water-inlet-and-outlet")
         self.assertEqual(line["pricing_reference_description"], "nos. water inlet and outlet")
         self.assertEqual(line["unit"], "nos")
         self.assertEqual(line["quantity"], "1")
@@ -1763,7 +1764,7 @@ class WebappServerTest(unittest.TestCase):
         reference_id = "graphics-metadata-test"
         catalog_items = [
             {
-                "id": "graphics.vinyl-printed-graphics",
+                "id": "graphics-vinyl-printed-graphics",
                 "section": "Graphics",
                 "description": "sqm of vinyl printed graphics",
                 "unit_hint": "sqm",
@@ -1773,7 +1774,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 1,
             },
             {
-                "id": "graphics.digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+                "id": "graphics-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
                 "section": "Graphics",
                 "description": "nos. digital print graphic mounted directly onto system panels (Size: 950mmL x 2340mmH)",
                 "unit_hint": "nos",
@@ -1783,7 +1784,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 2,
             },
             {
-                "id": "graphics.die-cut-vinyl-logo-including-lettering",
+                "id": "graphics-die-cut-vinyl-logo-including-lettering",
                 "section": "Graphics",
                 "description": "nos. die-cut vinyl logo including lettering",
                 "unit_hint": "nos",
@@ -1793,7 +1794,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 3,
             },
             {
-                "id": "graphics.3d-vinyl-logo-on-foam",
+                "id": "graphics-3d-vinyl-logo-on-foam",
                 "section": "Graphics",
                 "description": "nos. 3D vinyl logo on foam",
                 "unit_hint": "nos",
@@ -1852,16 +1853,16 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(len(lines), 4)
         for line in lines:
             self.assertEqual(line["tag"], "Confirm")
-            self.assertTrue(line["pricing_keyword"].startswith("graphics."))
+            self.assertTrue(line["pricing_keyword"].startswith("graphics-"))
             self.assertIn("pricing_reference_description", line)
             self.assertNotIn("custom_pricing", line)
-        self.assertIn("graphics.vinyl-printed-graphics", {line["pricing_keyword"] for line in lines})
+        self.assertIn("graphics-vinyl-printed-graphics", {line["pricing_keyword"] for line in lines})
 
     def test_normalize_ai_draft_rehomes_broad_booth_structure_to_metadata_catalog_rows_without_one_metre_quantity(self):
         reference_id = "booth-structure-metadata-test"
         catalog_items = [
             {
-                "id": "booth-structure.double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal",
+                "id": "booth-structure-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal",
                 "section": "Booth Structure",
                 "description": "m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal",
                 "unit_hint": "m length",
@@ -1871,7 +1872,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 1,
             },
             {
-                "id": "booth-structure.vertical-support-pillars-in-painted-finished",
+                "id": "booth-structure-vertical-support-pillars-in-painted-finished",
                 "section": "Booth Structure",
                 "description": "nos. vertical support pillars in painted finished",
                 "unit_hint": "nos",
@@ -1881,7 +1882,7 @@ class WebappServerTest(unittest.TestCase):
                 "item_order": 2,
             },
             {
-                "id": "booth-structure.top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal",
+                "id": "booth-structure-top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal",
                 "section": "Booth Structure",
                 "description": "m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
                 "unit_hint": "m length",
@@ -1932,14 +1933,14 @@ class WebappServerTest(unittest.TestCase):
         lines = draft["quote_basis_sections"][0]["lines"]
         by_keyword = {line["pricing_keyword"]: line for line in lines}
         self.assertIn(
-            "booth-structure.double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal",
+            "booth-structure-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal",
             by_keyword,
         )
         self.assertIn(
-            "booth-structure.top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal",
+            "booth-structure-top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal",
             by_keyword,
         )
-        self.assertIn("booth-structure.vertical-support-pillars-in-painted-finished", by_keyword)
+        self.assertIn("booth-structure-vertical-support-pillars-in-painted-finished", by_keyword)
         for keyword, line in by_keyword.items():
             self.assertEqual(line["tag"], "Confirm")
             self.assertNotIn("custom_pricing", line)
@@ -1959,7 +1960,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "boom-lift",
                             "tag": "Confirm",
                             "text": "[ nos. of Manual Chain Hoist ] - For circular overhead hanging brand sign",
-                            "pricing_keyword": "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth",
+                            "pricing_keyword": "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 64,
@@ -1968,7 +1969,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "pe-hanging",
                             "tag": "Confirm",
                             "text": "Professional Engineer Endorsement for hanging",
-                            "pricing_keyword": "hanging-structure.professional-engineer-endorsement-for-hanging",
+                            "pricing_keyword": "hanging-structure-professional-engineer-endorsement-for-hanging",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 80,
@@ -1982,7 +1983,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "lot",
                     "description": "[ nos. of Manual Chain Hoist ] - For circular overhead hanging brand sign",
-                    "pricing_keyword": "hanging-structure.boom-lift-for-rigging-mandatory-charge-per-booth",
+                    "pricing_keyword": "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth",
                     "source_basis_line_id": "boom-lift",
                 },
                 {
@@ -1990,7 +1991,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "lot",
                     "description": "Professional Engineer Endorsement for hanging",
-                    "pricing_keyword": "hanging-structure.professional-engineer-endorsement-for-hanging",
+                    "pricing_keyword": "hanging-structure-professional-engineer-endorsement-for-hanging",
                     "source_basis_line_id": "pe-hanging",
                 },
             ],
@@ -2015,7 +2016,7 @@ class WebappServerTest(unittest.TestCase):
                             "id": "pe",
                             "tag": "Confirm",
                             "text": "[ nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal ] - Custom curved coffee counter",
-                            "pricing_keyword": "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m",
+                            "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 80,
@@ -2041,7 +2042,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 1,
                     "unit": "lot",
                     "description": "[ nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal ] - Custom curved coffee counter",
-                    "pricing_keyword": "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m",
+                    "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
                     "source_basis_line_id": "pe",
                 },
             ],
@@ -2061,11 +2062,11 @@ class WebappServerTest(unittest.TestCase):
             for section in result["quote_basis_sections"]
             for line in section["lines"]
         ]
-        pe_line = next(line for line in lines if line.get("pricing_keyword") == "counters-and-cabinets.professional-engineer-endorsement-for-structure-above-4m")
+        pe_line = next(line for line in lines if line.get("pricing_keyword") == "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m")
         water_line = next(line for line in lines if "Water connection and drainage" in line["text"])
         self.assertEqual(pe_line["text"], "[ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee counter")
         self.assertEqual(water_line["tag"], "Confirm")
-        self.assertTrue(water_line["pricing_keyword"].startswith("water-connection."))
+        self.assertTrue(water_line["pricing_keyword"].startswith("water-connection-"))
         self.assertIn(water_line["pricing_reference_description"], {"nos. water inlet and outlet", "nos. sink connection"})
 
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
@@ -2127,7 +2128,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Furniture Rental")
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["text"], "[ nos. Eames Replica Chair (White) ] - White Eames replica chairs for meeting area seating")
-        self.assertEqual(line["pricing_keyword"], "furniture-rental.eames-replica-chair-white")
+        self.assertEqual(line["pricing_keyword"], "furniture-rental-eames-replica-chair-white")
         self.assertEqual(line["catalog_description"], "nos. Eames Replica Chair (White)")
 
     def test_normalize_ai_draft_splits_embedded_basis_decisions_for_review(self):
@@ -2362,7 +2363,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
-        self.assertEqual(result["items"][0]["id"], "structures.white-painted-walling")
+        self.assertEqual(result["items"][0]["id"], "structures-white-painted-walling")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
@@ -2384,7 +2385,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["rowCount"], 1)
         self.assertEqual(result["missing"], [])
         self.assertEqual(result["layout"], "normalized-pricing-reference")
-        self.assertEqual(result["items"][0]["id"], "custom.wall.white-painted")
+        self.assertEqual(result["items"][0]["id"], "custom-wall-white-painted")
         self.assertEqual(result["items"][0]["unit_hint"], "sqm")
         self.assertEqual(result["items"][0]["internal_cost"], 50.0)
         self.assertEqual(result["items"][0]["markup_multiplier"], 1.7)
@@ -2554,6 +2555,35 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["items"][0]["aliases"], ["white wall"])
         self.assertIn("painted walling", result["items"][0]["match_terms"])
         self.assertEqual(result["items"][0]["object_families"], ["wall_system"])
+
+    def test_pricing_reference_import_uses_ai_when_required_headers_have_no_valid_rows(self):
+        raw = (
+            "section,description,unit_hint,internal_cost,markup_multiplier\n"
+            "Structures,White painted walling,sqm,,\n"
+        ).encode("utf-8")
+        parsed = {
+            "items": [{
+                "section": "Structures",
+                "description": "White painted walling",
+                "unit_hint": "sqm",
+                "internal_cost": 50,
+                "markup_multiplier": 1.7,
+                "remarks": ["painted wall"],
+                "aliases": ["white wall"],
+            }]
+        }
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed) as request_import:
+            result = webapp.pricing_reference_import_preview({
+                "filename": "messy-with-required-headers.csv",
+                "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+            })
+
+        request_import.assert_called_once()
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["rowCount"], 1)
+        self.assertEqual(result["items"][0]["id"], "structures-white-painted-walling")
 
     def test_v11_pricing_workbook_import_is_deterministic_and_defers_ai_metadata_until_save(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
@@ -2838,7 +2868,7 @@ class WebappServerTest(unittest.TestCase):
                     "object_families": ["display_monitor"],
                 },
                 {
-                    "id": "graphics.vinyl-printed-graphics",
+                    "id": "graphics-vinyl-printed-graphics",
                     "section": "Graphics",
                     "reference_section": "Graphics",
                     "description": "sqm of vinyl printed graphics",
@@ -2878,7 +2908,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 10,
                     "unit": "sqm",
                     "description": "Printed wall graphics.",
-                    "pricing_keyword": "graphics.vinyl-printed-graphics",
+                    "pricing_keyword": "graphics-vinyl-printed-graphics",
                 },
                 {
                     "section": "AV Equipment Rental Items",
@@ -2921,7 +2951,7 @@ class WebappServerTest(unittest.TestCase):
                 "object_families": ["chair"],
             },
             {
-                "id": "graphics.vinyl-printed-graphics",
+                "id": "graphics-vinyl-printed-graphics",
                 "section": "Graphics",
                 "reference_section": "Graphics",
                 "description": "sqm of vinyl printed graphics",
@@ -2944,7 +2974,7 @@ class WebappServerTest(unittest.TestCase):
                             "quantity": 16,
                             "unit": "sqm",
                             "confidence_pct": 66,
-                            "pricing_keyword": "graphics.vinyl-printed-graphics",
+                            "pricing_keyword": "graphics-vinyl-printed-graphics",
                         }
                     ],
                 },
@@ -2973,7 +3003,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual([section["title"] for section in draft["quote_basis_sections"]], ["Furniture Rental", "Graphics"])
         graphics_line = draft["quote_basis_sections"][1]["lines"][0]
-        self.assertEqual(graphics_line["pricing_keyword"], "graphics.vinyl-printed-graphics")
+        self.assertEqual(graphics_line["pricing_keyword"], "graphics-vinyl-printed-graphics")
         self.assertEqual(graphics_line["category_order"], 9)
         self.assertEqual(draft["line_items"][1]["section"], "Graphics")
 
@@ -2991,7 +3021,7 @@ class WebappServerTest(unittest.TestCase):
                             "quantity": 1,
                             "unit": "nos",
                             "confidence_pct": 92,
-                            "pricing_keyword": "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd",
+                            "pricing_keyword": "av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd",
                         }
                     ],
                 },
@@ -3006,7 +3036,7 @@ class WebappServerTest(unittest.TestCase):
                             "quantity": 10,
                             "unit": "sqm",
                             "confidence_pct": 80,
-                            "pricing_keyword": "graphics.vinyl-printed-graphics",
+                            "pricing_keyword": "graphics-vinyl-printed-graphics",
                         }
                     ],
                 },
@@ -3017,21 +3047,21 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": 4,
                     "unit": "nos",
                     "description": 'nos. 42" LED TV Monitor (With Speaker - Full HD)',
-                    "pricing_keyword": "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
+                    "pricing_keyword": "av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd",
                 },
                 {
                     "section": "AV Equipment Rental Items",
                     "quantity": 4,
                     "unit": "nos",
                     "description": 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
-                    "pricing_keyword": "av-equipment-rental-items.85-led-tv-monitor-with-speaker-full-hd",
+                    "pricing_keyword": "av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd",
                 },
                 {
                     "section": "Graphics",
                     "quantity": 10,
                     "unit": "sqm",
                     "description": "Printed wall graphics",
-                    "pricing_keyword": "graphics.vinyl-printed-graphics",
+                    "pricing_keyword": "graphics-vinyl-printed-graphics",
                 },
             ],
         }
@@ -3049,7 +3079,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(output_keywords, basis_keywords)
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "AV Equipment Rental Items")
         self.assertEqual(draft["line_items"][0]["section"], "AV Equipment Rental Items")
-        self.assertIn("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", basis_keywords)
+        self.assertIn("av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd", basis_keywords)
         meeting_room_line = next(
             line
             for section in draft["quote_basis_sections"]
@@ -3102,9 +3132,9 @@ class WebappServerTest(unittest.TestCase):
         current_descriptions = [(item["id"], item["description"]) for item in current["items"]]
 
         self.assertEqual(current_descriptions, generated_descriptions)
-        self.assertIn(("floor-design.100mm-raised-platform-with-aluminum-edging", "sqm 100mm raised platform with aluminum edging"), current_descriptions)
-        self.assertIn(("av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
-        self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser.coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
+        self.assertIn(("floor-design-100mm-raised-platform-with-aluminum-edging", "sqm 100mm raised platform with aluminum edging"), current_descriptions)
+        self.assertIn(("av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
+        self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
         catalog_text = json.dumps(current, ensure_ascii=False).lower()
         for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth", "plumbling"):
             self.assertNotIn(token, catalog_text)
@@ -3115,11 +3145,11 @@ class WebappServerTest(unittest.TestCase):
         preview = webapp.validate_pricing_reference_rows(rows, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS), "Quotation-Cost-Template-V1.1.xlsx")
         items = {item["id"]: item for item in preview["items"]}
 
-        water = items["water-connection.water-inlet-and-outlet"]
-        sink = items["water-connection.sink-connection"]
-        graphics = items["graphics.vinyl-printed-graphics"]
-        logo = items["graphics.3d-vinyl-logo-on-foam"]
-        tv = items["av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd"]
+        water = items["water-connection-water-inlet-and-outlet"]
+        sink = items["water-connection-sink-connection"]
+        graphics = items["graphics-vinyl-printed-graphics"]
+        logo = items["graphics-3d-vinyl-logo-on-foam"]
+        tv = items["av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd"]
 
         self.assertEqual(water["object_families"], [])
         self.assertEqual(sink["object_families"], [])
@@ -3194,7 +3224,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("RIGGING POINT", combined)
         self.assertIn("truss", combined.lower())
         self.assertGreaterEqual(len(rows), 100)
-        tv_row = next(row for row in rows if row["id"] == "av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd")
+        tv_row = next(row for row in rows if row["id"] == "av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd")
         self.assertIn("match_terms", tv_row)
         self.assertTrue(any("tv" in term.lower() or "monitor" in term.lower() for term in tv_row["match_terms"]))
 
@@ -3211,8 +3241,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertEqual([item["id"] for item in result["items"]], [
-            "structures.white-painted-walling",
-            "structures.white-painted-walling-2",
+            "structures-white-painted-walling",
+            "structures-white-painted-walling-2",
         ])
         self.assertIn("painted wall", [alias.lower() for alias in result["items"][0]["aliases"]])
 
@@ -3232,7 +3262,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
         self.assertNotIn("aliases", headers)
         self.assertGreaterEqual(len(rows), 2)
-        self.assertTrue(rows[0]["id"].startswith("example."))
+        self.assertTrue(rows[0]["id"].startswith("example-"))
         template_text = json.dumps(rows, ensure_ascii=False).lower()
         for customer_specific in (
             "koncept",
@@ -3654,7 +3684,7 @@ class WebappServerTest(unittest.TestCase):
             "status": "drafted",
             "source": "openai",
             "quote_basis": {"surfaces": "AI surfaces"},
-            "line_items": [{"section": "Graphics", "quantity": 1, "unit": "sqm", "description": "AI item", "pricing_keyword": "graphics.vinyl-printed-graphics"}],
+            "line_items": [{"section": "Graphics", "quantity": 1, "unit": "sqm", "description": "AI item", "pricing_keyword": "graphics-vinyl-printed-graphics"}],
         }
 
         with mock.patch.object(webapp, "draft_quote_basis", return_value=ai_draft):
@@ -3671,7 +3701,7 @@ class WebappServerTest(unittest.TestCase):
             "source": "local",
             "ai_failed": True,
             "quote_basis": {},
-            "line_items": [{"section": "Floor Design", "quantity": 36, "unit": "sqm", "description": "Fallback item", "pricing_keyword": "floor-design.needle-punch-carpet-in-colour"}],
+            "line_items": [{"section": "Floor Design", "quantity": 36, "unit": "sqm", "description": "Fallback item", "pricing_keyword": "floor-design-needle-punch-carpet-in-colour"}],
             "warnings": ["Remote AI analysis was unavailable."],
         }
 
@@ -3756,7 +3786,7 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "m2",
                     "description": "m2 green carpet across pavilion footprint",
-                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
                 }
             ],
         }
@@ -3848,7 +3878,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("OpenAI failed", "\n".join(result["warnings"]))
         self.assertGreaterEqual(len(result["line_items"]), 3)
         self.assertEqual(result["line_items"][0]["quantity"], 36.0)
-        self.assertEqual(result["line_items"][0]["pricing_keyword"], "floor-design.needle-punch-carpet-in-colour")
+        self.assertEqual(result["line_items"][0]["pricing_keyword"], "floor-design-needle-punch-carpet-in-colour")
         openai.assert_called_once_with(payload, "sk-test-redacted")
 
     def test_draft_quote_basis_rewrites_default_booth_size_as_confirm_line(self):
@@ -6554,7 +6584,7 @@ assert.strictEqual(pricingStatusLabel("matched-from-ambiguous"), "Ambiguous matc
 assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price");
 
 const pendingStats = matchSummaryStats([
-  { price_mode: "Priced", description: "Carpet", quantity: 36, pricing_keyword: "floor-design.needle-punch-carpet-in-colour", catalog_unit_price: 10.5, amount: 378 },
+  { price_mode: "Priced", description: "Carpet", quantity: 36, pricing_keyword: "floor-design-needle-punch-carpet-in-colour", catalog_unit_price: 10.5, amount: 378 },
   { price_mode: "Priced", description: "Manual", quantity: "", pricing_keyword: "", unit_price_override: "", amount: "" },
 ]);
 assert.strictEqual(effectiveOutputUnitPrice({ catalog_unit_price: "10.50", unit_price_override: "" }), 10.5);
@@ -7711,7 +7741,7 @@ const state = {
     description: "sqm old printed graphic",
     quantity: 1,
     unit: "sqm",
-    pricing_keyword: "graphics.old",
+    pricing_keyword: "graphics-old",
     catalog_unit_price: 100,
     source_basis_line_id: "old-graphic",
   }, {
@@ -7719,14 +7749,14 @@ const state = {
     description: "m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal",
     quantity: 24,
     unit: "m length",
-    pricing_keyword: "booth-structure.top-fascia-structure-at-height-399m-wooden-construct-in-painted-finished-as-per-design-proposal",
+    pricing_keyword: "booth-structure-top-fascia-structure-at-height-399m-wooden-construct-in-painted-finished-as-per-design-proposal",
     catalog_unit_price: 375,
   }, {
     section: "COUNTERS AND CABINETS",
     description: "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal",
     quantity: 2,
     unit: "nos",
-    pricing_keyword: "counters-and-cabinets.1m-length-x-1m-height-x-05m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+    pricing_keyword: "counters-and-cabinets-1m-length-x-1m-height-x-05m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
     catalog_unit_price: 1800,
   }],
   outputRows: [{
@@ -7838,7 +7868,7 @@ state.quoteBasisSections = [{
     text: "[ sqm 100mm raised platform with aluminum edging ] - Full booth footprint with visible perimeter edging",
     quantity: 36,
     unit: "sqm",
-    pricing_keyword: "floor-design.100mm-raised-platform-with-aluminum-edging",
+    pricing_keyword: "floor-design-100mm-raised-platform-with-aluminum-edging",
     catalog_unit_price: 60,
     catalog_description: "sqm 100mm raised platform with aluminum edging",
     pricing_reference_description: "m2 100mm raised platform with aluminum edging",
@@ -7893,7 +7923,7 @@ state.quoteBasisSections = [{
     text: "Large branded header graphics with BRASIL lettering on the pavilion fascia",
     quantity: 2,
     unit: "sqm",
-    pricing_keyword: "graphics.vinyl-printed-graphics",
+    pricing_keyword: "graphics-vinyl-printed-graphics",
     catalog_unit_price: 60,
   }],
 }];
@@ -7902,14 +7932,14 @@ state.lineItems = [{
   description: "Large branded header graphics with BRASIL lettering on the pavilion fascia",
   quantity: 1,
   unit: "sqm",
-  pricing_keyword: "graphics.vinyl-printed-graphics",
+  pricing_keyword: "graphics-vinyl-printed-graphics",
   catalog_unit_price: 60,
 }, {
   section: "Graphics",
   description: "Large branded header graphics with BRASIL lettering on the pavilion fascia",
   quantity: 1,
   unit: "sqm",
-  pricing_keyword: "graphics.vinyl-printed-graphics",
+  pricing_keyword: "graphics-vinyl-printed-graphics",
   catalog_unit_price: 60,
 }];
 state.outputRows = [];
@@ -8378,7 +8408,7 @@ const reference = {
   currency: "USD",
   tax: { label: "VAT", rate: 0.2 },
   items: [{
-    id: "graphics.print",
+    id: "graphics-print",
     section: "Graphics",
     description: "sqm printed graphics",
     unit_hint: "sqm",
@@ -8784,11 +8814,11 @@ assert.strictEqual(quantityPrefixedLine.text, "100mm raised platform with alumin
 const catalogBackedLine = normalizeBasisLines({
   tag: "Confirm",
   text: "Custom printed graphic panels for front and side feature walls",
-  pricing_keyword: "graphics.vinyl-printed-graphics",
+  pricing_keyword: "graphics-vinyl-printed-graphics",
   catalog_description: "sqm of vinyl printed graphics",
   pricing_reference_description: "sqm of vinyl printed graphics",
 })[0];
-assert.strictEqual(catalogBackedLine.pricing_keyword, "graphics.vinyl-printed-graphics");
+assert.strictEqual(catalogBackedLine.pricing_keyword, "graphics-vinyl-printed-graphics");
 assert.strictEqual(catalogBackedLine.catalog_description, "sqm of vinyl printed graphics");
 assert.strictEqual(catalogBackedLine.pricing_reference_description, "sqm of vinyl printed graphics");
 assert.strictEqual(basisCatalogReferenceTitle(catalogBackedLine), "");
@@ -9219,7 +9249,7 @@ const row = outputRowFromLineItem({
   description: "[ m length single side partition wall at height 2.4m ] - Custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish",
   quantity: 1,
   unit: "m length",
-  pricing_keyword: "booth-structure.single-side-partition-wall-at-height-2-4m",
+  pricing_keyword: "booth-structure-single-side-partition-wall-at-height-2-4m",
   pricing_reference_description: "m length single side partition wall at height 2.4m",
   status: "quantity-review",
 });
@@ -9692,7 +9722,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "quantity": 36,
                 "unit": "sqm",
                 "description": "sqm needle punch carpet in colour",
-                "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
             }],
         }
 

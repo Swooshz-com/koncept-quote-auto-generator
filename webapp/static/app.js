@@ -3341,9 +3341,6 @@ function renderPricingReferencePreview(result = null, options = {}) {
   const tone = hasFixes ? "error" : hasReviewNotes || warnings.length ? "warn" : "ok";
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
-    <div class="pricing-reference-preview-actions">
-      <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>${result.items.length ? `Review ${result.items.length} Row${result.items.length === 1 ? "" : "s"}` : "Review Rows"}</button>
-    </div>
     <div class="pricing-reference-attention ${attention.length ? "" : "is-clear"}">
       <strong>${attention.length ? "Needs attention" : "No missing required info detected"}</strong>
       ${attention.length ? `
@@ -3358,6 +3355,9 @@ function renderPricingReferencePreview(result = null, options = {}) {
       ` : `<p>Required columns are present and imported rows pass the basic checks.</p>`}
     </div>
     <p class="pricing-reference-save-guidance ${canSave ? "is-ok" : "is-blocked"}">${escapeHtml(pricingReferenceSaveGuidance(result))}</p>
+    <div class="pricing-reference-preview-actions">
+      <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>${result.items.length ? `Review ${result.items.length} Row${result.items.length === 1 ? "" : "s"}` : "Review Rows"}</button>
+    </div>
   `;
   renderPricingReferenceTableOverlay(result);
   setPricingReferenceSaveButtonState({

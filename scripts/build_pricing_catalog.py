@@ -170,7 +170,7 @@ def alias_candidates(section: str, description_parts: list[str], remarks: list[s
 def catalog_id(section: str, description: str, existing_ids: set[str]) -> str:
     section_slug = quote.slugify_segment(section, "pricing")
     item_slug = quote.slugify_segment(strip_leading_unit(description), "item")
-    base = f"{section_slug}.{item_slug}"
+    base = f"{section_slug}-{item_slug}"
     candidate = base
     suffix = 2
     while candidate in existing_ids:

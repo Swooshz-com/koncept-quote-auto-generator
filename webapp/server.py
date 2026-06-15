@@ -144,7 +144,7 @@ PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "in
 PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
-        "example.services.standard-coordination",
+        "example-services-standard-coordination",
         "Services",
         "lot standard project coordination",
         "lot",
@@ -153,7 +153,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "example service row",
     ],
     [
-        "example.materials.standard-surface-finish",
+        "example-materials-standard-surface-finish",
         "Materials",
         "sqm standard surface finish",
         "sqm",
@@ -162,7 +162,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "example area-based material row",
     ],
     [
-        "example.equipment.standard-device-rental",
+        "example-equipment-standard-device-rental",
         "Equipment Rental",
         "nos. standard device rental",
         "nos",
@@ -1101,14 +1101,8 @@ def safe_section_id(value: Any, fallback: str = "section") -> str:
 
 def safe_catalog_item_id(value: Any, fallback: str = "item") -> str:
     text = clean_text(value).lower()
-    if re.fullmatch(r"[a-z0-9_-]+(?:\.[a-z0-9_-]+)*", text):
-        return text
-    if "." in text:
-        segments = [safe_section_id(segment, "") for segment in text.split(".")]
-        dotted = ".".join(segment for segment in segments if segment)
-        if dotted:
-            return dotted
-    return safe_section_id(text, fallback)
+    candidate = safe_section_id(text, "")
+    return candidate or safe_section_id(fallback, "item")
 
 
 def clean_basis_section_title(value: Any) -> str:
@@ -2143,7 +2137,7 @@ def sanitize_pricing_reference_item(
     match_terms = sanitize_pricing_reference_terms(raw.get("match_terms"), apply_import_text_fixes=apply_import_text_fixes)
     object_families = sanitize_pricing_reference_families(raw.get("object_families"), apply_import_text_fixes=apply_import_text_fixes)
     raw_id = clean_text(raw.get("id"))
-    default_item_id = ".".join(
+    default_item_id = "-".join(
         part
         for part in (
             safe_section_id(section, "pricing"),
@@ -3552,7 +3546,7 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
         detected_currency = clean_text(result.get("currency"))
         if result.get("canSave"):
             result["layout"] = "normalized-pricing-reference"
-        elif result.get("missing"):
+        elif result.get("missing") or int(result.get("rowCount") or 0) == 0:
             try:
                 raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
                 if extension == "xlsx":
@@ -3568,7 +3562,9 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
                 else:
                     headers, rows = rows_from_xlsx_bytes(raw)
                 detected_currency = detect_currency_from_rows(headers, rows)
-                result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": pricing_reference_rows_for_ai(headers, rows)}, tax)
+                rows_have_content = any(any(clean_text(value) for value in row.values()) for row in rows)
+                if result.get("missing") or rows_have_content:
+                    result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": pricing_reference_rows_for_ai(headers, rows)}, tax)
             except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
                 result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
         result["currency"] = detected_currency or clean_text(result.get("currency")) or currency
@@ -5124,6 +5120,8 @@ def normalize_line_items(payload: dict[str, Any], use_catalog: bool = True) -> l
         pricing_keyword = clean_text(raw.get("pricing_keyword"))
         catalog_item = catalog_lookup.get(pricing_keyword)
         pricing_keyword_was_explicit = bool(pricing_keyword and catalog_item)
+        if catalog_item:
+            pricing_keyword = clean_text(catalog_item.get("id"))
         if not catalog_item:
             inference_raw = raw
             if pricing_keyword_looks_like_catalog_id(pricing_keyword):
@@ -5736,14 +5734,28 @@ def catalog_visual_prompt_text(images: list[dict[str, Any]]) -> str:
     )
 
 
-def legacy_pricing_catalog_id_aliases(item_id: str) -> set[str]:
+def legacy_pricing_catalog_id_aliases(item_id: str, item: dict[str, Any] | None = None) -> set[str]:
+    canonical_id = clean_text(item_id).lower()
     aliases: set[str] = set()
-    for typo, correct in pricing_reference_cleanup.import_word_replacements().items():
-        if correct in item_id:
-            aliases.add(item_id.replace(correct, typo))
-        if typo in item_id:
-            aliases.add(item_id.replace(typo, correct))
-    aliases.discard(item_id)
+    section_values: list[Any] = []
+    if isinstance(item, dict):
+        section_values.extend((item.get("reference_section"), item.get("section")))
+    for section_value in section_values:
+        section_slug = safe_section_id(normalize_catalog_section(section_value) or section_value, "")
+        if section_slug and canonical_id.startswith(f"{section_slug}-"):
+            suffix = canonical_id[len(section_slug) + 1 :]
+            if suffix:
+                aliases.add(f"{section_slug}.{suffix}")
+    if "." in canonical_id:
+        aliases.add(safe_catalog_item_id(canonical_id, ""))
+    for alias in list(aliases | ({canonical_id} if canonical_id else set())):
+        for typo, correct in pricing_reference_cleanup.import_word_replacements().items():
+            if correct in alias:
+                aliases.add(alias.replace(correct, typo))
+            if typo in alias:
+                aliases.add(alias.replace(typo, correct))
+    aliases.discard(canonical_id)
+    aliases.discard("")
     return aliases
 
 
@@ -5788,7 +5800,7 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
                 if clean_text(term)
             ],
         }
-        for alias_id in legacy_pricing_catalog_id_aliases(item_id):
+        for alias_id in legacy_pricing_catalog_id_aliases(item_id, lookup[item_id]):
             lookup.setdefault(alias_id, lookup[item_id])
     return lookup
 
@@ -6332,7 +6344,7 @@ def quote_basis_sections_with_catalog_exact_lines(
             (
                 item
                 for catalog_id, item in exact_catalog_items_by_id.items()
-                if normalized_keyword in legacy_pricing_catalog_id_aliases(catalog_id)
+                if normalized_keyword in legacy_pricing_catalog_id_aliases(catalog_id, item)
             ),
             None,
         )
