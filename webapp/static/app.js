@@ -168,6 +168,9 @@ const state = {
   pricingReferenceEditNotice: "",
   pricingReferenceAutoLoadToken: "",
   pricingReferenceSavedNotice: "",
+  pricingReferenceDeleteConfirmId: "",
+  pricingReferenceDeleteError: "",
+  pricingReferenceDeleteBusy: false,
   permissions: {
     role: "viewer",
     canManageSettings: false,
@@ -285,6 +288,7 @@ const elements = {
   pricingReferenceModal: qs("#pricingReferenceModal"),
   pricingReferenceForm: qs("#pricingReferenceForm"),
   pricingReferenceName: qs("#pricingReferenceName"),
+  exportPricingReferenceButton: qs("#exportPricingReferenceButton"),
   pricingReferenceTemplateButton: qs("#pricingReferenceTemplateButton"),
   pricingReferenceFile: qs("#pricingReferenceFile"),
   pricingReferenceFileName: qs("#pricingReferenceFileName"),
@@ -300,6 +304,12 @@ const elements = {
   pricingReferenceEditorBody: qs("#pricingReferenceEditorBody"),
   pricingReferenceDeleteSection: qs("#pricingReferenceDeleteSection"),
   deletePricingReferenceSelect: qs("#deletePricingReferenceSelect"),
+  pricingReferenceDeleteConfirm: qs("#pricingReferenceDeleteConfirm"),
+  pricingReferenceDeleteConfirmTitle: qs("#pricingReferenceDeleteConfirmTitle"),
+  pricingReferenceDeleteConfirmText: qs("#pricingReferenceDeleteConfirmText"),
+  pricingReferenceDeleteError: qs("#pricingReferenceDeleteError"),
+  cancelPricingReferenceDeleteButton: qs("#cancelPricingReferenceDeleteButton"),
+  confirmPricingReferenceDeleteButton: qs("#confirmPricingReferenceDeleteButton"),
   pricingReferenceTableOverlay: qs("#pricingReferenceTableOverlay"),
   pricingReferenceTableSummary: qs("#pricingReferenceTableSummary"),
   pricingReferenceTableBody: qs("#pricingReferenceTableBody"),
@@ -763,10 +773,18 @@ function elapsedStartedMs(value) {
 }
 
 function updateElapsedTimer(elementId, startedAt) {
+  const targets = [];
   const elapsed = document.getElementById(elementId);
-  if (!elapsed) return;
+  if (elapsed) targets.push(elapsed);
+  document.querySelectorAll("[data-elapsed-timer-id]").forEach((candidate) => {
+    if (candidate.dataset.elapsedTimerId === elementId && !targets.includes(candidate)) targets.push(candidate);
+  });
+  if (!targets.length) return;
   const startedMs = elapsedStartedMs(startedAt);
-  elapsed.textContent = `Elapsed ${formatElapsedDuration(startedMs ? Date.now() - startedMs : 0)}`;
+  const elapsedText = `Elapsed ${formatElapsedDuration(startedMs ? Date.now() - startedMs : 0)}`;
+  targets.forEach((target) => {
+    target.textContent = elapsedText;
+  });
 }
 
 function stopElapsedTimer(elementId) {
@@ -1399,6 +1417,7 @@ function normalizeLineItem(item = {}) {
     source_basis_line_id: item.source_basis_line_id || "",
     category_order: orderNumber(item.category_order) ?? "",
     item_order: orderNumber(item.item_order) ?? "",
+    basis_order: orderNumber(item.basis_order) ?? "",
     status: item.status || "",
   };
 }
@@ -2256,6 +2275,27 @@ function canDeleteSelectedPricingReference() {
   return !protectedPricingReferenceReason(deletionPricingReference());
 }
 
+function pricingReferenceExportBlockReason(reference = deletionPricingReference()) {
+  if (!reference) return "Select a pricing reference first.";
+  if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
+  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be exported here.";
+  if (!String(reference.id || "").trim()) return "Select a pricing reference first.";
+  return "";
+}
+
+function updatePricingReferenceExportButton() {
+  const button = elements.exportPricingReferenceButton;
+  if (!button) return;
+  const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  const shouldShow = mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && canManagePricingReferences();
+  button.hidden = !shouldShow;
+  const reason = pricingReferenceExportBlockReason(deletionPricingReference());
+  const busy = pricingReferenceOperationBusy();
+  button.disabled = !shouldShow || Boolean(reason) || busy;
+  button.title = busy ? "Pricing reference operation is still running." : reason || "Export this pricing reference as an importable Excel workbook.";
+  button.setAttribute("aria-disabled", String(button.disabled));
+}
+
 function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
@@ -2291,6 +2331,7 @@ function pricingReferenceSaveProgressMarkup() {
       <span class="pricing-reference-spinner" aria-hidden="true"></span>
       <strong>Saving pricing reference</strong>
       <p>Please wait while reviewed rows are validated and saved.</p>
+      <span class="ai-elapsed pricing-reference-save-elapsed" data-elapsed-timer-id="pricingReferenceSaveElapsed" aria-live="polite">Elapsed 0:00</span>
     </div>
   `;
 }
@@ -2399,15 +2440,22 @@ function syncPricingReferenceSettingsMode() {
   });
   if (elements.pricingReferenceTemplateFooter) {
     elements.pricingReferenceTemplateFooter.hidden = false;
-    elements.pricingReferenceTemplateFooter.classList.toggle("is-placeholder", mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
-    elements.pricingReferenceTemplateFooter.setAttribute("aria-hidden", String(mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT));
+    elements.pricingReferenceTemplateFooter.classList.remove("is-placeholder");
+    elements.pricingReferenceTemplateFooter.setAttribute("aria-hidden", "false");
   }
+  if (elements.pricingReferenceTemplateButton) {
+    elements.pricingReferenceTemplateButton.hidden = mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT;
+  }
+  if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
   syncPricingReferenceImportSetupVisibility();
   renderPricingReferenceManageStatus();
 }
 
 function setPricingReferenceSettingsMode(mode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE, options = {}) {
   state.pricingReferenceSettingsMode = normalizePricingReferenceSettingsMode(mode);
+  if (state.pricingReferenceSettingsMode !== PRICING_REFERENCE_SETTINGS_MODE_MANAGE) {
+    hidePricingReferenceDeleteConfirm();
+  }
   syncPricingReferenceSettingsMode();
   if (options.focus) {
     const target = state.pricingReferenceSettingsMode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
@@ -2424,6 +2472,7 @@ function handlePricingReferenceImportTabClick() {
 function clearPricingReferenceDraft(options = {}) {
   closePricingReferenceTableOverlay();
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
   state.pricingReferenceImportFileSelected = false;
@@ -2437,6 +2486,7 @@ function clearPricingReferenceDraft(options = {}) {
   state.pricingReferenceEditNotice = "";
   state.pricingReferenceAutoLoadToken = "";
   state.pricingReferenceSavedNotice = "";
+  hidePricingReferenceDeleteConfirm();
   if (options.clearFile) {
     if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
     if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
@@ -2474,9 +2524,66 @@ function updatePricingReferenceDeleteButton() {
   if (!button) return;
   const reference = deletionPricingReference();
   const reason = protectedPricingReferenceReason(reference);
-  button.disabled = Boolean(reason);
-  button.title = reason || "Delete this repo pricing reference.";
+  const busy = pricingReferenceOperationBusy();
+  button.disabled = Boolean(reason) || busy;
+  button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this repo pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
+  if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
+}
+
+function pricingReferenceDeleteConfirmReference() {
+  const referenceId = String(state.pricingReferenceDeleteConfirmId || "").trim();
+  if (!referenceId) return null;
+  return state.pricingReferences.find((reference) => reference.id === referenceId && String(reference.source || "bundled") === "bundled") || null;
+}
+
+function hidePricingReferenceDeleteConfirm() {
+  state.pricingReferenceDeleteConfirmId = "";
+  state.pricingReferenceDeleteError = "";
+  if (elements.pricingReferenceDeleteConfirm) elements.pricingReferenceDeleteConfirm.hidden = true;
+  if (elements.pricingReferenceDeleteError) {
+    elements.pricingReferenceDeleteError.hidden = true;
+    elements.pricingReferenceDeleteError.textContent = "";
+  }
+}
+
+function renderPricingReferenceDeleteConfirm() {
+  const panel = elements.pricingReferenceDeleteConfirm;
+  if (!panel) return;
+  const reference = pricingReferenceDeleteConfirmReference();
+  if (!reference) {
+    panel.hidden = true;
+    return;
+  }
+  const label = reference.label || reference.id || "this pricing reference";
+  panel.hidden = false;
+  if (elements.pricingReferenceDeleteConfirmTitle) {
+    elements.pricingReferenceDeleteConfirmTitle.textContent = `Delete ${label}?`;
+  }
+  if (elements.pricingReferenceDeleteConfirmText) {
+    elements.pricingReferenceDeleteConfirmText.textContent = "This removes the saved repo pricing reference pack from this local app. Existing quotes already generated from it are not changed.";
+  }
+  if (elements.pricingReferenceDeleteError) {
+    const message = String(state.pricingReferenceDeleteError || "").trim();
+    elements.pricingReferenceDeleteError.hidden = !message;
+    elements.pricingReferenceDeleteError.textContent = message;
+  }
+  [elements.cancelPricingReferenceDeleteButton, elements.confirmPricingReferenceDeleteButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = state.pricingReferenceDeleteBusy;
+    button.setAttribute("aria-disabled", String(button.disabled));
+  });
+  if (elements.confirmPricingReferenceDeleteButton) {
+    elements.confirmPricingReferenceDeleteButton.textContent = state.pricingReferenceDeleteBusy ? "Deleting..." : "Delete";
+  }
+}
+
+function showPricingReferenceDeleteConfirm(reference) {
+  if (!reference) return;
+  state.pricingReferenceDeleteConfirmId = reference.id || "";
+  state.pricingReferenceDeleteError = "";
+  renderPricingReferenceDeleteConfirm();
+  window.setTimeout(() => elements.cancelPricingReferenceDeleteButton?.focus(), 0);
 }
 
 function openSettingsModal() {
@@ -2505,7 +2612,7 @@ const PRICING_REFERENCE_METADATA_STALE_FIELDS = new Set([
 ]);
 
 function pricingReferenceOperationBusy() {
-  return Boolean(state.pricingReferenceImportBusy || state.pricingReferenceSaveBusy);
+  return Boolean(state.pricingReferenceImportBusy || state.pricingReferenceSaveBusy || state.pricingReferenceDeleteBusy);
 }
 
 function pricingReferenceSnapshotItem(item = {}) {
@@ -2620,6 +2727,10 @@ function pricingReferenceItemChangeCount(beforeSnapshot = "", result = state.pen
 function markPricingReferenceDraftChanged() {
   state.pricingReferenceSavedNotice = "";
   state.pricingReferenceEditNotice = "";
+  if (state.pendingPricingReference) {
+    renderPricingReferencePreview(state.pendingPricingReference);
+    return;
+  }
   setPricingReferenceSaveButtonState({
     canSave: Boolean(state.pendingPricingReference?.canSave),
     busy: pricingReferenceOperationBusy(),
@@ -2762,6 +2873,32 @@ function normalizeConfidence(value) {
   return Math.min(100, Math.max(0, Math.round(number)));
 }
 
+function normalizePossiblePricingMatches(value = []) {
+  if (!Array.isArray(value)) return [];
+  const matches = [];
+  const seen = new Set();
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const pricingKeyword = String(entry.pricing_keyword || entry.id || "").trim();
+    const description = cleanCustomerQuoteLineText(entry.description || entry.pricing_reference_description || entry.catalog_description || "");
+    if (!pricingKeyword || !description || seen.has(pricingKeyword)) return;
+    seen.add(pricingKeyword);
+    const match = {
+      pricing_keyword: pricingKeyword,
+      description,
+      section: normalizeCategoryTitle(entry.section || entry.reference_section || ""),
+      unit: normalizeUnit(entry.unit || ""),
+    };
+    if (entry.catalog_unit_price !== undefined && entry.catalog_unit_price !== null && String(entry.catalog_unit_price).trim() !== "") {
+      match.catalog_unit_price = entry.catalog_unit_price;
+    }
+    const score = Number(entry.score);
+    if (Number.isFinite(score)) match.score = score;
+    matches.push(match);
+  });
+  return matches;
+}
+
 function splitBasisDecisionText(text = "", defaultTag = "Confirm") {
   const legacyConfirmTag = "assump" + "tion";
   const raw = String(text || "").trim();
@@ -2809,6 +2946,8 @@ function normalizeBasisLines(line = "") {
       if (confidence !== null) next.confidence = confidence;
       if (hasCustomPricing || normalizeBasisTag(parsed.tag) === "Custom") next.custom_pricing = true;
       if (line.custom_confirmed) next.custom_confirmed = true;
+      const possibleMatches = normalizePossiblePricingMatches(line.possible_pricing_matches || line.possible_catalog_matches || []);
+      if (possibleMatches.length) next.possible_pricing_matches = possibleMatches;
       return next;
     });
   }
@@ -2872,6 +3011,54 @@ function cloneQuoteBasisSections(sections = []) {
   return normalizeQuoteBasisSections(JSON.parse(JSON.stringify(Array.isArray(sections) ? sections : [])));
 }
 
+function basisLineMetadataMergeKey(line = {}) {
+  const id = String(line.id || "").trim();
+  if (id) return `id:${id}`;
+  const sourceId = String(line.source_line_item_id || "").trim();
+  if (sourceId) return `source:${sourceId}`;
+  return "";
+}
+
+function basisLineCoreMatches(left = {}, right = {}) {
+  return normalizeBasisTag(left.tag) === normalizeBasisTag(right.tag)
+    && cleanCustomerQuoteLineText(left.text || "") === cleanCustomerQuoteLineText(right.text || "")
+    && String(left.quantity ?? "") === String(right.quantity ?? "")
+    && normalizeUnit(left.unit || "") === normalizeUnit(right.unit || "");
+}
+
+function mergeBasisProposalLineMetadata(nextSections = [], currentSections = []) {
+  const currentBySectionId = new Map();
+  const currentBySectionTitle = new Map();
+  (Array.isArray(currentSections) ? currentSections : []).forEach((section) => {
+    if (!section || typeof section !== "object") return;
+    const sectionId = String(section.id || "").trim();
+    if (sectionId) currentBySectionId.set(sectionId, section);
+    const titleKey = basisDisplayTitle(section.title || "").toLowerCase();
+    if (titleKey) currentBySectionTitle.set(titleKey, section);
+  });
+  return (Array.isArray(nextSections) ? nextSections : []).map((section) => {
+    const currentSection = currentBySectionId.get(String(section?.id || "").trim())
+      || currentBySectionTitle.get(basisDisplayTitle(section?.title || "").toLowerCase())
+      || null;
+    if (!currentSection) return section;
+    const currentLines = Array.isArray(currentSection.lines) ? currentSection.lines : [];
+    const currentByLineKey = new Map();
+    currentLines.forEach((line) => {
+      const key = basisLineMetadataMergeKey(line);
+      if (key) currentByLineKey.set(key, line);
+    });
+    return {
+      ...section,
+      lines: (Array.isArray(section.lines) ? section.lines : []).map((line, index) => {
+        const key = basisLineMetadataMergeKey(line);
+        const currentLine = (key && currentByLineKey.get(key)) || currentLines[index] || null;
+        if (!currentLine || !basisLineCoreMatches(currentLine, line)) return line;
+        return { ...currentLine, ...line };
+      }),
+    };
+  });
+}
+
 function normalizeOutputRow(row = {}) {
   const priceMode = row.price_mode === "Included" || String(row.display_price || "").toLowerCase() === "included"
     ? "Included"
@@ -2890,6 +3077,7 @@ function normalizeOutputRow(row = {}) {
     source_basis_line_id: row.source_basis_line_id || "",
     category_order: orderNumber(row.category_order) ?? "",
     item_order: orderNumber(row.item_order) ?? "",
+    basis_order: orderNumber(row.basis_order) ?? "",
     status: row.status || "",
   });
 }
@@ -2981,8 +3169,24 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && !pricingReferenceHasPendingChanges(result)) {
     return state.pricingReferenceSavedNotice ? "Saved." : "No changes to save.";
   }
+  if (!String(elements.pricingReferenceName?.value || "").trim()) {
+    return "Enter a pricing reference name before saving.";
+  }
+  if (elements.pricingReferenceTaxLabel && !String(elements.pricingReferenceTaxLabel.value || "").trim()) {
+    return "Select a tax label before saving.";
+  }
+  if (elements.pricingReferenceTaxRate) {
+    const taxRateText = String(elements.pricingReferenceTaxRate.value || "").trim();
+    const taxRate = Number(taxRateText);
+    if (!taxRateText || !Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+      return "Enter a tax rate between 0 and 100 before saving.";
+    }
+  }
   const nameConflict = pricingReferenceImportNameConflictMessage();
   if (nameConflict) return nameConflict;
+  if (elements.pricingReferenceCurrency && !String(elements.pricingReferenceCurrency.value || "").trim()) {
+    return "Choose a currency before saving.";
+  }
   if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !customCurrencyInputIsValid()) {
     return "Enter a 3-letter currency code before saving.";
   }
@@ -2991,6 +3195,11 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
   if (!(result.items || []).length) return "Add at least one valid pricing row before saving.";
   if (!result.canSave) return "Fix the highlighted pricing-reference rows before saving.";
   return "";
+}
+
+function pricingReferenceSaveBlockReasonIsRequiredDetails(reason = "") {
+  const text = String(reason || "").trim();
+  return /(pricing reference name|tax label|tax rate|choose a currency|currency code|different pricing reference name)/i.test(text);
 }
 
 function setPricingReferenceModalBusyState(busy = false, reason = "") {
@@ -3016,6 +3225,7 @@ function setPricingReferenceModalBusyState(busy = false, reason = "") {
     elements.pricingReferenceTemplateButton.setAttribute("tabindex", disabled ? "-1" : "0");
     elements.pricingReferenceTemplateButton.title = disabledTitle;
   }
+  if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
   const busyControls = [
     elements.pricingReferenceName,
     elements.pricingReferenceTaxLabel,
@@ -3024,8 +3234,11 @@ function setPricingReferenceModalBusyState(busy = false, reason = "") {
     elements.pricingReferenceCurrencyCustom,
     elements.pricingReferenceManageTab,
     elements.pricingReferenceImportTab,
+    elements.exportPricingReferenceButton,
     elements.deletePricingReferenceSelect,
     elements.deletePricingReferenceButton,
+    elements.cancelPricingReferenceDeleteButton,
+    elements.confirmPricingReferenceDeleteButton,
     elements.pricingReferenceTableCloseButton,
     ...Array.from(elements.pricingReferencePreview?.querySelectorAll("button, input, select, textarea") || []),
     ...Array.from(elements.pricingReferenceManageStatus?.querySelectorAll("button, input, select, textarea") || []),
@@ -3229,9 +3442,16 @@ function pricingReferenceSaveGuidance(result = state.pendingPricingReference) {
   const nameConflict = pricingReferenceImportNameConflictMessage();
   if (nameConflict) return "Choose a different pricing reference name before saving.";
   const reason = pricingReferenceSaveBlockReason(result);
+  if (reason) {
+    if (/^(Saved\.|No changes to save\.)/.test(reason)) return reason;
+    if (pricingReferenceSaveBlockReasonIsRequiredDetails(reason)) {
+      return `Complete the required pricing reference details before saving. ${reason}`;
+    }
+    return result.canSave ? reason : `Fix all flagged problems before saving this reference. ${reason}`;
+  }
   return result.canSave
     ? "Basic row checks passed. Review any attention notes before saving."
-    : `Fix all flagged problems before saving this reference.${reason ? ` ${reason}` : ""}`;
+    : "Fix all flagged problems before saving this reference.";
 }
 
 function pricingReferenceTableSummaryText(result = state.pendingPricingReference) {
@@ -3274,6 +3494,7 @@ function pricingReferencePreviewAttention(result = {}, context = {}) {
   const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
   const skipped = Number(result.skipped || 0);
   const rowIssues = pricingReferenceRowIssues(items);
+  const blockedReason = typeof pricingReferenceSaveBlockReason === "function" ? pricingReferenceSaveBlockReason(result) : "";
   const attention = [];
   errors
     .filter((message) => !(missing.length && /^missing required columns:/i.test(String(message))))
@@ -3292,8 +3513,14 @@ function pricingReferencePreviewAttention(result = {}, context = {}) {
       text: `Open Review Rows. Examples: ${compactPreviewList(rowIssues.map((issue) => `row ${issue.index}: ${issue.status}`))}.`,
     });
   }
+  if (!context.nameConflict && pricingReferenceSaveBlockReasonIsRequiredDetails(blockedReason)) {
+    attention.push({
+      tone: "warn",
+      label: "Required details",
+      text: blockedReason,
+    });
+  }
   if (result.canSave === false && items.length && !attention.some((item) => item.tone === "error")) {
-    const blockedReason = typeof pricingReferenceSaveBlockReason === "function" ? pricingReferenceSaveBlockReason(result) : "";
     attention.push({
       tone: "error",
       label: "Rows need review",
@@ -3303,7 +3530,7 @@ function pricingReferencePreviewAttention(result = {}, context = {}) {
   warnings
     .filter((message) => !(skipped && /\bskipped\b/i.test(String(message))))
     .forEach((message) => attention.push({ tone: "warn", label: "Import warning", text: message }));
-  if (context.currencyNeedsReview) {
+  if (context.currencyNeedsReview && !/currency/i.test(blockedReason)) {
     attention.push({
       tone: "warn",
       label: "Currency review",
@@ -3349,9 +3576,10 @@ function updatePricingReferenceGuidanceDisplays(result = state.pendingPricingRef
   }
   const guidance = elements.pricingReferencePreview?.querySelector(".pricing-reference-save-guidance");
   if (guidance) {
+    const isBlocked = !result?.canSave || Boolean(pricingReferenceSaveBlockReason(result));
     guidance.textContent = sentenceLineBreakText(pricingReferenceSaveGuidance(result));
-    guidance.classList.toggle("is-ok", Boolean(result?.canSave));
-    guidance.classList.toggle("is-blocked", !result?.canSave);
+    guidance.classList.toggle("is-ok", !isBlocked);
+    guidance.classList.toggle("is-blocked", isBlocked);
   }
 }
 
@@ -3466,12 +3694,17 @@ function renderPricingReferencePreview(result = null, options = {}) {
     : normalizeCurrencyLabel(result.currency || modalCurrency || DEFAULT_CURRENCY_LABEL);
   refreshPricingReferencePreviewValidity(result);
   const warnings = result.warnings || [];
-  const canSave = Boolean(result.canSave);
+  const rowsCanSave = Boolean(result.canSave);
+  const saveBlockReason = pricingReferenceSaveBlockReason(result);
+  const requiredDetailsBlocked = pricingReferenceSaveBlockReasonIsRequiredDetails(saveBlockReason);
+  const informationalBlockReason = /^(Saved\.|No changes to save\.)/.test(saveBlockReason);
+  const hardSaveBlockReason = Boolean(saveBlockReason) && !requiredDetailsBlocked && !informationalBlockReason;
+  const canSave = rowsCanSave && !saveBlockReason;
   const currencyNeedsReview = Boolean(currency) && !isValidCurrencyCode(currency);
   const nameConflict = pricingReferenceImportNameConflictMessage();
   const attention = pricingReferencePreviewAttention(result, { currency, currencyNeedsReview, nameConflict });
-  const hasFixes = attention.some((item) => item.tone === "error") || !canSave;
-  const hasReviewNotes = attention.length > 0;
+  const hasFixes = attention.some((item) => item.tone === "error") || !rowsCanSave || hardSaveBlockReason;
+  const hasReviewNotes = attention.length > 0 || requiredDetailsBlocked;
   const tone = hasFixes ? "error" : hasReviewNotes || warnings.length ? "warn" : "ok";
   elements.pricingReferencePreview.className = `pricing-reference-preview ${tone}`;
   elements.pricingReferencePreview.innerHTML = `
@@ -3495,9 +3728,9 @@ function renderPricingReferencePreview(result = null, options = {}) {
   `;
   renderPricingReferenceTableOverlay(result);
   setPricingReferenceSaveButtonState({
-    canSave,
+    canSave: rowsCanSave,
     busy: pricingReferenceOperationBusy(),
-    reason: pricingReferenceSaveBlockReason(result),
+    reason: saveBlockReason,
   });
   renderPricingReferenceManageStatus(result);
   syncPricingReferenceImportSetupVisibility();
@@ -3560,6 +3793,7 @@ async function handlePricingReferenceFileChange() {
   const currentNameId = pricingReferenceNameId(elements.pricingReferenceName?.value || "");
   state.pricingReferenceImportFileSelected = true;
   state.pricingReferenceSaveBusy = false;
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pricingReferenceEditSnapshot = "";
   state.pricingReferenceSavedNotice = "";
   if (elements.pricingReferenceFileName) {
@@ -3615,8 +3849,32 @@ async function downloadPricingReferenceTemplate(event) {
   }
 }
 
+function exportSelectedPricingReference(event) {
+  event.preventDefault();
+  if (pricingReferenceOperationBusy()) return;
+  const reference = deletionPricingReference();
+  const reason = pricingReferenceExportBlockReason(reference);
+  if (reason) {
+    updatePricingReferenceExportButton();
+    return;
+  }
+  const referenceId = String(reference.id || "").trim();
+  const exportUrl = `/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx?t=${Date.now()}`;
+  try {
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = `${safeId(reference.label || reference.id || "pricing-reference", "pricing-reference")}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    window.location.href = exportUrl;
+  }
+}
+
 function openPricingReferenceModal() {
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
   state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
@@ -3631,6 +3889,7 @@ function openPricingReferenceModal() {
   state.pricingReferenceEditNotice = "";
   state.pricingReferenceAutoLoadToken = "";
   state.pricingReferenceSavedNotice = "";
+  hidePricingReferenceDeleteConfirm();
   if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
   if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
   if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
@@ -3651,6 +3910,7 @@ function closePricingReferenceModal() {
   }
   closePricingReferenceTableOverlay();
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   elements.pricingReferenceModal.classList.remove("is-open");
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
@@ -3667,6 +3927,7 @@ function closePricingReferenceModal() {
   state.pricingReferenceEditNotice = "";
   state.pricingReferenceAutoLoadToken = "";
   state.pricingReferenceSavedNotice = "";
+  hidePricingReferenceDeleteConfirm();
   syncPricingReferenceSettingsMode();
 }
 
@@ -3679,8 +3940,10 @@ async function editSelectedPricingReference(options = {}) {
   state.editingPricingReferenceId = summaryReference.id || "";
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
+  state.pricingReferenceSaveBusy = false;
   state.pricingReferenceImportToken = "";
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pricingReferenceEditNotice = "";
   const reference = await fetchPricingReferenceDetail(summaryReference).catch(() => null);
   if (state.pricingReferenceAutoLoadToken !== loadToken) return;
@@ -3752,6 +4015,7 @@ async function savePricingReferenceFromModal(event) {
     renderPricingReferencePreview(result || pricingReferenceValidationResult([], [], 0, ""));
     return;
   }
+  const saveStartedAt = Date.now();
   state.pricingReferenceSaveBusy = true;
   setPricingReferenceSaveButtonState({
     busy: true,
@@ -3760,6 +4024,7 @@ async function savePricingReferenceFromModal(event) {
   });
   renderPricingReferencePreview(result);
   renderPricingReferenceManageStatus(result);
+  startElapsedTimer("pricingReferenceSaveElapsed", saveStartedAt);
   let didSave = false;
   try {
     const { ok, data } = await postJson("/api/settings/pricing-references", {
@@ -3772,8 +4037,9 @@ async function savePricingReferenceFromModal(event) {
       update_existing: Boolean(state.editingPricingReferenceId),
       editing_reference_id: state.editingPricingReferenceId || "",
     });
-    state.pricingReferenceSaveBusy = false;
     if (!ok) {
+      state.pricingReferenceSaveBusy = false;
+      stopElapsedTimer("pricingReferenceSaveElapsed");
       renderPricingReferencePreview({ ...result, errors: genericFailureMessages(data), error_reference: errorReferenceFrom(data) });
       renderPricingReferenceManageStatus({ ...result, errors: genericFailureMessages(data), error_reference: errorReferenceFrom(data) });
       setPricingReferenceSaveButtonState({
@@ -3793,6 +4059,7 @@ async function savePricingReferenceFromModal(event) {
     syncSelectedPricingReference();
     renderProfileOptions();
     renderPricingReferenceDeleteOptions();
+    hidePricingReferenceDeleteConfirm();
     if (elements.deletePricingReferenceSelect && savedReference.id) {
       const savedValue = pricingReferenceSelectValue(savedReference);
       if ([...elements.deletePricingReferenceSelect.options].some((option) => option.value === savedValue)) {
@@ -3816,11 +4083,19 @@ async function savePricingReferenceFromModal(event) {
     if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = data.unchanged ? "Already saved" : "Saved reference";
     setPricingReferenceTaxControls(tax);
     setPricingReferenceCurrencyControls(currency);
+    state.pricingReferenceSaveBusy = false;
+    stopElapsedTimer("pricingReferenceSaveElapsed");
+    updatePricingReferenceDeleteButton();
     renderPricingReferencePreview(state.pendingPricingReference);
     capturePricingReferenceEditSnapshot(state.pendingPricingReference);
+    const metadataEnrichmentStatus = String(data.metadata_enrichment_status || "").trim();
     state.pricingReferenceSavedNotice = data.unchanged
       ? "No file changes were needed."
-      : "Saved successfully.";
+      : metadataEnrichmentStatus === "completed"
+        ? "Saved successfully. Matching clues updated."
+        : metadataEnrichmentStatus === "failed"
+          ? "Saved, but matching clue enrichment did not complete."
+          : "Saved successfully.";
     setPricingReferenceSaveButtonState({
       canSave: Boolean(state.pendingPricingReference?.canSave),
       reason: pricingReferenceSaveBlockReason(state.pendingPricingReference),
@@ -3829,6 +4104,7 @@ async function savePricingReferenceFromModal(event) {
     syncControlStates();
   } catch (error) {
     state.pricingReferenceSaveBusy = false;
+    stopElapsedTimer("pricingReferenceSaveElapsed");
     const fallbackResult = state.pendingPricingReference || result || pricingReferenceValidationResult([], [], 0, "");
     const errors = didSave
       ? ["Saved, but the settings list could not refresh. Reload the app and check the pricing reference list."]
@@ -3857,38 +4133,60 @@ async function deleteRepoPricingReference(referenceId) {
     updatePricingReferenceDeleteButton();
     return;
   }
-  const label = reference.label || reference.id;
-  const confirmed = window.prompt(`Type ${label} to delete this pricing reference.`) === label;
-  if (!confirmed) return;
-  const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
-    method: "DELETE",
-    headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
-  }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
-  if (!ok) {
-    window.alert(genericFailureMessages(data).join("\n"));
+  state.pricingReferenceDeleteBusy = true;
+  state.pricingReferenceDeleteError = "";
+  renderPricingReferenceDeleteConfirm();
+  setPricingReferenceModalBusyState(true, "Deleting pricing reference...");
+  updatePricingReferenceDeleteButton();
+  try {
+    const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
+      method: "DELETE",
+      headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
+    }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
+    if (!ok) {
+      state.pricingReferenceDeleteError = genericFailureMessages(data).join(" ");
+      renderPricingReferenceDeleteConfirm();
+      return;
+    }
+    state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : state.pricingReferences);
+    if (state.pricingReferenceId === reference.id) {
+      const fallback = defaultPricingReference() || state.pricingReferences[0] || null;
+      state.pricingReferenceId = fallback?.id || "";
+      state.pricingReferenceSource = fallback ? pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallback)).source : "";
+    }
+    hidePricingReferenceDeleteConfirm();
+    clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
+    state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+    await loadProfiles();
+    syncSelectedPricingReference();
+    renderProfileOptions();
+    renderPricingReferenceDeleteOptions();
+    syncPricingReferenceSettingsMode();
+  } catch (error) {
+    state.pricingReferenceDeleteError = genericFailureMessages(error).join(" ");
+    renderPricingReferenceDeleteConfirm();
+  } finally {
+    state.pricingReferenceDeleteBusy = false;
+    setPricingReferenceModalBusyState(false);
+    renderPricingReferenceDeleteConfirm();
+    updatePricingReferenceDeleteButton();
+    syncControlStates();
+  }
+}
+
+function requestSelectedPricingReferenceDelete() {
+  const selected = deletionPricingReference();
+  if (!selected || !canDeleteSelectedPricingReference()) {
     updatePricingReferenceDeleteButton();
     return;
   }
-  state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : state.pricingReferences);
-  if (state.pricingReferenceId === reference.id) {
-    const fallback = defaultPricingReference() || state.pricingReferences[0] || null;
-    state.pricingReferenceId = fallback?.id || "";
-    state.pricingReferenceSource = fallback ? pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallback)).source : "";
-    clearGeneratedQuoteState();
-  }
-  clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
-  state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
-  await loadProfiles();
-  syncSelectedPricingReference();
-  renderProfileOptions();
-  renderPricingReferenceDeleteOptions();
-  syncPricingReferenceSettingsMode();
-  syncControlStates();
+  showPricingReferenceDeleteConfirm(selected);
 }
 
 async function deleteSelectedPricingReference() {
-  const selected = deletionPricingReference();
-  if (!selected || !canDeleteSelectedPricingReference()) {
+  const selected = pricingReferenceDeleteConfirmReference();
+  if (!selected || protectedPricingReferenceReason(selected)) {
+    hidePricingReferenceDeleteConfirm();
     updatePricingReferenceDeleteButton();
     return;
   }
@@ -4280,13 +4578,20 @@ function outputRowAllowedByBasis(row = {}) {
   return hasReviewedBasis ? matched && allowed : !matched || allowed;
 }
 
-function matchingAllowedBasisLineForOutputRow(row = {}) {
+function basisOrderValue(sectionIndex = 0, lineIndex = 0) {
+  return (sectionIndex + 1) * 100000 + lineIndex + 1;
+}
+
+function matchingAllowedBasisEntryForOutputRow(row = {}) {
   const reviewedSections = normalizeQuoteBasisSections(state.quoteBasisSections);
   const hasReviewedBasis = reviewedSections.some((section) => (section.lines || []).length > 0);
   if (!hasReviewedBasis) return null;
   const sourceId = String(row.source_basis_line_id || "").trim();
-  for (const section of reviewedSections) {
-    for (const line of (section.lines || [])) {
+  for (let sectionIndex = 0; sectionIndex < reviewedSections.length; sectionIndex += 1) {
+    const section = reviewedSections[sectionIndex];
+    const lines = section.lines || [];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
       if (!basisLineAllowsOutput(line)) continue;
       const lineIds = [line.id, line.source_line_item_id].map((value) => String(value || "").trim()).filter(Boolean);
       const sourceMatch = sourceId && lineIds.includes(sourceId);
@@ -4295,16 +4600,30 @@ function matchingAllowedBasisLineForOutputRow(row = {}) {
       if (sourceId && lineIds.length && !sourceMatch) continue;
       const textMatch = outputRowCoversBasisLine(row, line.text || "", sectionTitle)
         || outputRowCoversBasisLine(row, line.catalog_description || "", sectionTitle);
-      if (sourceMatch || keywordMatch || textMatch) return line;
+      if (sourceMatch || keywordMatch || textMatch) {
+        return {
+          line,
+          section,
+          sectionIndex,
+          lineIndex,
+          basis_order: basisOrderValue(sectionIndex, lineIndex),
+        };
+      }
     }
   }
   return null;
 }
 
+function matchingAllowedBasisLineForOutputRow(row = {}) {
+  return matchingAllowedBasisEntryForOutputRow(row)?.line || null;
+}
+
 function inheritBasisOutputFields(row = {}) {
-  const line = matchingAllowedBasisLineForOutputRow(row);
+  const basisEntry = matchingAllowedBasisEntryForOutputRow(row);
+  const line = basisEntry?.line;
   if (!line) return row;
   const next = { ...row };
+  next.basis_order = basisEntry.basis_order;
   if (line.quantity !== undefined && line.quantity !== null && String(line.quantity).trim() !== "") {
     next.quantity = line.quantity;
   }
@@ -4317,10 +4636,15 @@ function inheritBasisOutputFields(row = {}) {
   if ((next.catalog_unit_price === "" || next.catalog_unit_price === null || next.catalog_unit_price === undefined) && line.catalog_unit_price !== undefined && line.catalog_unit_price !== null && String(line.catalog_unit_price).trim() !== "") {
     next.catalog_unit_price = line.catalog_unit_price;
   }
-  if (!next.catalog_description && line.catalog_description) {
+  if (line.pricing_keyword) {
+    next.pricing_keyword = line.pricing_keyword;
+    const description = outputCatalogDescription(line);
+    if (description) next.description = description;
+  }
+  if (line.catalog_description && (line.pricing_keyword || !next.catalog_description)) {
     next.catalog_description = line.catalog_description;
   }
-  if (!next.pricing_reference_description && line.pricing_reference_description) {
+  if (line.pricing_reference_description && (line.pricing_keyword || !next.pricing_reference_description)) {
     next.pricing_reference_description = line.pricing_reference_description;
   }
   return normalizeOutputRow(next);
@@ -4352,8 +4676,8 @@ function dedupeOutputRows(rows = []) {
 
 function includedBasisOutputRows(existingRows = []) {
   const rows = [];
-  basisSections(state.quoteBasisSections).forEach((section) => {
-    (section.lines || []).forEach((line) => {
+  basisSections(state.quoteBasisSections).forEach((section, sectionIndex) => {
+    (section.lines || []).forEach((line, lineIndex) => {
       const customPricing = isCustomPricingBasisLine(line);
       if (!basisLineAllowsOutput(line)) return;
       if (basisLineIsInformationalDimension(line)) return;
@@ -4380,6 +4704,7 @@ function includedBasisOutputRows(existingRows = []) {
         source_basis_line_id: line.id || line.source_line_item_id || "",
         category_order: line.category_order ?? "",
         item_order: line.item_order ?? "",
+        basis_order: basisOrderValue(sectionIndex, lineIndex),
         status: customPricing ? "custom" : "needs-pricing",
       }));
     });
@@ -4404,6 +4729,7 @@ function outputRowFromLineItem(item = {}) {
     source_basis_line_id: normalized.source_basis_line_id,
     category_order: normalized.category_order,
     item_order: normalized.item_order,
+    basis_order: normalized.basis_order,
     status: normalized.status || "",
   });
 }
@@ -4479,6 +4805,24 @@ function sortOutputRows(rows = state.outputRows) {
     const sectionCompare = compareText(a.row.section).localeCompare(compareText(b.row.section));
     const descriptionCompare = compareText(a.row.description).localeCompare(compareText(b.row.description));
     if (state.outputSortMode === "pricing_reference") {
+      const aBasisOrder = orderNumber(a.row.basis_order);
+      const bBasisOrder = orderNumber(b.row.basis_order);
+      if (aBasisOrder !== null || bBasisOrder !== null) {
+        return compareOrderValues([
+          aBasisOrder ?? 999999,
+          categoryOrderValue(a.row),
+          orderNumber(a.row.item_order) || 999999,
+          a.index,
+        ], [
+          bBasisOrder ?? 999999,
+          categoryOrderValue(b.row),
+          orderNumber(b.row.item_order) || 999999,
+          b.index,
+        ])
+          || sectionCompare
+          || descriptionCompare
+          || a.index - b.index;
+      }
       return compareOrderValues(pricingReferenceOrder(a.row, a.index), pricingReferenceOrder(b.row, b.index))
         || sectionCompare
         || descriptionCompare
@@ -4955,6 +5299,7 @@ function basisSections(sections = state.quoteBasisSections) {
 function unresolvedConfirmLines(sections = state.quoteBasisSections) {
   return basisSections(sections)
     .flatMap((section) => (section.lines || [])
+      .filter((line) => !basisLineIsInformationalDimension(line))
       .filter((line) => normalizeBasisTag(line.tag) === "Confirm" || isPendingAiProposalLine(line))
       .map((line) => `${section.title}: ${line.text}`));
 }
@@ -5073,6 +5418,20 @@ function basisLineTextHtml(line = {}) {
   `;
 }
 
+function basisPossibleMatchesHtml(section, line, index) {
+  const matches = normalizePossiblePricingMatches(line.possible_pricing_matches || []);
+  if (!matches.length || !basisLineAcceptsAsAiProposal(line)) return "";
+  return `
+    <span class="basis-line-possible-matches" aria-label="Possible pricing reference matches">
+      ${matches.map((match, matchIndex) => `
+        <button class="basis-line-possible-match" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-possible-match-index="${matchIndex}" title="Use this pricing reference match">
+          Possible match: ${escapeHtml(match.description)}
+        </button>
+      `).join("")}
+    </span>
+  `;
+}
+
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
   const customPricing = isCustomPricingBasisLine(line);
@@ -5103,7 +5462,7 @@ function renderBasisLine(section, line, index) {
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
         <span class="basis-quantity-text">${escapeHtml(quantityLabel)}</span>
       </span>
-      <span class="basis-line-text"${lineTitleAttribute}>${basisLineTextHtml(line)}</span>
+      <span class="basis-line-text"${lineTitleAttribute}>${basisLineTextHtml(line)}${basisPossibleMatchesHtml(section, line, index)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
@@ -5157,6 +5516,29 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
     ? `<span class="quote-basis-quality-pill">High Quality</span>`
     : "";
   const sections = basisSections(state.quoteBasisSections.length ? state.quoteBasisSections : normalizeQuoteBasisSections(basis));
+  const reviewSections = sections
+    .map((section) => ({
+      ...section,
+      reviewLineEntries: (section.lines || [])
+        .map((line, index) => ({ line, index }))
+        .filter((entry) => !basisLineIsInformationalDimension(entry.line)),
+    }))
+    .map((section) => ({ ...section, lines: section.reviewLineEntries.map((entry) => entry.line) }))
+    .filter((section) => section.reviewLineEntries.length);
+  const dimensionLines = sections.flatMap((section) => (section.lines || [])
+    .filter((line) => basisLineIsInformationalDimension(line))
+    .map((line) => cleanCustomerQuoteLineText(line.text || line.description || "")))
+    .filter(Boolean);
+  const dimensionDisplay = dimensionLines.length
+    ? `
+      <div class="basis-visual-display" aria-label="Booth display details">
+        <strong>Booth Details</strong>
+        <ul>
+          ${dimensionLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+        </ul>
+      </div>
+    `
+    : "";
   return `
     <div class="assistant-card quote-basis-card ${aiFailed ? "quote-basis-card-failed" : ""}">
       <div class="quote-basis-header">
@@ -5170,14 +5552,16 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         </div>
         <div class="quote-basis-source">
           <span>${aiFailed ? "Source: Local fallback only" : `Source: ${escapeHtml(outputPricingSourceLabel())}`}</span>
-          <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(sections)))}</strong>
+          <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(reviewSections)))}</strong>
         </div>
       </div>
       ${renderAnalysisFindings()}
       ${renderBasisConfirmSummary(sections)}
+      ${dimensionDisplay}
       ${renderBasisTagLegend()}
-      <div class="basis-review-grid">
-        ${sections.map((section) => `
+      ${reviewSections.length ? `
+        <div class="basis-review-grid">
+          ${reviewSections.map((section) => `
           <div class="basis-review-item">
             <div class="basis-section-heading">
               <h4>${escapeHtml(section.title)}</h4>
@@ -5188,11 +5572,12 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
               </span>
             </div>
             <ul class="basis-line-list">
-              ${(section.lines || []).map((line, index) => renderBasisLine(section, line, index)).join("")}
+              ${section.reviewLineEntries.map((entry) => renderBasisLine(section, entry.line, entry.index)).join("")}
             </ul>
           </div>
-        `).join("")}
-      </div>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -5205,6 +5590,65 @@ function basisFieldLabel(field) {
 
 function updateQuoteBasisCard(source = "edited") {
   elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage(state.quoteBasis, source);
+}
+
+function possibleMatchBasisDetailText(line = {}) {
+  const text = cleanCustomerQuoteLineText(line.text || line.description || "");
+  return text.replace(/^\s*(?:include|confirm|custom|manual|extra|needs pricing|ai confirm)\s*[-:]\s*/i, "").trim();
+}
+
+function catalogBackedPossibleMatchText(line = {}, match = {}) {
+  const reference = pricingReferenceLineText(match.description || match.pricing_reference_description || match.catalog_description || "");
+  const detail = possibleMatchBasisDetailText(line) || reference;
+  return `[ ${reference} ] - ${detail}`;
+}
+
+function applyPossiblePricingMatch(sectionId, lineIndex, matchIndex) {
+  if (!sectionId) return;
+  const sections = cloneQuoteBasisSections(state.quoteBasisSections);
+  const section = sections.find((item) => item.id === sectionId);
+  const lineNumber = Number(lineIndex);
+  const selectedIndex = Number(matchIndex);
+  if (!section || !Number.isInteger(lineNumber) || !section.lines[lineNumber]) return;
+  const currentLine = section.lines[lineNumber];
+  const matches = normalizePossiblePricingMatches(currentLine.possible_pricing_matches || currentLine.possible_catalog_matches || []);
+  if (!Number.isInteger(selectedIndex) || !matches[selectedIndex]) return;
+  const match = matches[selectedIndex];
+  const reference = pricingReferenceLineText(match.description);
+  const nextLine = {
+    ...currentLine,
+    tag: "Include",
+    text: catalogBackedPossibleMatchText(currentLine, match),
+    pricing_keyword: match.pricing_keyword,
+    catalog_description: reference,
+    pricing_reference_description: reference,
+  };
+  if (match.unit) nextLine.unit = match.unit;
+  if (match.catalog_unit_price !== undefined && match.catalog_unit_price !== null && String(match.catalog_unit_price).trim() !== "") {
+    nextLine.catalog_unit_price = match.catalog_unit_price;
+  }
+  delete nextLine.custom_pricing;
+  delete nextLine.custom_confirmed;
+  delete nextLine.custom;
+  delete nextLine.manual_pricing;
+  delete nextLine.pricing_tag;
+  delete nextLine.pricing_status;
+  delete nextLine.possible_pricing_matches;
+  delete nextLine.possible_catalog_matches;
+  section.lines[lineNumber] = nextLine;
+  state.quoteBasisSections = sections;
+  state.quoteBasis = quoteBasisFromSections(sections);
+  state.basisConfirmed = false;
+  state.downloadFile = null;
+  if (Array.isArray(state.outputRows) && state.outputRows.length && Array.isArray(state.lineItems)) {
+    refreshOutputRowsFromLineItems();
+    state.lineItems = outputRowsToLineItems();
+    if (typeof renderPricingMatches === "function") renderPricingMatches(state.outputRows);
+    if (typeof renderMatchSummary === "function") renderMatchSummary({ pricing_matches: state.outputRows });
+    if (typeof renderOutputValidationMessages === "function") renderOutputValidationMessages(outputRowsValid().errors);
+  }
+  updateQuoteBasisCard("edited");
+  syncControlStates();
 }
 
 function retagBasisLine(sectionId, lineIndex, nextTag) {
@@ -5492,7 +5936,10 @@ function basisChatPayload(text) {
 
 function normalizeServerBasisChatProposal(proposal = {}) {
   const quoteBasis = proposal.quoteBasis || proposal.quote_basis || {};
-  const sections = normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quote_basis_sections || quoteBasis);
+  const sections = mergeBasisProposalLineMetadata(
+    normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quote_basis_sections || quoteBasis),
+    state.quoteBasisSections
+  );
   return {
     message: String(proposal.message || "AI drafted a proposed quote basis update.").trim(),
     quoteBasis: { ...cloneQuoteBasis(quoteBasis), ...quoteBasisFromSections(sections) },
@@ -5520,19 +5967,60 @@ function replaceLiteralText(value = "", from = "", to = "") {
   return { text: next, changed: next !== original };
 }
 
+function unbracketedCatalogReferenceText(reference = "", detail = "") {
+  const cleanedReference = cleanCustomerQuoteLineText(reference);
+  const cleanedDetail = cleanCustomerQuoteLineText(detail);
+  if (!cleanedReference) return cleanedDetail;
+  return cleanedDetail ? `${cleanedReference} - ${cleanedDetail}` : cleanedReference;
+}
+
+function markBasisLineAsManualPricing(line = {}) {
+  const next = { ...line, custom_pricing: true };
+  const tag = normalizeBasisTag(next.tag);
+  if (tag === "Include" || tag === "Custom") next.custom_confirmed = true;
+  delete next.pricing_keyword;
+  delete next.catalog_description;
+  delete next.pricing_reference_description;
+  delete next.catalog_unit_price;
+  delete next.possible_pricing_matches;
+  delete next.possible_catalog_matches;
+  delete next.pricing_tag;
+  delete next.pricing_status;
+  return next;
+}
+
+function replaceBasisLineReferenceText(line = {}, from = "", to = "") {
+  const bracketed = bracketedCatalogReferenceParts(line.text || "");
+  const targetText = bracketed ? bracketed.reference : line.text || "";
+  const replaced = replaceLiteralText(targetText, from, to);
+  if (!replaced.changed) return { line, changed: false };
+  const nextLine = {
+    ...line,
+    text: bracketed
+      ? unbracketedCatalogReferenceText(replaced.text, bracketed.detail)
+      : replaced.text,
+  };
+  return {
+    line: bracketed ? markBasisLineAsManualPricing(nextLine) : nextLine,
+    changed: true,
+  };
+}
+
 function buildLiteralReplacementProposal(command) {
   const sections = cloneQuoteBasisSections(state.quoteBasisSections);
   let changedLineCount = 0;
   const affectedSectionIds = new Set();
   const snippets = [];
   sections.forEach((section) => {
-    (section.lines || []).forEach((line) => {
-      const replaced = replaceLiteralText(line.text, command.from, command.to);
+    (section.lines || []).forEach((line, index) => {
+      const replaced = replaceBasisLineReferenceText(line, command.from, command.to);
       if (!replaced.changed) return;
-      snippets.push({ section: section.title, before: line.text, after: replaced.text });
-      line.text = replaced.text;
-      line.tag = "Confirm";
-      if (isCustomPricingBasisLine(line)) line.custom_pricing = true;
+      snippets.push({ section: section.title, before: line.text, after: replaced.line.text });
+      section.lines[index] = {
+        ...replaced.line,
+        tag: bracketedCatalogReferenceParts(line.text || "") ? normalizeBasisTag(line.tag) : "Confirm",
+      };
+      if (isCustomPricingBasisLine(section.lines[index])) section.lines[index].custom_pricing = true;
       changedLineCount += 1;
       affectedSectionIds.add(section.id);
     });
@@ -5561,6 +6049,106 @@ function buildLiteralReplacementProposal(command) {
     quoteBasisSections: sections,
     lineItems,
     outputRows,
+  };
+}
+
+function simpleBasisEditFragment(text = "") {
+  const fragment = cleanCustomerQuoteLineText(text).replace(/^['"]|['"]$/g, "");
+  if (!fragment || fragment.length > 60 || /[?]/.test(fragment)) return "";
+  if (/^(?:change|replace|switch|make|set|update|revise|edit|remove|delete|include|exclude)\b/i.test(fragment)) return "";
+  const words = fragment.match(/[A-Za-z0-9.]+/g) || [];
+  if (!words.length || words.length > 6) return "";
+  const hasEditSignal = /\d/.test(fragment)
+    || /\b(?:mm|cm|sqm|sqft|ft|m|black|white|red|blue|green|yellow|grey|gray|teal|wood|glass|metal|laminate|fabric|vinyl|paint)\b/i.test(fragment);
+  return hasEditSignal ? fragment : "";
+}
+
+function replaceReferenceDimensionToken(value = "", fragment = "") {
+  const replacement = cleanCustomerQuoteLineText(fragment).replace(/\s+/g, "");
+  const replacementMatch = replacement.match(/^(\d+(?:\.\d+)?)(mm|cm|sqm|sqft|ft|m)$/i);
+  if (!replacementMatch) return null;
+  const replacementUnit = replacementMatch[2].toLowerCase();
+  const text = cleanCustomerQuoteLineText(value);
+  const dimensionPattern = /\b\d+(?:\.\d+)?\s*(mm|cm|sqm|sqft|ft|m)\b/gi;
+  const matches = Array.from(text.matchAll(dimensionPattern));
+  if (!matches.length) return null;
+  const sameUnitMatches = matches.filter((match) => String(match[1] || "").toLowerCase() === replacementUnit);
+  const candidates = sameUnitMatches.length ? sameUnitMatches : matches;
+  if (candidates.length !== 1) return null;
+  const match = candidates[0];
+  const start = match.index;
+  const end = start + match[0].length;
+  return `${text.slice(0, start)}${replacement}${text.slice(end)}`;
+}
+
+function basisChatRequestedQuantityValue(text = "") {
+  const cleaned = cleanCustomerQuoteLineText(text).toLowerCase().replace(/,/g, "");
+  const patterns = [
+    /\b(?:qty|quantity|count)\s*(?:to|=|:|is|as)?\s*(\d+(?:\.\d+)?)\b/i,
+    /\b(\d+(?:\.\d+)?)\s*(?:qty|quantity|count)\b/i,
+    /\bfrom\s+\d+(?:\.\d+)?\s+to\s+(\d+(?:\.\d+)?)\b/i,
+    /\b(?:make|set|change|update|revise)\s+(?:it|this|that|qty|quantity|count)?\s*(?:to\s+)?(\d+(?:\.\d+)?)\s*(?:nos?\.?|pcs?|pieces?|units?|lots?|sets?|each|ea|sqm)\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (!match) continue;
+    const quantity = leadingNumber(match[1]);
+    if (quantity !== null && quantity > 0) return formatQuantityNumber(quantity);
+  }
+  return null;
+}
+
+function basisLineTextHasLiteralQuantityWord(line = {}) {
+  const bracketed = bracketedCatalogReferenceParts(line.text || "");
+  if (!bracketed) return false;
+  return /\b(?:qty|quantity)\b/i.test(cleanCustomerQuoteLineText(bracketed.reference || ""));
+}
+
+function buildSelectedLineFragmentReplacementProposal(text = "") {
+  if (state.basisChat.scope !== "line") return null;
+  const sections = cloneQuoteBasisSections(state.quoteBasisSections);
+  const section = sections.find((item) => item.id === state.basisChat.sectionId);
+  const lineIndex = Number(state.basisChat.lineIndex);
+  if (!section || !Number.isInteger(lineIndex) || !section.lines[lineIndex]) return null;
+  const currentLine = section.lines[lineIndex];
+  const requestedQuantity = basisChatRequestedQuantityValue(text);
+  if (requestedQuantity !== null && !basisLineTextHasLiteralQuantityWord(currentLine)) {
+    const currentQuantity = leadingNumber(currentLine.quantity);
+    if (currentQuantity === requestedQuantity) return null;
+    const nextLine = { ...currentLine, quantity: requestedQuantity };
+    if (!normalizeUnit(nextLine.unit || "") && normalizeUnit(state.basisChat.unit || "")) {
+      nextLine.unit = state.basisChat.unit;
+    }
+    section.lines[lineIndex] = nextLine;
+    const quoteBasis = quoteBasisFromSections(sections);
+    const unit = normalizeUnit(nextLine.unit || "");
+    return {
+      message: `Change the selected line quantity to ${requestedQuantity}${unit ? ` ${unit}` : ""}?`,
+      quoteBasis,
+      quoteBasisSections: sections,
+      lineItems: Array.isArray(state.lineItems) ? state.lineItems : [],
+    };
+  }
+  const fragment = simpleBasisEditFragment(text);
+  if (!fragment) return null;
+  const bracketed = bracketedCatalogReferenceParts(currentLine.text || "");
+  const targetText = bracketed ? bracketed.reference : currentLine.text || "";
+  const replacedReference = replaceReferenceDimensionToken(targetText, fragment);
+  if (!replacedReference || cleanCustomerQuoteLineText(replacedReference) === cleanCustomerQuoteLineText(targetText)) return null;
+  let nextLine = {
+    ...currentLine,
+    text: bracketed
+      ? unbracketedCatalogReferenceText(replacedReference, bracketed.detail)
+      : replacedReference,
+  };
+  if (bracketed) nextLine = markBasisLineAsManualPricing(nextLine);
+  section.lines[lineIndex] = nextLine;
+  const quoteBasis = quoteBasisFromSections(sections);
+  return {
+    message: `Change the selected line to '${nextLine.text}'?`,
+    quoteBasis,
+    quoteBasisSections: sections,
+    lineItems: Array.isArray(state.lineItems) ? state.lineItems : [],
   };
 }
 
@@ -5643,6 +6231,12 @@ async function handleBasisChatSubmit(event) {
     return;
   }
 
+  const fragmentProposal = buildSelectedLineFragmentReplacementProposal(text);
+  if (fragmentProposal) {
+    setBasisChatProposal(fragmentProposal);
+    return;
+  }
+
   const aiResult = await buildAiBasisChatResponse(text);
   if (aiResult?.proposal) {
     setBasisChatProposal(aiResult.proposal);
@@ -5661,7 +6255,10 @@ function applyBasisChatProposal() {
   const proposal = state.basisChat.proposal;
   if (!proposal) return;
   state.basisConfirmed = false;
-  state.quoteBasisSections = normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quoteBasis || state.quoteBasisSections);
+  state.quoteBasisSections = mergeBasisProposalLineMetadata(
+    normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quoteBasis || state.quoteBasisSections),
+    state.quoteBasisSections
+  );
   state.quoteBasis = { ...cloneQuoteBasis(proposal.quoteBasis || state.quoteBasis), ...quoteBasisFromSections(state.quoteBasisSections) };
   state.lineItems = Array.isArray(proposal.lineItems) ? proposal.lineItems.map(normalizeLineItem) : [];
   state.outputRows = Array.isArray(proposal.outputRows) ? proposal.outputRows.map(normalizeOutputRow) : [];
@@ -6704,6 +7301,15 @@ function handleQuoteBasisClick(event) {
     );
     return;
   }
+  const possibleMatchButton = event.target.closest("[data-basis-possible-match-index]");
+  if (possibleMatchButton) {
+    applyPossiblePricingMatch(
+      possibleMatchButton.dataset.basisSection || "",
+      Number(possibleMatchButton.dataset.basisLineIndex),
+      Number(possibleMatchButton.dataset.basisPossibleMatchIndex)
+    );
+    return;
+  }
   const tagButton = event.target.closest("[data-basis-tag]");
   if (tagButton) {
     retagBasisLine(
@@ -6844,7 +7450,11 @@ function wireEvents() {
       } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
-        closePricingReferenceModal();
+        if (elements.pricingReferenceDeleteConfirm && !elements.pricingReferenceDeleteConfirm.hidden) {
+          hidePricingReferenceDeleteConfirm();
+        } else {
+          closePricingReferenceModal();
+        }
       } else if (!elements.analysisConfirmModal.hidden) {
         closeAnalysisConfirmModal();
       }
@@ -6859,12 +7469,16 @@ function wireEvents() {
   elements.pricingReferenceManageTab?.addEventListener("click", () => setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_MANAGE, { focus: true }));
   elements.pricingReferenceImportTab?.addEventListener("click", handlePricingReferenceImportTabClick);
   elements.deletePricingReferenceSelect?.addEventListener("change", () => {
+    hidePricingReferenceDeleteConfirm();
     updatePricingReferenceDeleteButton();
     editSelectedPricingReference({ openTable: false });
   });
-  elements.deletePricingReferenceButton?.addEventListener("click", deleteSelectedPricingReference);
+  elements.deletePricingReferenceButton?.addEventListener("click", requestSelectedPricingReferenceDelete);
+  elements.cancelPricingReferenceDeleteButton?.addEventListener("click", hidePricingReferenceDeleteConfirm);
+  elements.confirmPricingReferenceDeleteButton?.addEventListener("click", deleteSelectedPricingReference);
   elements.outputSortMode?.addEventListener("change", () => { state.outputSortMode = elements.outputSortMode.value; renderPricingMatches(state.outputRows); renderMatchSummary({ pricing_matches: state.outputRows }); syncControlStates(); });
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
+  elements.exportPricingReferenceButton?.addEventListener("click", exportSelectedPricingReference);
   elements.pricingReferenceTemplateButton.addEventListener("click", downloadPricingReferenceTemplate);
   elements.pricingReferenceFile.addEventListener("change", handlePricingReferenceFileChange);
   elements.pricingReferenceCurrency?.addEventListener("change", () => {
@@ -6906,7 +7520,6 @@ function wireEvents() {
   elements.pricingReferenceName?.addEventListener("input", () => {
     if (state.pendingPricingReference) {
       markPricingReferenceDraftChanged();
-      renderPricingReferencePreview(state.pendingPricingReference);
     }
   });
   elements.pricingReferencePreview?.addEventListener("input", (event) => {
