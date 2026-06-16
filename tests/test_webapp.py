@@ -3051,6 +3051,21 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(powerpoint["unit_hint"], "nos")
         self.assertNotIn("data_url", result)
 
+    def test_sectioned_workbook_import_moves_commercial_note_terms_from_remarks_to_description(self):
+        row = [""] * 12
+        row[webapp.SECTIONED_WORKBOOK_COL_DESCRIPTION] = "nos. rigging point for Overhead Structure or Aluminium Box Truss"
+        row[webapp.SECTIONED_WORKBOOK_COL_COST] = "300"
+        row[webapp.SECTIONED_WORKBOOK_COL_MARKUP] = "1.5"
+        row[webapp.SECTIONED_WORKBOOK_COL_REMARKS] = "RIGGING POINT; \u2022 Prices are not inclusive of truss"
+
+        item = webapp.sectioned_workbook_row_to_pricing_reference_row("Hanging Structure", 4, 12, row)
+
+        self.assertEqual(
+            item["description"],
+            "nos. rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss",
+        )
+        self.assertEqual(item["remarks"], ["RIGGING POINT"])
+
     def test_v11_pricing_workbook_import_keeps_selected_currency_when_workbook_has_no_currency(self):
         raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
         result = webapp.pricing_reference_import_preview({

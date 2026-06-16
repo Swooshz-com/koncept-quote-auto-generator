@@ -3117,6 +3117,22 @@ def sectioned_workbook_alias_candidates(section: str, description: str, remarks:
     return aliases[:8]
 
 
+def split_sectioned_workbook_description_notes(description: Any, remarks: list[Any]) -> tuple[str, list[str]]:
+    description_text = clean_text(description)
+    kept_remarks: list[str] = []
+    moved_notes: list[str] = []
+    for remark in remarks:
+        for term in split_pricing_reference_terms(remark):
+            note = pricing_reference_description_cell_note(term)
+            if note:
+                moved_notes.append(note)
+            else:
+                kept_remarks.append(term)
+    if moved_notes:
+        description_text = "; ".join(unique_clean_list([description_text, *moved_notes]))
+    return description_text, unique_clean_list(kept_remarks)
+
+
 def normalize_drawing_target(base_dir: str, target: str) -> str:
     clean_target = clean_text(target).replace("\\", "/")
     if not clean_target:
@@ -3227,6 +3243,7 @@ def sectioned_workbook_row_to_pricing_reference_row(section: str, section_order:
     description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
     remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
+    description, remarks = split_sectioned_workbook_description_notes(description, remarks)
     unit_hint = infer_pricing_reference_unit(description) or ("nos" if description else "")
     return {
         "_source_row": row_number,
@@ -3275,8 +3292,12 @@ def sectioned_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[st
                 rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
                 rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
         if remark:
-            remarks = rows[-1].setdefault("remarks", [])
-            add_unique_text(remarks, remark)
+            current_description, current_remarks = split_sectioned_workbook_description_notes(
+                rows[-1].get("description"),
+                [*split_pricing_reference_terms(rows[-1].get("remarks")), remark],
+            )
+            rows[-1]["description"] = current_description
+            rows[-1]["remarks"] = current_remarks
         if description or remark:
             rows[-1]["aliases"] = sectioned_workbook_alias_candidates(
                 clean_text(rows[-1].get("section")),
@@ -4131,7 +4152,8 @@ def pricing_reference_source_contains(values: list[str], fragment: Any) -> bool:
 
 
 def pricing_reference_description_cell_note(value: Any) -> str:
-    text = clean_text(value).lstrip("•*- ").strip()
+    text = clean_text(value)
+    text = re.sub(r"^(?:\s|[-*]|\u2022|\u00e2\u20ac\u00a2)+", "", text).strip()
     if not text:
         return ""
     if re.search(r"\bprices?\b.*\bnot\s+inclusive\b", text, flags=re.IGNORECASE):
