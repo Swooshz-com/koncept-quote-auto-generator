@@ -5033,6 +5033,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('"selected_basis_quantity_label": "12 sqm"', prompt)
         self.assertIn('"selected_basis_quantity": "12"', prompt)
         self.assertIn('"selected_basis_unit": "sqm"', prompt)
+        self.assertIn("If selected_basis_line uses `[ catalog reference ] - detail` format", prompt)
+        self.assertIn("edit the catalog reference inside the brackets by default", prompt)
+        self.assertIn("return plain unbracketed replacement_line.text", prompt)
+        self.assertIn("custom_pricing=true", prompt)
 
     def test_basis_chat_quote_scope_edit_prompt_is_answer_only(self):
         payload = valid_payload()
@@ -5153,6 +5157,71 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(str(line["quantity"]), "5")
         self.assertEqual(line["unit"], "nos")
         self.assertNotIn("5x", line["text"].lower())
+
+    def test_basis_chat_replacement_unbinds_catalog_when_bracket_reference_changes(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "id": "counters-and-cabinets",
+                "title": "COUNTERS AND CABINETS",
+                "lines": [
+                    {
+                        "id": "engineer-endorsement",
+                        "tag": "Include",
+                        "text": "[ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+                        "quantity": 1,
+                        "unit": "lot",
+                        "confidence_pct": 82,
+                        "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+                        "catalog_description": "Professional Engineer Endorsement for structure above 4m",
+                        "pricing_reference_description": "Professional Engineer Endorsement for structure above 4m",
+                        "catalog_unit_price": 1200,
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "5m",
+            "field": "counters-and-cabinets",
+            "line_index": 0,
+            "line": "Include: [ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+            "quantity": 1,
+            "unit": "lot",
+            "quantity_label": "1 lot",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "message": "Update endorsement height.",
+                "replacement_line": {
+                    "tag": "Include",
+                    "text": "[ Professional Engineer Endorsement for structure above 5m ] - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+                    "confidence_pct": 82,
+                    "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+                    "catalog_description": "Professional Engineer Endorsement for structure above 4m",
+                    "pricing_reference_description": "Professional Engineer Endorsement for structure above 4m",
+                    "catalog_unit_price": 1200,
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["tag"], "Include")
+        self.assertEqual(
+            line["text"],
+            "Professional Engineer Endorsement for structure above 5m - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+        )
+        self.assertTrue(line["custom_pricing"])
+        self.assertTrue(line["custom_confirmed"])
+        self.assertNotIn("pricing_keyword", line)
+        self.assertNotIn("catalog_description", line)
+        self.assertNotIn("pricing_reference_description", line)
+        self.assertNotIn("catalog_unit_price", line)
+        self.assertEqual(str(line["quantity"]), "1")
+        self.assertEqual(line["unit"], "lot")
+        self.assertIn("above 5m", result["proposal"]["quote_basis"]["counters-and-cabinets"])
 
     def test_basis_chat_replacement_moves_prefixed_quantity_into_quantity_field(self):
         payload = valid_payload()
@@ -10888,6 +10957,291 @@ assert.ok(!/AI basis chat|JSON|replacement line/i.test(friendlyError));
 assert.ok(source.includes("line_index: state.basisChat.lineIndex"));
 assert.ok(source.includes('startJob("basis_chat", basisChatPayload(text))'));
 assert.ok(!source.includes('startJob("draft", buildPayload())'));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_line_revise_preserves_other_possible_matches_when_applied(self):
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const EMPTY_BASIS = { surfaces: "", counters: "", platform: "", graphics: "", furniture: "", electrical: "" };
+const state = {
+  quoteBasis: {},
+  quoteBasisSections: [{
+    id: "counters-and-cabinets",
+    title: "COUNTERS AND CABINETS",
+    lines: [{
+      id: "engineer-endorsement",
+      tag: "Include",
+      text: "[ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+      quantity: 1,
+      unit: "lot",
+      pricing_keyword: "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+      catalog_description: "Professional Engineer Endorsement for structure above 4m",
+      pricing_reference_description: "Professional Engineer Endorsement for structure above 4m",
+      catalog_unit_price: 1200,
+    }, {
+      id: "custom-counter",
+      tag: "Custom",
+      text: "Curved reception counter with Kent logo panel, teal trim and illuminated blue plinth.",
+      quantity: 1,
+      unit: "nos",
+      custom_pricing: true,
+      possible_pricing_matches: [{
+        pricing_keyword: "counter-laminated",
+        description: "nos. of 1m length x 1m height lockable counter",
+        section: "COUNTERS AND CABINETS",
+        unit: "nos",
+      }],
+    }],
+  }],
+  basisChat: { proposal: null },
+  lineItems: [],
+  outputRows: [],
+  originalOutputRows: [],
+  outputErrors: [],
+  basisConfirmed: true,
+};
+function cleanCustomerQuoteLineText(value = "") { return String(value || "").trim().replace(/\s+/g, " "); }
+function normalizeUnit(value = "") { return String(value || "").trim(); }
+function basisDisplayTitle(value = "") { return String(value || "").trim(); }
+function normalizeCategoryTitle(value = "") { return basisDisplayTitle(value) || "General"; }
+function exactPricingReferenceSectionTitle() { return ""; }
+function sectionTitleKey(value = "") { return String(value || "").toLowerCase().trim(); }
+function referenceSectionTitleAliases(value = "") { return [String(value || "").trim()].filter(Boolean); }
+function setDownloadFiles(files = []) { state.downloadFiles = files; }
+function updateQuoteBasisCard(source) { state.updatedSource = source; }
+function setSidePanel(panelName, options = {}) { state.sidePanel = panelName; state.sidePanelOptions = options; }
+function resetBasisChatProposal() { state.basisChat.proposal = null; }
+function closeBasisChatOverlay() { state.overlayClosed = true; }
+function syncControlStates() { state.synced = true; }
+
+eval([
+  "safeId",
+  "pricingReferenceLineText",
+  "bracketedCatalogReferenceParts",
+  "leadingNumber",
+  "formatQuantityNumber",
+  "normalizeQuantityPrefixUnit",
+  "leadingQuantityPrefix",
+  "quantityUnitAliases",
+  "startsWithQuantityUnit",
+  "stripLeadingQuantityCountFromLineText",
+  "normalizedLineTextQuantityParts",
+  "normalizeBasisTag",
+  "isCustomPricingBasisLine",
+  "normalizeConfidence",
+  "normalizePossiblePricingMatches",
+  "numberOrNull",
+  "orderNumber",
+  "splitBasisDecisionText",
+  "normalizeBasisLines",
+  "normalizeQuoteBasisTitle",
+  "normalizeQuoteBasisSections",
+  "quoteBasisFromSections",
+  "cloneQuoteBasis",
+  "cloneQuoteBasisSections",
+  "basisLineMetadataMergeKey",
+  "basisLineCoreMatches",
+  "mergeBasisProposalLineMetadata",
+  "applyBasisChatProposal",
+].map(extractFunction).join("\n"));
+
+state.basisChat.proposal = {
+  message: "Update endorsement height.",
+  quoteBasis: {},
+  quoteBasisSections: [{
+    id: "counters-and-cabinets",
+    title: "COUNTERS AND CABINETS",
+    lines: [{
+      id: "engineer-endorsement",
+      tag: "Include",
+      text: "Professional Engineer Endorsement for structure above 5m - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+      quantity: 1,
+      unit: "lot",
+      custom_pricing: true,
+      custom_confirmed: true,
+    }, {
+      id: "custom-counter",
+      tag: "Custom",
+      text: "Curved reception counter with Kent logo panel, teal trim and illuminated blue plinth.",
+      quantity: 1,
+      unit: "nos",
+      custom_pricing: true,
+    }],
+  }],
+};
+
+applyBasisChatProposal();
+const editedLine = state.quoteBasisSections[0].lines[0];
+assert.strictEqual(editedLine.text.includes("above 5m"), true);
+assert.strictEqual(editedLine.pricing_keyword, undefined);
+const untouchedLine = state.quoteBasisSections[0].lines[1];
+assert.strictEqual(untouchedLine.possible_pricing_matches.length, 1);
+assert.strictEqual(untouchedLine.possible_pricing_matches[0].pricing_keyword, "counter-laminated");
+assert.strictEqual(state.overlayClosed, true);
+assert.strictEqual(state.synced, true);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_short_fragment_edit_updates_bracket_reference_only(self):
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  quoteBasis: {},
+  quoteBasisSections: [{
+    id: "counters-and-cabinets",
+    title: "COUNTERS AND CABINETS",
+    lines: [{
+      id: "engineer-endorsement",
+      tag: "Include",
+      text: "[ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+      quantity: 1,
+      unit: "lot",
+      confidence: 82,
+      pricing_keyword: "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+      catalog_description: "Professional Engineer Endorsement for structure above 4m",
+      pricing_reference_description: "Professional Engineer Endorsement for structure above 4m",
+      catalog_unit_price: 1200,
+    }],
+  }],
+  basisChat: {
+    scope: "line",
+    sectionId: "counters-and-cabinets",
+    field: "counters-and-cabinets",
+    lineIndex: 0,
+    line: "Include: [ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee/service counter with Kent branding and teal/blue trim.",
+  },
+  lineItems: [],
+  outputRows: [],
+};
+function cleanCustomerQuoteLineText(value = "") { return String(value || "").trim().replace(/\s+/g, " "); }
+function normalizeUnit(value = "") { return String(value || "").trim(); }
+function basisDisplayTitle(value = "") { return String(value || "").trim(); }
+function normalizeCategoryTitle(value = "") { return basisDisplayTitle(value) || "General"; }
+function exactPricingReferenceSectionTitle() { return ""; }
+function sectionTitleKey(value = "") { return String(value || "").toLowerCase().trim(); }
+function referenceSectionTitleAliases(value = "") { return [String(value || "").trim()].filter(Boolean); }
+
+eval([
+  "safeId",
+  "pricingReferenceLineText",
+  "bracketedCatalogReferenceParts",
+  "leadingNumber",
+  "formatQuantityNumber",
+  "normalizeQuantityPrefixUnit",
+  "leadingQuantityPrefix",
+  "quantityUnitAliases",
+  "startsWithQuantityUnit",
+  "stripLeadingQuantityCountFromLineText",
+  "normalizedLineTextQuantityParts",
+  "normalizeBasisTag",
+  "isCustomPricingBasisLine",
+  "normalizeConfidence",
+  "normalizePossiblePricingMatches",
+  "numberOrNull",
+  "orderNumber",
+  "splitBasisDecisionText",
+  "normalizeBasisLines",
+  "parseBasisLine",
+  "normalizeQuoteBasisTitle",
+  "normalizeQuoteBasisSections",
+  "quoteBasisFromSections",
+  "cloneQuoteBasisSections",
+  "selectedBasisLine",
+  "replaceLiteralText",
+  "replaceBasisLineReferenceText",
+  "buildLiteralReplacementProposal",
+  "unbracketedCatalogReferenceText",
+  "simpleBasisEditFragment",
+  "replaceReferenceDimensionToken",
+  "markBasisLineAsManualPricing",
+  "buildSelectedLineFragmentReplacementProposal",
+].map(extractFunction).join("\n"));
+
+const proposal = buildSelectedLineFragmentReplacementProposal("5m");
+assert.ok(proposal, "expected a deterministic proposal");
+const line = proposal.quoteBasisSections[0].lines[0];
+assert.strictEqual(line.text, "Professional Engineer Endorsement for structure above 5m - Custom curved coffee/service counter with Kent branding and teal/blue trim.");
+assert.strictEqual(line.tag, "Include");
+assert.strictEqual(line.custom_pricing, true);
+assert.strictEqual(line.custom_confirmed, true);
+assert.strictEqual(line.pricing_keyword, undefined);
+assert.strictEqual(line.catalog_description, undefined);
+assert.strictEqual(line.pricing_reference_description, undefined);
+assert.strictEqual(line.catalog_unit_price, undefined);
+assert.strictEqual(line.text.startsWith("["), false);
+assert.strictEqual(line.text.includes("above 4m"), false);
+assert.strictEqual(line.quantity, 1);
+assert.strictEqual(line.unit, "lot");
+assert.strictEqual(line.confidence, 82);
+assert.strictEqual(proposal.quoteBasis["counters-and-cabinets"].includes("above 5m"), true);
+const literalProposal = buildLiteralReplacementProposal({ from: "4m", to: "5m" });
+assert.ok(literalProposal, "expected literal replacement proposal");
+const literalLine = literalProposal.quoteBasisSections[0].lines[0];
+assert.strictEqual(literalLine.text, "Professional Engineer Endorsement for structure above 5m - Custom curved coffee/service counter with Kent branding and teal/blue trim.");
+assert.strictEqual(literalLine.custom_pricing, true);
+assert.strictEqual(literalLine.custom_confirmed, true);
+assert.strictEqual(literalLine.pricing_keyword, undefined);
 """
         completed = subprocess.run(
             [node, "-e", script],

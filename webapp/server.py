@@ -7483,7 +7483,7 @@ def build_basis_chat_prompt(payload: dict[str, Any]) -> str:
     elif selected_line:
         response_schema = (
             "{\"intent\":\"answer|proposal\",\"answer\":\"\","
-            "\"proposal\":{\"message\":\"\",\"replacement_line\":{\"tag\":\"Confirm\",\"text\":\"\",\"confidence_pct\":90},\"quote_basis_sections\":[]}}"
+            "\"proposal\":{\"message\":\"\",\"replacement_line\":{\"tag\":\"Confirm\",\"text\":\"\",\"confidence_pct\":90,\"custom_pricing\":false},\"quote_basis_sections\":[]}}"
         )
         proposal_target_rule = (
             "For required_intent=proposal, return intent=proposal with proposal.replacement_line for selected-line edits. "
@@ -7506,6 +7506,9 @@ def build_basis_chat_prompt(payload: dict[str, Any]) -> str:
         "Draft the complete replacement sentence the operator is being asked to approve. Preserve unchanged wording as much as possible. "
         "Preserve selected_basis_quantity and selected_basis_unit unless the operator explicitly asks to change quantity; do not copy quantity into replacement_line.text. If the operator changes quantity, set replacement_line.quantity and replacement_line.unit instead of prefixing the sentence with the quantity. "
         "If the operator gives only a short fragment, treat it as the requested replacement detail for the selected line and rewrite the selected line around that detail. "
+        "If selected_basis_line uses `[ catalog reference ] - detail` format, edit the catalog reference inside the brackets by default and preserve the detail after the dash. "
+        "Only edit the detail after the dash when the operator explicitly names that detail or when the selected line has no bracketed catalog reference. "
+        "When a bracketed catalog reference changes, return plain unbracketed replacement_line.text as `updated catalog reference - unchanged detail`, set custom_pricing=true, and do not keep pricing_keyword, catalog_description, pricing_reference_description, or catalog_unit_price. "
         "Selected-line edit mode is intentionally narrow: selected_basis_line is the only sentence being edited. "
         "For selected-line proposals, preserve every unchanged phrase, number, material, finish, location, and scope detail from selected_basis_line unless the operator explicitly asks to change it. "
         "Do not add new scope, assumptions, wrap/edge details, quantities, finishes, locations, or affected sections that are not stated in the operator's question. "
@@ -7675,6 +7678,69 @@ def preserve_basis_chat_quantity(
         replacement["quantity"] = current_line.get("quantity")
     if not clean_text(replacement.get("unit")) and clean_text(current_line.get("unit")):
         replacement["unit"] = current_line.get("unit")
+
+
+def unbracketed_catalog_reference_text(reference: Any, detail: Any = "") -> str:
+    cleaned_reference = clean_customer_quote_line_text(reference)
+    cleaned_detail = clean_customer_quote_line_text(detail)
+    if not cleaned_reference:
+        return cleaned_detail
+    return f"{cleaned_reference} - {cleaned_detail}" if cleaned_detail else cleaned_reference
+
+
+def replacement_catalog_reference_parts_for_current(
+    current_parts: tuple[str, str],
+    replacement_text: Any,
+) -> tuple[str, str] | None:
+    replacement_parts = bracketed_catalog_reference_parts(replacement_text)
+    if replacement_parts:
+        return replacement_parts
+
+    replacement = clean_customer_quote_line_text(replacement_text)
+    current_reference, current_detail = current_parts
+    if not replacement:
+        return None
+    if current_detail:
+        prefix = f"{current_reference} - "
+        if replacement.lower().startswith(prefix.lower()):
+            detail = clean_customer_quote_line_text(replacement[len(prefix):])
+            return (current_reference, detail)
+        suffix = f" - {current_detail}"
+        if replacement.lower().endswith(suffix.lower()):
+            reference = clean_customer_quote_line_text(replacement[: -len(suffix)])
+            return (reference, current_detail) if reference else None
+    if clean_customer_quote_line_text(replacement).lower() != clean_customer_quote_line_text(current_reference).lower():
+        return (replacement, current_detail)
+    return None
+
+
+def unbind_replacement_if_catalog_reference_changed(
+    current_line: dict[str, Any],
+    replacement: dict[str, Any],
+) -> None:
+    current_parts = bracketed_catalog_reference_parts(current_line.get("text"))
+    if not current_parts:
+        return
+    replacement_parts = replacement_catalog_reference_parts_for_current(current_parts, replacement.get("text"))
+    if not replacement_parts:
+        return
+    current_reference, current_detail = current_parts
+    replacement_reference, replacement_detail = replacement_parts
+    if comparable_catalog_description_key(current_reference) == comparable_catalog_description_key(replacement_reference):
+        return
+    replacement["text"] = unbracketed_catalog_reference_text(replacement_reference, replacement_detail or current_detail)
+    replacement["custom_pricing"] = True
+    if normalize_basis_tag(replacement.get("tag")) in {"Include", "Custom"}:
+        replacement["custom_confirmed"] = True
+    for key in (
+        "pricing_keyword",
+        "catalog_description",
+        "pricing_reference_description",
+        "catalog_unit_price",
+        "pricing_tag",
+        "pricing_status",
+    ):
+        replacement.pop(key, None)
 
 
 def validate_basis_chat_replacement_line(
@@ -8830,6 +8896,7 @@ def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) ->
     if confidence is not None:
         replacement["confidence"] = confidence
     preserve_basis_chat_quantity(basis_chat, current_line, replacement)
+    unbind_replacement_if_catalog_reference_changed(current_line, replacement)
     validate_basis_chat_replacement_line(payload, current_line, replacement)
 
     next_sections = copy.deepcopy(sections)

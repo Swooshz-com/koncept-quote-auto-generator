@@ -2997,6 +2997,54 @@ function cloneQuoteBasisSections(sections = []) {
   return normalizeQuoteBasisSections(JSON.parse(JSON.stringify(Array.isArray(sections) ? sections : [])));
 }
 
+function basisLineMetadataMergeKey(line = {}) {
+  const id = String(line.id || "").trim();
+  if (id) return `id:${id}`;
+  const sourceId = String(line.source_line_item_id || "").trim();
+  if (sourceId) return `source:${sourceId}`;
+  return "";
+}
+
+function basisLineCoreMatches(left = {}, right = {}) {
+  return normalizeBasisTag(left.tag) === normalizeBasisTag(right.tag)
+    && cleanCustomerQuoteLineText(left.text || "") === cleanCustomerQuoteLineText(right.text || "")
+    && String(left.quantity ?? "") === String(right.quantity ?? "")
+    && normalizeUnit(left.unit || "") === normalizeUnit(right.unit || "");
+}
+
+function mergeBasisProposalLineMetadata(nextSections = [], currentSections = []) {
+  const currentBySectionId = new Map();
+  const currentBySectionTitle = new Map();
+  (Array.isArray(currentSections) ? currentSections : []).forEach((section) => {
+    if (!section || typeof section !== "object") return;
+    const sectionId = String(section.id || "").trim();
+    if (sectionId) currentBySectionId.set(sectionId, section);
+    const titleKey = basisDisplayTitle(section.title || "").toLowerCase();
+    if (titleKey) currentBySectionTitle.set(titleKey, section);
+  });
+  return (Array.isArray(nextSections) ? nextSections : []).map((section) => {
+    const currentSection = currentBySectionId.get(String(section?.id || "").trim())
+      || currentBySectionTitle.get(basisDisplayTitle(section?.title || "").toLowerCase())
+      || null;
+    if (!currentSection) return section;
+    const currentLines = Array.isArray(currentSection.lines) ? currentSection.lines : [];
+    const currentByLineKey = new Map();
+    currentLines.forEach((line) => {
+      const key = basisLineMetadataMergeKey(line);
+      if (key) currentByLineKey.set(key, line);
+    });
+    return {
+      ...section,
+      lines: (Array.isArray(section.lines) ? section.lines : []).map((line, index) => {
+        const key = basisLineMetadataMergeKey(line);
+        const currentLine = (key && currentByLineKey.get(key)) || currentLines[index] || null;
+        if (!currentLine || !basisLineCoreMatches(currentLine, line)) return line;
+        return { ...currentLine, ...line };
+      }),
+    };
+  });
+}
+
 function normalizeOutputRow(row = {}) {
   const priceMode = row.price_mode === "Included" || String(row.display_price || "").toLowerCase() === "included"
     ? "Included"
@@ -5823,7 +5871,10 @@ function basisChatPayload(text) {
 
 function normalizeServerBasisChatProposal(proposal = {}) {
   const quoteBasis = proposal.quoteBasis || proposal.quote_basis || {};
-  const sections = normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quote_basis_sections || quoteBasis);
+  const sections = mergeBasisProposalLineMetadata(
+    normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quote_basis_sections || quoteBasis),
+    state.quoteBasisSections
+  );
   return {
     message: String(proposal.message || "AI drafted a proposed quote basis update.").trim(),
     quoteBasis: { ...cloneQuoteBasis(quoteBasis), ...quoteBasisFromSections(sections) },
@@ -5851,19 +5902,60 @@ function replaceLiteralText(value = "", from = "", to = "") {
   return { text: next, changed: next !== original };
 }
 
+function unbracketedCatalogReferenceText(reference = "", detail = "") {
+  const cleanedReference = cleanCustomerQuoteLineText(reference);
+  const cleanedDetail = cleanCustomerQuoteLineText(detail);
+  if (!cleanedReference) return cleanedDetail;
+  return cleanedDetail ? `${cleanedReference} - ${cleanedDetail}` : cleanedReference;
+}
+
+function markBasisLineAsManualPricing(line = {}) {
+  const next = { ...line, custom_pricing: true };
+  const tag = normalizeBasisTag(next.tag);
+  if (tag === "Include" || tag === "Custom") next.custom_confirmed = true;
+  delete next.pricing_keyword;
+  delete next.catalog_description;
+  delete next.pricing_reference_description;
+  delete next.catalog_unit_price;
+  delete next.possible_pricing_matches;
+  delete next.possible_catalog_matches;
+  delete next.pricing_tag;
+  delete next.pricing_status;
+  return next;
+}
+
+function replaceBasisLineReferenceText(line = {}, from = "", to = "") {
+  const bracketed = bracketedCatalogReferenceParts(line.text || "");
+  const targetText = bracketed ? bracketed.reference : line.text || "";
+  const replaced = replaceLiteralText(targetText, from, to);
+  if (!replaced.changed) return { line, changed: false };
+  const nextLine = {
+    ...line,
+    text: bracketed
+      ? unbracketedCatalogReferenceText(replaced.text, bracketed.detail)
+      : replaced.text,
+  };
+  return {
+    line: bracketed ? markBasisLineAsManualPricing(nextLine) : nextLine,
+    changed: true,
+  };
+}
+
 function buildLiteralReplacementProposal(command) {
   const sections = cloneQuoteBasisSections(state.quoteBasisSections);
   let changedLineCount = 0;
   const affectedSectionIds = new Set();
   const snippets = [];
   sections.forEach((section) => {
-    (section.lines || []).forEach((line) => {
-      const replaced = replaceLiteralText(line.text, command.from, command.to);
+    (section.lines || []).forEach((line, index) => {
+      const replaced = replaceBasisLineReferenceText(line, command.from, command.to);
       if (!replaced.changed) return;
-      snippets.push({ section: section.title, before: line.text, after: replaced.text });
-      line.text = replaced.text;
-      line.tag = "Confirm";
-      if (isCustomPricingBasisLine(line)) line.custom_pricing = true;
+      snippets.push({ section: section.title, before: line.text, after: replaced.line.text });
+      section.lines[index] = {
+        ...replaced.line,
+        tag: bracketedCatalogReferenceParts(line.text || "") ? normalizeBasisTag(line.tag) : "Confirm",
+      };
+      if (isCustomPricingBasisLine(section.lines[index])) section.lines[index].custom_pricing = true;
       changedLineCount += 1;
       affectedSectionIds.add(section.id);
     });
@@ -5892,6 +5984,65 @@ function buildLiteralReplacementProposal(command) {
     quoteBasisSections: sections,
     lineItems,
     outputRows,
+  };
+}
+
+function simpleBasisEditFragment(text = "") {
+  const fragment = cleanCustomerQuoteLineText(text).replace(/^['"]|['"]$/g, "");
+  if (!fragment || fragment.length > 60 || /[?]/.test(fragment)) return "";
+  if (/^(?:change|replace|switch|make|set|update|revise|edit|remove|delete|include|exclude)\b/i.test(fragment)) return "";
+  const words = fragment.match(/[A-Za-z0-9.]+/g) || [];
+  if (!words.length || words.length > 6) return "";
+  const hasEditSignal = /\d/.test(fragment)
+    || /\b(?:mm|cm|sqm|sqft|ft|m|black|white|red|blue|green|yellow|grey|gray|teal|wood|glass|metal|laminate|fabric|vinyl|paint)\b/i.test(fragment);
+  return hasEditSignal ? fragment : "";
+}
+
+function replaceReferenceDimensionToken(value = "", fragment = "") {
+  const replacement = cleanCustomerQuoteLineText(fragment).replace(/\s+/g, "");
+  const replacementMatch = replacement.match(/^(\d+(?:\.\d+)?)(mm|cm|sqm|sqft|ft|m)$/i);
+  if (!replacementMatch) return null;
+  const replacementUnit = replacementMatch[2].toLowerCase();
+  const text = cleanCustomerQuoteLineText(value);
+  const dimensionPattern = /\b\d+(?:\.\d+)?\s*(mm|cm|sqm|sqft|ft|m)\b/gi;
+  const matches = Array.from(text.matchAll(dimensionPattern));
+  if (!matches.length) return null;
+  const sameUnitMatches = matches.filter((match) => String(match[1] || "").toLowerCase() === replacementUnit);
+  const candidates = sameUnitMatches.length ? sameUnitMatches : matches;
+  if (candidates.length !== 1) return null;
+  const match = candidates[0];
+  const start = match.index;
+  const end = start + match[0].length;
+  return `${text.slice(0, start)}${replacement}${text.slice(end)}`;
+}
+
+function buildSelectedLineFragmentReplacementProposal(text = "") {
+  if (state.basisChat.scope !== "line") return null;
+  const fragment = simpleBasisEditFragment(text);
+  if (!fragment) return null;
+  const sections = cloneQuoteBasisSections(state.quoteBasisSections);
+  const section = sections.find((item) => item.id === state.basisChat.sectionId);
+  const lineIndex = Number(state.basisChat.lineIndex);
+  if (!section || !Number.isInteger(lineIndex) || !section.lines[lineIndex]) return null;
+  const currentLine = section.lines[lineIndex];
+  const bracketed = bracketedCatalogReferenceParts(currentLine.text || "");
+  const targetText = bracketed ? bracketed.reference : currentLine.text || "";
+  const replacedReference = replaceReferenceDimensionToken(targetText, fragment);
+  if (!replacedReference || cleanCustomerQuoteLineText(replacedReference) === cleanCustomerQuoteLineText(targetText)) return null;
+  let nextLine = {
+    ...currentLine,
+    text: bracketed
+      ? unbracketedCatalogReferenceText(replacedReference, bracketed.detail)
+      : replacedReference,
+  };
+  if (bracketed) nextLine = markBasisLineAsManualPricing(nextLine);
+  section.lines[lineIndex] = nextLine;
+  const quoteBasis = quoteBasisFromSections(sections);
+  return {
+    message: `Change the selected line to '${nextLine.text}'?`,
+    quoteBasis,
+    quoteBasisSections: sections,
+    lineItems: Array.isArray(state.lineItems) ? state.lineItems : [],
   };
 }
 
@@ -5974,6 +6125,12 @@ async function handleBasisChatSubmit(event) {
     return;
   }
 
+  const fragmentProposal = buildSelectedLineFragmentReplacementProposal(text);
+  if (fragmentProposal) {
+    setBasisChatProposal(fragmentProposal);
+    return;
+  }
+
   const aiResult = await buildAiBasisChatResponse(text);
   if (aiResult?.proposal) {
     setBasisChatProposal(aiResult.proposal);
@@ -5992,7 +6149,10 @@ function applyBasisChatProposal() {
   const proposal = state.basisChat.proposal;
   if (!proposal) return;
   state.basisConfirmed = false;
-  state.quoteBasisSections = normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quoteBasis || state.quoteBasisSections);
+  state.quoteBasisSections = mergeBasisProposalLineMetadata(
+    normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quoteBasis || state.quoteBasisSections),
+    state.quoteBasisSections
+  );
   state.quoteBasis = { ...cloneQuoteBasis(proposal.quoteBasis || state.quoteBasis), ...quoteBasisFromSections(state.quoteBasisSections) };
   state.lineItems = Array.isArray(proposal.lineItems) ? proposal.lineItems.map(normalizeLineItem) : [];
   state.outputRows = Array.isArray(proposal.outputRows) ? proposal.outputRows.map(normalizeOutputRow) : [];
