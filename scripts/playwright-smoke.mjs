@@ -134,9 +134,11 @@ async function main() {
     if (restoredActiveRailTexts.length !== 1 || restoredActiveRailTexts[0] !== "Quote Company") {
       throw new Error(`Expected refresh to restore Quote Company panel, found ${JSON.stringify(restoredActiveRailTexts)}.`);
     }
-    const restoredFileCount = await page.locator("#fileList .file-item").count();
-    if (restoredFileCount !== 8) {
-      throw new Error(`Expected refresh to preserve 8 sample reference files, found ${restoredFileCount}.`);
+    const restoredFiles = await page.locator("#fileList .file-item").evaluateAll((items) => (
+      items.map((item) => item.textContent?.trim() || "")
+    ));
+    if (restoredFiles.length !== 1 || !restoredFiles[0].includes("kent-group.pdf")) {
+      throw new Error(`Expected refresh to preserve the sample PDF reference, found ${JSON.stringify(restoredFiles)}.`);
     }
     const restoredPresetValue = await page.locator("#presetSelect").inputValue();
     if (restoredPresetValue !== "profile:koncept-image-default") {
@@ -205,7 +207,7 @@ async function main() {
     }
 
     const bodyText = await page.locator("body").innerText();
-    if (!bodyText.includes("Images") || !bodyText.includes("Customer") || !bodyText.includes("Quote date")) {
+    if (!bodyText.includes("Upload") || !bodyText.includes("Customer") || !bodyText.includes("Quote date")) {
       throw new Error("Rendered page did not include the expected workspace text.");
     }
 

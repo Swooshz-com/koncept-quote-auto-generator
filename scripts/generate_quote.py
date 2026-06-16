@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Koncept quotation XLSX files with optional PDF export.
+"""Generate quotation XLSX files with optional PDF export.
 
 This script intentionally uses Python standard library only. It reads the
 structured pricing catalog by default and fills a preserved quote
@@ -34,8 +34,23 @@ from xml.etree import ElementTree as ET
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PROFILE_DIR = PROJECT_ROOT / "profiles" / "koncept"
-DEFAULT_PRICING_REFERENCE_DIR = PROJECT_ROOT / "pricing-references" / "koncept-exhibition-quotation"
+RESOURCE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def discovered_default_resource_dir(root: Path, marker_filename: str, fallback: str = "default") -> Path:
+    try:
+        candidates = [
+            path
+            for path in sorted(root.iterdir(), key=lambda item: item.name.casefold())
+            if path.is_dir() and RESOURCE_ID_RE.fullmatch(path.name) and (path / marker_filename).is_file()
+        ]
+    except OSError:
+        candidates = []
+    return candidates[0] if candidates else root / fallback
+
+
+DEFAULT_PROFILE_DIR = discovered_default_resource_dir(PROJECT_ROOT / "profiles", "profile.json")
+DEFAULT_PRICING_REFERENCE_DIR = discovered_default_resource_dir(PROJECT_ROOT / "pricing-references", "reference.json")
 DEFAULT_TEMPLATE = DEFAULT_PRICING_REFERENCE_DIR / "pricing-catalog.json"
 DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output"
@@ -83,7 +98,7 @@ ET.register_namespace("a16", "http://schemas.microsoft.com/office/drawing/2014/m
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate Koncept quotation XLSX files.")
+    parser = argparse.ArgumentParser(description="Generate quotation XLSX files.")
     parser.add_argument("--brief", required=True, type=Path, help="Path to quote brief JSON.")
     parser.add_argument(
         "--out",
@@ -252,10 +267,10 @@ def resolve_default_output_dir(brief: dict[str, Any], provided_out: Path | None)
 
 def infer_unit(description: str) -> str:
     text = description.lower()
-    leading_unit = re.match(r"^\s*(m2|sqm|m\.?\s*length|m\.?\s*run|nos\.?|no\.|lot\.?|sets?)\b", text)
+    leading_unit = re.match(r"^\s*(m\.?\s*run|m\.?\s*length|m2|sqm|nos\.?|no\.|lot\.?|sets?|m\.?)(?=\s|$)", text)
     if leading_unit:
         return normalize_unit(leading_unit.group(1))
-    for unit in ("m2", "sqm", "m length", "m run", "nos", "no.", "lot", "sets"):
+    for unit in ("m2", "sqm", "m length", "m run", "m", "nos", "no.", "lot", "sets"):
         if unit in text:
             return normalize_unit(unit)
     return ""
@@ -307,27 +322,10 @@ def extract_price_rows(template_path: Path) -> list[PriceRow]:
 
 PRICE_MATCH_TOKEN_ALIASES = {
     "aluminium": "aluminum",
-    "bars": "bar",
-    "boxes": "box",
-    "cabinets": "cabinet",
-    "canopy": "fascia",
-    "chairs": "chair",
-    "coves": "cove",
-    "counters": "counter",
-    "downlights": "downlight",
-    "floodlights": "floodlight",
-    "frames": "frame",
-    "graphics": "graphic",
-    "lighting": "light",
-    "panels": "panel",
-    "print": "printed",
-    "planters": "planter",
-    "plants": "plant",
-    "plinths": "counter",
-    "sockets": "socket",
-    "stools": "stool",
-    "tables": "table",
-    "walls": "wall",
+    "m2": "sqm",
+    "printed": "print",
+    "printing": "print",
+    "prints": "print",
 }
 
 
@@ -440,29 +438,45 @@ def find_price_match(query: str, price_rows: list[PriceRow], section: str = "", 
 
 
 LINEAR_TAKEOFF_UNITS = {"m", "m length", "m run"}
-SUSPICIOUS_LINEAR_STRUCTURE_TERMS = {
-    "canopy",
-    "fascia",
-    "frame",
-    "framed",
-    "overhead",
-    "partition",
-    "perimeter",
-    "portal",
-    "structure",
-    "wall",
-}
+PIECE_DIMENSION_DESCRIPTION_RE = re.compile(
+    r"(?i)^(?:nos\.?\s+of\s+1m\s+length\s+x|m\.?\s*length\s*x)\b"
+)
 
 
-def suspicious_linear_structure_quantity(section: str, description: str, quantity: float | None, unit: str) -> bool:
+def is_piece_dimension_description(description: str, match: PriceRow | None = None) -> bool:
+    values = [clean_text(description)]
+    if match is not None:
+        values.append(clean_text(match.description))
+    return any(
+        PIECE_DIMENSION_DESCRIPTION_RE.search(value) and len(re.findall(r"(?i)\bx\b", value)) >= 2
+        for value in values
+    )
+
+
+def suspicious_piece_dimension_quantity(
+    description: str,
+    quantity: float | None,
+    unit: str,
+    match: PriceRow | None = None,
+) -> bool:
+    if not is_piece_dimension_description(description, match):
+        return False
+    normalized_unit = normalize_unit(unit).lower()
+    if normalized_unit in LINEAR_TAKEOFF_UNITS:
+        return True
+    if quantity is None:
+        return False
+    return quantity > 0 and abs(quantity - round(quantity)) > 0.0001
+
+
+def suspicious_linear_catalog_quantity(quantity: float | None, unit: str, match: PriceRow | None = None) -> bool:
     if quantity is None or abs(quantity - 1.0) > 0.0001:
         return False
     if normalize_unit(unit).lower() not in LINEAR_TAKEOFF_UNITS:
         return False
-    text = f"{section} {description}".lower()
-    if "booth structure" not in text and not any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS):
+    if match is None:
         return False
-    return any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS)
+    return normalize_unit(match.unit_hint).lower() in LINEAR_TAKEOFF_UNITS
 
 
 REQUIRED_TOP_LEVEL = ("company_identity", "quote_date", "client", "project", "line_items")
@@ -520,7 +534,11 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             match = None
         elif display_price:
             status = "manual-display"
-        elif suspicious_linear_structure_quantity(clean_text(item.get("section")), clean_text(item.get("description")), quantity_num, normalized_unit):
+        elif suspicious_piece_dimension_quantity(clean_text(item.get("description")), quantity_num, normalized_unit, match):
+            status = "quantity-review"
+            match = None
+            amount = None
+        elif suspicious_linear_catalog_quantity(quantity_num, normalized_unit, match):
             status = "quantity-review"
             match = None
             amount = None
@@ -931,9 +949,9 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
         [brief.get("company_identity", "")],
         [],
         ["_____________________________", "", "_____________________________________"],
-        [signature.get("koncept_signatory", ""), "", acceptance.get("person_label", "")],
-        [signature.get("koncept_title", ""), "", acceptance.get("stamp_label", "")],
-        [signature.get("koncept_date_label", ""), "", acceptance.get("date_label", "")],
+        [signature.get("company_signatory", ""), "", acceptance.get("person_label", "")],
+        [signature.get("company_title", ""), "", acceptance.get("stamp_label", "")],
+        [signature.get("company_date_label", ""), "", acceptance.get("date_label", "")],
     ])
     return rows
 
@@ -2356,11 +2374,11 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, acceptance_row, 5, brief_rich_text_cell_runs(brief, "acceptanceText", clean_text(acceptance.get("text"))), layout_styles["signature_text"], **footer_rich_text)
     set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", layout_styles["signature_line"])
     set_ooxml_cell(root, acceptance_row + 4, 5, "_____________________________________", layout_styles["signature_line"])
-    set_ooxml_rich_text_cell(root, acceptance_row + 5, 2, brief_rich_text_cell_runs(brief, "konceptSignatory", clean_text(signature.get("koncept_signatory"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 5, 2, brief_rich_text_cell_runs(brief, "companySignatory", clean_text(signature.get("company_signatory"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 5, 5, brief_rich_text_cell_runs(brief, "personLabel", clean_text(acceptance.get("person_label"))), layout_styles["signature_line"], **footer_rich_text)
-    set_ooxml_rich_text_cell(root, acceptance_row + 6, 2, brief_rich_text_cell_runs(brief, "konceptTitle", clean_text(signature.get("koncept_title"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 6, 2, brief_rich_text_cell_runs(brief, "companyTitle", clean_text(signature.get("company_title"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 6, 5, brief_rich_text_cell_runs(brief, "stampLabel", clean_text(acceptance.get("stamp_label"))), layout_styles["signature_line"], **footer_rich_text)
-    set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "konceptDateLabel", clean_text(signature.get("koncept_date_label"))), layout_styles["signature_line"], **footer_rich_text)
+    set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "companyDateLabel", clean_text(signature.get("company_date_label"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
     last_print_row = acceptance_row + 8
@@ -2540,11 +2558,11 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         (117, 2): company_name,
         (121, 2): "_____________________________",
         (121, 5): "_____________________________________",
-        (122, 2): clean_text(signature.get("koncept_signatory")),
+        (122, 2): clean_text(signature.get("company_signatory")),
         (122, 5): clean_text(acceptance.get("person_label")),
-        (123, 2): clean_text(signature.get("koncept_title")),
+        (123, 2): clean_text(signature.get("company_title")),
         (123, 5): clean_text(acceptance.get("stamp_label")),
-        (124, 2): clean_text(signature.get("koncept_date_label")),
+        (124, 2): clean_text(signature.get("company_date_label")),
         (124, 5): clean_text(acceptance.get("date_label")),
     }
     for offset, address_line in enumerate((client.get("address") or [])[:4], start=7):

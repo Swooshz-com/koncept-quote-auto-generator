@@ -1,10 +1,11 @@
 {
+  "currency": "SGD",
+  "description": "Koncept exhibition quotation pricing reference generated from Quotation-Cost-Template-V1.1.xlsx.",
   "id": "koncept-exhibition-quotation",
   "label": "Koncept Exhibition Quotation",
-  "description": "Koncept pricing catalog and analysis reference for exhibition quotations.",
   "pricing_catalog": "pricing-catalog.json",
   "pricing_reference": "pricing-catalog.ai-reference.md",
-  "currency": "SGD",
+  "saved_at": "2026-06-16T01:35:13.480325Z",
   "tax": {
     "label": "GST",
     "rate": 0.09

@@ -1,18 +1,11 @@
 {
   "id": "kent-group",
   "label": "Kent Group Demo",
-  "description": "Sample customer, project, and reference images for quick testing.",
+  "description": "Sample customer, project, and PDF reference deck for quick testing.",
   "profile_id": "koncept",
   "pricing_reference_id": "koncept-exhibition-quotation",
   "images": [
-    "Screenshot 2026-06-13 172852.png",
-    "Screenshot 2026-06-13 172901.png",
-    "Screenshot 2026-06-13 172907.png",
-    "Screenshot 2026-06-13 172916.png",
-    "Screenshot 2026-06-13 172930.png",
-    "Screenshot 2026-06-13 172937.png",
-    "Screenshot 2026-06-13 172945.png",
-    "Screenshot 2026-06-13 172951.png"
+    "kent-group.pdf"
   ],
   "details": {
     "client": {

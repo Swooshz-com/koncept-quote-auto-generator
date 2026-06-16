@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=43">
+    <link rel="stylesheet" href="/static/styles.css?v=47">
   </head>
   <body>
     <div class="app-shell">
@@ -47,7 +47,7 @@
                     <path d="M8.5 8.5h.01"></path>
                   </svg>
                 </span>
-                <span>Images</span>
+                <span>Upload</span>
               </button>
               <button class="rail-button" type="button" id="customerDetailsButton" data-side-panel="customer">
                 <span class="rail-icon" aria-hidden="true">
@@ -100,7 +100,7 @@
               <div class="workspace-pane-header">
                 <div>
                   <p class="workspace-pane-eyebrow" id="sideDrawerEyebrow">Workspace</p>
-                  <h2 id="sideDrawerTitle">Images</h2>
+                  <h2 id="sideDrawerTitle">Upload</h2>
                   <p class="workspace-pane-subtitle" id="sideDrawerSubtitle">Upload reference files or load the sample fixture.</p>
                 </div>
                 <div class="workspace-pane-header-actions">
@@ -114,7 +114,7 @@
                 </div>
               </div>
               <div class="workspace-pane-scroll">
-              <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference images">
+              <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference uploads">
                 <label class="dropzone" for="imageInput">
                   <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" multiple>
                   <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -306,7 +306,7 @@
                 </div>
 
                 <div class="section-band quote-form-section">
-                  <h3>Terms <span class="section-title-note">(Optional — Leave empty)</span></h3>
+                  <h3>Terms <span class="section-title-note">(Optional - Leave empty)</span></h3>
                   <div class="form-grid compact">
                      <div class="field-control wide">
                        <span>Terms heading</span>
@@ -336,7 +336,7 @@
                 </div>
 
                 <div class="section-band quote-form-section">
-                  <h3>Notes <span class="section-title-note">(Optional — Leave empty)</span></h3>
+                  <h3>Notes <span class="section-title-note">(Optional - Leave empty)</span></h3>
                   <div class="form-grid compact">
                      <div class="field-control">
                        <span>Notes heading</span>
@@ -389,8 +389,8 @@
                             <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
                             <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
                           </div>
-                          <div class="rich-text-editor is-single-line" id="konceptSignatoryEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="konceptSignatory"></div>
-                          <textarea class="rich-text-source" id="konceptSignatory" rows="1" hidden></textarea>
+                          <div class="rich-text-editor is-single-line" id="companySignatoryEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="companySignatory"></div>
+                          <textarea class="rich-text-source" id="companySignatory" rows="1" hidden></textarea>
                         </div>
                       </div>
                       <div class="field-control">
@@ -401,8 +401,8 @@
                             <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
                             <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
                           </div>
-                          <div class="rich-text-editor is-single-line" id="konceptTitleEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="konceptTitle"></div>
-                          <textarea class="rich-text-source" id="konceptTitle" rows="1" hidden></textarea>
+                          <div class="rich-text-editor is-single-line" id="companyTitleEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="companyTitle"></div>
+                          <textarea class="rich-text-source" id="companyTitle" rows="1" hidden></textarea>
                         </div>
                       </div>
                       <div class="field-control">
@@ -413,8 +413,8 @@
                             <button class="rich-text-tool is-italic" type="button" data-rich-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
                             <button class="rich-text-tool is-underline" type="button" data-rich-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
                           </div>
-                          <div class="rich-text-editor is-single-line" id="konceptDateLabelEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="konceptDateLabel"></div>
-                          <textarea class="rich-text-source" id="konceptDateLabel" rows="1" hidden></textarea>
+                          <div class="rich-text-editor is-single-line" id="companyDateLabelEditor" contenteditable="true" role="textbox" aria-multiline="false" data-rich-text-source="companyDateLabel"></div>
+                          <textarea class="rich-text-source" id="companyDateLabel" rows="1" hidden></textarea>
                         </div>
                       </div>
                     </div>
@@ -512,9 +512,10 @@
                     <div class="output-table-toolbar">
                       <label>Sort by:
                         <select id="outputSortMode">
+                          <option value="pricing_reference" selected>Pricing Reference</option>
                           <option value="category">Category A-Z</option>
                           <option value="name">Name A-Z</option>
-                          <option value="category_name" selected>Category + Name</option>
+                          <option value="category_name">Category + Name</option>
                         </select>
                       </label>
                     </div>
@@ -602,65 +603,78 @@
               <p>Your current role cannot create, edit, import, delete, or save pricing references.</p>
             </div>
             <div class="pricing-reference-editor-body" id="pricingReferenceEditorBody">
-              <section class="pricing-reference-upload-field pricing-reference-delete-section" id="pricingReferenceDeleteSection">
-                <span class="pricing-reference-field-title">Existing repo references</span>
-                <span class="settings-note">Delete imported pricing reference packs from this repo. Default profile references are protected.</span>
-                <div class="pricing-reference-delete-controls">
-                  <label class="compact-control">
-                    Pricing reference
-                    <select id="deletePricingReferenceSelect"></select>
-                  </label>
-                  <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>Delete Reference</button>
-                </div>
+              <div class="pricing-reference-settings-tabs" role="tablist" aria-label="Pricing reference settings">
+                <button class="pricing-reference-settings-tab is-active" type="button" id="pricingReferenceManageTab" role="tab" aria-selected="true" aria-controls="pricingReferenceManagePanel" data-pricing-reference-settings-mode="manage">Manage</button>
+                <button class="pricing-reference-settings-tab" type="button" id="pricingReferenceImportTab" role="tab" aria-selected="false" aria-controls="pricingReferenceImportPanel" data-pricing-reference-settings-mode="import">Import</button>
+              </div>
+              <section class="pricing-reference-mode-panel pricing-reference-manage-panel" id="pricingReferenceManagePanel" role="tabpanel" aria-labelledby="pricingReferenceManageTab" data-pricing-reference-mode-panel="manage">
+                <section class="pricing-reference-upload-field pricing-reference-delete-section" id="pricingReferenceDeleteSection">
+                  <span class="pricing-reference-field-title">Existing repo references</span>
+                  <span class="settings-note">Select a repo pack to review and edit its pricing rows. Delete imported packs that are no longer needed. Default profile references are protected.</span>
+                  <div class="pricing-reference-delete-controls">
+                    <label class="compact-control">
+                      Pricing reference
+                      <select id="deletePricingReferenceSelect"></select>
+                    </label>
+                    <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>Delete Reference</button>
+                  </div>
+                </section>
+                <div class="pricing-reference-manage-status" id="pricingReferenceManageStatus" hidden></div>
               </section>
-              <label class="pricing-reference-upload-field">
-                <span class="pricing-reference-field-title">Pricing catalog upload</span>
-                <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
-                <span class="file-picker-control">
-                  <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
-                  <span class="secondary-button file-picker-button">Choose File</span>
-                  <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
-                </span>
-              </label>
-              <label>
-                Pricing reference name
-                <input id="pricingReferenceName" type="text" autocomplete="off">
-              </label>
-              <div class="form-grid compact tax-settings-grid">
-                <label class="field-control">
-                  <span>Tax label</span>
-                  <select id="pricingReferenceTaxLabel" required>
-                    <option value="GST">GST</option>
-                    <option value="VAT">VAT</option>
-                  </select>
-                </label>
-                <label class="field-control">
-                  <span>Tax rate (%)</span>
-                  <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
-                </label>
-                <label class="field-control currency-field">
-                  <span>Currency</span>
-                  <span class="currency-control-row">
-                    <select id="pricingReferenceCurrency" required>
-                      <option value="SGD">SGD - Singapore Dollar</option>
-                      <option value="AUD">AUD - Australian Dollar</option>
-                      <option value="CNY">CNY - Chinese Yuan</option>
-                      <option value="EUR">EUR - Euro</option>
-                      <option value="GBP">GBP - Pound Sterling</option>
-                      <option value="IDR">IDR - Indonesian Rupiah</option>
-                      <option value="MYR">MYR - Malaysian Ringgit</option>
-                      <option value="THB">THB - Thai Baht</option>
-                      <option value="USD">USD - US Dollar</option>
-                      <option value="__CUSTOM__">Custom - Enter currency code</option>
-                    </select>
-                    <input id="pricingReferenceCurrencyCustom" class="currency-custom-input" type="text" maxlength="3" pattern="[A-Za-z]{3}" autocomplete="off" placeholder="e.g. JPY" hidden>
+              <section class="pricing-reference-mode-panel pricing-reference-import-panel" id="pricingReferenceImportPanel" role="tabpanel" aria-labelledby="pricingReferenceImportTab" data-pricing-reference-mode-panel="import" hidden>
+                <label class="pricing-reference-upload-field">
+                  <span class="pricing-reference-field-title">Pricing catalog upload</span>
+                  <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
+                  <span class="file-picker-control">
+                    <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
+                    <span class="secondary-button file-picker-button">Choose File</span>
+                    <span class="file-picker-name" id="pricingReferenceFileName">No file chosen</span>
                   </span>
                 </label>
-              </div>
-              <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
+                <div class="pricing-reference-import-setup" id="pricingReferenceImportSetup" hidden>
+                  <div class="pricing-reference-preview" id="pricingReferencePreview" aria-live="polite"></div>
+                  <div class="pricing-reference-metadata-setup" id="pricingReferenceMetadataSetup" hidden>
+                    <label>
+                      Pricing reference name
+                      <input id="pricingReferenceName" type="text" autocomplete="off">
+                    </label>
+                    <div class="form-grid compact tax-settings-grid">
+                      <label class="field-control">
+                        <span>Tax label</span>
+                        <select id="pricingReferenceTaxLabel" required>
+                          <option value="GST">GST</option>
+                          <option value="VAT">VAT</option>
+                        </select>
+                      </label>
+                      <label class="field-control">
+                        <span>Tax rate (%)</span>
+                        <input id="pricingReferenceTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal" required>
+                      </label>
+                      <label class="field-control currency-field">
+                        <span>Currency</span>
+                        <span class="currency-control-row">
+                          <select id="pricingReferenceCurrency" required>
+                            <option value="SGD">SGD - Singapore Dollar</option>
+                            <option value="AUD">AUD - Australian Dollar</option>
+                            <option value="CNY">CNY - Chinese Yuan</option>
+                            <option value="EUR">EUR - Euro</option>
+                            <option value="GBP">GBP - Pound Sterling</option>
+                            <option value="IDR">IDR - Indonesian Rupiah</option>
+                            <option value="MYR">MYR - Malaysian Ringgit</option>
+                            <option value="THB">THB - Thai Baht</option>
+                            <option value="USD">USD - US Dollar</option>
+                            <option value="__CUSTOM__">Custom - Enter currency code</option>
+                          </select>
+                          <input id="pricingReferenceCurrencyCustom" class="currency-custom-input" type="text" maxlength="3" pattern="[A-Za-z]{3}" autocomplete="off" placeholder="e.g. JPY" hidden>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
             <div class="modal-actions pricing-reference-modal-actions">
-              <div class="pricing-reference-template-footer">
+              <div class="pricing-reference-template-footer" id="pricingReferenceTemplateFooter">
                 <a class="secondary-button pricing-template-download" id="pricingReferenceTemplateButton" href="/api/pricing-reference/template.xlsx?template=examples-v3" download>Download Template</a>
               </div>
               <div class="pricing-reference-action-buttons">
@@ -692,13 +706,16 @@
                 <col class="pricing-reference-col-markup">
                 <col class="pricing-reference-col-remarks">
                 <col class="pricing-reference-col-status">
+                <col class="pricing-reference-col-actions">
               </colgroup>
-              <thead><tr><th>Section</th><th>Description</th><th>Unit</th><th>Cost</th><th>Markup</th><th>Remarks</th><th>Warning/status</th></tr></thead>
+              <thead><tr><th>Section</th><th>Description</th><th>Unit</th><th>Cost</th><th>Markup</th><th>Remarks</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="pricingReferenceTableBody"></tbody>
             </table>
           </div>
           <div class="modal-actions pricing-reference-table-actions">
-            <button class="secondary-button" type="button" data-pricing-reference-table-close>Done</button>
+            <button class="secondary-button" type="button" id="pricingReferenceAddRowButton">Add Row</button>
+            <button class="secondary-button" type="button" id="pricingReferenceUndoButton" disabled>Undo</button>
+            <button class="primary-button" type="button" data-pricing-reference-table-close>Done</button>
           </div>
         </section>
       </div>
@@ -713,12 +730,13 @@
           </header>
           <p>AI analysis can take a while and cannot be stopped from this app once it starts. Do you want to continue?</p>
           <div class="modal-actions analysis-mode-actions">
+            <button class="secondary-button sample-button" type="button" id="analysisConfirmHighQualityButton">Run High Quality</button>
             <button class="secondary-button" type="button" id="analysisConfirmCancelButton">Cancel</button>
             <button class="primary-button" type="button" id="analysisConfirmStartButton">Run Analysis</button>
           </div>
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=54"></script>
+    <script src="/static/app.js?v=57"></script>
   </body>
 </html>

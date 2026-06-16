@@ -22,6 +22,7 @@ Use the smallest relevant subset for the change, then broaden as risk increases:
 git diff --check
 node --check webapp\static\app.js
 python -m py_compile webapp\server.py scripts\generate_quote.py scripts\live_ai_basis_chat_smoke.py
+python scripts\validate_local_pdf_dependency_usage.py
 python -m unittest discover -s tests
 npm run playwright:ai-stress
 npm run playwright:smoke

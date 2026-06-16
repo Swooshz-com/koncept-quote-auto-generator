@@ -42,14 +42,65 @@ from xml.sax.saxutils import escape as xml_escape
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import pricing_reference_cleanup
+import pricing_reference_enrichment
+
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 GENERATOR_PATH = PROJECT_ROOT / "scripts" / "generate_quote.py"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-DEFAULT_PROFILE_ID = "koncept"
-DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation"
 PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
 PRICING_REFERENCES_ROOT = PROJECT_ROOT / "pricing-references"
+
+
+def discovered_default_resource_id(root: Path, marker_filename: str, fallback: str = "default") -> str:
+    try:
+        candidates = [
+            path.name
+            for path in sorted(root.iterdir(), key=lambda item: item.name.casefold())
+            if path.is_dir() and PROFILE_ID_RE.fullmatch(path.name) and (path / marker_filename).is_file()
+        ]
+    except OSError:
+        candidates = []
+    return candidates[0] if candidates else fallback
+
+
+def safe_boot_resource_id(value: Any, fallback: str = "") -> str:
+    text = str(value or "").strip()
+    return text if PROFILE_ID_RE.fullmatch(text) else fallback
+
+
+def discovered_default_pricing_reference_id(
+    pricing_root: Path,
+    profiles_root: Path,
+    fallback: str = "default",
+) -> str:
+    discovered_reference = discovered_default_resource_id(pricing_root, "reference.json", fallback)
+    try:
+        profile_paths = [
+            path
+            for path in sorted(profiles_root.iterdir(), key=lambda item: item.name.casefold())
+            if path.is_dir() and PROFILE_ID_RE.fullmatch(path.name) and (path / "profile.json").is_file()
+        ]
+    except OSError:
+        profile_paths = []
+    for profile_path in profile_paths:
+        try:
+            profile = json.loads((profile_path / "profile.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        reference_id = safe_boot_resource_id(profile.get("default_pricing_reference"), "")
+        if reference_id and (pricing_root / reference_id / "reference.json").is_file():
+            return reference_id
+    return discovered_reference
+
+
+DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json")
+DEFAULT_PRICING_REFERENCE_ID = discovered_default_pricing_reference_id(PRICING_REFERENCES_ROOT, PROFILES_ROOT)
 PRICING_REFERENCE_TEMPLATE_PATH = PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
@@ -63,6 +114,9 @@ MAX_REQUEST_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_PDF_BYTES = 12 * 1024 * 1024
 MAX_REFERENCE_IMAGES = 8
+MAX_RENDERED_PDF_PAGES = 12
+MAX_RENDERED_PDF_PAGE_BYTES = 1024 * 1024
+PDF_RENDER_TARGET_LONG_EDGE_PX = 1600
 MAX_JOB_REQUEST_BYTES = (((MAX_REFERENCE_IMAGES * max(MAX_IMAGE_BYTES, MAX_PDF_BYTES)) + 2) // 3) * 4 + 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
@@ -76,89 +130,45 @@ MAX_PRICING_REFERENCE_VISUALS = 80
 MAX_PRICING_REFERENCE_VISUAL_BYTES = 512 * 1024
 MAX_PRICING_REFERENCE_VISUALS_PER_ITEM = 3
 MAX_PROMPT_CATALOG_VISUAL_IMAGES = 8
+MAX_PRICING_METADATA_BATCH_ITEMS = 20
 PRICING_REFERENCE_ASSETS_DIR_NAME = "pricing-reference-assets"
-V11_COL_SECTION_NO = 0
-V11_COL_DEFAULT_QUANTITY = 1
-V11_COL_DESCRIPTION = 2
-V11_COL_DEFAULT_ESTIMATE = 5
-V11_COL_COST = 7
-V11_COL_GST = 8
-V11_COL_MARKUP = 9
-V11_COL_REMARKS = 11
+SECTIONED_WORKBOOK_COL_SECTION_NO = 0
+SECTIONED_WORKBOOK_COL_DEFAULT_QUANTITY = 1
+SECTIONED_WORKBOOK_COL_DESCRIPTION = 2
+SECTIONED_WORKBOOK_COL_DEFAULT_ESTIMATE = 5
+SECTIONED_WORKBOOK_COL_COST = 7
+SECTIONED_WORKBOOK_COL_GST = 8
+SECTIONED_WORKBOOK_COL_MARKUP = 9
+SECTIONED_WORKBOOK_COL_REMARKS = 11
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
 PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
-        "example.floor-design.needle-punch-carpet-in-colour",
-        "Floor Design",
-        "m2 needle punch carpet in colour",
+        "example-services-standard-coordination",
+        "Services",
+        "lot standard project coordination",
+        "lot",
+        "100",
+        "1.2",
+        "example service row",
+    ],
+    [
+        "example-materials-standard-surface-finish",
+        "Materials",
+        "sqm standard surface finish",
         "sqm",
-        "7",
+        "25",
         "1.5",
-        "needle punch",
+        "example area-based material row",
     ],
     [
-        "example.floor-design.100mm-raised-platform-with-aluminum-edging",
-        "Floor Design",
-        "m2 100mm raised platform with aluminum edging",
-        "sqm",
-        "40",
-        "1.5",
-        "Platform ONLY",
-    ],
-    [
-        "example.booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
-        "Booth Structure",
-        "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal",
-        "m length",
-        "180",
-        "1.5",
-        "Backwall or any partition; PAINTED",
-    ],
-    [
-        "example.counters-and-cabinets.x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
-        "COUNTERS AND CABINETS",
-        "nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal",
+        "example-equipment-standard-device-rental",
+        "Equipment Rental",
+        "nos. standard device rental",
         "nos",
-        "800",
+        "50",
         "1.5",
-        "INFORMATION COUNTER; PAINTED",
-    ],
-    [
-        "example.electrical-fittings-excluding-connection-fees-by-organiser.10w-led-spotlight",
-        "Electrical Fittings ( Excluding connection fees by Organiser)",
-        "nos. 10W LED Spotlight",
-        "nos",
-        "30",
-        "1.5",
-        "SPOTLIGHT",
-    ],
-    [
-        "example.graphics.vinyl-printed-graphics",
-        "Graphics",
-        "m2 of vinyl printed graphics",
-        "sqm",
-        "40",
-        "1.5",
-        "Printed Graphics on wall",
-    ],
-    [
-        "example.furniture-rental.bistro-chairs",
-        "Furniture Rental",
-        "nos. Bistro Chairs",
-        "nos",
-        "30",
-        "1.5",
-        "Bistro Low Chair",
-    ],
-    [
-        "example.av-equipment-rental-items.42-led-tv-monitor-with-speaker-full-hd",
-        "AV Equipment Rental Items",
-        "nos. 42\" LED TV Monitor (With Speaker - Full HD)",
-        "nos",
-        "300",
-        "1.5",
-        "TV",
+        "example rental row",
     ],
 ]
 DOWNLOADABLE_FILES = {"quotation.xlsx"}
@@ -193,26 +203,39 @@ POST_RATE_LIMITS = {
     "/api/draft": 15,
     "/api/generate": 15,
     "/api/line-items/normalize": 30,
+    "/api/pricing-reference/validate": 60,
+    "/api/settings/pricing-references/import-preview": 10,
+    "/api/settings/pricing-references": 20,
+    "/api/settings/pricing-references/:id": 20,
+    "/api/settings/profiles": 30,
+    "/api/settings/profiles/:id": 30,
     "/api/log": 180,
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
 ALLOWED_LOG_EVENTS = {
     "abuse_signal",
+    "ai_call_attempt",
     "ai_draft_fallback_used",
     "ai_draft_remote_unconfigured",
     "basis_chat_failed",
+    "basis_chat_model_retry",
     "basis_chat_worker_failed",
     "client_error",
+    "deepseek_basis_chat_model_retry",
     "draft_blocked",
     "draft_failed",
     "draft_worker_failed",
     "generate_failed",
     "generate_needs_review",
     "openai_basis_chat_failed",
+    "openai_basis_chat_model_retry",
     "openai_draft_completed",
     "openai_draft_failed",
+    "ai_pricing_reference_import_timing",
+    "ai_pricing_reference_metadata_enrichment_completed",
     "security_event",
+    "server_pricing_reference_import_timing",
     "server_error",
 }
 LOG_OMIT_KEYS = {
@@ -246,9 +269,9 @@ RICH_TEXT_DETAIL_KEYS = {
     "clientTitle",
     "dateLabel",
     "headerDetails",
-    "konceptDateLabel",
-    "konceptSignatory",
-    "konceptTitle",
+    "companyDateLabel",
+    "companySignatory",
+    "companyTitle",
     "notesHeading",
     "paymentTerms",
     "personLabel",
@@ -261,15 +284,35 @@ RICH_TEXT_DETAIL_KEYS = {
     "termsHeading",
 }
 DRAFT_ANALYSIS_MODE_STANDARD = "standard"
+DRAFT_ANALYSIS_MODE_HIGH_QUALITY = "high_quality"
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_DRAFT_MODEL = "gpt-5.5"
 OPENAI_BASIS_LINE_MODEL = "gpt-5.4-mini"
 OPENAI_BASIS_ANSWER_MODEL = "gpt-5.4-nano"
+OPENAI_DRAFT_REASONING_EFFORT = "high"
+OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT = "xhigh"
 OPENAI_API_KEY_ENV_NAME = "OPENAI_API_KEY"
 OPENAI_DRAFT_MODEL_ENV_NAME = "OPENAI_DRAFT_MODEL"
 OPENAI_BASIS_LINE_MODEL_ENV_NAME = "OPENAI_BASIS_LINE_MODEL"
 OPENAI_BASIS_ANSWER_MODEL_ENV_NAME = "OPENAI_BASIS_ANSWER_MODEL"
+OPENAI_DRAFT_REASONING_EFFORT_ENV_NAME = "OPENAI_DRAFT_REASONING_EFFORT"
+OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT_ENV_NAME = "OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT"
 OPENAI_REQUEST_TIMEOUT_ENV_NAME = "OPENAI_REQUEST_TIMEOUT_SECONDS"
+OPENAI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+AI_PROVIDER_OPENAI = "openai"
+AI_PROVIDER_DEEPSEEK = "deepseek"
+SUPPORTED_TEXT_AI_PROVIDERS = {AI_PROVIDER_OPENAI, AI_PROVIDER_DEEPSEEK}
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_PRO_MODEL = "deepseek-v4-pro"
+DEEPSEEK_API_KEY_ENV_NAME = "DEEPSEEK_API_KEY"
+DEEPSEEK_MODEL_ENV_NAME = "DEEPSEEK_MODEL"
+DEEPSEEK_BASE_URL_ENV_NAME = "DEEPSEEK_BASE_URL"
+DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME = "DEEPSEEK_REQUEST_TIMEOUT_SECONDS"
+DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME = "DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS"
+AI_BASIS_LINE_PROVIDER_ENV_NAME = "AI_BASIS_LINE_PROVIDER"
+AI_BASIS_ANSWER_PROVIDER_ENV_NAME = "AI_BASIS_ANSWER_PROVIDER"
+AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME = "AI_BASIS_PROPOSAL_PROVIDER"
+AI_PRICING_IMPORT_PROVIDER_ENV_NAME = "AI_PRICING_IMPORT_PROVIDER"
 DEFAULT_BOOTH_WIDTH_METRES = 6.0
 DEFAULT_BOOTH_DEPTH_METRES = 6.0
 QUOTE_BASIS_KEYS = ("surfaces", "counters", "platform", "graphics", "furniture", "electrical")
@@ -286,17 +329,24 @@ ALLOWED_BASIS_TAGS = {"Include", "Confirm", "Custom", "Exclude"}
 SECRET_REDACTION = "sk-..."
 LOCAL_SECRET_REDACTION = "[local-runner-key]"
 OPENAI_REQUEST_TIMEOUT_SECONDS = 1800
+DEEPSEEK_REQUEST_TIMEOUT_SECONDS = 1800
+DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS = 120
+DEEPSEEK_PRICING_IMPORT_MAX_OUTPUT_TOKENS = 8000
+DEEPSEEK_PRICING_METADATA_MAX_OUTPUT_TOKENS = 12000
 OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 MAX_PROMPT_CATALOG_ROWS = 180
-MAX_PROMPT_CATALOG_CHARS = 22000
+MAX_PROMPT_CATALOG_CHARS = 120000
 MAX_PROMPT_CATALOG_DESCRIPTION_CHARS = 180
 MAX_PROMPT_CATALOG_ALIASES = 2
+MAX_PROMPT_CATALOG_MATCH_TERMS = 6
 # In-memory jobs are acceptable for local mode and a first single-instance
 # deploy. Multi-instance deployments need durable job, upload, download, log,
 # and pricing-reference storage partitioned by authenticated user/account.
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
+PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS: set[threading.Thread] = set()
+PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK = threading.Lock()
 
 
 class RequestBodyError(ValueError):
@@ -343,6 +393,7 @@ def scrub_sensitive_text(text: str) -> str:
     )
     for env_name, redaction in (
         (OPENAI_API_KEY_ENV_NAME, SECRET_REDACTION),
+        (DEEPSEEK_API_KEY_ENV_NAME, SECRET_REDACTION),
         (CSRF_TOKEN_ENV_NAME, LOCAL_SECRET_REDACTION),
     ):
         scrubbed = re.sub(
@@ -390,7 +441,7 @@ def log_event_category(event_type: str) -> str:
     event = log_event_name(event_type)
     if event.startswith(("security_", "abuse_")):
         return "security"
-    if event.startswith(("openai_", "basis_chat", "draft", "ai_")):
+    if event.startswith(("openai_", "deepseek_", "basis_chat", "draft", "ai_")):
         return "ai"
     if event.startswith("generate_"):
         return "generation"
@@ -399,6 +450,181 @@ def log_event_category(event_type: str) -> str:
     if event.startswith(("server_", "error_")):
         return "server"
     return "app"
+
+
+def elapsed_milliseconds(started_at: float) -> int:
+    return max(0, int(round((time.perf_counter() - started_at) * 1000)))
+
+
+def new_ai_run_id() -> str:
+    return f"ai_{secrets.token_hex(8)}"
+
+
+def source_file_log_metadata(filename: Any) -> dict[str, Any]:
+    name = clean_text(filename)
+    metadata: dict[str, Any] = {}
+    if name:
+        metadata["source_filename_sha256"] = hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+    extension = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if re.fullmatch(r"[a-z0-9]{1,12}", extension):
+        metadata["source_file_extension"] = extension
+    return metadata
+
+
+def exception_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        chain.append(current)
+        seen.add(id(current))
+        current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
+    return chain
+
+
+def first_exception_of_type(exc: BaseException, expected_type: type[BaseException]) -> BaseException | None:
+    for candidate in exception_chain(exc):
+        if isinstance(candidate, expected_type):
+            return candidate
+    return None
+
+
+def ai_provider_timeout_seconds(provider: str, feature: str = "") -> int | None:
+    provider_key = clean_text(provider).lower()
+    feature_key = log_event_name(feature)
+    if provider_key == AI_PROVIDER_DEEPSEEK and feature_key == "pricing_reference_import":
+        return configured_deepseek_pricing_import_timeout_seconds()
+    if provider_key == AI_PROVIDER_DEEPSEEK:
+        return configured_deepseek_timeout_seconds()
+    if provider_key == AI_PROVIDER_OPENAI:
+        return configured_openai_timeout_seconds()
+    return None
+
+
+def ai_failure_metadata(
+    exc: BaseException | str,
+    *,
+    provider: str = "",
+    timeout_seconds: int | None = None,
+    error_reference: str = "",
+) -> dict[str, Any]:
+    exception = exc if isinstance(exc, BaseException) else RuntimeError(clean_text(exc))
+    chain = exception_chain(exception)
+    combined_text = " ".join(clean_text(item) for item in chain).lower()
+    http_error = first_exception_of_type(exception, urllib.error.HTTPError)
+    url_error = first_exception_of_type(exception, urllib.error.URLError)
+    json_error = first_exception_of_type(exception, json.JSONDecodeError)
+    http_status = getattr(http_error, "code", None) if http_error else None
+
+    if "missing:" in combined_text:
+        failure_kind = "missing_api_key"
+    elif any(is_timeout_exception(item) for item in chain):
+        failure_kind = "timeout"
+    elif http_status == 429:
+        failure_kind = "rate_limited"
+    elif http_status in TRANSIENT_OPENAI_HTTP_CODES:
+        failure_kind = "upstream_unavailable"
+    elif http_status:
+        failure_kind = "http_error"
+    elif url_error:
+        failure_kind = "network_error"
+    elif json_error or "invalid json" in combined_text:
+        failure_kind = "invalid_json"
+    elif "omitted pricing rows" in combined_text or "failed validation" in combined_text:
+        failure_kind = "schema_validation_failed"
+    elif "returned no usable" in combined_text:
+        failure_kind = "model_output_invalid"
+    elif isinstance(exception, AIModelOutputError):
+        failure_kind = "model_output_invalid"
+    else:
+        failure_kind = "provider_error"
+
+    provider_label = clean_text(provider).title() or "AI provider"
+    summaries = {
+        "missing_api_key": f"{provider_label} is missing an API key.",
+        "timeout": f"{provider_label} request timed out before a usable response.",
+        "rate_limited": f"{provider_label} returned HTTP 429 rate limiting.",
+        "upstream_unavailable": f"{provider_label} returned a temporary upstream HTTP error.",
+        "http_error": f"{provider_label} returned an HTTP error.",
+        "network_error": f"{provider_label} connection failed before a usable response.",
+        "invalid_json": f"{provider_label} returned invalid JSON.",
+        "schema_validation_failed": f"{provider_label} returned JSON that failed the expected schema checks.",
+        "model_output_invalid": f"{provider_label} returned output that could not be used.",
+        "provider_error": f"{provider_label} call failed before a usable response.",
+    }
+    metadata: dict[str, Any] = {
+        "failure_kind": failure_kind,
+        "error_type": type(chain[-1]).__name__ if chain else type(exception).__name__,
+        "safe_error_summary": summaries[failure_kind],
+    }
+    diagnostics = safe_ai_output_diagnostics(getattr(exception, "diagnostics", {}))
+    if diagnostics:
+        metadata.update(diagnostics)
+    if http_status:
+        metadata["http_status"] = int(http_status)
+    if timeout_seconds is not None:
+        metadata["timeout_seconds"] = int(timeout_seconds)
+    if clean_text(error_reference):
+        metadata["error_reference"] = clean_text(error_reference)
+    return metadata
+
+
+def log_ai_call_attempt(
+    *,
+    feature: str,
+    provider: str,
+    model: str = "",
+    status: str,
+    duration_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    total_tokens: int | None = None,
+    estimated_cost_usd: float | None = None,
+    image_count: int | None = None,
+    pdf_count: int | None = None,
+    error_reference: str = "",
+    details: dict[str, Any] | None = None,
+    log_root: Path | None = None,
+    **metadata: Any,
+) -> bool:
+    record: dict[str, Any] = {
+        "feature": log_event_name(feature),
+        "provider": clean_text(provider).lower(),
+        "model": clean_text(model),
+        "status": log_event_name(status),
+    }
+    if duration_ms is not None:
+        record["duration_ms"] = max(0, int(duration_ms))
+    for key, value in (
+        ("input_tokens", input_tokens),
+        ("output_tokens", output_tokens),
+        ("total_tokens", total_tokens),
+        ("estimated_cost_usd", estimated_cost_usd),
+        ("image_count", image_count),
+        ("pdf_count", pdf_count),
+    ):
+        if value is not None:
+            record[key] = value
+    if clean_text(error_reference):
+        record["error_reference"] = clean_text(error_reference)
+    for key, value in metadata.items():
+        if value not in (None, "", [], {}):
+            record[key] = value
+    if details:
+        safe_details = dict(details)
+        raw_errors = safe_details.pop("errors", None) if record["status"] in {"failed", "missing_api_key"} else None
+        if raw_errors:
+            error_values = raw_errors if isinstance(raw_errors, list) else [raw_errors]
+            for key, value in ai_failure_metadata(
+                clean_text(error_values[0]) if error_values else "",
+                provider=record["provider"],
+                timeout_seconds=record.get("timeout_seconds") if isinstance(record.get("timeout_seconds"), int) else None,
+            ).items():
+                record.setdefault(key, value)
+            record["error_count"] = len(error_values)
+        if safe_details:
+            record["details"] = safe_details
+    return write_local_log("ai_call_attempt", record, log_root=log_root)
 
 
 def sanitize_log_value(value: Any) -> Any:
@@ -460,6 +686,14 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         meaning = "AI quote-basis drafting completed. Check details counts and section titles to confirm whether the model returned usable quote content."
     elif event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
         meaning = "Remote AI analysis was unavailable or unconfigured, so the app used or offered a local fallback path."
+    elif event == "server_pricing_reference_import_timing":
+        meaning = "Pricing-reference import timing. Check details.timings_ms to see whether local extraction, AI normalization, or validation dominated the wait."
+    elif event == "ai_pricing_reference_import_timing":
+        meaning = "AI pricing-reference import timing. Check details.provider_attempts for provider duration, fallback, and completion status."
+    elif event == "ai_pricing_reference_metadata_enrichment_completed":
+        meaning = "AI pricing-reference metadata enrichment rollup. Check details.reference_id, provider attempts, row counts, fallback, status, and duration."
+    elif event == "ai_call_attempt":
+        meaning = "AI provider call attempt metadata. Check provider, model, feature, status, duration, retry/fallback, and token/count fields without raw prompts or customer content."
     elif event == "abuse_signal":
         meaning = security_reasons.get(reason, "The local runner detected repeated or suspicious local requests.")
     else:
@@ -781,7 +1015,7 @@ def normalize_currency_label(value: Any) -> str:
         return "SGD"
     if text in {"US", "USD", "USDOLLAR", "USDOLLARS", "UNITEDSTATESDOLLAR", "UNITEDSTATESDOLLARS"}:
         return "USD"
-    if text in {"EURO", "EUROS", "EUR"}:
+    if text in {"EUR", "EURO", "EUROS"}:
         return "EUR"
     if text in {"GBP", "POUND", "POUNDS", "STERLING"}:
         return "GBP"
@@ -807,8 +1041,8 @@ def detected_currency_label(value: Any) -> str:
     patterns = (
         (r"(?i)\bSGD\b|S\$|\bSingapore\s+dollars?\b", "SGD"),
         (r"(?i)\bUSD\b|US\$|\bUS\s+dollars?\b|\bUnited\s+States\s+dollars?\b", "USD"),
-        (r"(?i)\bEUR\b|€|\beuros?\b", "EUR"),
-        (r"(?i)\bGBP\b|£|\bpounds?\b|\bsterling\b", "GBP"),
+        (r"(?i)\bEUR\b|\u20ac|\beuros?\b", "EUR"),
+        (r"(?i)\bGBP\b|\u00a3|\bpounds?\b|\bsterling\b", "GBP"),
         (r"(?i)\bMYR\b|\bRM\s*\d|\bMalaysian\s+ringgit\b|\bringgit\b", "MYR"),
         (r"(?i)\bAUD\b|\bAustralian\s+dollars?\b", "AUD"),
         (r"(?i)\bCNY\b|\bRMB\b|\byuan\b|\brenminbi\b", "CNY"),
@@ -822,32 +1056,35 @@ def detected_currency_label(value: Any) -> str:
 
 
 def detect_currency_from_rows(headers: list[str], rows: list[dict[str, Any]]) -> str:
-    parts = [*headers]
+    parts: list[str] = []
+    header_text = " ".join(clean_text(header) for header in headers)
+    header_currency = detected_currency_label(header_text)
+    if header_currency:
+        return header_currency
+    currency_key_pattern = re.compile(r"(?i)\b(?:currency|curr|ccy)\b")
     for row in rows[:80]:
         if isinstance(row, dict):
-            parts.extend(clean_text(value) for value in row.values())
+            for key, value in row.items():
+                if currency_key_pattern.search(clean_text(key)):
+                    parts.append(clean_text(value))
     return detected_currency_label(" ".join(parts))
 
 
-CATALOG_TEXT_COMPARISON_TOKEN_ALIASES = {
-    "dowlight": "downlight",
-    "heigth": "height",
-    "lenght": "length",
-    "parition": "partition",
-    "platfrom": "platform",
-    "sytem": "system",
-    "widht": "width",
-}
+CATALOG_TEXT_COMPARISON_TOKEN_ALIASES = pricing_reference_cleanup.import_word_replacements()
 
 
 def comparable_catalog_description_key(value: Any) -> str:
     tokens = re.findall(r"[a-z0-9]+", clean_customer_quote_line_text(value).casefold())
-    return " ".join(CATALOG_TEXT_COMPARISON_TOKEN_ALIASES.get(token, token) for token in tokens)
+    return " ".join(
+        CATALOG_TEXT_COMPARISON_TOKEN_ALIASES.get(token, token)
+        for token in tokens
+        if token not in {"inch", "inches"}
+    )
 
 
 def comparable_catalog_description_key_without_leading_unit(value: Any) -> str:
     key = comparable_catalog_description_key(value)
-    return re.sub(r"^(?:m2|sqm|m length|m run|nos|no|lot|sets?)\s+", "", key).strip()
+    return re.sub(r"^(?:m2|sqm|m length|m run|m|nos|no|lot|sets?)\s+", "", key).strip()
 
 
 def bracketed_catalog_reference_parts(value: Any) -> tuple[str, str] | None:
@@ -907,7 +1144,9 @@ def catalog_usage_detail(reference: str, detail: str) -> str:
 
 def sentence_case_usage_detail(value: Any) -> str:
     detail = clean_customer_quote_line_text(value)
-    if re.match(r"^(for|to|at|on|in|with|around|across|from|as)\b", detail, flags=re.IGNORECASE):
+    if re.match(r"^(?:sqm|m(?:\.| length| run)?|nos?\.?|lot|sets?)\b", detail, flags=re.IGNORECASE):
+        return detail
+    if detail and detail[0].isalpha():
         return detail[:1].upper() + detail[1:]
     return detail
 
@@ -919,7 +1158,7 @@ def display_description_from_catalog_reference(reference_text: Any, ai_text: Any
         return detail
     usage = sentence_case_usage_detail(catalog_usage_detail(reference, detail))
     if not usage:
-        return reference
+        return f"[ {reference} ]"
     return f"[ {reference} ] - {usage}"
 
 
@@ -1062,6 +1301,12 @@ def safe_section_id(value: Any, fallback: str = "section") -> str:
     return slug or fallback
 
 
+def safe_catalog_item_id(value: Any, fallback: str = "item") -> str:
+    text = clean_text(value).lower()
+    candidate = safe_section_id(text, "")
+    return candidate or safe_section_id(fallback, "item")
+
+
 def clean_basis_section_title(value: Any) -> str:
     text = clean_text(value).replace("\u2013", "-").replace("\u2014", "-")
     return re.sub(r"\s*-\s*quote\s+basis\s+to\s+confirm\s*$", "", text, flags=re.IGNORECASE).strip()
@@ -1069,65 +1314,81 @@ def clean_basis_section_title(value: Any) -> str:
 
 def normalize_catalog_section(value: Any) -> str:
     text = clean_basis_section_title(value)
-    lowered = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
-    compact = re.sub(r"\s+", " ", lowered)
-    if not compact:
-        return "General"
-    if re.search(r"\b(counter|counters|cabinet|cabinets|cabinetry|reception counter|storage cabinet|display counter|lockable cabinet)\b", compact):
-        return "COUNTERS AND CABINETS"
-    if re.search(r"\b(rigging|overhead structure|aluminium box truss|aluminum box truss|box truss|truss|suspended structure|hanging frame|hanging structure)\b", compact):
-        return "Hanging Structure"
-    if re.search(r"\b(platform|flooring|floor|carpet|raised platform|vinyl flooring)\b", compact):
-        return "Floor Design"
-    if re.search(r"\b(graphic|graphics|signage|sign|logo|lightbox|print|printed|vinyl)\b", compact):
-        return "Graphics"
-    if re.search(r"\b(furniture|chair|table)\b", compact):
-        return "Furniture Rental"
-    if re.search(r"\b(decor|plant|plants|rental item|loose rental)\b", compact):
-        return "Rental Items"
-    if re.search(r"\b(electrical|power|socket|light|lighting|spotlight)\b", compact):
-        return "Electrical Fittings ( Excluding connection fees by Organiser)"
-    if re.search(r"\b(av|audio|visual|screen|monitor|tv)\b", compact):
-        return "AV Equipment Rental Items"
-    if re.search(r"\b(water|sink|tap|plumbing)\b", compact):
-        return "Water Connection"
-    if re.search(r"\b(coffee|tea|beverage|drink)\b", compact):
-        return "Coffee / Tea (Subject to approval by Venue owner and Organiser)"
-    booth_terms = {
-        "booth", "booth dimension", "booth dimensions", "booth structure", "booth structures",
-        "structure", "structures", "walls", "wall", "partitions", "partition", "fascia",
-        "system profile partitions", "entrance frame", "curved frame", "back wall", "side wall",
-        "header fascia structure", "header",
-    }
-    if compact in booth_terms or re.search(r"\b(booth|wall|walls|partition|partitions|fascia|entrance frame|curved frame|back wall|side wall|system profile|header)\b", compact):
-        return "Booth Structure"
-    return text
+    return text or "General"
 
 
 def section_title_lookup_key(value: Any) -> str:
     text = clean_basis_section_title(value).lower()
-    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+    return " ".join(section_title_tokens(text))
 
 
-REFERENCE_SECTION_ALIASES: dict[str, tuple[str, ...]] = {
-    "floor design": ("Flooring / Platform", "Platform / Flooring", "Flooring", "Platform"),
-    "counters and cabinets": ("Counters & Cabinets", "Counters", "Cabinets"),
-    "graphics": ("Graphics / Signage", "Signage"),
-    "furniture rental": ("Furniture / Decor", "Furniture", "Furniture Decor"),
-    "rental items": ("Decor", "Plant", "Plants", "Loose Rental", "Rental Item"),
-    "av equipment rental items": ("Electrical / AV", "AV", "Audio Visual", "Screens", "Monitor", "TV"),
-    "electrical fittings excluding connection fees by organiser": ("Electrical / AV", "Electrical", "Lighting", "Lights", "Power"),
-    "booth structure": ("Surfaces / Structures", "Walls / Structures", "Walls", "Partitions", "Fascia"),
-}
+SECTION_TITLE_STOP_WORDS = {"and", "or", "the", "of", "for", "with", "by", "to", "in", "at", "per"}
+
+
+def section_title_token(value: str) -> str:
+    token = value.lower()
+    token = pricing_reference_cleanup.import_word_replacements().get(token, token)
+    if token.endswith("ies") and len(token) > 4:
+        token = f"{token[:-3]}y"
+    elif token.endswith("s") and len(token) > 3 and not token.endswith("ss"):
+        token = token[:-1]
+    return pricing_reference_cleanup.import_word_replacements().get(token, token)
+
+
+def section_title_tokens(value: Any) -> list[str]:
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for raw_token in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+        token = section_title_token(raw_token)
+        if not token or token in SECTION_TITLE_STOP_WORDS:
+            continue
+        if token not in seen:
+            tokens.append(token)
+            seen.add(token)
+    return tokens
+
+
+def add_unique_section_alias(aliases: list[str], alias: Any) -> None:
+    cleaned = clean_basis_section_title(alias)
+    if cleaned and all(section_title_lookup_key(existing) != section_title_lookup_key(cleaned) for existing in aliases):
+        aliases.append(cleaned)
+
+
+def section_title_acronym_aliases(value: Any) -> list[str]:
+    tokens = [token for token in section_title_tokens(value) if token and not token.isdigit()]
+    aliases: list[str] = []
+    for length in range(2, min(4, len(tokens)) + 1):
+        acronym = "".join(token[0] for token in tokens[:length] if token)
+        if len(acronym) >= 2:
+            aliases.append(acronym.upper())
+    return aliases
+
+
+def section_title_prefix_aliases(value: Any) -> list[str]:
+    tokens = section_title_tokens(value)
+    aliases: list[str] = []
+    for length in range(1, min(3, len(tokens)) + 1):
+        aliases.append(" ".join(tokens[:length]).title())
+    return aliases
+
+
+def ordered_reference_section_title_aliases(value: Any) -> list[str]:
+    title = clean_basis_section_title(value)
+    if not title:
+        return []
+    aliases: list[str] = []
+    add_unique_section_alias(aliases, title)
+    for part in re.split(r"\s*(?:/|&|\band\b)\s*", title, flags=re.IGNORECASE):
+        add_unique_section_alias(aliases, part)
+    for alias in section_title_prefix_aliases(title):
+        add_unique_section_alias(aliases, alias)
+    for alias in section_title_acronym_aliases(title):
+        add_unique_section_alias(aliases, alias)
+    return aliases
 
 
 def reference_section_title_aliases(value: Any) -> set[str]:
-    title = clean_basis_section_title(value)
-    if not title:
-        return set()
-    aliases = {title, normalize_catalog_section(title)}
-    aliases.update(REFERENCE_SECTION_ALIASES.get(section_title_lookup_key(title), ()))
-    return {alias for alias in aliases if clean_basis_section_title(alias)}
+    return set(ordered_reference_section_title_aliases(value))
 
 
 def exact_pricing_reference_section_title(value: Any, pricing_reference_sections: list[str] | None = None) -> str:
@@ -1135,18 +1396,41 @@ def exact_pricing_reference_section_title(value: Any, pricing_reference_sections
     if not text or not pricing_reference_sections:
         return ""
     lookup: dict[str, str] = {}
+    section_alias_tokens: list[tuple[str, set[str], str]] = []
     for section in pricing_reference_sections:
         title = clean_basis_section_title(section)
         if not title:
             continue
-        for alias in reference_section_title_aliases(title):
+        for alias in ordered_reference_section_title_aliases(title):
             key = section_title_lookup_key(alias)
             if key:
                 lookup.setdefault(key, title)
-    for candidate in reference_section_title_aliases(text):
+                section_alias_tokens.append((title, set(section_title_tokens(alias)), key))
+    for candidate in ordered_reference_section_title_aliases(text):
         match = lookup.get(section_title_lookup_key(candidate))
         if match:
             return match
+    input_tokens = set(section_title_tokens(text))
+    if not input_tokens:
+        return ""
+    scored: list[tuple[float, str]] = []
+    for title, alias_tokens, _key in section_alias_tokens:
+        if not alias_tokens:
+            continue
+        overlap = input_tokens & alias_tokens
+        if not overlap:
+            continue
+        input_ratio = len(overlap) / max(len(input_tokens), 1)
+        alias_ratio = len(overlap) / max(len(alias_tokens), 1)
+        if input_ratio < 0.6 and alias_ratio < 0.6:
+            continue
+        scored.append((input_ratio + alias_ratio + len(overlap) * 0.1, title))
+    if not scored:
+        return ""
+    scored.sort(key=lambda item: (-item[0], item[1].casefold()))
+    if len(scored) > 1 and abs(scored[0][0] - scored[1][0]) < 0.001:
+        return ""
+    return scored[0][1]
     return ""
 
 
@@ -1334,6 +1618,33 @@ def normalize_basis_tag(value: Any) -> str:
     if tag == "exclude":
         return "Exclude"
     return "Confirm"
+
+
+def is_informational_dimension_text(value: Any) -> bool:
+    text = clean_text(value).lower()
+    if not text or bracketed_catalog_reference_parts(text):
+        return False
+    starts_as_dimension_note = bool(
+        re.search(r"^\s*(?:use\s+)?(?:a\s+|the\s+)?(?:booth|stand|space)\s+(?:footprint|dimensions?|size)\b", text)
+        or re.search(r"^\s*(?:booth\s+)?floor\s+area\b", text)
+        or ("area takeoff" in text and re.search(r"\b(?:booth|stand|space)\b", text))
+    )
+    if not starts_as_dimension_note:
+        return False
+    return bool(
+        re.search(r"\b\d+(?:\.\d+)?\s*(?:m(?:w|d)?|sqm|sqft|ft)\b", text)
+        or re.search(r"\b\d+(?:\.\d+)?\s*[x\u00d7]\s*\d+(?:\.\d+)?\b", text)
+    )
+
+
+def is_informational_dimension_basis_line(line: dict[str, Any]) -> bool:
+    if not isinstance(line, dict):
+        return False
+    if clean_text(line.get("pricing_keyword")):
+        return False
+    if clean_text(line.get("pricing_reference_description") or line.get("catalog_description")):
+        return False
+    return is_informational_dimension_text(line.get("text") or line.get("description"))
 
 
 def normalize_confidence_percent(value: Any) -> int | None:
@@ -1592,31 +1903,58 @@ def normalize_customer_unit_text(value: Any) -> str:
 
 
 LINEAR_TAKEOFF_UNITS = {"m", "m length", "m run"}
-SUSPICIOUS_LINEAR_STRUCTURE_TERMS = {
-    "canopy",
-    "fascia",
-    "frame",
-    "framed",
-    "framing",
-    "overhead",
-    "partition",
-    "perimeter",
-    "portal",
-    "structure",
-    "wall",
-}
+PIECE_DIMENSION_DESCRIPTION_RE = re.compile(
+    r"(?i)^(?:nos\.?\s+of\s+1m\s+length\s+x|m\.?\s*length\s*x)\b"
+)
 
 
-def line_item_needs_quantity_review(section: Any, description: Any, quantity: Any, unit: Any) -> bool:
+def is_piece_dimension_description(description: Any) -> bool:
+    text = clean_text(description)
+    return bool(PIECE_DIMENSION_DESCRIPTION_RE.search(text)) and len(re.findall(r"(?i)\bx\b", text)) >= 2
+
+
+def normalize_piece_dimension_description(description: Any) -> str:
+    text = clean_text(description)
+    if not is_piece_dimension_description(text):
+        return text
+    return re.sub(
+        r"(?i)^m\.?\s*length\s*x\b",
+        "nos. of 1m length x",
+        text,
+        count=1,
+    )
+
+
+def piece_dimension_quantity_needs_review(description: Any, quantity: Any, unit: Any, catalog_item: dict[str, Any] | None = None) -> bool:
+    catalog_description = clean_text((catalog_item or {}).get("description"))
+    if not is_piece_dimension_description(description) and not is_piece_dimension_description(catalog_description):
+        return False
+    numeric_quantity = parse_float_or_none(quantity)
+    normalized_unit = normalize_pricing_unit(unit).lower()
+    if normalized_unit in LINEAR_TAKEOFF_UNITS:
+        return True
+    if numeric_quantity is None:
+        return False
+    return numeric_quantity > 0 and abs(numeric_quantity - round(numeric_quantity)) > 0.0001
+
+
+def line_item_needs_quantity_review(
+    section: Any,
+    description: Any,
+    quantity: Any,
+    unit: Any,
+    catalog_item: dict[str, Any] | None = None,
+) -> bool:
+    if piece_dimension_quantity_needs_review(description, quantity, unit, catalog_item):
+        return True
     numeric_quantity = parse_float_or_none(quantity)
     if numeric_quantity is None or abs(numeric_quantity - 1.0) > 0.0001:
         return False
     if normalize_pricing_unit(unit).lower() not in LINEAR_TAKEOFF_UNITS:
         return False
-    text = f"{clean_text(section)} {clean_text(description)}".lower()
-    if "booth structure" not in text and not any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS):
+    if not catalog_item:
         return False
-    return any(term in text for term in SUSPICIOUS_LINEAR_STRUCTURE_TERMS)
+    return catalog_item_unit_hint(catalog_item).lower() in LINEAR_TAKEOFF_UNITS
 
 
 def parse_pricing_number(value: Any) -> float | None:
@@ -1625,6 +1963,77 @@ def parse_pricing_number(value: Any) -> float | None:
     except ValueError:
         return None
     return number if math.isfinite(number) else None
+
+
+PRICING_REFERENCE_CATEGORY_ORDER_KEYS = (
+    "category_order",
+    "category_index",
+    "category_no",
+    "category_number",
+    "section_order",
+    "section_index",
+    "section_no",
+    "section_number",
+)
+PRICING_REFERENCE_ITEM_ORDER_KEYS = (
+    "item_order",
+    "item_index",
+    "row_order",
+    "row_index",
+    "source_row",
+    "_source_row",
+)
+
+
+def pricing_reference_order_number(value: Any) -> int | None:
+    number = parse_pricing_number(value)
+    if number is None or number <= 0:
+        return None
+    return int(number)
+
+
+def pricing_reference_order_from_raw(raw: dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        if key not in raw:
+            continue
+        order = pricing_reference_order_number(raw.get(key))
+        if order is not None:
+            return order
+    return None
+
+
+def ensure_pricing_reference_order_fields(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    section_orders: dict[str, int] = {}
+    next_category_order = 1
+    for index, item in enumerate(items, start=1):
+        item_order = pricing_reference_order_number(item.get("item_order")) or index
+        item["item_order"] = item_order
+        section = clean_text(item.get("section")) or clean_text(item.get("reference_section"))
+        section_key = safe_section_id(normalize_catalog_section(section) or section, f"section-{index}")
+        explicit_category_order = pricing_reference_order_number(item.get("category_order"))
+        if section_key not in section_orders:
+            if explicit_category_order is not None:
+                section_orders[section_key] = explicit_category_order
+                next_category_order = max(next_category_order, explicit_category_order + 1)
+            else:
+                while next_category_order in section_orders.values():
+                    next_category_order += 1
+                section_orders[section_key] = next_category_order
+                next_category_order += 1
+        item["category_order"] = section_orders[section_key]
+    return items
+
+
+def pricing_reference_sort_order(item: dict[str, Any]) -> tuple[int, int, str, str, str]:
+    category_order = pricing_reference_order_number(item.get("category_order")) or 999999
+    item_order = pricing_reference_order_number(item.get("item_order")) or 999999
+    return (
+        category_order,
+        item_order,
+        clean_text(item.get("section")).casefold(),
+        clean_text(item.get("description")).casefold(),
+        clean_text(item.get("id")).casefold(),
+    )
 
 
 def split_pricing_reference_terms(value: Any) -> list[str]:
@@ -1643,6 +2052,39 @@ def split_pricing_reference_terms(value: Any) -> list[str]:
     return terms
 
 
+def sanitize_pricing_reference_terms(value: Any, *, apply_import_text_fixes: bool = False, limit: int = 36) -> list[str]:
+    terms: list[str] = []
+    for raw in split_pricing_reference_terms(value):
+        text = sanitize_formula_text(raw)
+        text = apply_pricing_workbook_text_fixes(text) if apply_import_text_fixes else clean_text(text)
+        if text:
+            terms.append(text)
+    return unique_clean_list(terms)[:limit]
+
+
+def sanitize_pricing_reference_families(value: Any, *, apply_import_text_fixes: bool = False, limit: int = 12) -> list[str]:
+    families: list[str] = []
+    for raw in split_pricing_reference_terms(value):
+        text = sanitize_formula_text(raw)
+        text = apply_pricing_workbook_text_fixes(text) if apply_import_text_fixes else clean_text(text)
+        family = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+        if family:
+            families.append(family)
+    return unique_clean_list(families)[:limit]
+
+
+def unique_clean_list(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = clean_text(value)
+        key = text.lower()
+        if text and key not in seen:
+            result.append(text)
+            seen.add(key)
+    return result
+
+
 def default_pricing_reference_aliases(section: str, description: str, unit_hint: str, remarks: list[str]) -> list[str]:
     aliases: list[str] = []
     seen: set[str] = set()
@@ -1655,7 +2097,7 @@ def default_pricing_reference_aliases(section: str, description: str, unit_hint:
             seen.add(key)
 
     add(description)
-    leading_unit_pattern = r"(?i)^(?:m2|sqm|m\s*length|m\s*run|nos?\.?|sets?\s+of|lot\.?)\s+"
+    leading_unit_pattern = r"(?i)^(?:m2|sqm|m\s*length|m\s*run|m\.?|nos?\.?|sets?\s+of|lot\.?)\s+"
     stripped_description = clean_text(re.sub(leading_unit_pattern, "", description))
     add(stripped_description)
     for remark in remarks:
@@ -1854,22 +2296,59 @@ def pricing_reference_sale_unit_price(item: dict[str, Any]) -> float | None:
     return round(cost * markup, 2)
 
 
-def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict[str, Any] | None:
-    description = clean_text(sanitize_formula_text(raw.get("description")))
-    reference_section = clean_basis_section_title(sanitize_formula_text(raw.get("reference_section") or raw.get("section")))
+def sanitize_pricing_reference_item(
+    raw: dict[str, Any],
+    index: int = 0,
+    apply_import_text_fixes: bool = False,
+) -> dict[str, Any] | None:
+    raw_description = sanitize_formula_text(raw.get("description"))
+    description = apply_pricing_workbook_text_fixes(raw_description) if apply_import_text_fixes else clean_text(raw_description)
+    raw_reference_section = sanitize_formula_text(raw.get("reference_section") or raw.get("section"))
+    reference_section = clean_basis_section_title(
+        apply_pricing_workbook_text_fixes(raw_reference_section) if apply_import_text_fixes else raw_reference_section
+    )
+    description = normalize_piece_dimension_description(description)
     section = normalize_catalog_section(reference_section)
     raw_unit_hint = normalize_pricing_unit(sanitize_formula_text(raw.get("unit_hint") or raw.get("unit")))
     unit_hint = reconcile_pricing_reference_unit_hint(description, raw_unit_hint)
+    if is_piece_dimension_description(description):
+        unit_hint = "nos"
     internal_cost = parse_pricing_number(raw.get("internal_cost") or raw.get("cost"))
     markup = parse_pricing_number(raw.get("markup_multiplier") or raw.get("markup"))
     if not description or internal_cost is None or internal_cost <= 0 or markup is None or markup <= 0:
         return None
-    remarks = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))]
-    aliases = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("aliases"))][:8]
+    default_quantity = parse_pricing_number(raw.get("default_quantity"))
+    default_quote_amount = parse_pricing_number(raw.get("default_quote_amount") or raw.get("default_estimate"))
+    gst_multiplier = parse_pricing_number(raw.get("gst_multiplier") or raw.get("gst"))
+    if apply_import_text_fixes:
+        remarks = [
+            apply_pricing_workbook_text_fixes(sanitize_formula_text(item))
+            for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))
+        ]
+        aliases = [
+            apply_pricing_workbook_text_fixes(sanitize_formula_text(item))
+            for item in split_pricing_reference_terms(raw.get("aliases"))
+        ][:8]
+    else:
+        remarks = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))]
+        aliases = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("aliases"))][:8]
     if not aliases:
         aliases = default_pricing_reference_aliases(section, description, unit_hint, remarks)
+    elif apply_import_text_fixes and description != clean_text(raw_description):
+        aliases = unique_clean_list([description, *aliases])[:8]
+    match_terms = sanitize_pricing_reference_terms(raw.get("match_terms"), apply_import_text_fixes=apply_import_text_fixes)
+    object_families = sanitize_pricing_reference_families(raw.get("object_families"), apply_import_text_fixes=apply_import_text_fixes)
+    raw_id = clean_text(raw.get("id"))
+    default_item_id = "-".join(
+        part
+        for part in (
+            safe_section_id(section, "pricing"),
+            safe_section_id(stripped_pricing_unit_text(description), f"item-{index + 1}"),
+        )
+        if part
+    )
     item = {
-        "id": safe_section_id(raw.get("id") or f"{section}-{description}", f"item-{index + 1}"),
+        "id": safe_catalog_item_id(raw_id, default_item_id) if raw_id else default_item_id,
         "section": section,
         "reference_section": reference_section or section,
         "description": description,
@@ -1880,9 +2359,26 @@ def sanitize_pricing_reference_item(raw: dict[str, Any], index: int = 0) -> dict
         "remarks": remarks,
         "aliases": aliases,
     }
+    if match_terms:
+        item["match_terms"] = match_terms
+    if object_families:
+        item["object_families"] = object_families
+    if default_quantity is not None:
+        item["default_quantity"] = default_quantity
+    if default_quote_amount is not None and default_quote_amount > 0:
+        item["default_quote_amount"] = default_quote_amount
+    if gst_multiplier is not None and gst_multiplier > 0:
+        item["gst_multiplier"] = gst_multiplier
+    category_order = pricing_reference_order_from_raw(raw, PRICING_REFERENCE_CATEGORY_ORDER_KEYS)
+    if category_order is not None:
+        item["category_order"] = category_order
+    item_order = pricing_reference_order_from_raw(raw, PRICING_REFERENCE_ITEM_ORDER_KEYS)
+    if item_order is not None:
+        item["item_order"] = item_order
     visual_references = sanitize_visual_references(raw.get("visual_references"))
     if visual_references:
         item["visual_references"] = visual_references
+    pricing_reference_enrichment.enrich_pricing_reference_item(item)
     return item
 
 
@@ -1922,10 +2418,40 @@ def pricing_reference_validation_result(
     }
 
 
+def pricing_reference_metadata_quality_errors(items: list[dict[str, Any]]) -> list[str]:
+    missing_metadata = [
+        clean_text(item.get("id")) or clean_text(item.get("description")) or f"row {index + 1}"
+        for index, item in enumerate(items)
+        if isinstance(item, dict)
+        and (
+            not sanitize_pricing_reference_terms(item.get("match_terms"))
+            or not sanitize_pricing_reference_families(item.get("object_families"))
+        )
+    ]
+    if not missing_metadata:
+        return []
+    preview = ", ".join(missing_metadata[:5])
+    suffix = f" and {len(missing_metadata) - 5} more" if len(missing_metadata) > 5 else ""
+    return [f"AI pricing metadata is missing for pricing rows: {preview}{suffix}."]
+
+
+def pricing_reference_required_field_errors(items: list[dict[str, Any]]) -> list[str]:
+    missing_units = [
+        clean_text(item.get("id")) or clean_text(item.get("description")) or f"row {index + 1}"
+        for index, item in enumerate(items)
+        if isinstance(item, dict) and not clean_text(item.get("unit_hint") or item.get("unit"))
+    ]
+    if not missing_units:
+        return []
+    preview = ", ".join(missing_units[:5])
+    suffix = f" and {len(missing_units) - 5} more" if len(missing_units) > 5 else ""
+    return [f"Pricing unit_hint is missing for pricing rows: {preview}{suffix}."]
+
+
 
 def infer_unit_prefix(description: Any) -> str:
     text = clean_text(description)
-    match = re.match(r"(?i)^(m\.?\s*run|m\.?\s*length|sqm|m2|nos?\.?|lot\.?|sets?)\b", text)
+    match = re.match(r"(?i)^(m\.?\s*run|m\.?\s*length|m2|sqm|nos?\.?|no\.?|lot\.?|sets?|m\.?)(?=\s|[.;:/,(]|$)", text)
     if not match:
         return ""
     unit = re.sub(r"\s+", " ", match.group(1).lower().replace(".", " ")).strip()
@@ -1938,9 +2464,19 @@ def infer_unit_prefix(description: Any) -> str:
     return unit
 
 
+def infer_pricing_reference_unit(description: Any) -> str:
+    text = clean_text(description)
+    leading_unit = infer_unit_prefix(text)
+    if leading_unit:
+        return leading_unit
+    if re.search(r"(?i)(?:\bper\s+day\b|\bper-day\b|/day\b)", text):
+        return "day"
+    return ""
+
+
 def reconcile_pricing_reference_unit_hint(description: Any, unit_hint: Any) -> str:
     normalized_unit = normalize_pricing_unit(unit_hint)
-    leading_unit = infer_unit_prefix(description)
+    leading_unit = infer_pricing_reference_unit(description)
     if leading_unit and normalized_unit and leading_unit != normalized_unit:
         return leading_unit
     return normalized_unit or leading_unit
@@ -1976,7 +2512,7 @@ def stitch_pricing_reference_continuation_rows(rows: list[dict[str, Any]]) -> li
                 previous["remarks"] = "; ".join(part for part in ([existing_remarks] if existing_remarks else []) + remarks if part)
             continue
         if description and not clean_text(row.get("unit_hint") or row.get("unit")):
-            unit = infer_unit_prefix(description)
+            unit = infer_pricing_reference_unit(description)
             if unit:
                 row["unit_hint"] = unit
         stitched.append(row)
@@ -1992,9 +2528,9 @@ def validate_pricing_reference_rows(
     seen_ids: set[str] = set()
     rows = stitch_pricing_reference_continuation_rows(rows)
     for index, raw in enumerate(rows[:MAX_PRICING_REFERENCE_ROWS]):
-        item = sanitize_pricing_reference_item(raw, index)
+        item = sanitize_pricing_reference_item(raw, index, apply_import_text_fixes=True)
         if item:
-            base_id = safe_section_id(item.get("id"), f"item-{index + 1}")
+            base_id = safe_catalog_item_id(item.get("id"), f"item-{index + 1}")
             candidate_id = base_id
             suffix = 2
             while candidate_id in seen_ids:
@@ -2002,9 +2538,11 @@ def validate_pricing_reference_rows(
                 suffix += 1
             seen_ids.add(candidate_id)
             item["id"] = candidate_id
+            item["item_order"] = pricing_reference_order_number(item.get("item_order")) or pricing_reference_order_from_raw(raw, PRICING_REFERENCE_ITEM_ORDER_KEYS) or index + 1
             items.append(item)
         else:
             skipped += 1
+    ensure_pricing_reference_order_fields(items)
     if len(rows) > MAX_PRICING_REFERENCE_ROWS:
         skipped += len(rows) - MAX_PRICING_REFERENCE_ROWS
     empty_is_error = bool(rows and skipped)
@@ -2159,17 +2697,17 @@ def pricing_workbook_number(row: list[str], index: int) -> float | None:
     return parse_pricing_number(pricing_workbook_cell(row, index))
 
 
-def is_v11_section_row(row: list[str]) -> bool:
+def is_sectioned_pricing_workbook_section_row(row: list[str]) -> bool:
     return (
-        pricing_workbook_number(row, V11_COL_SECTION_NO) is not None
-        and bool(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-        and pricing_workbook_number(row, V11_COL_COST) is None
+        pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_SECTION_NO) is not None
+        and bool(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+        and pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_COST) is None
     )
 
 
-def is_v11_price_row(row: list[str]) -> bool:
-    cost = pricing_workbook_number(row, V11_COL_COST)
-    return bool(pricing_workbook_cell(row, V11_COL_DESCRIPTION)) and cost is not None and cost > 0
+def is_sectioned_pricing_workbook_price_row(row: list[str]) -> bool:
+    cost = pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_COST)
+    return bool(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION)) and cost is not None and cost > 0
 
 
 def add_unique_text(values: list[str], value: Any) -> None:
@@ -2181,36 +2719,16 @@ def add_unique_text(values: list[str], value: Any) -> None:
         values.append(text)
 
 
-PRICING_WORKBOOK_TEXT_FIXES = {
-    "platfrom": "platform",
-    "parition": "partition",
-    "sytem": "system",
-    "dowlight": "downlight",
-    "lenght": "length",
-    "widht": "width",
-    "heigth": "height",
-}
-
-
 def normalize_import_typography_text(value: Any) -> str:
-    text = str(value or "")
-    text = text.replace("\xa0", " ")
-    text = text.replace("\u201c", '"').replace("\u201d", '"')
-    text = text.replace("\u2018", "'").replace("\u2019", "'")
-    text = text.replace("\u2013", "-").replace("\u2014", "-")
-    return clean_text(text)
+    return clean_text(pricing_reference_cleanup.normalized_import_text(value))
+
+
+def normalize_word_slash_spacing(value: Any) -> str:
+    return clean_text(pricing_reference_cleanup.normalize_word_slash_spacing(value))
 
 
 def apply_pricing_workbook_text_fixes(value: Any) -> str:
-    text = normalize_import_typography_text(value)
-
-    def replace(match: re.Match[str]) -> str:
-        replacement = PRICING_WORKBOOK_TEXT_FIXES[match.group(0).lower()]
-        return replacement[:1].upper() + replacement[1:] if match.group(0)[:1].isupper() else replacement
-
-    for typo in PRICING_WORKBOOK_TEXT_FIXES:
-        text = re.sub(rf"\b{re.escape(typo)}\b", replace, text, flags=re.IGNORECASE)
-    return clean_customer_quote_line_text(text)
+    return clean_customer_quote_line_text(pricing_reference_cleanup.apply_import_text_cleanup(value))
 
 
 def stripped_pricing_unit_text(value: Any) -> str:
@@ -2224,7 +2742,7 @@ def stripped_pricing_unit_text(value: Any) -> str:
     )
 
 
-def v11_alias_candidates(section: str, description: str, remarks: list[str], unit_hint: str) -> list[str]:
+def sectioned_workbook_alias_candidates(section: str, description: str, remarks: list[str], unit_hint: str) -> list[str]:
     aliases: list[str] = []
     for value in [description, *remarks]:
         add_unique_text(aliases, value)
@@ -2340,47 +2858,62 @@ def attach_visual_references_to_pricing_rows(rows: list[dict[str, Any]], visual_
         item_refs.append(visual_ref)
 
 
-def v11_row_to_pricing_reference_row(section: str, row_number: int, row: list[str]) -> dict[str, Any]:
-    description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-    remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))]
+def sectioned_workbook_row_to_pricing_reference_row(section: str, section_order: int | None, row_number: int, row: list[str]) -> dict[str, Any]:
+    description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+    remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
-    unit_hint = infer_unit_prefix(description)
+    unit_hint = infer_pricing_reference_unit(description) or ("nos" if description else "")
     return {
         "_source_row": row_number,
+        "category_order": section_order,
+        "item_order": row_number,
         "section": section,
         "description": description,
         "unit_hint": unit_hint,
-        "internal_cost": pricing_workbook_number(row, V11_COL_COST),
-        "markup_multiplier": pricing_workbook_number(row, V11_COL_MARKUP) or 1.0,
+        "default_quantity": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_DEFAULT_QUANTITY),
+        "default_quote_amount": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_DEFAULT_ESTIMATE),
+        "internal_cost": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_COST),
+        "gst_multiplier": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_GST),
+        "markup_multiplier": pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_MARKUP) or 1.0,
         "remarks": remarks,
-        "aliases": v11_alias_candidates(section, description, remarks, unit_hint),
+        "aliases": sectioned_workbook_alias_candidates(section, description, remarks, unit_hint),
     }
 
 
-def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any]]:
+def sectioned_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any]]:
     rows_with_numbers = xlsx_rows_with_numbers_from_bytes(raw)
     rows: list[dict[str, Any]] = []
     current_section = ""
+    current_section_order: int | None = None
+    fallback_section_order = 1
     for row_number, row in rows_with_numbers:
-        if is_v11_section_row(row):
-            current_section = clean_basis_section_title(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
+        if is_sectioned_pricing_workbook_section_row(row):
+            current_section = clean_basis_section_title(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+            current_section_order = pricing_reference_order_number(pricing_workbook_number(row, SECTIONED_WORKBOOK_COL_SECTION_NO))
+            if current_section_order is None:
+                current_section_order = fallback_section_order
+            fallback_section_order = max(fallback_section_order + 1, current_section_order + 1)
             continue
-        if is_v11_price_row(row):
+        if is_sectioned_pricing_workbook_price_row(row):
             if current_section:
-                rows.append(v11_row_to_pricing_reference_row(current_section, row_number, row))
+                rows.append(sectioned_workbook_row_to_pricing_reference_row(current_section, current_section_order, row_number, row))
             continue
         if not rows:
             continue
-        description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_DESCRIPTION))
-        remark = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, V11_COL_REMARKS))
+        description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
+        remark = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))
         if description:
-            rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
-            rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
+            if description.startswith("\u2022") or description.lower().startswith(("note:", "notes:")):
+                remarks = rows[-1].setdefault("remarks", [])
+                add_unique_text(remarks, description)
+            else:
+                rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
+                rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
         if remark:
             remarks = rows[-1].setdefault("remarks", [])
             add_unique_text(remarks, remark)
         if description or remark:
-            rows[-1]["aliases"] = v11_alias_candidates(
+            rows[-1]["aliases"] = sectioned_workbook_alias_candidates(
                 clean_text(rows[-1].get("section")),
                 clean_text(rows[-1].get("description")),
                 rows[-1].get("remarks") if isinstance(rows[-1].get("remarks"), list) else [],
@@ -2390,21 +2923,32 @@ def v11_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[str, Any
     return rows
 
 
-def pricing_reference_import_preview_from_v11_workbook(raw: bytes, filename: str) -> dict[str, Any]:
-    rows = v11_pricing_reference_rows_from_xlsx_bytes(raw)
+def pricing_reference_import_preview_from_sectioned_workbook(raw: bytes, filename: str) -> dict[str, Any]:
+    rows = sectioned_pricing_reference_rows_from_xlsx_bytes(raw)
     if len(rows) < 10:
         return pricing_reference_validation_result([], [], 0, filename) | {
-            "layout": "v1.1-pricing-workbook",
-            "errors": ["Workbook layout was not recognized as a V1.1 pricing workbook."],
+            "layout": "sectioned-pricing-workbook",
+            "errors": ["Workbook layout was not recognized as a section-numbered pricing workbook."],
         }
-    for row in rows:
-        row.pop("_source_row", None)
     result = validate_pricing_reference_rows(rows, list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
-    result["layout"] = "v1.1-pricing-workbook"
-    result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows) or DEFAULT_CURRENCY_LABEL
+    result["layout"] = "sectioned-pricing-workbook"
+    result["currency"] = detect_currency_from_rows(list(PRICING_REFERENCE_TEMPLATE_COLUMNS), rows)
     if result.get("errors") == ["Missing required columns: section, description, unit_hint, internal_cost, markup_multiplier."]:
         result["errors"] = []
     return result
+
+
+def xlsx_rows_for_ai(raw: bytes) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row_number, values in xlsx_rows_with_numbers_from_bytes(raw):
+        non_empty_cells = {
+            xlsx_col_name(index): clean_text(value)
+            for index, value in enumerate(values)
+            if clean_text(value)
+        }
+        if non_empty_cells:
+            rows.append({"row_index": row_number, "non_empty_cells": non_empty_cells})
+    return rows
 
 
 def rows_from_csv_bytes(raw: bytes) -> tuple[list[str], list[dict[str, Any]]]:
@@ -2464,7 +3008,7 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
         ["Swooshz Pricing Reference Import Template"],
         ["Edit or add pricing rows in the Pricing Reference sheet, then upload this workbook in New Pricing Reference."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
-        ["section", "Quotation section, for example Floor Design."],
+        ["section", "Quotation section, for example Services."],
         ["description", "Customer-facing wording. Catalog-backed quote basis and output rows will use this exactly."],
         ["unit_hint", "Examples: sqm, m length, no, lot, set."],
         ["internal_cost", "Number only. This stays internal."],
@@ -2511,8 +3055,6 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
 
 
 def pricing_reference_template_xlsx_bytes() -> bytes:
-    if PRICING_REFERENCE_TEMPLATE_PATH.exists():
-        return PRICING_REFERENCE_TEMPLATE_PATH.read_bytes()
     return generated_pricing_reference_template_xlsx_bytes()
 
 
@@ -2574,10 +3116,21 @@ def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, An
             continue
         sanitized = sanitize_pricing_reference_item({**raw, "description": sanitize_formula_text(raw.get("description"))}, index)
         if sanitized:
+            sanitized["item_order"] = pricing_reference_order_number(sanitized.get("item_order")) or index + 1
             items.append(sanitized)
     if not items:
         raise ValueError("At least one valid pricing row is required.")
+    ensure_pricing_reference_order_fields(items)
     items = sorted_pricing_reference_items(items)
+    required_field_errors = pricing_reference_required_field_errors(items)
+    if required_field_errors:
+        raise ValueError(" ".join(required_field_errors))
+    pricing_reference_enrichment.enrich_pricing_reference_items(items)
+    items = sorted_pricing_reference_items(items)
+    ensure_pricing_reference_order_fields(items)
+    metadata_errors = pricing_reference_metadata_quality_errors(items)
+    if metadata_errors:
+        raise ValueError(" ".join(metadata_errors))
     return {
         "id": reference_id,
         "label": sanitize_formula_text(payload.get("label")) or reference_id,
@@ -2615,7 +3168,9 @@ def pricing_reference_catalog_payload(reference: dict[str, Any]) -> dict[str, An
         sale_unit_price = pricing_reference_sale_unit_price(next_item)
         if sale_unit_price is not None:
             next_item["sale_unit_price"] = sale_unit_price
+        pricing_reference_enrichment.enrich_pricing_reference_item(next_item)
         items.append(next_item)
+    ensure_pricing_reference_order_fields(items)
     items = sorted_pricing_reference_items(items)
     return {
         "schema_version": int(parse_pricing_number(reference.get("schema_version")) or 1),
@@ -2666,6 +3221,12 @@ def pricing_reference_catalog_ai_markdown(catalog: dict[str, Any], catalog_name:
         aliases = [clean_text(value) for value in item.get("aliases", []) if clean_text(value)] if isinstance(item.get("aliases"), list) else []
         if aliases:
             lines.append(f"- **Search aliases:** {'; '.join(aliases[:12])}")
+        match_terms = [clean_text(value) for value in item.get("match_terms", []) if clean_text(value)] if isinstance(item.get("match_terms"), list) else []
+        if match_terms:
+            lines.append(f"- **Match terms:** {'; '.join(match_terms[:12])}")
+        object_families = [clean_text(value) for value in item.get("object_families", []) if clean_text(value)] if isinstance(item.get("object_families"), list) else []
+        if object_families:
+            lines.append(f"- **Object families:** {'; '.join(object_families[:8])}")
         visual_references = item.get("visual_references") if isinstance(item.get("visual_references"), list) else []
         visual_values = [
             clean_text(ref.get("path") or ref.get("source"))
@@ -2719,6 +3280,106 @@ def save_pricing_reference_pack(reference: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def pricing_reference_ai_metadata_enrichment_provider_order() -> list[str]:
+    provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
+    provider_order = [provider]
+    if provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    return provider_order
+
+
+def pricing_reference_ai_metadata_enrichment_configured() -> bool:
+    return any(text_ai_provider_api_key(provider) for provider in pricing_reference_ai_metadata_enrichment_provider_order())
+
+
+def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> bool:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id:
+        raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+    detail = pricing_reference_pack_detail(safe_id)
+    if not detail:
+        return False
+    initial_saved_at = clean_text(detail.get("saved_at"))
+    items = [dict(item) for item in (detail.get("items") if isinstance(detail.get("items"), list) else []) if isinstance(item, dict)]
+    if not items:
+        return False
+    enriched_items, errors = ai_pricing_reference_metadata_enrichment(
+        clean_text(detail.get("label")) or safe_id,
+        items,
+        reference_id=safe_id,
+    )
+    if errors or not enriched_items:
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_id,
+                "errors": safe_error_messages(errors or ["AI pricing metadata enrichment returned no rows."]),
+            },
+        )
+        return False
+    pricing_reference_enrichment.enrich_pricing_reference_items(enriched_items)
+    metadata_errors = pricing_reference_metadata_quality_errors(enriched_items)
+    if metadata_errors:
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_id,
+                "errors": safe_error_messages(metadata_errors),
+            },
+        )
+        return False
+    latest_detail = pricing_reference_pack_detail(safe_id)
+    if not latest_detail or clean_text(latest_detail.get("saved_at")) != initial_saved_at:
+        return False
+    save_pricing_reference_pack({
+        "id": safe_id,
+        "label": clean_text(detail.get("label")) or safe_id,
+        "description": clean_text(detail.get("description")),
+        "tax": normalized_tax_config(detail.get("tax")),
+        "currency": normalize_currency_label(detail.get("currency")),
+        "schema_version": int(parse_pricing_number(detail.get("schema_version")) or 1),
+        "items": enriched_items,
+        "saved_at": utc_timestamp(),
+    })
+    return True
+
+
+def run_scheduled_pricing_reference_ai_metadata_enrichment(reference_id: str) -> None:
+    try:
+        apply_saved_pricing_reference_ai_metadata_enrichment(reference_id)
+    except Exception as exc:  # pragma: no cover - defensive background boundary
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_resource_id(reference_id, ""),
+                "errors": safe_error_messages([str(exc)]),
+            },
+        )
+    finally:
+        current = threading.current_thread()
+        with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
+            PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.discard(current)
+
+
+def schedule_pricing_reference_ai_metadata_enrichment(reference_id: str) -> bool:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id or not pricing_reference_ai_metadata_enrichment_configured():
+        return False
+    thread = threading.Thread(
+        target=run_scheduled_pricing_reference_ai_metadata_enrichment,
+        args=(safe_id,),
+        name=f"pricing-metadata-enrichment-{safe_id[:32]}",
+        daemon=True,
+    )
+    with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
+        PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.add(thread)
+    thread.start()
+    return True
+
+
 def pricing_reference_is_profile_default(reference_id: str) -> bool:
     safe_id = safe_resource_id(reference_id, "")
     if not safe_id:
@@ -2763,6 +3424,7 @@ def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
 
 
 AI_PRICING_IMPORT_NOT_CONFIGURED = "AI pricing catalog import is not configured for the selected AI provider. Configure the selected provider API key, then upload the messy pricing file again. The template remains optional for clean manual entry."
+AI_PRICING_METADATA_NOT_CONFIGURED = "AI pricing reference metadata enrichment is not configured. Configure the selected AI provider API key to enable optional post-save metadata enrichment."
 
 
 def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2775,14 +3437,7 @@ def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]
 
 
 def sorted_pricing_reference_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        items,
-        key=lambda item: (
-            clean_text(item.get("section")).casefold(),
-            clean_text(item.get("description")).casefold(),
-            clean_text(item.get("id")).casefold(),
-        ),
-    )
+    return sorted(items, key=pricing_reference_sort_order)
 
 
 def pricing_reference_section_names(reference_id: str | None = None) -> list[str]:
@@ -2807,22 +3462,270 @@ def pricing_reference_section_names_for_payload(payload: dict[str, Any]) -> list
     return pricing_reference_section_names(pricing_reference_id_from_payload(payload))
 
 
+def pricing_reference_section_order_map_for_payload(payload: dict[str, Any]) -> dict[str, int]:
+    order: dict[str, int] = {}
+    for index, section in enumerate(pricing_reference_section_names_for_payload(payload), start=1):
+        for value in (section, normalize_catalog_section(section)):
+            key = safe_section_id(value, "")
+            if key and key not in order:
+                order[key] = index
+    return order
+
+
+def pricing_reference_section_order_value(section: Any, section_order: dict[str, int]) -> int | None:
+    for value in (section, normalize_catalog_section(section)):
+        key = safe_section_id(value, "")
+        if key and key in section_order:
+            return section_order[key]
+    return None
+
+
+def line_item_pricing_reference_order(
+    item: dict[str, Any],
+    section_order: dict[str, int],
+    fallback_index: int,
+) -> tuple[int, int, int, str, str]:
+    category_order = (
+        pricing_reference_order_number(item.get("category_order"))
+        or pricing_reference_section_order_value(item.get("section") or item.get("reference_section"), section_order)
+        or 999999
+    )
+    item_order = pricing_reference_order_number(item.get("item_order")) or 999999
+    return (
+        category_order,
+        item_order,
+        fallback_index,
+        clean_text(item.get("section")).casefold(),
+        clean_text(item.get("description")).casefold(),
+    )
+
+
+def sort_line_items_by_pricing_reference_order(payload: dict[str, Any], line_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    section_order = pricing_reference_section_order_map_for_payload(payload)
+    return [
+        item
+        for _index, item in sorted(
+            enumerate(line_items),
+            key=lambda entry: line_item_pricing_reference_order(entry[1], section_order, entry[0]),
+        )
+    ]
+
+
+def quote_basis_line_order(
+    line: dict[str, Any],
+    section_title: Any,
+    section_order: dict[str, int],
+    fallback_index: int,
+) -> tuple[int, int, int, str]:
+    category_order = (
+        pricing_reference_order_number(line.get("category_order"))
+        or pricing_reference_section_order_value(section_title, section_order)
+        or 999999
+    )
+    item_order = pricing_reference_order_number(line.get("item_order")) or 999999
+    return (category_order, item_order, fallback_index, clean_text(line.get("text")).casefold())
+
+
+def quote_basis_section_order(
+    section: dict[str, Any],
+    section_order: dict[str, int],
+    fallback_index: int,
+) -> tuple[int, int, str]:
+    title = clean_basis_section_title(section.get("title"))
+    line_category_orders = [
+        pricing_reference_order_number(line.get("category_order"))
+        for line in section.get("lines") or []
+        if isinstance(line, dict) and pricing_reference_order_number(line.get("category_order")) is not None
+    ]
+    category_order = min(line_category_orders) if line_category_orders else None
+    category_order = category_order or pricing_reference_section_order_value(title, section_order) or 999999
+    return (category_order, fallback_index, title.casefold())
+
+
+def sort_quote_basis_sections_by_pricing_reference_order(payload: dict[str, Any], sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    section_order = pricing_reference_section_order_map_for_payload(payload)
+    sorted_sections: list[dict[str, Any]] = []
+    for section in sections:
+        next_section = {**section}
+        lines = section.get("lines") if isinstance(section.get("lines"), list) else []
+        next_section["lines"] = [
+            line
+            for _index, line in sorted(
+                [(index, line) for index, line in enumerate(lines) if isinstance(line, dict)],
+                key=lambda entry: quote_basis_line_order(entry[1], section.get("title"), section_order, entry[0]),
+            )
+        ]
+        sorted_sections.append(next_section)
+    return [
+        section
+        for _index, section in sorted(
+            enumerate(sorted_sections),
+            key=lambda entry: quote_basis_section_order(entry[1], section_order, entry[0]),
+        )
+    ]
+
+
 def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dict[str, Any]) -> str:
     sections = pricing_reference_section_names()
     return (
         "Normalize an uploaded pricing catalog into Swooshz pricing reference rows. Return only JSON with currency and an items array. "
-        "Set currency to a visible three-letter currency code such as SGD, USD, EUR, GBP, MYR, AUD, CNY, IDR, or THB when the source makes it clear; omit it when unclear. "
         "Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, and warning/status when useful. "
         "Identify continuation rows and stitch them into the previous item; do not drop continuation description or remarks. "
         "Do not merge independent priced rows. Preserve short technical rows such as nos. rigging point for Overhead Structure or Aluminium Box Truss. "
         "Commercial notes such as Prices are not inclusive of truss belong in remarks. Preserve all-caps remarks. "
         "Extract sensible unit prefixes including m run, m, sqm, nos, and lot. Neutralize formula-like text beginning with =, +, -, or @ by treating it as literal text. "
+        "Clean obvious spelling, OCR, spacing, and unit wording errors only when the workbook itself makes the correction unambiguous through repeated terms, nearby rows, section headings, or standard unit notation. "
+        "Do not paraphrase, market-polish, simplify, or rename technical catalog descriptions; preserve the supplier/customer catalog wording after any clearly justified cleanup. "
+        "Do not generate match_terms or object_families in this import step; hidden matching metadata is generated separately when the user saves the reviewed pricing reference. "
+        "Do not invent a fixed taxonomy and do not copy terms from unrelated examples. "
         "Use these pricing reference sections first and match each priced row to the closest provided section. "
         "Only create a new section when none of the provided pricing reference sections fits the row. "
-        "Sort items alphabetically by section, then description. "
+        "Preserve the source category order and source row order. When no category order exists, assign category_order by first-seen section in the source rows and item_order by source row order. "
         f"Pricing reference sections JSON: {json.dumps(sections, ensure_ascii=True)}. "
         f"Source name: {source_name}. Tax: {json.dumps(tax, ensure_ascii=True)}. Bounded extracted content JSON: {json.dumps(content, ensure_ascii=True)}"
     )
+
+
+def pricing_catalog_metadata_prompt_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in items[:MAX_PRICING_REFERENCE_ROWS]:
+        if not isinstance(item, dict):
+            continue
+        item_id = clean_text(item.get("id"))
+        if not item_id:
+            continue
+        rows.append({
+            "id": item_id,
+            "section": clean_text(item.get("reference_section") or item.get("section")),
+            "description": clean_text(item.get("description")),
+            "unit_hint": clean_text(item.get("unit_hint")),
+            "remarks": [clean_text(value) for value in (item.get("remarks") if isinstance(item.get("remarks"), list) else []) if clean_text(value)][:6],
+            "aliases": [clean_text(value) for value in (item.get("aliases") if isinstance(item.get("aliases"), list) else []) if clean_text(value)][:8],
+        })
+    return rows
+
+
+def build_pricing_catalog_metadata_prompt(source_name: str, items: list[dict[str, Any]]) -> str:
+    return (
+        "Enrich pricing reference rows with source-backed matching metadata. Return only JSON with an items array. "
+        "For each input id, return id, match_terms, and object_families. Do not change descriptions, prices, units, ids, sections, or remarks. "
+        "Derive match_terms and object_families only from the row's own wording, nearby technical context implied by that row, section, unit, aliases, remarks, and common industry names for the exact same object/service. "
+        "Use metadata to help future quote matching decide whether a proposed thing can be this catalog row. Include useful synonyms only when they are genuinely equivalent for that row; do not use generic overlap alone. "
+        "Equivalent-name terms are allowed only when they name the exact same object/service described by that row; narrower rows must not receive broader terms that would make them catch unrelated products. "
+        "Keep match_terms concise lowercase strings and object_families concise lowercase snake_case labels. Prefer fewer high-quality terms over many broad terms. "
+        "Do not invent a fixed taxonomy, do not copy from unrelated examples, and do not include customer-specific or sample-specific words. "
+        f"Source name: {source_name}. Pricing rows JSON: {json.dumps(pricing_catalog_metadata_prompt_rows(items), ensure_ascii=True)}"
+    )
+
+
+def deepseek_json_system_prompt(error_context: str = "") -> str:
+    context = clean_text(error_context).lower()
+    if "metadata" in context:
+        example = {
+            "items": [
+                {
+                    "id": "example-row-id",
+                    "match_terms": ["example exact service name"],
+                    "object_families": ["example_service_family"],
+                }
+            ]
+        }
+    elif "pricing import" in context:
+        example = {
+            "currency": "SGD",
+            "items": [
+                {
+                    "section": "Example Section",
+                    "description": "lot example catalog service",
+                    "unit_hint": "lot",
+                    "internal_cost": "100",
+                    "markup_multiplier": "1.5",
+                    "remarks": "example source remark",
+                    "aliases": ["example catalog service"],
+                    "category_order": 1,
+                    "item_order": 1,
+                }
+            ],
+        }
+    else:
+        example = {"result": "example"}
+    return (
+        "Return exactly one valid JSON object. Do not include markdown, code fences, commentary, or any text outside the JSON object. "
+        "Use double-quoted JSON keys and strings. Use arrays where the schema shows arrays. "
+        "If a value is unknown, use an empty string or empty array instead of prose. "
+        f"EXAMPLE JSON OUTPUT: {json.dumps(example, ensure_ascii=True)}"
+    )
+
+
+def request_deepseek_chat_completion_json_data(
+    prompt: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    error_context: str,
+    timeout_seconds: int | None = None,
+) -> dict[str, Any]:
+    body = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": deepseek_json_system_prompt(error_context),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "thinking": {"type": "disabled"},
+        "response_format": {"type": "json_object"},
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    request = urllib.request.Request(
+        configured_deepseek_chat_completions_url(),
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    request_timeout = timeout_seconds if timeout_seconds is not None else configured_deepseek_timeout_seconds()
+    retry_delays = list(OPENAI_RETRY_DELAYS_SECONDS)
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            if attempt < len(retry_delays) and is_transient_openai_error(exc):
+                time.sleep(retry_delays[attempt])
+                continue
+            raise OpenAIAnalysisError(provider_http_error_message("DeepSeek", exc)) from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt < len(retry_delays) and is_transient_openai_error(exc):
+                time.sleep(retry_delays[attempt])
+                continue
+            raise OpenAIAnalysisError(provider_connection_error_message("DeepSeek", exc)) from exc
+        except json.JSONDecodeError as exc:
+            raise OpenAIAnalysisError(f"DeepSeek {error_context} returned invalid JSON.") from exc
+    return data
+
+
+def request_deepseek_json_object(
+    prompt: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    error_context: str,
+    timeout_seconds: int | None = None,
+) -> dict[str, Any]:
+    data = request_deepseek_chat_completion_json_data(prompt, api_key, model, max_tokens, error_context, timeout_seconds)
+    output_text = chat_completions_output_text(data)
+    diagnostics = chat_completions_output_diagnostics(data, output_text)
+    try:
+        return parse_json_object(output_text)
+    except OpenAIAnalysisError as exc:
+        raise AIModelOutputError(str(exc), diagnostics=diagnostics) from exc
 
 
 def request_openai_pricing_catalog_import(source_name: str, content: Any, tax: dict[str, Any], api_key: str) -> dict[str, Any]:
@@ -2842,86 +3745,550 @@ def request_openai_pricing_catalog_import(source_name: str, content: Any, tax: d
     return parse_json_object(response_output_text(data))
 
 
+def request_openai_pricing_catalog_metadata(source_name: str, items: list[dict[str, Any]], api_key: str) -> dict[str, Any]:
+    body = {
+        "model": configured_openai_basis_line_model(),
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": build_pricing_catalog_metadata_prompt(source_name, items)}]}],
+        "max_output_tokens": 12000,
+    }
+    request = urllib.request.Request(OPENAI_RESPONSES_URL, data=json.dumps(body).encode("utf-8"), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=configured_openai_timeout_seconds()) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise OpenAIAnalysisError(openai_http_error_message(exc)) from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise OpenAIAnalysisError(provider_connection_error_message("OpenAI", exc)) from exc
+    return parse_json_object(response_output_text(data))
+
+
+def request_deepseek_pricing_catalog_import(source_name: str, content: Any, tax: dict[str, Any], api_key: str) -> dict[str, Any]:
+    return request_deepseek_json_object(
+        build_pricing_catalog_import_prompt(source_name, content, tax),
+        api_key,
+        configured_deepseek_model(),
+        DEEPSEEK_PRICING_IMPORT_MAX_OUTPUT_TOKENS,
+        "pricing import",
+        configured_deepseek_pricing_import_timeout_seconds(),
+    )
+
+
+def request_deepseek_pricing_catalog_metadata(source_name: str, items: list[dict[str, Any]], api_key: str) -> dict[str, Any]:
+    return request_deepseek_json_object(
+        build_pricing_catalog_metadata_prompt(source_name, items),
+        api_key,
+        configured_deepseek_model(),
+        DEEPSEEK_PRICING_METADATA_MAX_OUTPUT_TOKENS,
+        "pricing metadata enrichment",
+    )
+
+
+def pricing_reference_metadata_batches(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    return [
+        items[index:index + MAX_PRICING_METADATA_BATCH_ITEMS]
+        for index in range(0, len(items), MAX_PRICING_METADATA_BATCH_ITEMS)
+    ]
+
+
+def merge_pricing_reference_ai_metadata(
+    items: list[dict[str, Any]],
+    raw_metadata_items: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    source_ids = [clean_text(item.get("id")) for item in items if clean_text(item.get("id"))]
+    metadata_by_id: dict[str, dict[str, Any]] = {}
+    for raw in raw_metadata_items:
+        if not isinstance(raw, dict):
+            continue
+        item_id = clean_text(raw.get("id"))
+        if item_id and item_id in source_ids:
+            metadata_by_id[item_id] = raw
+    missing_ids = [item_id for item_id in source_ids if item_id not in metadata_by_id]
+    if missing_ids:
+        preview = ", ".join(missing_ids[:5])
+        suffix = f" and {len(missing_ids) - 5} more" if len(missing_ids) > 5 else ""
+        return items, [f"AI metadata enrichment omitted pricing rows: {preview}{suffix}."]
+
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        next_item = copy.deepcopy(item)
+        metadata = metadata_by_id.get(clean_text(item.get("id")), {})
+        ai_match_terms = sanitize_pricing_reference_terms(metadata.get("match_terms"))
+        next_item["match_terms"] = unique_clean_list(ai_match_terms)[:36]
+        ai_families = sanitize_pricing_reference_families(metadata.get("object_families"))
+        if ai_families:
+            next_item["object_families"] = ai_families
+        else:
+            next_item["object_families"] = sanitize_pricing_reference_families(next_item.get("object_families"))
+        pricing_reference_enrichment.enrich_pricing_reference_item(next_item)
+        enriched.append(next_item)
+    return enriched, []
+
+
+def ai_pricing_reference_metadata_enrichment(
+    filename: str,
+    items: list[dict[str, Any]],
+    *,
+    reference_id: str = "",
+    ai_run_id: str = "",
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not items:
+        return items, []
+    started_at = time.perf_counter()
+    ai_run_id = clean_text(ai_run_id) or new_ai_run_id()
+    safe_reference_id = safe_resource_id(reference_id, "")
+    source_metadata = source_file_log_metadata(filename)
+    provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
+    provider_order = [provider]
+    if provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    errors: list[str] = []
+    provider_attempts: list[dict[str, Any]] = []
+    completed_provider = ""
+    rows_enriched = 0
+    rollup_status = "failed"
+    batches = pricing_reference_metadata_batches(items)
+    try:
+        for provider_index, candidate_provider in enumerate(provider_order, start=1):
+            api_key = text_ai_provider_api_key(candidate_provider)
+            candidate_model = text_ai_provider_default_model(candidate_provider)
+            timeout_seconds = ai_provider_timeout_seconds(candidate_provider, "pricing_reference_metadata_enrichment")
+            if not api_key:
+                missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
+                errors.append(missing_error)
+                failure_metadata = ai_failure_metadata(
+                    missing_error,
+                    provider=candidate_provider,
+                    timeout_seconds=timeout_seconds,
+                )
+                provider_attempts.append({
+                    "provider": candidate_provider,
+                    "model": candidate_model,
+                    "status": "missing_api_key",
+                    "duration_ms": 0,
+                    "attempt_index": provider_index,
+                    "attempt_count": len(provider_order),
+                    **failure_metadata,
+                })
+                log_ai_call_attempt(
+                    feature="pricing_reference_metadata_enrichment",
+                    provider=candidate_provider,
+                    model=candidate_model,
+                    status="missing_api_key",
+                    duration_ms=0,
+                    ai_run_id=ai_run_id,
+                    reference_id=safe_reference_id,
+                    row_count=len(items),
+                    batch_count=len(batches),
+                    attempt_index=provider_index,
+                    attempt_count=len(provider_order),
+                    **source_metadata,
+                    **failure_metadata,
+                )
+                continue
+            raw_metadata_items: list[dict[str, Any]] = []
+            try:
+                for batch_index, batch in enumerate(batches, start=1):
+                    batch_name = f"{filename} metadata batch {batch_index}/{len(batches)}" if len(batches) > 1 else filename
+                    attempt_started_at = time.perf_counter()
+                    try:
+                        if candidate_provider == AI_PROVIDER_DEEPSEEK:
+                            parsed = request_deepseek_pricing_catalog_metadata(batch_name, batch, api_key)
+                        else:
+                            parsed = request_openai_pricing_catalog_metadata(batch_name, batch, api_key)
+                    except OpenAIAnalysisError as exc:
+                        duration_ms = elapsed_milliseconds(attempt_started_at)
+                        failure_metadata = ai_failure_metadata(
+                            exc,
+                            provider=candidate_provider,
+                            timeout_seconds=timeout_seconds,
+                        )
+                        provider_attempts.append({
+                            "provider": candidate_provider,
+                            "model": candidate_model,
+                            "status": "failed",
+                            "duration_ms": duration_ms,
+                            "row_count": len(batch),
+                            "batch_index": batch_index,
+                            "batch_count": len(batches),
+                            "attempt_index": provider_index,
+                            "attempt_count": len(provider_order),
+                            **failure_metadata,
+                        })
+                        log_ai_call_attempt(
+                            feature="pricing_reference_metadata_enrichment",
+                            provider=candidate_provider,
+                            model=candidate_model,
+                            status="failed",
+                            duration_ms=duration_ms,
+                            ai_run_id=ai_run_id,
+                            reference_id=safe_reference_id,
+                            row_count=len(batch),
+                            batch_index=batch_index,
+                            batch_count=len(batches),
+                            attempt_index=provider_index,
+                            attempt_count=len(provider_order),
+                            **source_metadata,
+                            **failure_metadata,
+                        )
+                        raise
+                    duration_ms = elapsed_milliseconds(attempt_started_at)
+                    provider_attempts.append({
+                        "provider": candidate_provider,
+                        "model": candidate_model,
+                        "status": "success",
+                        "duration_ms": duration_ms,
+                        "row_count": len(batch),
+                        "batch_index": batch_index,
+                        "batch_count": len(batches),
+                        "attempt_index": provider_index,
+                        "attempt_count": len(provider_order),
+                    })
+                    log_ai_call_attempt(
+                        feature="pricing_reference_metadata_enrichment",
+                        provider=candidate_provider,
+                        model=candidate_model,
+                        status="success",
+                        duration_ms=duration_ms,
+                        ai_run_id=ai_run_id,
+                        reference_id=safe_reference_id,
+                        row_count=len(batch),
+                        batch_index=batch_index,
+                        batch_count=len(batches),
+                        attempt_index=provider_index,
+                        attempt_count=len(provider_order),
+                        **source_metadata,
+                    )
+                    parsed_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
+                    raw_metadata_items.extend([item for item in parsed_items if isinstance(item, dict)])
+            except OpenAIAnalysisError as exc:
+                errors.append(str(exc))
+                continue
+            enriched, merge_errors = merge_pricing_reference_ai_metadata(items, raw_metadata_items)
+            if not merge_errors:
+                completed_provider = candidate_provider
+                rows_enriched = len(enriched)
+                rollup_status = "success"
+                return enriched, []
+            failure_metadata = ai_failure_metadata(
+                OpenAIAnalysisError("AI metadata enrichment failed validation."),
+                provider=candidate_provider,
+                timeout_seconds=timeout_seconds,
+            )
+            provider_attempts.append({
+                "provider": candidate_provider,
+                "model": candidate_model,
+                "status": "failed",
+                "duration_ms": 0,
+                "attempt_index": provider_index,
+                "attempt_count": len(provider_order),
+                **failure_metadata,
+            })
+            errors.extend(merge_errors)
+        missing_key_errors = [error for error in errors if "Missing:" in error]
+        if missing_key_errors and len(missing_key_errors) == len(errors):
+            return [], [AI_PRICING_METADATA_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
+        return [], safe_error_messages(errors or [AI_PRICING_METADATA_NOT_CONFIGURED])
+    finally:
+        write_local_log(
+            "ai_pricing_reference_metadata_enrichment_completed",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "ai_run_id": ai_run_id,
+                "reference_id": safe_reference_id,
+                "selected_provider": provider,
+                "completed_provider": completed_provider,
+                "status": rollup_status,
+                "duration_ms": elapsed_milliseconds(started_at),
+                "row_count": len(items),
+                "rows_enriched": rows_enriched,
+                "batch_count": len(batches),
+                "provider_attempts": provider_attempts,
+                "error_count": len(errors),
+                **source_metadata,
+            },
+        )
+
+
 def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[str, Any]) -> dict[str, Any]:
-    provider = "openai"
+    started_at = time.perf_counter()
+    ai_run_id = new_ai_run_id()
+    source_metadata = source_file_log_metadata(filename)
+    provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
     parsed: dict[str, Any] | None = None
     errors: list[str] = []
-    openai_key = read_dotenv_value(OPENAI_API_KEY_ENV_NAME)
-    if openai_key:
-        try:
-            parsed = request_openai_pricing_catalog_import(filename, content, tax, openai_key)
-        except OpenAIAnalysisError as exc:
-            errors.append(str(exc))
-    if parsed is None:
-        error_reference = new_error_reference()
-        if errors:
-            write_local_log(
-                "server_error",
-                {
-                    "source": "pricing_reference_import",
-                    "error_reference": error_reference,
-                    "selected_provider": provider,
-                    "errors": safe_error_messages(errors),
-                },
+    provider_attempts: list[dict[str, Any]] = []
+    selected_provider = ""
+    result: dict[str, Any] | None = None
+    validate_rows_ms = 0
+    raw_item_count = 0
+    provider_order = [provider]
+    if provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    try:
+        previous_provider = ""
+        for provider_index, candidate_provider in enumerate(provider_order, start=1):
+            api_key = text_ai_provider_api_key(candidate_provider)
+            candidate_model = text_ai_provider_default_model(candidate_provider)
+            timeout_seconds = ai_provider_timeout_seconds(candidate_provider, "pricing_reference_import")
+            if not api_key:
+                missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
+                errors.append(missing_error)
+                failure_metadata = ai_failure_metadata(
+                    missing_error,
+                    provider=candidate_provider,
+                    timeout_seconds=timeout_seconds,
+                )
+                provider_attempts.append({
+                    "provider": candidate_provider,
+                    "model": candidate_model,
+                    "status": "missing_api_key",
+                    "duration_ms": 0,
+                    "attempt_index": provider_index,
+                    "attempt_count": len(provider_order),
+                    **failure_metadata,
+                })
+                log_ai_call_attempt(
+                    feature="pricing_reference_import",
+                    provider=candidate_provider,
+                    model=candidate_model,
+                    status="missing_api_key",
+                    duration_ms=0,
+                    ai_run_id=ai_run_id,
+                    attempt_index=provider_index,
+                    attempt_count=len(provider_order),
+                    **source_metadata,
+                    **failure_metadata,
+                )
+                previous_provider = candidate_provider
+                continue
+            attempt_started_at = time.perf_counter()
+            try:
+                if candidate_provider == AI_PROVIDER_DEEPSEEK:
+                    parsed = request_deepseek_pricing_catalog_import(filename, content, tax, api_key)
+                else:
+                    parsed = request_openai_pricing_catalog_import(filename, content, tax, api_key)
+            except OpenAIAnalysisError as exc:
+                duration_ms = elapsed_milliseconds(attempt_started_at)
+                failure_metadata = ai_failure_metadata(
+                    exc,
+                    provider=candidate_provider,
+                    timeout_seconds=timeout_seconds,
+                )
+                errors.append(str(exc))
+                provider_attempts.append({
+                    "provider": candidate_provider,
+                    "model": candidate_model,
+                    "status": "failed",
+                    "duration_ms": duration_ms,
+                    "attempt_index": provider_index,
+                    "attempt_count": len(provider_order),
+                    "fallback_to": provider_order[provider_index] if provider_index < len(provider_order) else "",
+                    **failure_metadata,
+                })
+                log_ai_call_attempt(
+                    feature="pricing_reference_import",
+                    provider=candidate_provider,
+                    model=candidate_model,
+                    status="failed",
+                    duration_ms=duration_ms,
+                    ai_run_id=ai_run_id,
+                    attempt_index=provider_index,
+                    attempt_count=len(provider_order),
+                    fallback_to=provider_order[provider_index] if provider_index < len(provider_order) else "",
+                    **source_metadata,
+                    **failure_metadata,
+                )
+                previous_provider = candidate_provider
+                continue
+            duration_ms = elapsed_milliseconds(attempt_started_at)
+            success_attempt = {
+                "provider": candidate_provider,
+                "model": candidate_model,
+                "status": "success",
+                "duration_ms": duration_ms,
+                "attempt_index": provider_index,
+                "attempt_count": len(provider_order),
+            }
+            if previous_provider:
+                success_attempt["fallback_from"] = previous_provider
+            provider_attempts.append({
+                **success_attempt,
+            })
+            success_metadata = {
+                "ai_run_id": ai_run_id,
+                "attempt_index": provider_index,
+                "attempt_count": len(provider_order),
+                **source_metadata,
+            }
+            if previous_provider:
+                success_metadata["fallback_from"] = previous_provider
+            log_ai_call_attempt(
+                feature="pricing_reference_import",
+                provider=candidate_provider,
+                model=candidate_model,
+                status="success",
+                duration_ms=duration_ms,
+                **success_metadata,
             )
-        return pricing_reference_validation_result([], [], 0, filename) | {
-            "layout": "ai-normalization-required" if not errors else "ai-normalization-failed",
-            "errors": [AI_PRICING_IMPORT_NOT_CONFIGURED, f"Selected provider: {provider}. Missing: {OPENAI_API_KEY_ENV_NAME}."] if not errors else safe_error_messages(errors),
-            "error_reference": error_reference,
-        }
-    raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
-    result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
-    result["layout"] = "ai-normalized-pricing-reference"
-    result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
-    return result
+            selected_provider = candidate_provider
+            if parsed is not None:
+                break
+        if parsed is None:
+            error_reference = new_error_reference()
+            if errors:
+                write_local_log(
+                    "server_error",
+                    {
+                        "source": "pricing_reference_import",
+                        "error_reference": error_reference,
+                        "selected_provider": provider,
+                        "errors": safe_error_messages(errors),
+                    },
+                )
+            missing_key_errors = [error for error in errors if "Missing:" in error]
+            missing_keys_only = bool(missing_key_errors) and len(missing_key_errors) == len(errors)
+            friendly_errors = (
+                [AI_PRICING_IMPORT_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
+                if missing_keys_only
+                else safe_error_messages(errors)
+            )
+            result = pricing_reference_validation_result([], [], 0, filename) | {
+                "layout": "ai-normalization-required" if not errors or missing_keys_only else "ai-normalization-failed",
+                "errors": [AI_PRICING_IMPORT_NOT_CONFIGURED, f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}."] if not errors else friendly_errors,
+                "error_reference": error_reference,
+            }
+            return result
+        raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
+        raw_item_count = len(raw_items)
+        validate_started_at = time.perf_counter()
+        result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
+        validate_rows_ms = elapsed_milliseconds(validate_started_at)
+        result["layout"] = "ai-normalized-pricing-reference"
+        result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True))
+        if not raw_items:
+            result["errors"] = ["AI did not detect editable pricing rows in this upload. Check that the workbook includes item descriptions, units, costs, and markups, or add rows manually in Review Rows."]
+            result["warnings"] = []
+            result["canSave"] = False
+        return result
+    finally:
+        write_local_log(
+            "ai_pricing_reference_import_timing",
+            {
+                "source": "pricing_reference_import",
+                "ai_run_id": ai_run_id,
+                "selected_provider": provider,
+                "completed_provider": selected_provider,
+                "provider_attempts": provider_attempts,
+                "raw_item_count": raw_item_count,
+                "row_count": result.get("rowCount") if isinstance(result, dict) else 0,
+                "layout": result.get("layout") if isinstance(result, dict) else "",
+                "can_save": result.get("canSave") if isinstance(result, dict) else False,
+                **source_metadata,
+                "timings_ms": {
+                    "total": elapsed_milliseconds(started_at),
+                    "validate_rows": validate_rows_ms,
+                },
+            },
+        )
 
 
 def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
+    started_at = time.perf_counter()
     filename = clean_text(payload.get("filename"))
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     tax = normalized_tax_config(payload.get("tax"))
     currency = normalize_currency_label(payload.get("currency"))
-    if extension in {"csv", "xlsx"}:
-        result = validate_pricing_reference_upload(payload)
-        detected_currency = clean_text(result.get("currency"))
-        if result.get("canSave"):
-            result["layout"] = "normalized-pricing-reference"
-        elif result.get("missing"):
+    result: dict[str, Any] | None = None
+    route = "unsupported"
+    used_ai = False
+    timings_ms: dict[str, int] = {}
+    try:
+        if extension in {"csv", "xlsx"}:
+            validation_started_at = time.perf_counter()
+            result = validate_pricing_reference_upload(payload)
+            timings_ms["template_validation"] = elapsed_milliseconds(validation_started_at)
+            route = "normalized_template" if result.get("canSave") else "ai_fallback_candidate"
+            detected_currency = clean_text(result.get("currency"))
+            if result.get("canSave"):
+                result["layout"] = "normalized-pricing-reference"
+            elif result.get("missing") or int(result.get("rowCount") or 0) == 0:
+                try:
+                    decode_started_at = time.perf_counter()
+                    raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
+                    timings_ms["decode_upload"] = elapsed_milliseconds(decode_started_at)
+                    if extension == "xlsx":
+                        sectioned_started_at = time.perf_counter()
+                        sectioned_workbook_result = pricing_reference_import_preview_from_sectioned_workbook(raw, filename)
+                        timings_ms["sectioned_workbook_parse"] = elapsed_milliseconds(sectioned_started_at)
+                        if sectioned_workbook_result.get("canSave") or (sectioned_workbook_result.get("rowCount") and not sectioned_workbook_result.get("missing")):
+                            route = "sectioned_workbook"
+                            result = sectioned_workbook_result
+                            result["tax"] = tax
+                            result["currency"] = clean_text(result.get("currency")) or currency
+                            result["saved"] = False
+                            return result
+                    context_started_at = time.perf_counter()
+                    if extension == "csv":
+                        headers, rows = rows_from_csv_bytes(raw)
+                        ai_rows = pricing_reference_rows_for_ai(headers, rows)
+                    else:
+                        headers, rows = rows_from_xlsx_bytes(raw)
+                        ai_rows = xlsx_rows_for_ai(raw)
+                    timings_ms["ai_context_extract"] = elapsed_milliseconds(context_started_at)
+                    detected_currency = detect_currency_from_rows(headers, rows)
+                    rows_have_content = any(any(clean_text(value) for value in row.values()) for row in rows)
+                    if result.get("missing") or rows_have_content:
+                        route = "ai_normalization"
+                        used_ai = True
+                        ai_started_at = time.perf_counter()
+                        result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": ai_rows}, tax)
+                        timings_ms["ai_normalization_total"] = elapsed_milliseconds(ai_started_at)
+                except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
+                    route = "parse_error"
+                    result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
+            result["currency"] = detected_currency or (currency if route == "ai_normalization" else clean_text(result.get("currency")) or currency)
+        elif extension == "md":
+            route = "markdown_ai_normalization"
             try:
+                decode_started_at = time.perf_counter()
                 raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
-                if extension == "xlsx":
-                    v11_result = pricing_reference_import_preview_from_v11_workbook(raw, filename)
-                    if v11_result.get("canSave"):
-                        result = v11_result
-                        result["tax"] = tax
-                        result["currency"] = clean_text(result.get("currency")) or currency
-                        result["saved"] = False
-                        return result
-                if extension == "csv":
-                    headers, rows = rows_from_csv_bytes(raw)
-                else:
-                    headers, rows = rows_from_xlsx_bytes(raw)
-                detected_currency = detect_currency_from_rows(headers, rows)
-                result = ai_pricing_reference_import_preview(filename, {"headers": headers, "rows": pricing_reference_rows_for_ai(headers, rows)}, tax)
-            except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
+                timings_ms["decode_upload"] = elapsed_milliseconds(decode_started_at)
+                markdown_started_at = time.perf_counter()
+                markdown = markdown_text_from_bytes(raw)
+                timings_ms["markdown_extract"] = elapsed_milliseconds(markdown_started_at)
+                used_ai = True
+                ai_started_at = time.perf_counter()
+                result = ai_pricing_reference_import_preview(filename, {"markdown": markdown}, tax)
+                timings_ms["ai_normalization_total"] = elapsed_milliseconds(ai_started_at)
+                result["currency"] = detected_currency_label(markdown) or currency
+            except ValueError as exc:
+                route = "parse_error"
                 result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
-        result["currency"] = detected_currency or clean_text(result.get("currency")) or currency
-    elif extension == "md":
-        try:
-            raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
-            markdown = markdown_text_from_bytes(raw)
-            result = ai_pricing_reference_import_preview(filename, {"markdown": markdown}, tax)
-            result["currency"] = detected_currency_label(markdown) or clean_text(result.get("currency")) or currency
-        except ValueError as exc:
-            result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
-    else:
-        result = pricing_reference_validation_result([], [], 0, filename) | {
-            "errors": ["Upload a .xlsx, .csv, or .md pricing reference file."],
-        }
-    result["tax"] = tax
-    result["currency"] = normalize_currency_label(result.get("currency") or currency)
-    result["saved"] = False
-    return result
+        else:
+            result = pricing_reference_validation_result([], [], 0, filename) | {
+                "errors": ["Upload a .xlsx, .csv, or .md pricing reference file."],
+            }
+        result["tax"] = tax
+        result["currency"] = normalize_currency_label(result.get("currency") or currency)
+        result["saved"] = False
+        return result
+    finally:
+        timings_ms["total"] = elapsed_milliseconds(started_at)
+        write_local_log(
+            "server_pricing_reference_import_timing",
+            {
+                "source": "pricing_reference_import",
+                "filename": filename,
+                "extension": extension,
+                "route": route,
+                "used_ai": used_ai,
+                "layout": result.get("layout") if isinstance(result, dict) else "",
+                "row_count": result.get("rowCount") if isinstance(result, dict) else 0,
+                "can_save": result.get("canSave") if isinstance(result, dict) else False,
+                "error_count": len(result.get("errors") or []) if isinstance(result, dict) else 0,
+                "timings_ms": timings_ms,
+            },
+        )
 
 
 def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2994,12 +4361,22 @@ def is_json_content_type(content_type: str) -> bool:
     return media_type == "application/json"
 
 
+def rate_limit_path_key(path: str) -> str:
+    normalized_path = urlparse(path).path
+    if re.fullmatch(r"/api/settings/pricing-references/[A-Za-z0-9_-]+", normalized_path):
+        return "/api/settings/pricing-references/:id"
+    if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+", normalized_path):
+        return "/api/settings/profiles/:id"
+    return normalized_path
+
+
 def is_rate_limited(client_id: str, path: str, now: float | None = None) -> bool:
-    limit = POST_RATE_LIMITS.get(path)
+    limit_path = rate_limit_path_key(path)
+    limit = POST_RATE_LIMITS.get(limit_path)
     if not limit:
         return False
     timestamp = time.time() if now is None else now
-    key = (client_id or "unknown", path)
+    key = (client_id or "unknown", limit_path)
     with RATE_LIMIT_LOCK:
         bucket = [
             item
@@ -3056,8 +4433,10 @@ def role_permissions(role: str) -> dict[str, bool]:
 
 def user_type_role(value: Any) -> str:
     normalized = clean_text(str(value or "").split("#", 1)[0]).lower()
-    if normalized == "admin":
-        return "admin"
+    if normalized in {"admin", "management", "operator", "viewer"}:
+        return normalized
+    if normalized == "manager":
+        return "management"
     if normalized == "user":
         return "operator"
     return ""
@@ -3069,6 +4448,8 @@ def current_local_role() -> str:
     env_user_type = user_type_role(os.environ.get(USER_TYPE_ENV_NAME))
     if env_user_type:
         return env_user_type
+    # Backward-compatible only: new local setups should use USER_TYPE for the
+    # exact dev role instead of carrying a second role env var.
     env_role = clean_text(os.environ.get(LOCAL_USER_ROLE_ENV_NAME))
     if env_role:
         return env_role
@@ -3365,14 +4746,30 @@ class PricingReferencePack:
         return self.asset_path("pricing_reference", "pricing-catalog.ai-reference.md")
 
     def public_summary(self) -> dict[str, Any]:
+        catalog = load_json_file(self.pricing_catalog_path)
+        items = catalog.get("items") if isinstance(catalog.get("items"), list) else []
         return {
             "id": self.id or DEFAULT_PRICING_REFERENCE_ID,
             "label": clean_text(self.config.get("label")) or self.id or "Pricing Reference",
             "description": clean_text(self.config.get("description")),
             "tax": normalized_tax_config(self.config.get("tax")),
             "currency": normalize_currency_label(self.config.get("currency")),
+            "item_count": len(items),
             "source": "bundled",
         }
+
+    def public_detail(self) -> dict[str, Any]:
+        catalog = load_json_file(self.pricing_catalog_path)
+        raw_items = catalog.get("items") if isinstance(catalog.get("items"), list) else []
+        items = [dict(item) for item in raw_items if isinstance(item, dict)]
+        ensure_pricing_reference_order_fields(items)
+        detail = self.public_summary()
+        detail.update({
+            "schema_version": int(parse_pricing_number(catalog.get("schema_version")) or 1),
+            "items": sorted_pricing_reference_items(items),
+            "item_count": len(items),
+        })
+        return detail
 
 
 def load_profile_pack(profile_id: str | None = None) -> ProfilePack:
@@ -3489,8 +4886,77 @@ def list_pricing_references(company_id: str = DEFAULT_COMPANY_ID) -> list[dict[s
     return list_bundled_pricing_references()
 
 
+def pricing_reference_pack_detail(reference_id: str) -> dict[str, Any] | None:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id:
+        raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+    reference_dir = pricing_reference_pack_dir(safe_id)
+    if not (reference_dir / "reference.json").is_file():
+        return None
+    pack = load_pricing_reference_pack(safe_id)
+    if pack.id != safe_id:
+        return None
+    return pack.public_detail()
+
+
+def pricing_reference_visible_remarks_signature(value: Any) -> list[str]:
+    remarks: list[str] = []
+    for item in split_pricing_reference_terms(value):
+        text = apply_pricing_workbook_text_fixes(item)
+        if text:
+            remarks.append(text)
+    return remarks
+
+
+def pricing_reference_visible_item_signature(item: dict[str, Any]) -> dict[str, Any]:
+    description = clean_customer_quote_line_text(item.get("description"))
+    unit_hint = reconcile_pricing_reference_unit_hint(
+        description,
+        item.get("unit_hint") or item.get("unit"),
+    )
+    return {
+        "section": clean_basis_section_title(item.get("reference_section") or item.get("section")),
+        "description": description,
+        "unit_hint": unit_hint,
+        "internal_cost": parse_pricing_number(item.get("internal_cost") or item.get("cost")),
+        "markup_multiplier": parse_pricing_number(item.get("markup_multiplier") or item.get("markup")),
+        "remarks": pricing_reference_visible_remarks_signature(item.get("remarks") or item.get("remark")),
+        "category_order": pricing_reference_order_number(item.get("category_order")),
+        "item_order": pricing_reference_order_number(item.get("item_order")),
+    }
+
+
+def pricing_reference_visible_signature(reference: dict[str, Any]) -> dict[str, Any]:
+    raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
+    items = [
+        pricing_reference_visible_item_signature(item)
+        for item in raw_items
+        if isinstance(item, dict)
+    ]
+    return {
+        "label": clean_text(reference.get("label")),
+        "tax": normalized_tax_config(reference.get("tax")),
+        "currency": normalize_currency_label(reference.get("currency")),
+        "items": items,
+    }
+
+
+def pricing_reference_payload_matches_existing_pack(payload: dict[str, Any], existing: dict[str, Any]) -> bool:
+    payload_signature = pricing_reference_visible_signature(payload)
+    existing_signature = pricing_reference_visible_signature(existing)
+    return payload_signature == existing_signature
+
+
+def pricing_reference_payload_updates_existing_pack(payload: dict[str, Any], reference_id: str) -> bool:
+    if payload.get("update_existing") is not True:
+        return False
+    return safe_resource_id(payload.get("editing_reference_id"), "") == safe_resource_id(reference_id, "")
+
+
 def draft_analysis_mode(payload: dict[str, Any] | None = None) -> str:
-    _ = payload
+    raw = clean_text((payload or {}).get("analysis_mode")).lower()
+    if raw in {DRAFT_ANALYSIS_MODE_HIGH_QUALITY, "xhigh", "high_accuracy"}:
+        return DRAFT_ANALYSIS_MODE_HIGH_QUALITY
     return DRAFT_ANALYSIS_MODE_STANDARD
 
 
@@ -3499,12 +4965,82 @@ def configured_openai_draft_model(mode: str = DRAFT_ANALYSIS_MODE_STANDARD) -> s
     return safe_segment(read_dotenv_value(OPENAI_DRAFT_MODEL_ENV_NAME), OPENAI_DRAFT_MODEL)
 
 
+def configured_openai_draft_reasoning_effort(mode: str = DRAFT_ANALYSIS_MODE_STANDARD) -> str:
+    if mode == DRAFT_ANALYSIS_MODE_HIGH_QUALITY:
+        raw = clean_text(read_dotenv_value(OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT_ENV_NAME)).lower()
+        if raw in OPENAI_REASONING_EFFORTS:
+            return raw
+        return OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT
+    raw = clean_text(read_dotenv_value(OPENAI_DRAFT_REASONING_EFFORT_ENV_NAME)).lower()
+    if raw in OPENAI_REASONING_EFFORTS:
+        return raw
+    return OPENAI_DRAFT_REASONING_EFFORT
+
+
 def configured_openai_basis_line_model() -> str:
     return safe_segment(read_dotenv_value(OPENAI_BASIS_LINE_MODEL_ENV_NAME), OPENAI_BASIS_LINE_MODEL)
 
 
 def configured_openai_basis_answer_model() -> str:
     return safe_segment(read_dotenv_value(OPENAI_BASIS_ANSWER_MODEL_ENV_NAME), OPENAI_BASIS_ANSWER_MODEL)
+
+
+def configured_text_ai_provider(env_name: str, fallback: str = AI_PROVIDER_OPENAI) -> str:
+    raw = clean_text(read_dotenv_value(env_name)).lower()
+    if raw in SUPPORTED_TEXT_AI_PROVIDERS:
+        return raw
+    if text_ai_route_uses_deepseek_by_default(env_name):
+        return AI_PROVIDER_DEEPSEEK
+    return fallback
+
+
+def text_ai_route_uses_deepseek_by_default(env_name: str) -> bool:
+    return (
+        env_name in {
+            AI_BASIS_LINE_PROVIDER_ENV_NAME,
+            AI_BASIS_ANSWER_PROVIDER_ENV_NAME,
+            AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME,
+            AI_PRICING_IMPORT_PROVIDER_ENV_NAME,
+        }
+        and bool(clean_text(read_dotenv_value(DEEPSEEK_API_KEY_ENV_NAME)))
+    )
+
+
+def text_ai_provider_label(provider: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        return "DeepSeek"
+    return "OpenAI"
+
+
+def text_ai_provider_key_env_name(provider: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        return DEEPSEEK_API_KEY_ENV_NAME
+    return OPENAI_API_KEY_ENV_NAME
+
+
+def text_ai_provider_api_key(provider: str) -> str:
+    return clean_text(read_dotenv_value(text_ai_provider_key_env_name(provider)))
+
+
+def text_ai_provider_default_model(provider: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        return configured_deepseek_model()
+    return configured_openai_basis_line_model()
+
+
+def configured_deepseek_base_url() -> str:
+    raw = clean_text(read_dotenv_value(DEEPSEEK_BASE_URL_ENV_NAME)) or DEEPSEEK_BASE_URL
+    if not re.match(r"^https?://", raw, flags=re.IGNORECASE):
+        return DEEPSEEK_BASE_URL
+    return raw.rstrip("/")
+
+
+def configured_deepseek_chat_completions_url() -> str:
+    return f"{configured_deepseek_base_url()}/chat/completions"
+
+
+def configured_deepseek_model() -> str:
+    return safe_segment(read_dotenv_value(DEEPSEEK_MODEL_ENV_NAME), DEEPSEEK_PRO_MODEL)
 
 
 def basis_chat_has_selected_line(payload: dict[str, Any]) -> bool:
@@ -3535,6 +5071,37 @@ def openai_basis_chat_models(payload: dict[str, Any]) -> list[str]:
     return unique_model_sequence(configured_openai_draft_model())
 
 
+def deepseek_basis_chat_models(payload: dict[str, Any]) -> list[str]:
+    _ = payload
+    return unique_model_sequence(configured_deepseek_model())
+
+
+def basis_chat_provider_env_name(payload: dict[str, Any]) -> str:
+    if basis_chat_required_intent(payload) == "answer":
+        return AI_BASIS_ANSWER_PROVIDER_ENV_NAME
+    if basis_chat_has_selected_line(payload):
+        return AI_BASIS_LINE_PROVIDER_ENV_NAME
+    return AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME
+
+
+def basis_chat_provider_model_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
+    primary_provider = configured_text_ai_provider(basis_chat_provider_env_name(payload))
+    provider_order = [primary_provider]
+    if primary_provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    candidates: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for provider in provider_order:
+        models = deepseek_basis_chat_models(payload) if provider == AI_PROVIDER_DEEPSEEK else openai_basis_chat_models(payload)
+        for model in models:
+            key = (provider, model)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append({"provider": provider, "model": model})
+    return candidates
+
+
 def configured_timeout_seconds(env_name: str, fallback: int) -> int:
     raw = read_dotenv_value(env_name)
     if not raw:
@@ -3548,6 +5115,14 @@ def configured_timeout_seconds(env_name: str, fallback: int) -> int:
 
 def configured_openai_timeout_seconds() -> int:
     return configured_timeout_seconds(OPENAI_REQUEST_TIMEOUT_ENV_NAME, OPENAI_REQUEST_TIMEOUT_SECONDS)
+
+
+def configured_deepseek_timeout_seconds() -> int:
+    return configured_timeout_seconds(DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME, DEEPSEEK_REQUEST_TIMEOUT_SECONDS)
+
+
+def configured_deepseek_pricing_import_timeout_seconds() -> int:
+    return configured_timeout_seconds(DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME, DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS)
 
 
 def image_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3582,6 +5157,283 @@ def reference_file_mime_type(entry: dict[str, Any]) -> str:
     if mime_type == "image/jpg":
         return "image/jpeg"
     return mime_type
+
+
+def decode_reference_data_url_bytes(entry: dict[str, Any], max_bytes: int) -> bytes:
+    text = str(entry.get("data_url") or "")
+    prefix, separator, encoded = text.partition(",")
+    if not separator or ";base64" not in prefix:
+        raise ValueError("Reference file payload must be a base64 data URL.")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except binascii.Error as exc:
+        raise ValueError("Reference file payload is not valid base64.") from exc
+    if len(raw) > max_bytes:
+        raise ValueError(f"Reference file is larger than {max_bytes // (1024 * 1024)} MB.")
+    return raw
+
+
+def image_mime_type_from_bytes(raw: bytes) -> str:
+    if raw.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return ""
+
+
+def image_data_url_from_bytes(raw: bytes, mime_type: str) -> str:
+    if not raw or mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return ""
+    if len(raw) > MAX_RENDERED_PDF_PAGE_BYTES:
+        return ""
+    return f"data:{mime_type};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+def looks_like_complete_pdf(raw: bytes) -> bool:
+    stripped = raw.lstrip()
+    return stripped.startswith(b"%PDF-") and b"%%EOF" in raw[-4096:]
+
+
+def prompt_image_data_url_from_pil(image: Any) -> str:
+    try:
+        from PIL import Image
+    except Exception:
+        return ""
+
+    try:
+        if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image.convert("RGBA"), mask=image.convert("RGBA").split()[-1])
+            image = background
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
+
+        for max_edge in (PDF_RENDER_TARGET_LONG_EDGE_PX, 1280, 1024, 768):
+            candidate = image.copy()
+            if max(candidate.size) > max_edge:
+                candidate.thumbnail((max_edge, max_edge))
+            for quality in (82, 74, 66, 58):
+                output = io.BytesIO()
+                candidate.save(output, format="JPEG", quality=quality, optimize=True)
+                data = output.getvalue()
+                if len(data) <= MAX_RENDERED_PDF_PAGE_BYTES:
+                    return image_data_url_from_bytes(data, "image/jpeg")
+    except Exception:
+        return ""
+    return ""
+
+
+def compressed_prompt_image_data_url(raw: bytes) -> str:
+    mime_type = image_mime_type_from_bytes(raw)
+    if mime_type and len(raw) <= MAX_RENDERED_PDF_PAGE_BYTES:
+        return image_data_url_from_bytes(raw, mime_type)
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return ""
+
+    try:
+        from PIL import Image
+    except Exception:
+        return ""
+
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+    except Exception:
+        return image_data_url_from_bytes(raw, image_mime_type_from_bytes(raw))
+
+    return prompt_image_data_url_from_pil(image)
+
+
+def pdf_page_image_entry(source_name: str, page_number: int, data_url: str, renderer: str) -> dict[str, Any]:
+    return {
+        "name": f"{Path(source_name).stem or 'reference'}-page-{page_number}.jpg",
+        "page": page_number,
+        "data_url": data_url,
+        "source": source_name,
+        "renderer": renderer,
+    }
+
+
+def persist_pdf_page_debug_images(
+    images: list[dict[str, Any]],
+    source_name: str,
+    source_digest: str,
+) -> list[dict[str, Any]]:
+    if not images:
+        return []
+    safe_source = safe_segment(Path(source_name).stem or "reference", "reference")
+    safe_digest = re.sub(r"[^a-fA-F0-9]", "", source_digest)[:12] or "unknown"
+    output_dir = DEFAULT_TMP_ROOT / "pdf-pages" / f"{safe_source}-{safe_digest}"
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return images
+    try:
+        resolved_output = output_dir.resolve()
+        resolved_tmp_root = DEFAULT_TMP_ROOT.resolve()
+        if resolved_tmp_root in resolved_output.parents:
+            for stale_path in output_dir.glob("page-*"):
+                if stale_path.is_file():
+                    stale_path.unlink()
+    except OSError:
+        pass
+    extension_by_mime = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    saved: list[dict[str, Any]] = []
+    for index, image in enumerate(images, start=1):
+        data_url = clean_text(image.get("data_url"))
+        inline = data_url_inline_image(data_url)
+        if not inline:
+            saved.append(image)
+            continue
+        page_number = int(image.get("page") or index)
+        renderer = safe_segment(clean_text(image.get("renderer")) or "page", "page")
+        extension = extension_by_mime.get(inline["mime_type"], ".jpg")
+        filename = f"page-{page_number:03d}-{renderer}{extension}"
+        path = output_dir / filename
+        try:
+            path.write_bytes(base64.b64decode(inline["data"], validate=True))
+        except (OSError, binascii.Error):
+            saved.append(image)
+            continue
+        saved.append({**image, "path": str(path)})
+    return saved
+
+
+def render_pdf_pages_with_pdfium(pdf_bytes: bytes, source_name: str, max_pages: int) -> list[dict[str, Any]]:
+    try:
+        import pypdfium2 as pdfium
+    except Exception as exc:
+        raise RuntimeError("pypdfium2 is not available.") from exc
+
+    document = pdfium.PdfDocument(io.BytesIO(pdf_bytes))
+    images: list[dict[str, Any]] = []
+    try:
+        page_count = min(max_pages, len(document))
+        for page_index in range(page_count):
+            page = document[page_index]
+            try:
+                width, height = page.get_size()
+                long_edge = max(float(width), float(height)) or 1.0
+                scale = max(1.0, min(2.5, PDF_RENDER_TARGET_LONG_EDGE_PX / long_edge))
+                bitmap = page.render(scale=scale, rotation=0)
+                try:
+                    data_url = prompt_image_data_url_from_pil(bitmap.to_pil())
+                finally:
+                    close = getattr(bitmap, "close", None)
+                    if callable(close):
+                        close()
+                if data_url:
+                    images.append(pdf_page_image_entry(source_name, page_index + 1, data_url, "pdfium"))
+            finally:
+                close = getattr(page, "close", None)
+                if callable(close):
+                    close()
+    finally:
+        close = getattr(document, "close", None)
+        if callable(close):
+            close()
+    return images
+
+
+def select_embedded_pdf_page_images(
+    page_candidates: list[list[dict[str, Any]]],
+    max_pages: int,
+) -> list[dict[str, Any]]:
+    digest_counts: dict[str, int] = {}
+    for candidates in page_candidates:
+        for candidate in candidates:
+            digest = clean_text(candidate.get("digest"))
+            if digest:
+                digest_counts[digest] = digest_counts.get(digest, 0) + 1
+
+    selected: list[dict[str, Any]] = []
+    for candidates in page_candidates[:max_pages]:
+        if not candidates:
+            continue
+
+        def candidate_rank(candidate: dict[str, Any]) -> tuple[int, int, str]:
+            digest = clean_text(candidate.get("digest"))
+            shared_count = digest_counts.get(digest, 0)
+            is_page_specific = 1 if shared_count <= 1 else 0
+            score = int(candidate.get("score") or 0)
+            return (is_page_specific, score, clean_text(candidate.get("data_url")))
+
+        best = max(candidates, key=candidate_rank)
+        selected.append({key: value for key, value in best.items() if key not in {"digest", "score"}})
+    return selected
+
+
+def extract_pdf_embedded_page_images(pdf_bytes: bytes, source_name: str, max_pages: int) -> list[dict[str, Any]]:
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        raise RuntimeError("pypdf is not available.") from exc
+
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    page_candidates: list[list[dict[str, Any]]] = []
+    for page_index, page in enumerate(reader.pages[:max_pages], start=1):
+        candidates: list[dict[str, Any]] = []
+        for image in getattr(page, "images", []):
+            raw = bytes(getattr(image, "data", b"") or b"")
+            data_url = compressed_prompt_image_data_url(raw)
+            if not data_url:
+                continue
+            candidates.append({
+                **pdf_page_image_entry(source_name, page_index, data_url, "embedded-image"),
+                "digest": hashlib.sha256(raw).hexdigest(),
+                "score": len(raw),
+            })
+        page_candidates.append(candidates)
+    return select_embedded_pdf_page_images(page_candidates, max_pages)
+
+
+def pdf_reference_page_images(entry: dict[str, Any], max_pages: int = MAX_RENDERED_PDF_PAGES) -> list[dict[str, Any]]:
+    if reference_file_mime_type(entry) != "application/pdf":
+        return []
+    try:
+        page_budget = min(max(int(max_pages), 0), MAX_RENDERED_PDF_PAGES)
+    except (TypeError, ValueError):
+        page_budget = MAX_RENDERED_PDF_PAGES
+    if page_budget <= 0:
+        return []
+    source_name = safe_segment(clean_text(entry.get("name")) or "reference.pdf", "reference.pdf")
+    try:
+        pdf_bytes = decode_reference_data_url_bytes(entry, MAX_PDF_BYTES)
+    except ValueError:
+        return []
+    if not looks_like_complete_pdf(pdf_bytes):
+        return []
+
+    errors: list[str] = []
+    for renderer in (
+        render_pdf_pages_with_pdfium,
+        extract_pdf_embedded_page_images,
+    ):
+        try:
+            images = renderer(pdf_bytes, source_name, page_budget)
+        except Exception as exc:
+            errors.append(str(exc))
+            continue
+        valid_images = [
+            image
+            for image in images[:page_budget]
+            if data_url_inline_image(clean_text(image.get("data_url"))) is not None
+        ]
+        if valid_images:
+            source_digest = hashlib.sha256(pdf_bytes).hexdigest()
+            return persist_pdf_page_debug_images(valid_images, source_name, source_digest)
+    if errors:
+        write_local_log("pdf_page_render_unavailable", {
+            "filename": source_name,
+            "errors": safe_error_messages(errors, limit=160),
+        })
+    return []
 
 
 CATALOG_INFERENCE_STOP_WORDS = {
@@ -3620,47 +5472,22 @@ CATALOG_INFERENCE_STOP_WORDS = {
 
 CATALOG_INFERENCE_TOKEN_ALIASES = {
     "aluminium": "aluminum",
-    "bars": "bar",
-    "boxes": "box",
-    "cabinets": "cabinet",
-    "canopy": "fascia",
-    "chairs": "chair",
-    "coves": "cove",
-    "counters": "counter",
-    "dowlight": "downlight",
-    "downlights": "downlight",
-    "floodlights": "floodlight",
-    "frames": "frame",
-    "graphics": "graphic",
-    "heigth": "height",
-    "lcd": "led",
-    "lenght": "length",
-    "lighting": "light",
-    "panels": "panel",
-    "parition": "partition",
-    "print": "printed",
-    "platfrom": "platform",
-    "planters": "planter",
-    "plants": "plant",
-    "plinths": "counter",
-    "sockets": "socket",
-    "stools": "stool",
-    "sytem": "system",
-    "tables": "table",
-    "walls": "wall",
-    "widht": "width",
+    "grey": "gray",
+    "laminate": "laminated",
+    "m2": "sqm",
+    "printed": "print",
+    "printing": "print",
+    "prints": "print",
+    "timber": "wood",
+    "wooden": "wood",
+    **pricing_reference_cleanup.import_word_replacements(),
 }
 
-
-CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS = (
-    ("display", {"display", "displays", "monitor", "monitors", "screen", "screens", "tv", "television", "televisions"}),
+CATALOG_DISTINGUISHING_ATTRIBUTE_GROUPS = (
+    {"acrylic", "aluminum", "chrome", "fabric", "foam", "glass", "laminate", "laminated", "leather", "metal", "timber", "vinyl", "wood", "wooden"},
+    {"black", "blue", "brown", "cyan", "dark", "gray", "green", "grey", "navy", "orange", "pink", "purple", "red", "teal", "white", "yellow"},
+    {"circular", "curved", "rectangular", "round", "square"},
 )
-
-CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES = {
-    token: canonical
-    for canonical, tokens in CATALOG_INFERENCE_EQUIVALENT_TERM_GROUPS
-    for token in tokens
-}
 
 
 def catalog_inference_token(value: str) -> str:
@@ -3669,8 +5496,7 @@ def catalog_inference_token(value: str) -> str:
         token = f"{token[:-3]}y"
     elif token.endswith("s") and len(token) > 3 and not token.endswith("ss"):
         token = token[:-1]
-    token = CATALOG_INFERENCE_TOKEN_ALIASES.get(token, token)
-    return CATALOG_INFERENCE_EQUIVALENT_TOKEN_ALIASES.get(token, token)
+    return CATALOG_INFERENCE_TOKEN_ALIASES.get(token, token)
 
 
 def catalog_inference_tokens(value: Any) -> set[str]:
@@ -3683,13 +5509,91 @@ def catalog_inference_tokens(value: Any) -> set[str]:
     return tokens
 
 
-def catalog_inference_values(item: dict[str, Any]) -> list[str]:
+def catalog_item_match_terms(item: dict[str, Any]) -> set[str]:
+    values = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+    tokens: set[str] = set()
+    for value in values:
+        tokens.update(catalog_inference_tokens(value))
+    return tokens
+
+
+def catalog_item_object_families(item: dict[str, Any]) -> set[str]:
+    return {
+        clean_text(value).lower()
+        for value in (item.get("object_families") if isinstance(item.get("object_families"), list) else [])
+        if clean_text(value)
+    }
+
+
+def catalog_item_alias_values(item: dict[str, Any]) -> list[str]:
     aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+    section_values = [
+        clean_text(item.get("reference_section") or item.get("section")).lower(),
+        clean_text(item.get("section")).lower(),
+    ]
+    values: list[str] = []
+    for alias in aliases:
+        text = clean_text(alias)
+        lowered = text.lower()
+        if not text:
+            continue
+        if any(section and lowered.startswith(section) for section in section_values):
+            continue
+        values.append(text)
+    return values
+
+
+def catalog_attribute_conflicts(line_tokens: set[str], item_tokens: set[str]) -> bool:
+    for group in CATALOG_DISTINGUISHING_ATTRIBUTE_GROUPS:
+        line_attributes = line_tokens & group
+        item_attributes = item_tokens & group
+        if line_attributes and item_attributes and not (line_attributes & item_attributes):
+            return True
+    return False
+
+
+def catalog_line_contradicts_item(line_text: Any, item: dict[str, Any]) -> bool:
+    bracketed = bracketed_catalog_reference_parts(line_text)
+    if bracketed:
+        reference, detail = bracketed
+        catalog_reference = clean_customer_quote_line_text(item.get("pricing_reference_description") or item.get("description"))
+        if comparable_catalog_description_key(reference) == comparable_catalog_description_key(catalog_reference):
+            return False
+        line_text = detail
+    line_tokens = catalog_inference_tokens(line_text)
+    item_tokens: set[str] = set()
+    for value in catalog_inference_values(item):
+        item_tokens.update(catalog_inference_tokens(value))
+    if not line_tokens or not item_tokens:
+        return False
+    if catalog_attribute_conflicts(line_tokens, item_tokens):
+        return True
+    overlap = line_tokens & item_tokens
+    if len(overlap) >= 2:
+        return False
+    line_ratio = len(overlap) / max(len(line_tokens), 1)
+    item_ratio = len(overlap) / max(min(len(item_tokens), 12), 1)
+    return line_ratio < 0.2 and item_ratio < 0.2
+
+
+def explicit_catalog_keyword_has_usable_overlap(line_text: Any, item: dict[str, Any]) -> bool:
+    line_tokens = catalog_inference_tokens(line_text)
+    item_tokens: set[str] = set()
+    for value in catalog_inference_values(item):
+        item_tokens.update(catalog_inference_tokens(value))
+    return bool(line_tokens and item_tokens and (line_tokens & item_tokens))
+
+
+def catalog_inference_values(item: dict[str, Any]) -> list[str]:
+    aliases = catalog_item_alias_values(item)
+    match_terms = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+    object_families = item.get("object_families") if isinstance(item.get("object_families"), list) else []
     values = [
-        item.get("id"),
         item.get("description"),
         item.get("pricing_reference_description"),
         *aliases,
+        *match_terms,
+        *object_families,
     ]
     return [clean_text(value) for value in values if clean_text(value)]
 
@@ -3704,12 +5608,19 @@ def catalog_item_unit_hint(item: dict[str, Any] | None) -> str:
     )
 
 
+def pricing_keyword_looks_like_catalog_id(value: Any) -> bool:
+    keyword = clean_text(value).lower()
+    return bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+", keyword))
+
+
 def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     query_text = " ".join(
         clean_text(value)
         for value in (raw.get("pricing_keyword"), raw.get("description"))
         if clean_text(value)
     )
+    if re.search(r"\b(?:excluded?|excluding|not\s+included|not\s+provided|unless\s+requested|by\s+others|no\s+allowance)\b", query_text, flags=re.IGNORECASE):
+        return None
     query_tokens = catalog_inference_tokens(query_text)
     if len(query_tokens) < 3:
         return None
@@ -3752,7 +5663,10 @@ def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[s
         return None
     scored.sort(key=lambda entry: (-entry[0], entry[1]))
     if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.5:
-        tied_item = resolve_tied_catalog_family_item(query_text, [item for score, _item_id, item in scored if scored[0][0] - score < 0.5])
+        tied_item = resolve_tied_catalog_attribute_item(query_text, [item for score, _item_id, item in scored if scored[0][0] - score < 0.5])
+        if tied_item:
+            return tied_item
+        tied_item = resolve_tied_catalog_variant_item(query_text, [item for score, _item_id, item in scored if scored[0][0] - score < 0.5])
         if tied_item:
             return tied_item
         return None
@@ -3770,7 +5684,7 @@ def catalog_item_variant_value(item: dict[str, Any]) -> float | None:
     return value
 
 
-def catalog_item_variant_family_key(item: dict[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+def catalog_item_variant_group_key(item: dict[str, Any]) -> tuple[str, str, tuple[str, ...]]:
     section_key = safe_section_id(normalize_catalog_section(item.get("section")) or item.get("section"), "")
     unit_key = normalize_pricing_unit(catalog_item_unit_hint(item)).lower()
     tokens = tuple(
@@ -3783,7 +5697,7 @@ def catalog_item_variant_family_key(item: dict[str, Any]) -> tuple[str, str, tup
     return (section_key, unit_key, tokens)
 
 
-def query_variant_preference(query_text: str, variant_values: list[float], family_tokens: tuple[str, ...]) -> float | None:
+def query_variant_preference(query_text: str, variant_values: list[float]) -> float | None:
     query = clean_text(query_text)
     explicit_matches = [
         parse_float_or_none(match)
@@ -3800,49 +5714,154 @@ def query_variant_preference(query_text: str, variant_values: list[float], famil
         return max(variant_values)
     if re.search(r"\b(small|compact|secondary|side|countertop|tabletop)\b", query, flags=re.IGNORECASE):
         return min(variant_values)
-    query_tokens = catalog_inference_tokens(query)
-    if "display" in query_tokens and "display" in set(family_tokens):
-        return min(variant_values)
     return None
 
 
-def resolve_tied_catalog_family_item(query_text: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
-    family_groups: dict[tuple[str, str, tuple[str, ...]], list[tuple[float, dict[str, Any]]]] = {}
+def resolve_tied_catalog_variant_item(query_text: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    variant_groups_by_key: dict[tuple[str, str, tuple[str, ...]], list[tuple[float, dict[str, Any]]]] = {}
     for item in items:
         variant_value = catalog_item_variant_value(item)
         if variant_value is None:
             continue
-        family_groups.setdefault(catalog_item_variant_family_key(item), []).append((variant_value, item))
-    variant_groups = [group for group in family_groups.values() if len(group) >= 2]
+        variant_groups_by_key.setdefault(catalog_item_variant_group_key(item), []).append((variant_value, item))
+    variant_groups = [group for group in variant_groups_by_key.values() if len(group) >= 2]
     if len(variant_groups) != 1:
         return None
-    family_key, variants = next((key, group) for key, group in family_groups.items() if len(group) >= 2)
+    _group_key, variants = next((key, group) for key, group in variant_groups_by_key.items() if len(group) >= 2)
     variant_values = [value for value, _item in variants]
-    preferred_value = query_variant_preference(query_text, variant_values, family_key[2])
+    preferred_value = query_variant_preference(query_text, variant_values)
     if preferred_value is None:
         return None
     variants.sort(key=lambda entry: (abs(entry[0] - preferred_value), entry[0], clean_text(entry[1].get("id"))))
     return variants[0][1]
 
 
-def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def resolve_tied_catalog_attribute_item(query_text: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    unique_items = {clean_text(item.get("id")): item for item in items if clean_text(item.get("id"))}
+    candidates = list(unique_items.values())
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+
+    query = clean_text(query_text).lower()
+
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+
+    def candidate_tokens(item: dict[str, Any]) -> set[str]:
+        tokens: set[str] = set()
+        for value in catalog_inference_values(item):
+            tokens.update(catalog_inference_tokens(value))
+        return tokens
+
+    def candidate_specific_tokens(item: dict[str, Any]) -> set[str]:
+        tokens: set[str] = set()
+        aliases = catalog_item_alias_values(item)
+        match_terms = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+        for value in (
+            item.get("description"),
+            item.get("pricing_reference_description"),
+            *aliases,
+            *match_terms,
+        ):
+            tokens.update(catalog_inference_tokens(value))
+        return tokens
+
+    def candidate_primary_tokens(item: dict[str, Any]) -> set[str]:
+        tokens: set[str] = set()
+        for value in (item.get("description"), item.get("pricing_reference_description")):
+            tokens.update(catalog_inference_tokens(value))
+        return tokens
+
+    query_tokens = catalog_inference_tokens(query)
+    literal_matches = [
+        item
+        for item in candidates
+        if query_tokens & candidate_tokens(item)
+    ]
+    if len(literal_matches) == 1:
+        return literal_matches[0]
+    if literal_matches:
+        candidates = literal_matches
+
+    finish_preferences: list[str] = []
+    if re.search(r"\blaminat(?:e|ed|ion)\b", query, flags=re.IGNORECASE):
+        finish_preferences.append("laminated")
+    if re.search(r"\bpaint(?:ed|ing)?\b", query, flags=re.IGNORECASE):
+        finish_preferences.append("painted")
+    if not finish_preferences and re.search(
+        r"\b(?:black|blue|brown|cyan|dark|green|grey|gray|navy|orange|pink|purple|red|teal|white|yellow|colour|color|finish|finished)\b",
+        query,
+        flags=re.IGNORECASE,
+    ):
+        finish_preferences.append("painted")
+
+    for finish in finish_preferences:
+        finish_matches = [
+            item
+            for item in candidates
+            if re.search(rf"\b{re.escape(finish)}\b", clean_text(item.get("description")), flags=re.IGNORECASE)
+        ]
+        if len(finish_matches) == 1:
+            return finish_matches[0]
+        if finish_matches:
+            candidates = finish_matches
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    scored_candidates: list[tuple[int, int, int, int, int, int, int, str, dict[str, Any]]] = []
+    for item in candidates:
+        tokens = candidate_tokens(item)
+        primary_tokens = candidate_primary_tokens(item)
+        specific_tokens = candidate_specific_tokens(item)
+        primary_overlap_count = len(query_tokens & primary_tokens)
+        primary_extra_item_token_count = len(primary_tokens - query_tokens)
+        specific_overlap_count = len(query_tokens & specific_tokens)
+        specific_extra_item_token_count = len(specific_tokens - query_tokens)
+        overlap_count = len(query_tokens & tokens)
+        extra_item_token_count = len(tokens - query_tokens)
+        scored_candidates.append((
+            primary_overlap_count,
+            -primary_extra_item_token_count,
+            specific_overlap_count,
+            -specific_extra_item_token_count,
+            overlap_count,
+            -extra_item_token_count,
+            -len(tokens),
+            clean_text(item.get("id")),
+            item,
+        ))
+    scored_candidates.sort(reverse=True)
+    if scored_candidates and (len(scored_candidates) == 1 or scored_candidates[0][:7] > scored_candidates[1][:7]):
+        return scored_candidates[0][8]
+    return None
+
+
+def normalize_line_items(payload: dict[str, Any], use_catalog: bool = True) -> list[dict[str, Any]]:
     raw_items = payload.get("line_items")
     if not isinstance(raw_items, list):
         return []
 
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if use_catalog else {}
     items: list[dict[str, Any]] = []
     for raw in raw_items:
         if not isinstance(raw, dict):
             continue
         display_price = clean_text(raw.get("display_price"))
         pricing_keyword = clean_text(raw.get("pricing_keyword"))
-        pricing_keyword_was_explicit = bool(pricing_keyword)
         catalog_item = catalog_lookup.get(pricing_keyword)
+        pricing_keyword_was_explicit = bool(pricing_keyword and catalog_item)
+        if catalog_item:
+            pricing_keyword = clean_text(catalog_item.get("id"))
         if not catalog_item:
-            catalog_item = infer_catalog_item_for_line_item(raw, catalog_lookup)
+            inference_raw = raw
+            if pricing_keyword_looks_like_catalog_id(pricing_keyword):
+                inference_raw = {**raw, "pricing_keyword": ""}
+            catalog_item = infer_catalog_item_for_line_item(inference_raw, catalog_lookup)
             if catalog_item:
                 pricing_keyword = clean_text(catalog_item.get("id"))
+            else:
+                pricing_keyword = ""
         raw_unit = normalize_pricing_unit(raw.get("unit"))
         quantity_parts = normalized_line_text_quantity_parts(raw.get("description"), raw.get("quantity"), raw_unit)
         quantity = parse_float_or_none(quantity_parts["quantity"])
@@ -3852,6 +5871,17 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             else ((catalog_item_unit_hint(catalog_item) or raw_unit) if catalog_item else raw_unit)
         )
         raw_description = clean_customer_quote_line_text(quantity_parts["text"])
+        if (
+            catalog_item
+            and catalog_line_contradicts_item(raw_description, catalog_item)
+            and not (
+                pricing_keyword_was_explicit
+                and explicit_catalog_keyword_has_usable_overlap(raw_description, catalog_item)
+            )
+        ):
+            catalog_item = None
+            pricing_keyword = ""
+            unit = quantity_parts["unit"] if quantity_parts.get("from_text_prefix") else raw_unit
         catalog_reference_description = clean_text(catalog_item.get("pricing_reference_description")) if catalog_item else ""
         catalog_description = clean_customer_quote_line_text(catalog_item.get("description")) if catalog_item else ""
         description = (
@@ -3879,6 +5909,10 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "price_mode": price_mode,
             "source_basis_line_id": safe_resource_id(raw.get("source_basis_line_id"), ""),
         }
+        for order_key in ("category_order", "item_order"):
+            order_value = pricing_reference_order_number((catalog_item or {}).get(order_key)) or pricing_reference_order_number(raw.get(order_key))
+            if order_value is not None:
+                item[order_key] = order_value
         if catalog_item and clean_text(catalog_item.get("reference_section")):
             item["reference_section"] = clean_basis_section_title(catalog_item.get("reference_section"))
         if unit_price_override is not None:
@@ -3889,7 +5923,9 @@ def normalize_line_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
             item["catalog_description"] = catalog_description
         if catalog_item and clean_text(catalog_item.get("pricing_reference_description")):
             item["pricing_reference_description"] = clean_text(catalog_item.get("pricing_reference_description"))
-        if not pricing_keyword_was_explicit and line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"]):
+        needs_quantity_review = line_item_needs_quantity_review(item["section"], item["description"], item["quantity"], item["unit"], catalog_item)
+        piece_dimension_quantity_review = piece_dimension_quantity_needs_review(item["description"], item["quantity"], item["unit"], catalog_item)
+        if needs_quantity_review and (not pricing_keyword_was_explicit or piece_dimension_quantity_review):
             item["status"] = "quantity-review"
             item.pop("catalog_unit_price", None)
         if not item["source_basis_line_id"]:
@@ -3920,9 +5956,9 @@ def quote_detail_missing_fields(payload: dict[str, Any]) -> list[str]:
         ("Header logo", bool(clean_text(company.get("logo_data_url") or company.get("logo") or payload.get("header_logo")))),
         ("Header details", bool(multiline_list(company.get("header_details")))),
         ("Acceptance text", bool(clean_text(acceptance.get("text") or quote_text.get("acceptance_text")))),
-        ("Company signatory", bool(clean_text(signature.get("koncept_signatory")))),
-        ("Signatory title", bool(clean_text(signature.get("koncept_title")))),
-        ("Company date label", bool(clean_text(signature.get("koncept_date_label")))),
+        ("Company signatory", bool(clean_text(signature.get("company_signatory")))),
+        ("Signatory title", bool(clean_text(signature.get("company_title")))),
+        ("Company date label", bool(clean_text(signature.get("company_date_label")))),
         ("Person label", bool(clean_text(acceptance.get("person_label") or quote_text.get("person_label")))),
         ("Stamp label", bool(clean_text(acceptance.get("stamp_label") or quote_text.get("stamp_label")))),
         ("Date label", bool(clean_text(acceptance.get("date_label") or quote_text.get("date_label")))),
@@ -4040,7 +6076,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "logo_data_url": header_logo,
         },
         "tax": quote_tax_from_payload(payload),
-        "line_items": normalize_line_items(payload),
+        "line_items": sort_line_items_by_pricing_reference_order(payload, normalize_line_items(payload)),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
         "terms_heading": clean_text(quote_text.get("terms_heading")),
         "cheque_payee": clean_text(quote_text.get("cheque_payee")),
@@ -4054,9 +6090,9 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "date_label": clean_text(acceptance.get("date_label") or quote_text.get("date_label")),
         },
         "signature": {
-            "koncept_signatory": clean_text(signature.get("koncept_signatory")),
-            "koncept_title": clean_text(signature.get("koncept_title")),
-            "koncept_date_label": clean_text(signature.get("koncept_date_label")),
+            "company_signatory": clean_text(signature.get("company_signatory")),
+            "company_title": clean_text(signature.get("company_title")),
+            "company_date_label": clean_text(signature.get("company_date_label")),
         },
         "rich_text": quote_detail_rich_text(payload),
         "notes": quote_basis_notes(payload),
@@ -4072,7 +6108,7 @@ def default_quote_basis(payload: dict[str, Any]) -> dict[str, str]:
         "counters": clean_multiline(basis.get("counters")) or clean_multiline(profile_basis.get("counters")) or "Confirm: Please confirm counter, cabinet, and countertop material/finish.",
         "platform": clean_multiline(basis.get("platform")) or clean_multiline(profile_basis.get("platform")) or "Confirm: Please confirm platform height, platform coverage, and flooring finish.",
         "graphics": clean_multiline(basis.get("graphics")) or clean_multiline(profile_basis.get("graphics")) or "Confirm: Please confirm graphic panels, logo signage, lightboxes, and printed features.",
-        "furniture": clean_multiline(basis.get("furniture")) or clean_multiline(profile_basis.get("furniture")) or "Confirm: Please confirm furniture, plants, green walls, AV, and rental items.",
+        "furniture": clean_multiline(basis.get("furniture")) or clean_multiline(profile_basis.get("furniture")) or "Confirm: Please confirm furniture, plants, green walls, AV, and temporary loose items.",
         "electrical": clean_multiline(basis.get("electrical")) or clean_multiline(profile_basis.get("electrical")) or "Confirm: Please confirm lights, 13A sockets, special power, and organiser connection fees.",
     }
     return quote_basis_with_default_dimension_confirmation(defaults, booth_dimensions_from_payload(payload))
@@ -4112,10 +6148,12 @@ class OpenAIAnalysisError(RuntimeError):
 
 
 class AIModelOutputError(OpenAIAnalysisError):
-    pass
+    def __init__(self, message: str, diagnostics: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
 
 
-def openai_http_error_message(exc: urllib.error.HTTPError) -> str:
+def provider_http_error_message(provider: str, exc: urllib.error.HTTPError) -> str:
     message = ""
     try:
         raw = exc.read().decode("utf-8", errors="replace")
@@ -4133,12 +6171,16 @@ def openai_http_error_message(exc: urllib.error.HTTPError) -> str:
             elif isinstance(data, dict):
                 message = clean_text(data.get("message"))
     if message:
-        result = f"OpenAI analysis failed with HTTP {exc.code}: {scrub_sensitive_text(message)[:500]}"
+        result = f"{provider} analysis failed with HTTP {exc.code}: {scrub_sensitive_text(message)[:500]}"
     else:
-        result = f"OpenAI analysis failed with HTTP {exc.code}."
+        result = f"{provider} analysis failed with HTTP {exc.code}."
     if exc.code in TRANSIENT_OPENAI_HTTP_CODES:
         result += " This looks like a temporary upstream timeout; wait a moment and retry the analysis."
     return result
+
+
+def openai_http_error_message(exc: urllib.error.HTTPError) -> str:
+    return provider_http_error_message("OpenAI", exc)
 
 
 def is_timeout_exception(exc: BaseException) -> bool:
@@ -4182,6 +6224,89 @@ def response_output_text(data: dict[str, Any]) -> str:
     return "\n".join(chunks).strip()
 
 
+def chat_completions_output_text(data: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    for choice in data.get("choices") or []:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+        content = message.get("content")
+        if isinstance(content, str):
+            chunks.append(content)
+        elif isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                    chunks.append(item["text"])
+                elif isinstance(item, str):
+                    chunks.append(item)
+    return "\n".join(chunks).strip()
+
+
+SAFE_AI_OUTPUT_DIAGNOSTIC_KEYS = {
+    "choice_count",
+    "finish_reason",
+    "input_tokens",
+    "output_tokens",
+    "output_contains_json_object_bounds",
+    "output_empty",
+    "output_has_markdown_fence",
+    "output_length",
+    "output_starts_with_json_object",
+    "total_tokens",
+}
+
+
+def safe_ai_output_diagnostics(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    diagnostics: dict[str, Any] = {}
+    for key in SAFE_AI_OUTPUT_DIAGNOSTIC_KEYS:
+        item = value.get(key)
+        if isinstance(item, bool):
+            diagnostics[key] = item
+        elif isinstance(item, int) and 0 <= item <= 10_000_000:
+            diagnostics[key] = item
+        elif isinstance(item, str):
+            text = clean_text(item).lower()
+            if re.fullmatch(r"[a-z0-9_-]{1,64}", text):
+                diagnostics[key] = text
+    return diagnostics
+
+
+def token_usage_diagnostics(data: dict[str, Any]) -> dict[str, int]:
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    mapping = {
+        "prompt_tokens": "input_tokens",
+        "completion_tokens": "output_tokens",
+        "total_tokens": "total_tokens",
+    }
+    diagnostics: dict[str, int] = {}
+    for source_key, target_key in mapping.items():
+        value = usage.get(source_key)
+        if isinstance(value, int) and value >= 0:
+            diagnostics[target_key] = value
+    return diagnostics
+
+
+def chat_completions_output_diagnostics(data: dict[str, Any], output_text: str) -> dict[str, Any]:
+    cleaned = output_text.strip()
+    choices = data.get("choices") if isinstance(data.get("choices"), list) else []
+    diagnostics: dict[str, Any] = {
+        "choice_count": len(choices),
+        "output_length": len(output_text),
+        "output_empty": not bool(cleaned),
+        "output_starts_with_json_object": cleaned.startswith("{"),
+        "output_contains_json_object_bounds": cleaned.find("{") != -1 and cleaned.rfind("}") > cleaned.find("{"),
+        "output_has_markdown_fence": cleaned.startswith("```"),
+        **token_usage_diagnostics(data),
+    }
+    if choices and isinstance(choices[0], dict):
+        finish_reason = clean_text(choices[0].get("finish_reason")).lower()
+        if re.fullmatch(r"[a-z0-9_-]{1,64}", finish_reason):
+            diagnostics["finish_reason"] = finish_reason
+    return safe_ai_output_diagnostics(diagnostics)
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     cleaned = text.strip()
     if cleaned.startswith("```"):
@@ -4211,11 +6336,16 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
     for item in payload.get("items") or []:
         if not isinstance(item, dict):
             continue
-        aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+        item = pricing_reference_enrichment.enrich_pricing_reference_item(dict(item))
+        aliases = catalog_item_alias_values(item)
+        match_terms = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
         remarks = item.get("remarks") if isinstance(item.get("remarks"), list) else []
+        object_families = item.get("object_families") if isinstance(item.get("object_families"), list) else []
         row = {
             "id": clean_text(item.get("id")),
             "section": clean_text(item.get("section")),
+            "category_order": pricing_reference_order_number(item.get("category_order")),
+            "item_order": pricing_reference_order_number(item.get("item_order")),
             "unit_hint": clean_text(item.get("unit_hint")),
             "description": clean_customer_quote_line_text(item.get("description"))[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS],
             "remarks": [
@@ -4227,6 +6357,16 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
                 clean_text(alias)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
                 for alias in aliases[:MAX_PROMPT_CATALOG_ALIASES]
                 if clean_text(alias)
+            ],
+            "match_terms": [
+                clean_text(term)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for term in match_terms[:MAX_PROMPT_CATALOG_MATCH_TERMS]
+                if clean_text(term)
+            ],
+            "object_families": [
+                clean_text(term)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for term in object_families[:MAX_PROMPT_CATALOG_ALIASES]
+                if clean_text(term)
             ],
         }
         visual_metadata = visual_reference_prompt_metadata(item.get("visual_references"))
@@ -4265,12 +6405,17 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
         markup = parse_float_or_none(raw.get("markup_multiplier"))
         if not description or cost is None or cost <= 0 or markup is None or markup <= 0:
             continue
-        aliases = raw.get("aliases") if isinstance(raw.get("aliases"), list) else []
+        raw = pricing_reference_enrichment.enrich_pricing_reference_item(dict(raw))
+        aliases = catalog_item_alias_values(raw)
+        match_terms = raw.get("match_terms") if isinstance(raw.get("match_terms"), list) else []
         remarks = raw.get("remarks") if isinstance(raw.get("remarks"), list) else []
+        object_families = raw.get("object_families") if isinstance(raw.get("object_families"), list) else []
         item = {
             "id": safe_section_id(raw.get("id"), f"local-item-{len(items) + 1}"),
             "section": clean_text(raw.get("section")),
             "reference_section": clean_basis_section_title(raw.get("reference_section") or raw.get("section")),
+            "category_order": pricing_reference_order_number(raw.get("category_order")),
+            "item_order": pricing_reference_order_number(raw.get("item_order")),
             "unit_hint": clean_text(raw.get("unit_hint")),
             "description": clean_customer_quote_line_text(description),
             "internal_cost": cost,
@@ -4284,6 +6429,16 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
                 clean_text(alias)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
                 for alias in aliases[:MAX_PROMPT_CATALOG_ALIASES]
                 if clean_text(alias)
+            ],
+            "match_terms": [
+                clean_text(term)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for term in match_terms[:MAX_PROMPT_CATALOG_MATCH_TERMS]
+                if clean_text(term)
+            ],
+            "object_families": [
+                clean_text(term)[:MAX_PROMPT_CATALOG_DESCRIPTION_CHARS]
+                for term in object_families[:MAX_PROMPT_CATALOG_ALIASES]
+                if clean_text(term)
             ],
         }
         visual_references = resolve_visual_references(raw.get("visual_references"), visual_base_dir)
@@ -4313,17 +6468,6 @@ def visual_reference_prompt_metadata(value: Any) -> list[dict[str, Any]]:
     return metadata
 
 
-def catalog_visual_section_rank(section: Any) -> int:
-    normalized = normalize_catalog_section(section)
-    ranks = {
-        "Furniture Rental": 0,
-        "AV Equipment Rental Items": 1,
-        "Rental Items": 2,
-        "Electrical Fittings ( Excluding connection fees by Organiser)": 3,
-    }
-    return ranks.get(normalized, 99)
-
-
 def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int = MAX_PROMPT_CATALOG_VISUAL_IMAGES) -> list[dict[str, Any]]:
     try:
         pack = load_pricing_reference_pack(pricing_reference_id_from_payload(payload))
@@ -4334,20 +6478,19 @@ def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int
     else:
         source_items = [item for item in data.get("items") or [] if isinstance(item, dict)]
         visual_base_dir = pack.directory
-    candidates: list[tuple[int, str, dict[str, Any]]] = []
+    candidates: list[tuple[int, int, str, dict[str, Any]]] = []
     for item in source_items:
-        rank = catalog_visual_section_rank(item.get("reference_section") or item.get("section"))
-        if rank >= 99:
-            continue
         refs = resolve_visual_references(item.get("visual_references"), visual_base_dir)
         if not refs:
             continue
         label = clean_text(f"{item.get('id')}: {item.get('description')}")
+        category_order = pricing_reference_order_number(item.get("category_order")) or 10**9
+        item_order = pricing_reference_order_number(item.get("item_order")) or 10**9
         for ref in refs:
             data_url = clean_text(ref.get("data_url"))
             if not data_url:
                 continue
-            candidates.append((rank, label.casefold(), {
+            candidates.append((category_order, item_order, label.casefold(), {
                 "id": clean_text(item.get("id")),
                 "section": clean_text(item.get("reference_section") or item.get("section")),
                 "description": clean_customer_quote_line_text(item.get("description")),
@@ -4355,10 +6498,10 @@ def catalog_visual_image_entries_for_payload(payload: dict[str, Any], limit: int
                 "source": clean_text(ref.get("source")),
                 "data_url": data_url,
             }))
-    candidates.sort(key=lambda item: (item[0], item[1]))
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]))
     images: list[dict[str, Any]] = []
     seen_data: set[str] = set()
-    for _rank, _label, image in candidates:
+    for _category_order, _item_order, _label, image in candidates:
         digest = hashlib.sha256(clean_text(image.get("data_url")).encode("utf-8")).hexdigest()
         if digest in seen_data:
             continue
@@ -4383,29 +6526,34 @@ def catalog_visual_prompt_text(images: list[dict[str, Any]]) -> str:
         for index, image in enumerate(images, start=1)
     ]
     return (
-        "Internal catalog reference images follow. Use them only to recognize the closest pricing_catalog id for visible furniture, AV, rental, or electrical items. "
+        "Internal catalog reference images follow. Use them only to recognize the closest pricing_catalog id for visible catalog-backed items. "
         "Do not copy these images into customer output and do not invent prices from them. If unsure, keep the basis line as AI Confirm/Confirm for operator review. "
         f"Catalog visual image index JSON: {json.dumps(compact, ensure_ascii=True)}"
     )
 
 
-def legacy_pricing_catalog_id_aliases(item_id: str) -> set[str]:
+def legacy_pricing_catalog_id_aliases(item_id: str, item: dict[str, Any] | None = None) -> set[str]:
+    canonical_id = clean_text(item_id).lower()
     aliases: set[str] = set()
-    typo_pairs = (
-        ("platform", "platfrom"),
-        ("partition", "parition"),
-        ("system", "sytem"),
-        ("downlight", "dowlight"),
-        ("length", "lenght"),
-        ("width", "widht"),
-        ("height", "heigth"),
-    )
-    for correct, typo in typo_pairs:
-        if correct in item_id:
-            aliases.add(item_id.replace(correct, typo))
-        if typo in item_id:
-            aliases.add(item_id.replace(typo, correct))
-    aliases.discard(item_id)
+    section_values: list[Any] = []
+    if isinstance(item, dict):
+        section_values.extend((item.get("reference_section"), item.get("section")))
+    for section_value in section_values:
+        section_slug = safe_section_id(normalize_catalog_section(section_value) or section_value, "")
+        if section_slug and canonical_id.startswith(f"{section_slug}-"):
+            suffix = canonical_id[len(section_slug) + 1 :]
+            if suffix:
+                aliases.add(f"{section_slug}.{suffix}")
+    if "." in canonical_id:
+        aliases.add(safe_catalog_item_id(canonical_id, ""))
+    for alias in list(aliases | ({canonical_id} if canonical_id else set())):
+        for typo, correct in pricing_reference_cleanup.import_word_replacements().items():
+            if correct in alias:
+                aliases.add(alias.replace(correct, typo))
+            if typo in alias:
+                aliases.add(alias.replace(typo, correct))
+    aliases.discard(canonical_id)
+    aliases.discard("")
     return aliases
 
 
@@ -4418,6 +6566,7 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
     for item in payload_json.get("items") or []:
         if not isinstance(item, dict):
             continue
+        item = pricing_reference_enrichment.enrich_pricing_reference_item(dict(item))
         item_id = clean_text(item.get("id"))
         if not item_id:
             continue
@@ -4427,6 +6576,8 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
             "id": item_id,
             "section": normalize_catalog_section(item.get("section")),
             "reference_section": reference_section or normalize_catalog_section(item.get("section")),
+            "category_order": pricing_reference_order_number(item.get("category_order")),
+            "item_order": pricing_reference_order_number(item.get("item_order")),
             "unit_hint": clean_text(item.get("unit_hint")),
             "description": clean_customer_quote_line_text(raw_description),
             "pricing_reference_description": raw_description,
@@ -4436,8 +6587,18 @@ def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_
                 for alias in (item.get("aliases") if isinstance(item.get("aliases"), list) else [])
                 if clean_text(alias)
             ],
+            "match_terms": [
+                clean_text(term)
+                for term in (item.get("match_terms") if isinstance(item.get("match_terms"), list) else [])
+                if clean_text(term)
+            ],
+            "object_families": [
+                clean_text(term)
+                for term in (item.get("object_families") if isinstance(item.get("object_families"), list) else [])
+                if clean_text(term)
+            ],
         }
-        for alias_id in legacy_pricing_catalog_id_aliases(item_id):
+        for alias_id in legacy_pricing_catalog_id_aliases(item_id, lookup[item_id]):
             lookup.setdefault(alias_id, lookup[item_id])
     return lookup
 
@@ -4505,18 +6666,25 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "unclear parts Confirm lines. "
         "When user_feedback is empty, create a fresh analysis from the uploaded images and pricing catalog; "
         "do not copy existing quote-basis placeholders or prior draft line_items. "
+        "Treat all uploaded PDFs, extracted PDF pages, images, and render views as one project set for the same booth. Multiple pages/images may show the same physical item from different angles; merge repeated views and count each physical object once unless distinct separate placements are clearly visible. "
         "The JSON must have quote_basis_sections as an array of dynamic sections. Dynamic section count "
         "and line count should follow the actual booth evidence. Use pricing_reference_sections from Quote context JSON as the fixed section list to match against first. "
         "Only create a new section when a line genuinely does not fit any provided pricing_reference_sections entry. "
-        "Sort quote_basis_sections and line_items alphabetically by section, then description. "
+        "Sort quote_basis_sections and line_items by pricing reference category_order, then item_order; keep source order for unresolved custom rows. "
         "Each section must include id, title, and lines. Each line must include tag, text, confidence_pct, quantity, unit, and source_line_item_id when available. "
         "quote_basis_sections line text and line_items.description are customer-facing quotation text. Do not include provenance, reasoning, analysis, or source phrases such as taken from quotation title, visible in image, as seen in render, AI detected, assumed from, likely, appears to be, from reference image, or suggested by image. Put analysis reasons only in analysis_findings, clarification questions, or internal notes. "
         "Use quote_basis_sections as the operator review surface for the same pricing sentences that will become output rows. "
+        "Every line_items row must correspond to a quote_basis_sections line, and every customer-visible priced or manual-pricing quote_basis_sections line must have a matching line_items row. Do not add output-only rows or hidden catalog variants. "
         "When a pricing_catalog item applies, the pricing catalog controls price, unit, section, pricing_keyword, and the leading customer-facing wording. "
-        "Set pricing_keyword exactly to the matching catalog id. For catalog-backed quote_basis_sections line text and line_items.description, use the catalog item's exact customer-facing description as the reference prefix. "
-        "If visible AI-specific detail does not fit that exact catalog description, format the line as `[ catalog exact customer-facing description ] - observed use/detail`, for example `[ nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) ] - For counters, AV, meeting room and open booth areas`. "
-        "Do not paraphrase catalog-backed product names into generic object names; choose the closest matching pricing_catalog id and keep the catalog description intact. "
-        "When visible or requested scope is not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can fill the price manually. "
+        "Treat pricing_catalog as the company's owned offer catalog: these are the products and services the company normally sells or rents, so use them aggressively before suggesting anything custom. "
+        "Before using Custom, compare the proposed object or service against every pricing_catalog row and ask whether any catalog item can safely be that specific thing. "
+        "A catalog match must share the same object/service identity inferred from pricing_catalog descriptions, aliases, match_terms, object_families, remarks, visuals, and source context, and must not contradict distinguishing attributes present in the evidence or wording, including shape, colour, material, size, capacity, mounting, or finish. Generic word overlap alone is not enough. "
+        "Set pricing_keyword exactly to the matching catalog id. For catalog-backed quote_basis_sections line text and line_items.description, always start with the catalog item's exact customer-facing description in brackets: `[ catalog exact customer-facing description ]`. "
+        "If there is observed booth-specific detail, format the line as `[ catalog exact customer-facing description ] - Observed use/detail`. "
+        "If there is no extra observed detail, use only `[ catalog exact customer-facing description ]`. "
+        "Do not paraphrase catalog-backed product names into generic object names; choose the closest safe pricing_catalog id and keep the catalog description intact. "
+        "Do not collapse composite visible scope into broad 'custom' or '1 lot' package lines when pricing_catalog has matching rows for its parts. Split composite scope into the closest catalog-backed rows first, then add Custom rows only for the truly unmatched remainder. "
+        "When visible or requested scope is genuinely not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom as an optional AI suggestion/manual-pricing row, and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can decide whether to source or ignore it. "
         "Use tag Confirm for catalog-backed lines that still need the operator's include/exclude decision. "
         "Use confidence_pct as an integer from 0 to 100 to show how strongly the uploaded images and quote context support that line. "
         "Use higher confidence for clearly visible or explicitly stated scope, and lower confidence for inferred or unclear scope. "
@@ -4524,7 +6692,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Every basis line must name the observed material, object, finish, sign, light, furniture, or service "
         "rather than a broad category. Every line must state the exact observed scope or missing decision. "
         "When a line begins with a count and unit such as 2 nos., 14 nos., 36 sqm, or 1 lot, put the number in quantity and the unit in unit, then omit that leading count/unit from quote_basis_sections line text and line_items.description. "
-        "Never use quantity 1 with unit m or m length for measured structural runs such as booth structure, fascia, walls, partitions, portals, frames, or canopies unless the exact measured length is explicitly provided by the quote context. If a structural run is visible but not measurable, use unit lot with empty pricing_keyword for manual pricing, or ask a blocking clarification question when the measured quantity is required. "
+        "Never use quantity 1 with unit m, m length, or m run for measured linear-takeoff catalog rows unless the exact measured length is explicitly provided by the quote context. If a linear-takeoff product type matches pricing_catalog but the run length is uncertain, keep the catalog-backed line and use a visible best-effort measured/estimated quantity when reasonable; otherwise ask a blocking clarification question. Do not downgrade a catalog-backed linear product to Custom only because the exact length is uncertain. "
         "The JSON must also include a project object with booth_width and booth_depth as numbers in metres. "
         "Do not derive booth dimensions from the quotation title. Use explicit booth-size fields in Quote context JSON when supplied; otherwise infer booth_width and booth_depth from the uploaded images or reference PDFs. "
         "If dimensions are still unclear, use a reasonable default booth size instead of leaving dimensions empty. "
@@ -4542,7 +6710,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Quote Basis lines represent included/excluded/custom scope. Clarification Questions represent unresolved decisions required before final takeoff. "
         "Each line item must include section, quantity, unit, description, pricing_keyword, and source_basis_line_id where possible. Use sqm for square-metre quantities. Do not create ordinary quotation rows with missing quantity or unit. Keep pure informational booth-size lines in Quote Basis only unless they are explicitly included as 1 lot with display_price Included. "
         "Use the pricing_catalog choices in Quote context JSON. When a catalog item applies, set "
-        "pricing_keyword exactly to that catalog id, such as graphics.vinyl-printed-graphics, not an invented keyword. "
+        "pricing_keyword exactly to that catalog id from pricing_catalog, not an invented keyword. "
         "Do not include pricing amounts or internal costs. If no catalog item fits and the item should be customer-visible, keep pricing_keyword empty and let the Custom basis line flag it for manual pricing. "
         "Estimate quantities from provided dimensions and visible counts when reasonable. "
         f"Quote context JSON: {json.dumps(brief_context, ensure_ascii=True)}"
@@ -4698,7 +6866,7 @@ def basis_chat_required_intent(payload: dict[str, Any]) -> str:
         return "answer"
 
     words = re.findall(r"[A-Za-z0-9]+", lowered)
-    has_fragment_signal = bool(re.search(r"\d|x|×|mm|cm|sqm|sqft|yellow|green|blue|black|white|red|grey|gray|wood|carpet|vinyl|laminate|paint|fabric|glass|metal", lowered))
+    has_fragment_signal = bool(re.search(r"\d|x|\u00d7|mm|cm|sqm|sqft|yellow|green|blue|black|white|red|grey|gray|wood|carpet|vinyl|laminate|paint|fabric|glass|metal", lowered))
     if selected_line and 0 < len(words) <= 8 and has_fragment_signal:
         return "proposal"
     if selected_line and words:
@@ -4768,7 +6936,7 @@ def basis_chat_requested_keywords(question: str) -> list[str]:
     )
     if replacement_match:
         text = replacement_match.group(1)
-    text = re.sub(r"(?<=\d)\s*[x×]\s*(?=\d)", " ", text)
+    text = re.sub(r"(?<=\d)\s*[x\u00d7]\s*(?=\d)", " ", text)
     for token in re.findall(r"[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)?", text):
         if token in BASIS_CHAT_EDIT_STOPWORDS or (len(token) < 2 and not token.isdigit()):
             continue
@@ -4954,18 +7122,57 @@ def quote_basis_sections_with_catalog_exact_lines(
     sections: list[dict[str, Any]],
     line_items: list[dict[str, Any]],
     catalog_items: list[dict[str, Any]] | None = None,
+    mark_unmatched_confirm_custom: bool = False,
 ) -> list[dict[str, Any]]:
-    exact_catalog_items = [
-        item for item in (catalog_items or [])
-        if isinstance(item, dict) and clean_text(item.get("id")) and clean_text(item.get("description"))
-    ]
+    invalid_pricing_keyword_flag = "_invalid_pricing_keyword"
+    exact_catalog_items_by_id: dict[str, dict[str, Any]] = {}
+    for item in catalog_items or []:
+        if not isinstance(item, dict) or not clean_text(item.get("id")) or not clean_text(item.get("description")):
+            continue
+        exact_catalog_items_by_id.setdefault(clean_text(item.get("id")), item)
+    exact_catalog_items = list(exact_catalog_items_by_id.values())
+
+    def catalog_item_for_pricing_keyword(keyword: Any) -> dict[str, Any] | None:
+        normalized_keyword = clean_text(keyword)
+        if not normalized_keyword:
+            return None
+        if normalized_keyword in exact_catalog_items_by_id:
+            return exact_catalog_items_by_id[normalized_keyword]
+        return next(
+            (
+                item
+                for catalog_id, item in exact_catalog_items_by_id.items()
+                if normalized_keyword in legacy_pricing_catalog_id_aliases(catalog_id, item)
+            ),
+            None,
+        )
 
     def item_has_catalog_reference(item: dict[str, Any]) -> bool:
         return bool(clean_text(item.get("pricing_reference_description")) or clean_text(item.get("catalog_description")))
 
+    def is_default_dimension_basis_line(line: dict[str, Any]) -> bool:
+        return is_informational_dimension_basis_line(line)
+
+    def mark_line_custom_for_manual_pricing(line: dict[str, Any]) -> None:
+        bracketed = bracketed_catalog_reference_parts(line.get("text"))
+        if bracketed:
+            reference, detail = bracketed
+            line["text"] = detail or reference
+        line["tag"] = "Custom"
+        line["custom_pricing"] = True
+        line.pop("pricing_keyword", None)
+        line.pop("catalog_description", None)
+        line.pop("pricing_reference_description", None)
+        line.pop("catalog_unit_price", None)
+
     def line_signature(line: dict[str, Any]) -> str:
         pricing_keyword = clean_text(line.get("pricing_keyword"))
         if pricing_keyword:
+            bracketed = bracketed_catalog_reference_parts(line.get("text"))
+            if bracketed and bracketed[1]:
+                detail_key = re.sub(r"[^a-z0-9]+", " ", clean_customer_quote_line_text(bracketed[1]).casefold()).strip()
+                if detail_key:
+                    return f"pricing:{pricing_keyword.casefold()}:{detail_key}"
             return f"pricing:{pricing_keyword.casefold()}"
         text = clean_customer_quote_line_text(line.get("text")).casefold()
         text = re.sub(r"[^a-z0-9]+", " ", text).strip()
@@ -4979,7 +7186,7 @@ def quote_basis_sections_with_catalog_exact_lines(
             merged["tag"] = normalize_basis_tag(incoming.get("tag"))
             merged.pop("custom_pricing", None)
             merged.pop("custom_confirmed", None)
-        for key in ("id", "source_line_item_id", "pricing_keyword", "catalog_description", "pricing_reference_description", "quantity", "unit"):
+        for key in ("id", "source_line_item_id", "pricing_keyword", "catalog_description", "pricing_reference_description", "category_order", "item_order", "quantity", "unit"):
             if not clean_text(merged.get(key)) and clean_text(incoming.get(key)):
                 merged[key] = incoming.get(key)
         existing_confidence = normalize_confidence_percent(merged.get("confidence", merged.get("confidence_pct")))
@@ -5034,6 +7241,9 @@ def quote_basis_sections_with_catalog_exact_lines(
                 words.add(word[:-3])
         return words
 
+    def basis_distinguishing_numbers(value: Any) -> set[str]:
+        return set(re.findall(r"\b\d+(?:\.\d+)?\b", clean_text(value).lower()))
+
     def item_section_values(item: dict[str, Any]) -> list[str]:
         values: list[str] = []
         for value in (item.get("reference_section"), item.get("section"), normalize_catalog_section(item.get("section"))):
@@ -5054,6 +7264,15 @@ def quote_basis_sections_with_catalog_exact_lines(
             catalog_items_by_section.setdefault(key, []).append(item)
 
     next_sections = merge_duplicate_sections(copy.deepcopy(sections))
+
+    for section in next_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            pricing_keyword = clean_text(line.get("pricing_keyword"))
+            if pricing_keyword and not catalog_item_for_pricing_keyword(pricing_keyword):
+                line.pop("pricing_keyword", None)
+                line[invalid_pricing_keyword_flag] = True
 
     def section_matches_item(section: dict[str, Any], item: dict[str, Any]) -> bool:
         item_keys = set()
@@ -5084,6 +7303,10 @@ def quote_basis_sections_with_catalog_exact_lines(
             return False
         if line_text.lower() == description.lower():
             return True
+        line_numbers = basis_distinguishing_numbers(line_text)
+        description_numbers = basis_distinguishing_numbers(description)
+        if line_numbers and description_numbers and not (line_numbers & description_numbers):
+            return False
         line_words = basis_match_words(line_text)
         description_words = basis_match_words(description)
         if not line_words or not description_words:
@@ -5095,23 +7318,39 @@ def quote_basis_sections_with_catalog_exact_lines(
         stop_words = {
             "and",
             "area",
+            "approval",
+            "approvals",
+            "custom",
             "for",
+            "final",
             "from",
             "height",
             "lot",
             "meeting",
             "nos",
             "one",
+            "organiser",
+            "organisers",
+            "organizer",
+            "organizers",
+            "owner",
+            "owners",
             "per",
             "rental",
+            "requirement",
+            "requirements",
             "seat",
             "seating",
             "sqm",
+            "subject",
             "the",
+            "venue",
+            "venues",
             "with",
         }
         tokens: set[str] = set()
-        for token in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+        for raw_token in re.findall(r"[a-z0-9]+", clean_text(value).lower()):
+            token = catalog_inference_token(raw_token)
             if len(token) <= 2 or token in stop_words:
                 continue
             tokens.add(token)
@@ -5120,39 +7359,69 @@ def quote_basis_sections_with_catalog_exact_lines(
         return tokens
 
     def catalog_match_values(item: dict[str, Any]) -> list[str]:
-        aliases = item.get("aliases") if isinstance(item.get("aliases"), list) else []
+        aliases = catalog_item_alias_values(item)
+        match_terms = item.get("match_terms") if isinstance(item.get("match_terms"), list) else []
+        object_families = item.get("object_families") if isinstance(item.get("object_families"), list) else []
         values = [
-            item.get("id"),
-            item.get("section"),
-            item.get("reference_section"),
             item.get("description"),
             item.get("pricing_reference_description"),
             *aliases,
+            *match_terms,
+            *object_families,
         ]
         return [clean_text(value) for value in values if clean_text(value)]
 
-    def score_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any]) -> int:
+    def line_has_exclusion_scope(value: Any) -> bool:
+        text = clean_text(value).lower()
+        return bool(
+            re.search(
+                r"\b(?:excluded?|excluding|not\s+included|not\s+provided|unless\s+requested|by\s+others|no\s+allowance)\b",
+                text,
+            )
+        )
+
+    def score_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any], section: dict[str, Any] | None = None) -> int:
         line_text = clean_customer_quote_line_text(line.get("text"))
+        if line_has_exclusion_scope(line_text):
+            return 0
         line_tokens = catalog_match_tokens(line_text)
         if not line_tokens:
             return 0
         item_tokens: set[str] = set()
         phrase_bonus = 0
+        best_value_ratio = 0.0
         normalized_line = clean_text(line_text).lower()
         for value in catalog_match_values(item):
             normalized_value = clean_text(value).lower()
-            item_tokens.update(catalog_match_tokens(value))
-            if normalized_line == normalized_value:
+            value_tokens = catalog_match_tokens(value)
+            item_tokens.update(value_tokens)
+            if value_tokens:
+                value_overlap = line_tokens & value_tokens
+                best_value_ratio = max(best_value_ratio, len(value_overlap) / max(len(value_tokens), 1))
+            if normalized_line == normalized_value and value_tokens:
                 phrase_bonus = max(phrase_bonus, 20)
-            elif normalized_value in normalized_line or normalized_line in normalized_value:
+            elif len(value_tokens) >= 2 and (normalized_value in normalized_line or normalized_line in normalized_value):
                 phrase_bonus = max(phrase_bonus, 10)
-        return len(line_tokens & item_tokens) + phrase_bonus
+        section_bonus = 2 if isinstance(section, dict) and section_matches_item(section, item) else 0
+        overlap = line_tokens & item_tokens
+        line_ratio = len(overlap) / max(len(line_tokens), 1)
+        same_section_literal_match = bool(
+            section_bonus
+            and (len(overlap) >= 3 or (len(overlap) >= 2 and best_value_ratio >= 0.6))
+        )
+        if not phrase_bonus and not same_section_literal_match and line_ratio < 0.75:
+            return 0
+        if section_bonus and len(overlap) < 2 and not phrase_bonus:
+            return 0
+        return len(overlap) + phrase_bonus + section_bonus
 
-    def catalog_item_for_basis_line(line: dict[str, Any]) -> dict[str, Any] | None:
+    def catalog_item_for_basis_line(line: dict[str, Any], section: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        if is_default_dimension_basis_line(line):
+            return None
         if clean_text(line.get("pricing_keyword")):
             return None
         scored = [
-            (score_catalog_item_for_line(line, item), item)
+            (score_catalog_item_for_line(line, item, section), item)
             for item in exact_catalog_items
         ]
         scored = [(score, item) for score, item in scored if score >= 3]
@@ -5160,7 +7429,14 @@ def quote_basis_sections_with_catalog_exact_lines(
             return None
         scored.sort(key=lambda entry: (-entry[0], clean_text(entry[1].get("id"))))
         top_score = scored[0][0]
-        if sum(1 for score, _item in scored if score == top_score) > 1:
+        tied_items = [item for score, item in scored if score == top_score]
+        if len(tied_items) > 1:
+            tied_item = resolve_tied_catalog_attribute_item(clean_customer_quote_line_text(line.get("text")), tied_items)
+            if tied_item:
+                return tied_item
+            tied_item = resolve_tied_catalog_variant_item(clean_customer_quote_line_text(line.get("text")), tied_items)
+            if tied_item:
+                return tied_item
             return None
         return scored[0][1]
 
@@ -5186,6 +7462,30 @@ def quote_basis_sections_with_catalog_exact_lines(
             for value in reference_values
         )
 
+    def display_detail_source_for_catalog_line(
+        line: dict[str, Any],
+        catalog_description: str,
+        fallback_detail: Any,
+    ) -> str:
+        current_text = clean_customer_quote_line_text(line.get("text"))
+        bracketed = bracketed_catalog_reference_parts(current_text)
+        if bracketed:
+            current_reference, current_detail = bracketed
+            if current_detail:
+                return current_detail
+            if comparable_basis_text(current_reference) == comparable_basis_text(catalog_description):
+                return ""
+            return ""
+        return current_text or clean_customer_quote_line_text(fallback_detail)
+
+    def should_clear_generic_lot_quantity_for_catalog_unit(original_quantity: Any, original_unit: Any, catalog_unit: str) -> bool:
+        if normalize_pricing_unit(original_unit) != "lot":
+            return False
+        quantity = parse_float_or_none(original_quantity)
+        if quantity is None or abs(quantity - 1) > 0.001:
+            return False
+        return normalize_pricing_unit(catalog_unit) in {"m", "m length", "m run", "sqm"}
+
     def line_matches_item(line: dict[str, Any], item: dict[str, Any]) -> bool:
         source_id = safe_resource_id(item.get("source_basis_line_id"), "")
         line_ids = {
@@ -5205,10 +7505,13 @@ def quote_basis_sections_with_catalog_exact_lines(
         item: dict[str, Any],
         default_confidence: int | None = None,
         replace_text: bool = True,
+        prefer_existing_quantity: bool = False,
     ) -> None:
         has_catalog_reference = item_has_catalog_reference(item)
         catalog_id = clean_text(item.get("pricing_keyword") or item.get("id"))
         was_custom = normalize_basis_tag(line.get("tag")) == "Custom" or bool(line.get("custom_pricing"))
+        original_quantity = line.get("quantity")
+        original_unit = line.get("unit")
         if catalog_id:
             line["pricing_keyword"] = catalog_id
             if has_catalog_reference and normalize_basis_tag(line.get("tag")) == "Custom":
@@ -5230,14 +7533,23 @@ def quote_basis_sections_with_catalog_exact_lines(
         catalog_unit_price = parse_float_or_none(item.get("catalog_unit_price") or item.get("sale_unit_price"))
         if catalog_unit_price is not None:
             line["catalog_unit_price"] = catalog_unit_price
-        display_description = display_description_from_catalog_reference(catalog_description, item.get("description"))
+        for order_key in ("category_order", "item_order"):
+            order_value = pricing_reference_order_number(item.get(order_key))
+            if order_value is not None:
+                line[order_key] = order_value
+        display_detail_source = display_detail_source_for_catalog_line(line, catalog_description, item.get("description"))
+        display_description = display_description_from_catalog_reference(catalog_description, display_detail_source)
         if replace_text and (display_description or catalog_description):
             line["text"] = display_description or catalog_description
-        if item.get("quantity") not in (None, ""):
+        if item.get("quantity") not in (None, "") and not (
+            prefer_existing_quantity and line.get("quantity") not in (None, "")
+        ):
             line["quantity"] = item.get("quantity")
         unit = clean_text(item.get("unit") or catalog_item_unit_hint(item))
         if unit:
             line["unit"] = normalize_pricing_unit(unit)
+        if unit and should_clear_generic_lot_quantity_for_catalog_unit(original_quantity, original_unit, unit):
+            line["quantity"] = ""
         confidence = normalize_confidence_percent(line.get("confidence", line.get("confidence_pct")))
         if confidence is not None:
             line["confidence"] = confidence
@@ -5257,17 +7569,28 @@ def quote_basis_sections_with_catalog_exact_lines(
         for line in section.get("lines") or []:
             if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) in {"Custom", "Exclude"}:
                 continue
+            if clean_text(line.get("pricing_keyword")):
+                continue
             index = counters.get(counter_key, 0)
             if index >= len(section_catalog_items):
                 break
+            if is_default_dimension_basis_line(line):
+                continue
             item = section_catalog_items[index]
-            apply_catalog_item_metadata(line, item, replace_text=not item_description_is_reference_text(item))
+            apply_catalog_item_metadata(
+                line,
+                item,
+                replace_text=not item_description_is_reference_text(item),
+                prefer_existing_quantity=True,
+            )
             counters[counter_key] = index + 1
 
     for section in next_sections:
         lines = section.get("lines") if isinstance(section.get("lines"), list) else []
         for line in lines:
             if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
+                continue
+            if clean_text(line.get("pricing_keyword")):
                 continue
             match = next(
                 (
@@ -5290,7 +7613,7 @@ def quote_basis_sections_with_catalog_exact_lines(
             line = source_lines[line_index]
             if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
                 continue
-            match = catalog_item_for_basis_line(line)
+            match = catalog_item_for_basis_line(line, source_section)
             if not match:
                 continue
             target_section = ensure_item_section(match)
@@ -5309,7 +7632,9 @@ def quote_basis_sections_with_catalog_exact_lines(
         existing_target = next(
             (
                 line for line in target_lines
-                if isinstance(line, dict) and line_matches_item(line, item)
+                if isinstance(line, dict)
+                and not is_default_dimension_basis_line(line)
+                and line_matches_item(line, item)
             ),
             None,
         )
@@ -5318,6 +7643,7 @@ def quote_basis_sections_with_catalog_exact_lines(
                 existing_target,
                 item,
                 replace_text=line_matches_catalog_description(existing_target, description),
+                prefer_existing_quantity=True,
             )
             continue
         moved_line: dict[str, Any] | None = None
@@ -5339,6 +7665,7 @@ def quote_basis_sections_with_catalog_exact_lines(
                 moved_line,
                 item,
                 replace_text=line_matches_catalog_description(moved_line, description),
+                prefer_existing_quantity=True,
             )
             target_lines.append(moved_line)
             continue
@@ -5349,10 +7676,347 @@ def quote_basis_sections_with_catalog_exact_lines(
         }
         apply_catalog_item_metadata(next_line, item, default_confidence=50)
         target_lines.append(next_line)
+    for section in next_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            had_invalid_pricing_keyword = bool(line.pop(invalid_pricing_keyword_flag, False))
+            if not had_invalid_pricing_keyword:
+                continue
+            if clean_text(line.get("pricing_keyword")) and item_has_catalog_reference(line):
+                continue
+            if normalize_basis_tag(line.get("tag")) != "Exclude":
+                mark_line_custom_for_manual_pricing(line)
+    for section in next_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
+                continue
+            catalog_item = catalog_item_for_pricing_keyword(line.get("pricing_keyword"))
+            if not catalog_item:
+                continue
+            if catalog_line_contradicts_item(line.get("text"), catalog_item):
+                mark_line_custom_for_manual_pricing(line)
+                continue
+            apply_catalog_item_metadata(line, catalog_item, replace_text=True)
+    for source_section in list(next_sections):
+        source_lines = source_section.get("lines") if isinstance(source_section.get("lines"), list) else []
+        for line_index in range(len(source_lines) - 1, -1, -1):
+            line = source_lines[line_index]
+            if not isinstance(line, dict) or normalize_basis_tag(line.get("tag")) == "Exclude":
+                continue
+            catalog_item = catalog_item_for_pricing_keyword(line.get("pricing_keyword"))
+            if not catalog_item or section_matches_item(source_section, catalog_item):
+                continue
+            moved_line = source_lines.pop(line_index)
+            ensure_item_section(catalog_item).setdefault("lines", []).append(moved_line)
+    if mark_unmatched_confirm_custom:
+        for section in next_sections:
+            for line in section.get("lines") or []:
+                if not isinstance(line, dict):
+                    continue
+                if normalize_basis_tag(line.get("tag")) != "Confirm":
+                    continue
+                if line.get("quantity") in (None, "") and not clean_text(line.get("unit")):
+                    continue
+                if item_has_catalog_reference(line) or is_default_dimension_basis_line(line):
+                    continue
+                mark_line_custom_for_manual_pricing(line)
     return [
         section for section in merge_duplicate_sections(next_sections)
         if [line for line in (section.get("lines") or []) if isinstance(line, dict) and clean_text(line.get("text"))]
     ]
+
+
+def line_items_with_resolved_basis_catalog(
+    line_items: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    catalog_lookup: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not line_items or not sections or not catalog_lookup:
+        return line_items
+
+    basis_catalog_lines_by_id: dict[str, dict[str, Any]] = {}
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            if normalize_basis_tag(line.get("tag")) in {"Custom", "Exclude"}:
+                continue
+            pricing_keyword = clean_text(line.get("pricing_keyword"))
+            if not pricing_keyword or pricing_keyword not in catalog_lookup:
+                continue
+            for key in (line.get("id"), line.get("source_line_item_id")):
+                source_id = safe_resource_id(key, "")
+                if source_id:
+                    basis_catalog_lines_by_id[source_id] = line
+
+    if not basis_catalog_lines_by_id:
+        return line_items
+
+    resolved_items: list[dict[str, Any]] = []
+    for item in line_items:
+        if not isinstance(item, dict):
+            continue
+        source_id = safe_resource_id(item.get("source_basis_line_id"), "")
+        basis_line = basis_catalog_lines_by_id.get(source_id)
+        pricing_keyword = clean_text(item.get("pricing_keyword"))
+        if pricing_keyword and pricing_keyword in catalog_lookup:
+            resolved_items.append(item)
+            continue
+        if not basis_line:
+            resolved_items.append(item)
+            continue
+        catalog_item = catalog_lookup.get(clean_text(basis_line.get("pricing_keyword")))
+        if not catalog_item:
+            resolved_items.append(item)
+            continue
+        catalog_reference_description = clean_text(
+            catalog_item.get("pricing_reference_description")
+            or catalog_item.get("catalog_description")
+            or catalog_item.get("description")
+        )
+        catalog_description = clean_customer_quote_line_text(catalog_reference_description)
+        detail = clean_customer_quote_line_text(item.get("description"))
+        bracketed = bracketed_catalog_reference_parts(basis_line.get("text"))
+        if bracketed and bracketed[1]:
+            detail = bracketed[1]
+        next_item = {**item}
+        next_item["pricing_keyword"] = clean_text(catalog_item.get("id"))
+        if catalog_description:
+            next_item["catalog_description"] = catalog_description
+            next_item["description"] = display_description_from_catalog_reference(catalog_description, detail or catalog_description)
+        if catalog_reference_description:
+            next_item["pricing_reference_description"] = catalog_reference_description
+        section = normalize_catalog_section(catalog_item.get("section"))
+        if section:
+            next_item["section"] = section
+        unit = clean_text(basis_line.get("unit") or catalog_item_unit_hint(catalog_item))
+        if unit:
+            next_item["unit"] = normalize_pricing_unit(unit)
+        catalog_unit_price = parse_float_or_none(catalog_item.get("catalog_unit_price") or catalog_item.get("sale_unit_price"))
+        if catalog_unit_price is not None:
+            next_item["catalog_unit_price"] = catalog_unit_price
+        for order_key in ("category_order", "item_order"):
+            order_value = (
+                pricing_reference_order_number(basis_line.get(order_key))
+                or pricing_reference_order_number(catalog_item.get(order_key))
+                or pricing_reference_order_number(item.get(order_key))
+            )
+            if order_value is not None:
+                next_item[order_key] = order_value
+        if clean_text(catalog_item.get("reference_section")):
+            next_item["reference_section"] = clean_basis_section_title(catalog_item.get("reference_section"))
+        resolved_items.append(next_item)
+    return resolved_items
+
+
+def line_items_aligned_to_quote_basis(
+    line_items: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    catalog_lookup: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not sections:
+        return line_items
+
+    used_item_indexes: set[int] = set()
+    by_source_id: dict[str, list[int]] = {}
+    by_pricing_keyword: dict[str, list[int]] = {}
+    by_description: dict[str, list[int]] = {}
+
+    def comparable_description(value: Any) -> str:
+        bracketed = bracketed_catalog_reference_parts(value)
+        text = bracketed[0] if bracketed else value
+        text = clean_customer_quote_line_text(text).casefold()
+        return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    non_output_source_ids: set[str] = set()
+    non_output_description_keys: set[str] = set()
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for line in section.get("lines") or []:
+            if not is_informational_dimension_basis_line(line):
+                continue
+            for value in (line.get("id"), line.get("source_line_item_id")):
+                source_id = safe_resource_id(value, "")
+                if not source_id:
+                    continue
+                non_output_source_ids.add(source_id)
+            description_key = comparable_description(line.get("text"))
+            if description_key:
+                non_output_description_keys.add(description_key)
+
+    if non_output_source_ids or non_output_description_keys:
+        filtered_line_items = []
+        for item in line_items:
+            if not isinstance(item, dict):
+                continue
+            item_source_ids = {
+                safe_resource_id(value, "")
+                for value in (item.get("source_basis_line_id"), item.get("id"), item.get("source_line_item_id"))
+                if safe_resource_id(value, "")
+            }
+            description_key = comparable_description(item.get("description"))
+            has_catalog = bool(clean_text(item.get("pricing_keyword") or item.get("pricing_reference_description") or item.get("catalog_description")))
+            if item_source_ids & non_output_source_ids:
+                continue
+            if not has_catalog and (
+                (description_key and description_key in non_output_description_keys)
+                or is_informational_dimension_text(item.get("description"))
+            ):
+                continue
+            filtered_line_items.append(item)
+        line_items = filtered_line_items
+        if not line_items:
+            return []
+
+    for index, item in enumerate(line_items):
+        if not isinstance(item, dict):
+            continue
+        for key in (item.get("source_basis_line_id"), item.get("id"), item.get("source_line_item_id")):
+            source_id = safe_resource_id(key, "")
+            if source_id:
+                by_source_id.setdefault(source_id, []).append(index)
+        pricing_keyword = clean_text(item.get("pricing_keyword"))
+        if pricing_keyword:
+            by_pricing_keyword.setdefault(pricing_keyword, []).append(index)
+        description_key = comparable_description(item.get("description"))
+        if description_key:
+            by_description.setdefault(description_key, []).append(index)
+
+    def take_index(indexes: list[int]) -> dict[str, Any] | None:
+        for index in indexes:
+            if index in used_item_indexes:
+                continue
+            used_item_indexes.add(index)
+            return dict(line_items[index])
+        return None
+
+    def basis_line_ids(line: dict[str, Any]) -> list[str]:
+        ids: list[str] = []
+        for value in (line.get("id"), line.get("source_line_item_id")):
+            source_id = safe_resource_id(value, "")
+            if source_id and source_id not in ids:
+                ids.append(source_id)
+        return ids
+
+    def existing_item_for_basis_line(line: dict[str, Any]) -> dict[str, Any] | None:
+        for source_id in basis_line_ids(line):
+            item = take_index(by_source_id.get(source_id, []))
+            if item:
+                return item
+        pricing_keyword = clean_text(line.get("pricing_keyword"))
+        if pricing_keyword:
+            item = take_index(by_pricing_keyword.get(pricing_keyword, []))
+            if item:
+                return item
+        description_key = comparable_description(line.get("text"))
+        if description_key:
+            item = take_index(by_description.get(description_key, []))
+            if item:
+                return item
+        return None
+
+    def output_description_for_basis_line(line: dict[str, Any], catalog_item: dict[str, Any] | None) -> str:
+        catalog_reference = clean_text(
+            line.get("pricing_reference_description")
+            or line.get("catalog_description")
+            or ((catalog_item or {}).get("pricing_reference_description"))
+            or ((catalog_item or {}).get("catalog_description"))
+            or ((catalog_item or {}).get("description"))
+        )
+        if catalog_reference:
+            return clean_customer_quote_line_text(catalog_reference)
+        bracketed = bracketed_catalog_reference_parts(line.get("text"))
+        if bracketed:
+            return clean_customer_quote_line_text(bracketed[1] or bracketed[0])
+        return clean_customer_quote_line_text(line.get("text"))
+
+    aligned: list[dict[str, Any]] = []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        section_title = clean_basis_section_title(section.get("title")) or "Quote Basis"
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            if normalize_basis_tag(line.get("tag")) == "Exclude":
+                continue
+            pricing_keyword = clean_text(line.get("pricing_keyword"))
+            catalog_item = catalog_lookup.get(pricing_keyword) if pricing_keyword else None
+            is_custom = normalize_basis_tag(line.get("tag")) == "Custom" or bool(line.get("custom_pricing"))
+            if not pricing_keyword and not is_custom:
+                continue
+            description = output_description_for_basis_line(line, catalog_item)
+            if not description:
+                continue
+            existing = existing_item_for_basis_line(line) or {}
+            next_item = dict(existing)
+            catalog_section = (
+                normalize_catalog_section(catalog_item.get("section"))
+                or clean_basis_section_title(catalog_item.get("reference_section"))
+                if catalog_item
+                else ""
+            )
+            next_item["section"] = catalog_section or section_title
+            quantity = line.get("quantity") if line.get("quantity") not in (None, "") else existing.get("quantity")
+            if quantity not in (None, ""):
+                parsed_quantity = parse_float_or_none(quantity)
+                next_item["quantity"] = parsed_quantity if parsed_quantity is not None else quantity
+            else:
+                next_item.pop("quantity", None)
+            unit = clean_text(line.get("unit") or existing.get("unit") or catalog_item_unit_hint(catalog_item))
+            if unit:
+                next_item["unit"] = normalize_pricing_unit(unit)
+            else:
+                next_item.pop("unit", None)
+            next_item["description"] = description
+            next_item["pricing_keyword"] = pricing_keyword
+            source_ids = basis_line_ids(line)
+            if source_ids:
+                next_item["source_basis_line_id"] = source_ids[0]
+            elif clean_text(existing.get("source_basis_line_id")):
+                next_item["source_basis_line_id"] = clean_text(existing.get("source_basis_line_id"))
+            else:
+                next_item.pop("source_basis_line_id", None)
+            if catalog_item:
+                catalog_reference = clean_text(
+                    line.get("pricing_reference_description")
+                    or catalog_item.get("pricing_reference_description")
+                    or catalog_item.get("description")
+                )
+                catalog_description = clean_customer_quote_line_text(catalog_reference)
+                if catalog_description:
+                    next_item["catalog_description"] = catalog_description
+                    next_item["pricing_reference_description"] = catalog_reference
+                catalog_unit_price = parse_float_or_none(
+                    line.get("catalog_unit_price")
+                    or catalog_item.get("catalog_unit_price")
+                    or catalog_item.get("sale_unit_price")
+                )
+                if catalog_unit_price is not None:
+                    next_item["catalog_unit_price"] = catalog_unit_price
+                if clean_text(catalog_item.get("reference_section")):
+                    next_item["reference_section"] = clean_basis_section_title(catalog_item.get("reference_section"))
+            else:
+                next_item.pop("catalog_description", None)
+                next_item.pop("pricing_reference_description", None)
+                next_item.pop("catalog_unit_price", None)
+                next_item.setdefault("price_mode", "Priced")
+            for order_key in ("category_order", "item_order"):
+                order_value = (
+                    pricing_reference_order_number(line.get(order_key))
+                    or pricing_reference_order_number((catalog_item or {}).get(order_key))
+                    or pricing_reference_order_number(existing.get(order_key))
+                )
+                if order_value is not None:
+                    next_item[order_key] = order_value
+                else:
+                    next_item.pop(order_key, None)
+            aligned.append(next_item)
+    return aligned or line_items
 
 
 def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) -> list[dict[str, Any]]:
@@ -5600,6 +8264,8 @@ def normalize_basis_chat_result(parsed: dict[str, Any], payload: dict[str, Any],
         if not sections:
             raise OpenAIAnalysisError("AI basis chat did not return a usable proposal.")
         sections = quote_basis_sections_apply_global_tag_command(payload, sections)
+        line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
+        sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
 
         return {
             "status": "answered",
@@ -5698,18 +8364,23 @@ def require_basis_confidence(sections: list[dict[str, Any]], provider: str = "AI
 
 
 def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = None, require_confidence: bool = False) -> dict[str, Any]:
+    has_payload_context = payload is not None
     payload = payload or {}
     raw_line_items = parsed.get("line_items") if isinstance(parsed.get("line_items"), list) else []
     raw_project = parsed.get("project") if isinstance(parsed.get("project"), dict) else {}
     dimensions = booth_dimensions_from_payload({"project": raw_project}) if raw_project else {}
-    pricing_reference_sections = pricing_reference_section_names_for_payload(payload)
-    line_items = normalize_line_items({**payload, "line_items": raw_line_items})
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    pricing_reference_sections = pricing_reference_section_names_for_payload(payload) if has_payload_context else []
+    line_items = normalize_line_items({**payload, "line_items": raw_line_items}, use_catalog=has_payload_context)
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if has_payload_context else {}
     sections = quote_basis_sections_with_catalog_exact_lines(
         confirm_only_basis_sections(normalize_quote_basis_sections(parsed, pricing_reference_sections)),
         line_items,
         list(catalog_lookup.values()),
+        mark_unmatched_confirm_custom=has_payload_context,
     )
+    line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
+    sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
+    line_items = line_items_aligned_to_quote_basis(line_items, sections, catalog_lookup)
     legacy_basis = quote_basis_from_sections(sections)
     blockers = normalize_blocking_clarification_questions(parsed.get("blocking_clarification_questions"))
     if blockers:
@@ -5735,17 +8406,36 @@ def normalize_ai_draft(parsed: dict[str, Any], payload: dict[str, Any] | None = 
 def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
     prompt = build_quote_draft_prompt(payload)
     content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+    rendered_pdf_pages_remaining = MAX_RENDERED_PDF_PAGES
     for image in image_entries(payload)[:MAX_REFERENCE_IMAGES]:
         data_url = clean_text(image.get("data_url"))
         if not data_url:
             continue
         mime_type = reference_file_mime_type(image)
         if mime_type == "application/pdf":
+            filename = safe_segment(clean_text(image.get("name")) or "reference.pdf", "reference.pdf")
             content.append({
                 "type": "input_file",
-                "filename": safe_segment(clean_text(image.get("name")) or "reference.pdf", "reference.pdf"),
+                "filename": filename,
                 "file_data": data_url,
             })
+            if rendered_pdf_pages_remaining > 0:
+                rendered_pages = pdf_reference_page_images(image, max_pages=rendered_pdf_pages_remaining)
+                rendered_pages = rendered_pages[:rendered_pdf_pages_remaining]
+                if rendered_pages:
+                    page_numbers = ", ".join(str(page.get("page")) for page in rendered_pages if page.get("page"))
+                    content.append({
+                        "type": "input_text",
+                        "text": (
+                            f"Rendered PDF page images follow for {filename}"
+                            f"{f' (pages {page_numbers})' if page_numbers else ''}. "
+                            "Use these images for visual layout, labels, dimensions, and render details; "
+                            "the original PDF file remains attached for full document context."
+                        ),
+                    })
+                    for page in rendered_pages:
+                        content.append({"type": "input_image", "image_url": page["data_url"], "detail": "high"})
+                    rendered_pdf_pages_remaining -= len(rendered_pages)
         elif mime_type.startswith("image/"):
             content.append({"type": "input_image", "image_url": data_url, "detail": "high"})
     catalog_visuals = catalog_visual_image_entries_for_payload(payload)
@@ -5755,9 +8445,11 @@ def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
         for image in catalog_visuals:
             content.append({"type": "input_image", "image_url": image["data_url"], "detail": "low"})
 
+    analysis_mode = draft_analysis_mode(payload)
     body = {
-        "model": configured_openai_draft_model(draft_analysis_mode(payload)),
+        "model": configured_openai_draft_model(analysis_mode),
         "input": [{"role": "user", "content": content}],
+        "reasoning": {"effort": configured_openai_draft_reasoning_effort(analysis_mode)},
     }
     request = urllib.request.Request(
         OPENAI_RESPONSES_URL,
@@ -5829,18 +8521,139 @@ def request_openai_basis_chat_with_model(payload: dict[str, Any], api_key: str, 
         raise AIModelOutputError(str(exc)) from exc
 
 
+def request_deepseek_basis_chat_with_model(payload: dict[str, Any], api_key: str, model: str) -> dict[str, Any]:
+    data = request_deepseek_chat_completion_json_data(build_basis_chat_prompt(payload), api_key, model, 1200, "chat")
+    try:
+        return normalize_basis_chat_result(parse_json_object(chat_completions_output_text(data)), payload, "deepseek")
+    except OpenAIAnalysisError as exc:
+        raise AIModelOutputError(str(exc)) from exc
+
+
 def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
     models = openai_basis_chat_models(payload)
     errors: list[str] = []
     for index, model in enumerate(models):
+        attempt_started_at = time.perf_counter()
         try:
-            return request_openai_basis_chat_with_model(payload, api_key, model)
-        except AIModelOutputError as exc:
+            result = request_openai_basis_chat_with_model(payload, api_key, model)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_OPENAI,
+                model=model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
+            return result
+        except OpenAIAnalysisError as exc:
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_OPENAI,
+                model=model,
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                details={"errors": safe_error_messages([str(exc)])},
+            )
+            if not isinstance(exc, AIModelOutputError):
+                raise
             errors.append(str(exc))
             if index + 1 < len(models):
                 write_local_log("openai_basis_chat_model_retry", {
                     "from_model": model,
                     "to_model": models[index + 1],
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            raise
+    raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
+
+
+def request_deepseek_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+    models = deepseek_basis_chat_models(payload)
+    errors: list[str] = []
+    for index, model in enumerate(models):
+        attempt_started_at = time.perf_counter()
+        try:
+            result = request_deepseek_basis_chat_with_model(payload, api_key, model)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_DEEPSEEK,
+                model=model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
+            return result
+        except OpenAIAnalysisError as exc:
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_DEEPSEEK,
+                model=model,
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                details={"errors": safe_error_messages([str(exc)])},
+            )
+            if not isinstance(exc, AIModelOutputError):
+                raise
+            errors.append(str(exc))
+            if index + 1 < len(models):
+                write_local_log("deepseek_basis_chat_model_retry", {
+                    "from_model": model,
+                    "to_model": models[index + 1],
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                continue
+            raise
+    raise OpenAIAnalysisError(" ".join(safe_error_messages(errors)))
+
+
+def request_configured_basis_chat(payload: dict[str, Any]) -> dict[str, Any]:
+    candidates = basis_chat_provider_model_candidates(payload)
+    errors: list[str] = []
+    for index, candidate in enumerate(candidates):
+        provider = candidate["provider"]
+        model = candidate["model"]
+        api_key = text_ai_provider_api_key(provider)
+        if not api_key:
+            missing_error = f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}."
+            errors.append(missing_error)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=provider,
+                model=model,
+                status="missing_api_key",
+                duration_ms=0,
+                details={"errors": safe_error_messages([missing_error])},
+            )
+            continue
+        attempt_started_at = time.perf_counter()
+        try:
+            if provider == AI_PROVIDER_DEEPSEEK:
+                result = request_deepseek_basis_chat_with_model(payload, api_key, model)
+            else:
+                result = request_openai_basis_chat_with_model(payload, api_key, model)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=provider,
+                model=model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
+            return result
+        except OpenAIAnalysisError as exc:
+            errors.append(str(exc))
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=provider,
+                model=model,
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                details={"errors": safe_error_messages([str(exc)])},
+            )
+            if index + 1 < len(candidates):
+                write_local_log("basis_chat_model_retry", {
+                    "from_provider": provider,
+                    "from_model": model,
+                    "to_provider": candidates[index + 1]["provider"],
+                    "to_model": candidates[index + 1]["model"],
                     "errors": safe_error_messages([str(exc)]),
                 })
                 continue
@@ -5858,15 +8671,20 @@ def data_url_inline_image(data_url: str) -> dict[str, str] | None:
 
 
 def unpack_ai_draft(ai_draft: dict[str, Any], payload: dict[str, Any] | None = None) -> tuple[dict[str, str], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+    has_payload_context = payload is not None
     payload = payload or {}
-    line_items = normalize_line_items({**payload, "line_items": ai_draft.get("line_items")})
+    line_items = normalize_line_items({**payload, "line_items": ai_draft.get("line_items")}, use_catalog=has_payload_context)
     pricing_reference_sections = pricing_reference_section_names_for_payload(payload)
-    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if has_payload_context else {}
     sections = quote_basis_sections_with_catalog_exact_lines(
         confirm_only_basis_sections(normalize_quote_basis_sections(ai_draft, pricing_reference_sections)),
         line_items,
         list(catalog_lookup.values()),
+        mark_unmatched_confirm_custom=has_payload_context,
     )
+    line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
+    sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
+    line_items = line_items_aligned_to_quote_basis(line_items, sections, catalog_lookup)
     require_basis_confidence(sections, provider=clean_text(ai_draft.get("source")) or "AI")
     raw_basis = quote_basis_from_sections(sections)
     basis = {
@@ -5901,6 +8719,18 @@ def ai_draft_diagnostic_details(
     }
 
 
+def ai_payload_media_counts(payload: dict[str, Any]) -> tuple[int, int]:
+    image_count = 0
+    pdf_count = 0
+    for entry in image_entries(payload):
+        mime_type = reference_file_mime_type(entry)
+        if mime_type == "application/pdf":
+            pdf_count += 1
+        elif mime_type.startswith("image/"):
+            image_count += 1
+    return image_count, pdf_count
+
+
 def finalized_remote_draft_result(
     payload: dict[str, Any],
     ai_basis: dict[str, Any],
@@ -5909,6 +8739,7 @@ def finalized_remote_draft_result(
     fallback_project: dict[str, Any],
     fallback_line_items: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    has_payload_context = payload is not None
     basis, line_items, project, sections = unpack_ai_draft(ai_basis, payload)
     blockers = normalize_blocking_clarification_questions(ai_basis.get("blocking_clarification_questions"))
     if blockers:
@@ -5930,6 +8761,30 @@ def finalized_remote_draft_result(
         sections or normalize_quote_basis_sections({"quote_basis": adjusted_basis}),
         project,
     )
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload)) if has_payload_context else {}
+    adjusted_sections = quote_basis_sections_with_catalog_exact_lines(
+        adjusted_sections,
+        line_items,
+        list(catalog_lookup.values()),
+        mark_unmatched_confirm_custom=True,
+    )
+    line_items = line_items_with_resolved_basis_catalog(line_items, adjusted_sections, catalog_lookup)
+    adjusted_sections = sort_quote_basis_sections_by_pricing_reference_order(payload, adjusted_sections)
+    line_items = line_items_aligned_to_quote_basis(line_items, adjusted_sections, catalog_lookup)
+    for section in adjusted_sections:
+        for line in section.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            has_catalog = bool(clean_text(line.get("pricing_reference_description")) or clean_text(line.get("catalog_description")))
+            if normalize_basis_tag(line.get("tag")) == "Confirm" and not has_catalog and (line.get("quantity") not in (None, "") or clean_text(line.get("unit"))):
+                bracketed = bracketed_catalog_reference_parts(line.get("text"))
+                if bracketed:
+                    reference, detail = bracketed
+                    line["text"] = detail or reference
+                line["tag"] = "Custom"
+                line["custom_pricing"] = True
+                line.pop("pricing_keyword", None)
+    adjusted_basis = quote_basis_from_sections(adjusted_sections)
     write_local_log(
         f"{source}_draft_completed",
         ai_draft_diagnostic_details(source, adjusted_basis, adjusted_sections, line_items),
@@ -5956,12 +8811,37 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
 
     openai_key = read_dotenv_value(OPENAI_API_KEY_ENV_NAME)
     if openai_key:
+        attempt_started_at = time.perf_counter()
+        analysis_mode = draft_analysis_mode(payload)
+        image_count, pdf_count = ai_payload_media_counts(payload)
         try:
             ai_basis = request_openai_quote_basis(payload, openai_key)
-            return finalized_remote_draft_result(payload, ai_basis, "openai", "OpenAI", fallback_project, fallback_line_items)
+            result = finalized_remote_draft_result(payload, ai_basis, "openai", "OpenAI", fallback_project, fallback_line_items)
+            log_ai_call_attempt(
+                feature="draft_quote_basis",
+                provider=AI_PROVIDER_OPENAI,
+                model=configured_openai_draft_model(analysis_mode),
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                analysis_mode=analysis_mode,
+                image_count=image_count,
+                pdf_count=pdf_count,
+            )
+            return result
         except OpenAIAnalysisError as exc:
             openai_error = str(exc)
             remote_errors.append(openai_error)
+            log_ai_call_attempt(
+                feature="draft_quote_basis",
+                provider=AI_PROVIDER_OPENAI,
+                model=configured_openai_draft_model(analysis_mode),
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                analysis_mode=analysis_mode,
+                image_count=image_count,
+                pdf_count=pdf_count,
+                details={"errors": safe_error_messages([openai_error])},
+            )
             write_local_log("openai_draft_failed", {"errors": safe_error_messages([openai_error])})
 
     if remote_errors:
@@ -6000,6 +8880,19 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
     warnings = safe_error_messages([
         f"Remote AI is not configured on this PC. Selected provider is {provider_label}. Add {missing_env} to .env, restart the local server, then regenerate analysis.",
     ])
+    image_count, pdf_count = ai_payload_media_counts(payload)
+    log_ai_call_attempt(
+        feature="draft_quote_basis",
+        provider=AI_PROVIDER_OPENAI,
+        model=configured_openai_draft_model(draft_analysis_mode(payload)),
+        status="missing_api_key",
+        duration_ms=0,
+        analysis_mode=draft_analysis_mode(payload),
+        image_count=image_count,
+        pdf_count=pdf_count,
+        error_reference=error_reference,
+        details={"missing_env": [missing_env], "warnings": warnings},
+    )
     write_local_log(
         "ai_draft_remote_unconfigured",
         {
@@ -6026,18 +8919,21 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def answer_basis_chat(payload: dict[str, Any]) -> dict[str, Any]:
-    openai_key = read_dotenv_value(OPENAI_API_KEY_ENV_NAME)
-    if openai_key:
-        try:
-            return request_openai_basis_chat(payload, openai_key)
-        except OpenAIAnalysisError as exc:
-            openai_error = str(exc)
-            write_local_log("openai_basis_chat_failed", {"errors": safe_error_messages([openai_error])})
-            raise OpenAIAnalysisError(" ".join(safe_error_messages([openai_error]))) from exc
-    messages = [
-        "AI basis chat is not configured. Selected provider is OpenAI. Add OPENAI_API_KEY, then retry the basis change.",
-    ]
-    raise OpenAIAnalysisError(" ".join(safe_error_messages(messages)))
+    try:
+        return request_configured_basis_chat(payload)
+    except OpenAIAnalysisError as exc:
+        error = str(exc)
+        provider = configured_text_ai_provider(basis_chat_provider_env_name(payload))
+        write_local_log("basis_chat_failed", {
+            "selected_provider": provider,
+            "errors": safe_error_messages([error]),
+        })
+        fallback_note = "OpenAI fallback is enabled for DeepSeek routes when OPENAI_API_KEY is configured."
+        message = (
+            f"AI basis chat is not configured or failed. Selected provider is {text_ai_provider_label(provider)}. "
+            f"Add {text_ai_provider_key_env_name(provider)}, or configure OPENAI_API_KEY for fallback. {fallback_note} {error}"
+        )
+        raise OpenAIAnalysisError(" ".join(safe_error_messages([message]))) from exc
 
 
 def save_uploaded_images(images: list[dict[str, Any]], job_dir: Path) -> list[dict[str, Any]]:
@@ -6470,6 +9366,22 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             self.send_json({"pricing_references": list_pricing_references()})
             return
+        pricing_reference_detail_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", path)
+        if pricing_reference_detail_match:
+            allowed, error = require_permission("canManagePricingReferences")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            try:
+                detail = pricing_reference_pack_detail(pricing_reference_detail_match.group(1))
+            except ValueError as exc:
+                self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
+                return
+            if not detail:
+                self.send_json({"error": "Not found"}, status=404)
+                return
+            self.send_json({"pricing_reference": detail})
+            return
         if path == "/api/settings/profiles":
             allowed, error = require_permission("canManageProfiles")
             if not allowed:
@@ -6536,8 +9448,24 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             try:
+                reference_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
+                existing = pricing_reference_pack_detail(reference_id) if reference_id else None
+                if existing and pricing_reference_payload_matches_existing_pack(payload, existing):
+                    self.send_json({
+                        "status": "unchanged",
+                        "pricing_reference": load_pricing_reference_pack(reference_id).public_summary(),
+                        "unchanged": True,
+                    })
+                    return
+                if existing and not pricing_reference_payload_updates_existing_pack(payload, reference_id):
+                    label = clean_text(existing.get("label")) or reference_id
+                    raise ValueError(
+                        f'A pricing reference named "{label}" already exists. '
+                        "Choose a different pricing reference name, or switch to Manage to edit it."
+                    )
                 reference = normalize_pricing_reference_payload(payload)
                 saved = save_pricing_reference_pack(reference)
+                schedule_pricing_reference_ai_metadata_enrichment(reference["id"])
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
