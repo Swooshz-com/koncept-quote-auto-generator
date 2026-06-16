@@ -215,17 +215,21 @@ RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
 ALLOWED_LOG_EVENTS = {
     "abuse_signal",
+    "ai_call_attempt",
     "ai_draft_fallback_used",
     "ai_draft_remote_unconfigured",
     "basis_chat_failed",
+    "basis_chat_model_retry",
     "basis_chat_worker_failed",
     "client_error",
+    "deepseek_basis_chat_model_retry",
     "draft_blocked",
     "draft_failed",
     "draft_worker_failed",
     "generate_failed",
     "generate_needs_review",
     "openai_basis_chat_failed",
+    "openai_basis_chat_model_retry",
     "openai_draft_completed",
     "openai_draft_failed",
     "ai_pricing_reference_import_timing",
@@ -338,6 +342,8 @@ MAX_PROMPT_CATALOG_MATCH_TERMS = 6
 # and pricing-reference storage partitioned by authenticated user/account.
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
+PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS: set[threading.Thread] = set()
+PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK = threading.Lock()
 
 
 class RequestBodyError(ValueError):
@@ -447,6 +453,52 @@ def elapsed_milliseconds(started_at: float) -> int:
     return max(0, int(round((time.perf_counter() - started_at) * 1000)))
 
 
+def log_ai_call_attempt(
+    *,
+    feature: str,
+    provider: str,
+    model: str = "",
+    status: str,
+    duration_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    total_tokens: int | None = None,
+    estimated_cost_usd: float | None = None,
+    image_count: int | None = None,
+    pdf_count: int | None = None,
+    error_reference: str = "",
+    details: dict[str, Any] | None = None,
+    log_root: Path | None = None,
+    **metadata: Any,
+) -> bool:
+    record: dict[str, Any] = {
+        "feature": log_event_name(feature),
+        "provider": clean_text(provider).lower(),
+        "model": clean_text(model),
+        "status": log_event_name(status),
+    }
+    if duration_ms is not None:
+        record["duration_ms"] = max(0, int(duration_ms))
+    for key, value in (
+        ("input_tokens", input_tokens),
+        ("output_tokens", output_tokens),
+        ("total_tokens", total_tokens),
+        ("estimated_cost_usd", estimated_cost_usd),
+        ("image_count", image_count),
+        ("pdf_count", pdf_count),
+    ):
+        if value is not None:
+            record[key] = value
+    if clean_text(error_reference):
+        record["error_reference"] = clean_text(error_reference)
+    for key, value in metadata.items():
+        if value not in (None, "", [], {}):
+            record[key] = value
+    if details:
+        record["details"] = details
+    return write_local_log("ai_call_attempt", record, log_root=log_root)
+
+
 def sanitize_log_value(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized: dict[str, Any] = {}
@@ -510,6 +562,8 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         meaning = "Pricing-reference import timing. Check details.timings_ms to see whether local extraction, AI normalization, or validation dominated the wait."
     elif event == "ai_pricing_reference_import_timing":
         meaning = "AI pricing-reference import timing. Check details.provider_attempts for provider duration, fallback, and completion status."
+    elif event == "ai_call_attempt":
+        meaning = "AI provider call attempt metadata. Check provider, model, feature, status, duration, retry/fallback, and token/count fields without raw prompts or customer content."
     elif event == "abuse_signal":
         meaning = security_reasons.get(reason, "The local runner detected repeated or suspicious local requests.")
     else:
@@ -3096,6 +3150,98 @@ def save_pricing_reference_pack(reference: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def pricing_reference_ai_metadata_enrichment_provider_order() -> list[str]:
+    provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
+    provider_order = [provider]
+    if provider != AI_PROVIDER_OPENAI:
+        provider_order.append(AI_PROVIDER_OPENAI)
+    return provider_order
+
+
+def pricing_reference_ai_metadata_enrichment_configured() -> bool:
+    return any(text_ai_provider_api_key(provider) for provider in pricing_reference_ai_metadata_enrichment_provider_order())
+
+
+def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> bool:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id:
+        raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+    detail = pricing_reference_pack_detail(safe_id)
+    if not detail:
+        return False
+    items = [dict(item) for item in (detail.get("items") if isinstance(detail.get("items"), list) else []) if isinstance(item, dict)]
+    if not items:
+        return False
+    enriched_items, errors = ai_pricing_reference_metadata_enrichment(clean_text(detail.get("label")) or safe_id, items)
+    if errors or not enriched_items:
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_id,
+                "errors": safe_error_messages(errors or ["AI pricing metadata enrichment returned no rows."]),
+            },
+        )
+        return False
+    pricing_reference_enrichment.enrich_pricing_reference_items(enriched_items)
+    metadata_errors = pricing_reference_metadata_quality_errors(enriched_items)
+    if metadata_errors:
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_id,
+                "errors": safe_error_messages(metadata_errors),
+            },
+        )
+        return False
+    save_pricing_reference_pack({
+        "id": safe_id,
+        "label": clean_text(detail.get("label")) or safe_id,
+        "description": clean_text(detail.get("description")),
+        "tax": normalized_tax_config(detail.get("tax")),
+        "currency": normalize_currency_label(detail.get("currency")),
+        "schema_version": int(parse_pricing_number(detail.get("schema_version")) or 1),
+        "items": enriched_items,
+        "saved_at": utc_timestamp(),
+    })
+    return True
+
+
+def run_scheduled_pricing_reference_ai_metadata_enrichment(reference_id: str) -> None:
+    try:
+        apply_saved_pricing_reference_ai_metadata_enrichment(reference_id)
+    except Exception as exc:  # pragma: no cover - defensive background boundary
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_resource_id(reference_id, ""),
+                "errors": safe_error_messages([str(exc)]),
+            },
+        )
+    finally:
+        current = threading.current_thread()
+        with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
+            PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.discard(current)
+
+
+def schedule_pricing_reference_ai_metadata_enrichment(reference_id: str) -> bool:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id or not pricing_reference_ai_metadata_enrichment_configured():
+        return False
+    thread = threading.Thread(
+        target=run_scheduled_pricing_reference_ai_metadata_enrichment,
+        args=(safe_id,),
+        name=f"pricing-metadata-enrichment-{safe_id[:32]}",
+        daemon=True,
+    )
+    with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
+        PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.add(thread)
+    thread.start()
+    return True
+
+
 def pricing_reference_is_profile_default(reference_id: str) -> bool:
     safe_id = safe_resource_id(reference_id, "")
     if not safe_id:
@@ -3140,7 +3286,7 @@ def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
 
 
 AI_PRICING_IMPORT_NOT_CONFIGURED = "AI pricing catalog import is not configured for the selected AI provider. Configure the selected provider API key, then upload the messy pricing file again. The template remains optional for clean manual entry."
-AI_PRICING_METADATA_NOT_CONFIGURED = "AI pricing reference metadata enrichment is required before saving. Configure the selected AI provider API key, then upload the pricing file again."
+AI_PRICING_METADATA_NOT_CONFIGURED = "AI pricing reference metadata enrichment is not configured. Configure the selected AI provider API key to enable optional post-save metadata enrichment."
 
 
 def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3505,17 +3651,54 @@ def ai_pricing_reference_metadata_enrichment(filename: str, items: list[dict[str
     batches = pricing_reference_metadata_batches(items)
     for candidate_provider in provider_order:
         api_key = text_ai_provider_api_key(candidate_provider)
+        candidate_model = text_ai_provider_default_model(candidate_provider)
         if not api_key:
-            errors.append(f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}.")
+            missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
+            errors.append(missing_error)
+            log_ai_call_attempt(
+                feature="pricing_reference_metadata_enrichment",
+                provider=candidate_provider,
+                model=candidate_model,
+                status="missing_api_key",
+                duration_ms=0,
+                details={"errors": safe_error_messages([missing_error])},
+                row_count=len(items),
+                batch_count=len(batches),
+            )
             continue
         raw_metadata_items: list[dict[str, Any]] = []
         try:
             for batch_index, batch in enumerate(batches, start=1):
                 batch_name = f"{filename} metadata batch {batch_index}/{len(batches)}" if len(batches) > 1 else filename
-                if candidate_provider == AI_PROVIDER_DEEPSEEK:
-                    parsed = request_deepseek_pricing_catalog_metadata(batch_name, batch, api_key)
-                else:
-                    parsed = request_openai_pricing_catalog_metadata(batch_name, batch, api_key)
+                attempt_started_at = time.perf_counter()
+                try:
+                    if candidate_provider == AI_PROVIDER_DEEPSEEK:
+                        parsed = request_deepseek_pricing_catalog_metadata(batch_name, batch, api_key)
+                    else:
+                        parsed = request_openai_pricing_catalog_metadata(batch_name, batch, api_key)
+                except OpenAIAnalysisError as exc:
+                    log_ai_call_attempt(
+                        feature="pricing_reference_metadata_enrichment",
+                        provider=candidate_provider,
+                        model=candidate_model,
+                        status="failed",
+                        duration_ms=elapsed_milliseconds(attempt_started_at),
+                        details={"errors": safe_error_messages([str(exc)])},
+                        row_count=len(batch),
+                        batch_index=batch_index,
+                        batch_count=len(batches),
+                    )
+                    raise
+                log_ai_call_attempt(
+                    feature="pricing_reference_metadata_enrichment",
+                    provider=candidate_provider,
+                    model=candidate_model,
+                    status="success",
+                    duration_ms=elapsed_milliseconds(attempt_started_at),
+                    row_count=len(batch),
+                    batch_index=batch_index,
+                    batch_count=len(batches),
+                )
                 parsed_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
                 raw_metadata_items.extend([item for item in parsed_items if isinstance(item, dict)])
         except OpenAIAnalysisError as exc:
@@ -3547,6 +3730,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
     try:
         for candidate_provider in provider_order:
             api_key = text_ai_provider_api_key(candidate_provider)
+            candidate_model = text_ai_provider_default_model(candidate_provider)
             if not api_key:
                 missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
                 errors.append(missing_error)
@@ -3556,6 +3740,14 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                     "duration_ms": 0,
                     "errors": safe_error_messages([missing_error]),
                 })
+                log_ai_call_attempt(
+                    feature="pricing_reference_import",
+                    provider=candidate_provider,
+                    model=candidate_model,
+                    status="missing_api_key",
+                    duration_ms=0,
+                    details={"errors": safe_error_messages([missing_error])},
+                )
                 continue
             attempt_started_at = time.perf_counter()
             try:
@@ -3571,12 +3763,27 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                     "duration_ms": elapsed_milliseconds(attempt_started_at),
                     "errors": safe_error_messages([str(exc)]),
                 })
+                log_ai_call_attempt(
+                    feature="pricing_reference_import",
+                    provider=candidate_provider,
+                    model=candidate_model,
+                    status="failed",
+                    duration_ms=elapsed_milliseconds(attempt_started_at),
+                    details={"errors": safe_error_messages([str(exc)])},
+                )
                 continue
             provider_attempts.append({
                 "provider": candidate_provider,
                 "status": "success",
                 "duration_ms": elapsed_milliseconds(attempt_started_at),
             })
+            log_ai_call_attempt(
+                feature="pricing_reference_import",
+                provider=candidate_provider,
+                model=candidate_model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
             selected_provider = candidate_provider
             if parsed is not None:
                 break
@@ -4466,6 +4673,12 @@ def text_ai_provider_key_env_name(provider: str) -> str:
 
 def text_ai_provider_api_key(provider: str) -> str:
     return clean_text(read_dotenv_value(text_ai_provider_key_env_name(provider)))
+
+
+def text_ai_provider_default_model(provider: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        return configured_deepseek_model()
+    return configured_openai_basis_line_model()
 
 
 def configured_deepseek_base_url() -> str:
@@ -7906,9 +8119,28 @@ def request_openai_basis_chat(payload: dict[str, Any], api_key: str) -> dict[str
     models = openai_basis_chat_models(payload)
     errors: list[str] = []
     for index, model in enumerate(models):
+        attempt_started_at = time.perf_counter()
         try:
-            return request_openai_basis_chat_with_model(payload, api_key, model)
-        except AIModelOutputError as exc:
+            result = request_openai_basis_chat_with_model(payload, api_key, model)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_OPENAI,
+                model=model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
+            return result
+        except OpenAIAnalysisError as exc:
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_OPENAI,
+                model=model,
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                details={"errors": safe_error_messages([str(exc)])},
+            )
+            if not isinstance(exc, AIModelOutputError):
+                raise
             errors.append(str(exc))
             if index + 1 < len(models):
                 write_local_log("openai_basis_chat_model_retry", {
@@ -7925,9 +8157,28 @@ def request_deepseek_basis_chat(payload: dict[str, Any], api_key: str) -> dict[s
     models = deepseek_basis_chat_models(payload)
     errors: list[str] = []
     for index, model in enumerate(models):
+        attempt_started_at = time.perf_counter()
         try:
-            return request_deepseek_basis_chat_with_model(payload, api_key, model)
-        except AIModelOutputError as exc:
+            result = request_deepseek_basis_chat_with_model(payload, api_key, model)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_DEEPSEEK,
+                model=model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
+            return result
+        except OpenAIAnalysisError as exc:
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=AI_PROVIDER_DEEPSEEK,
+                model=model,
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                details={"errors": safe_error_messages([str(exc)])},
+            )
+            if not isinstance(exc, AIModelOutputError):
+                raise
             errors.append(str(exc))
             if index + 1 < len(models):
                 write_local_log("deepseek_basis_chat_model_retry", {
@@ -7945,20 +8196,48 @@ def request_configured_basis_chat(payload: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     for index, candidate in enumerate(candidates):
         provider = candidate["provider"]
+        model = candidate["model"]
         api_key = text_ai_provider_api_key(provider)
         if not api_key:
-            errors.append(f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}.")
+            missing_error = f"Selected provider: {provider}. Missing: {text_ai_provider_key_env_name(provider)}."
+            errors.append(missing_error)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=provider,
+                model=model,
+                status="missing_api_key",
+                duration_ms=0,
+                details={"errors": safe_error_messages([missing_error])},
+            )
             continue
+        attempt_started_at = time.perf_counter()
         try:
             if provider == AI_PROVIDER_DEEPSEEK:
-                return request_deepseek_basis_chat_with_model(payload, api_key, candidate["model"])
-            return request_openai_basis_chat_with_model(payload, api_key, candidate["model"])
+                result = request_deepseek_basis_chat_with_model(payload, api_key, model)
+            else:
+                result = request_openai_basis_chat_with_model(payload, api_key, model)
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=provider,
+                model=model,
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+            )
+            return result
         except OpenAIAnalysisError as exc:
             errors.append(str(exc))
+            log_ai_call_attempt(
+                feature="basis_chat",
+                provider=provider,
+                model=model,
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                details={"errors": safe_error_messages([str(exc)])},
+            )
             if index + 1 < len(candidates):
                 write_local_log("basis_chat_model_retry", {
                     "from_provider": provider,
-                    "from_model": candidate["model"],
+                    "from_model": model,
                     "to_provider": candidates[index + 1]["provider"],
                     "to_model": candidates[index + 1]["model"],
                     "errors": safe_error_messages([str(exc)]),
@@ -8024,6 +8303,18 @@ def ai_draft_diagnostic_details(
         "section_titles": [clean_text(section.get("title")) for section in sections[:20] if isinstance(section, dict)],
         "line_item_count": len(line_items),
     }
+
+
+def ai_payload_media_counts(payload: dict[str, Any]) -> tuple[int, int]:
+    image_count = 0
+    pdf_count = 0
+    for entry in image_entries(payload):
+        mime_type = reference_file_mime_type(entry)
+        if mime_type == "application/pdf":
+            pdf_count += 1
+        elif mime_type.startswith("image/"):
+            image_count += 1
+    return image_count, pdf_count
 
 
 def finalized_remote_draft_result(
@@ -8106,12 +8397,37 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
 
     openai_key = read_dotenv_value(OPENAI_API_KEY_ENV_NAME)
     if openai_key:
+        attempt_started_at = time.perf_counter()
+        analysis_mode = draft_analysis_mode(payload)
+        image_count, pdf_count = ai_payload_media_counts(payload)
         try:
             ai_basis = request_openai_quote_basis(payload, openai_key)
-            return finalized_remote_draft_result(payload, ai_basis, "openai", "OpenAI", fallback_project, fallback_line_items)
+            result = finalized_remote_draft_result(payload, ai_basis, "openai", "OpenAI", fallback_project, fallback_line_items)
+            log_ai_call_attempt(
+                feature="draft_quote_basis",
+                provider=AI_PROVIDER_OPENAI,
+                model=configured_openai_draft_model(analysis_mode),
+                status="success",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                analysis_mode=analysis_mode,
+                image_count=image_count,
+                pdf_count=pdf_count,
+            )
+            return result
         except OpenAIAnalysisError as exc:
             openai_error = str(exc)
             remote_errors.append(openai_error)
+            log_ai_call_attempt(
+                feature="draft_quote_basis",
+                provider=AI_PROVIDER_OPENAI,
+                model=configured_openai_draft_model(analysis_mode),
+                status="failed",
+                duration_ms=elapsed_milliseconds(attempt_started_at),
+                analysis_mode=analysis_mode,
+                image_count=image_count,
+                pdf_count=pdf_count,
+                details={"errors": safe_error_messages([openai_error])},
+            )
             write_local_log("openai_draft_failed", {"errors": safe_error_messages([openai_error])})
 
     if remote_errors:
@@ -8150,6 +8466,19 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
     warnings = safe_error_messages([
         f"Remote AI is not configured on this PC. Selected provider is {provider_label}. Add {missing_env} to .env, restart the local server, then regenerate analysis.",
     ])
+    image_count, pdf_count = ai_payload_media_counts(payload)
+    log_ai_call_attempt(
+        feature="draft_quote_basis",
+        provider=AI_PROVIDER_OPENAI,
+        model=configured_openai_draft_model(draft_analysis_mode(payload)),
+        status="missing_api_key",
+        duration_ms=0,
+        analysis_mode=draft_analysis_mode(payload),
+        image_count=image_count,
+        pdf_count=pdf_count,
+        error_reference=error_reference,
+        details={"missing_env": [missing_env], "warnings": warnings},
+    )
     write_local_log(
         "ai_draft_remote_unconfigured",
         {
@@ -8722,6 +9051,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                     )
                 reference = normalize_pricing_reference_payload(payload)
                 saved = save_pricing_reference_pack(reference)
+                schedule_pricing_reference_ai_metadata_enrichment(reference["id"])
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return

@@ -2586,6 +2586,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(ai_log["provider_attempts"][0]["status"], "success")
         self.assertIsInstance(ai_log["provider_attempts"][0]["duration_ms"], int)
         self.assertIsInstance(ai_log["timings_ms"]["validate_rows"], int)
+        ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual(len(ai_attempt_logs), 1)
+        self.assertEqual(ai_attempt_logs[0]["feature"], "pricing_reference_import")
+        self.assertEqual(ai_attempt_logs[0]["provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(ai_attempt_logs[0]["status"], "success")
+        self.assertIsInstance(ai_attempt_logs[0]["duration_ms"], int)
 
     def test_pricing_reference_import_logs_deterministic_timing_without_ai(self):
         raw = (
@@ -3864,6 +3870,33 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["line_items"][0]["quantity"], 12.0)
         request.assert_called_once_with(payload, "sk-test-redacted")
         self.assertNotIn("ai_api_key", webapp.payload_to_brief(payload))
+
+    def test_draft_quote_basis_logs_ai_call_attempt_metadata(self):
+        payload = valid_payload()
+        ai_draft = {
+            "quote_basis_sections": [
+                {
+                    "id": "surfaces",
+                    "title": "Surfaces / Structures",
+                    "lines": [{"tag": "Confirm", "text": "AI surfaces", "confidence_pct": 88}],
+                },
+            ],
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", return_value="sk-test-redacted"):
+            with mock.patch.object(webapp, "request_openai_quote_basis", return_value=ai_draft):
+                with mock.patch.object(webapp, "write_local_log") as write_log:
+                    result = webapp.draft_quote_basis(payload)
+
+        self.assertEqual(result["source"], "openai")
+        ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual(len(ai_attempt_logs), 1)
+        self.assertEqual(ai_attempt_logs[0]["feature"], "draft_quote_basis")
+        self.assertEqual(ai_attempt_logs[0]["provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(ai_attempt_logs[0]["status"], "success")
+        self.assertEqual(ai_attempt_logs[0]["analysis_mode"], webapp.DRAFT_ANALYSIS_MODE_STANDARD)
+        self.assertGreaterEqual(ai_attempt_logs[0]["image_count"], 1)
+        self.assertIsInstance(ai_attempt_logs[0]["duration_ms"], int)
 
     def test_draft_quote_basis_keeps_dynamic_ai_quote_basis_keys(self):
         payload = valid_payload()
@@ -5453,6 +5486,37 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(second_body["model"], "gpt-basis-line-mini-test")
         self.assertEqual(result["type"], "proposal")
 
+    def test_basis_chat_fallback_logs_ai_call_attempts(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "change 100mm to 150mm",
+            "scope": "line",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with needle punch carpet.",
+        }
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+                webapp.OPENAI_BASIS_LINE_MODEL_ENV_NAME: "gpt-basis-line-mini-test",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp, "request_deepseek_basis_chat_with_model", side_effect=webapp.OpenAIAnalysisError("DeepSeek failed")):
+                with mock.patch.object(webapp, "request_openai_basis_chat_with_model", return_value={"type": "proposal"}):
+                    with mock.patch.object(webapp, "write_local_log") as write_log:
+                        result = webapp.answer_basis_chat(payload)
+
+        self.assertEqual(result["type"], "proposal")
+        ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual([entry["provider"] for entry in ai_attempt_logs], [webapp.AI_PROVIDER_DEEPSEEK, webapp.AI_PROVIDER_OPENAI])
+        self.assertEqual([entry["status"] for entry in ai_attempt_logs], ["failed", "success"])
+        self.assertEqual({entry["feature"] for entry in ai_attempt_logs}, {"basis_chat"})
+        self.assertTrue(all(isinstance(entry["duration_ms"], int) for entry in ai_attempt_logs))
+
     def test_pricing_reference_import_uses_deepseek_then_openai_fallback(self):
         parsed = {
             "currency": "SGD",
@@ -5709,6 +5773,50 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("sk-test-secret456", log_text)
         self.assertNotIn("secret-image", log_text)
 
+    def test_ai_call_attempt_log_keeps_metadata_and_omits_sensitive_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logged = webapp.log_ai_call_attempt(
+                feature="basis_chat",
+                provider=webapp.AI_PROVIDER_OPENAI,
+                model="gpt-test",
+                status="success",
+                duration_ms=1234,
+                input_tokens=321,
+                output_tokens=45,
+                image_count=2,
+                pdf_count=1,
+                details={
+                    "prompt": "Quote basis for Secret Customer",
+                    "payload": {"line_items": ["Secret item"]},
+                    "authorization": "Bearer sk-test-secret456",
+                    "api_key": "sk-test-secret456",
+                    "content": "Secret generated output",
+                },
+                log_root=Path(tmp),
+            )
+            self.assertTrue(logged)
+            log_path = next((Path(tmp) / "ai").glob("*.jsonl"))
+            log_text = log_path.read_text(encoding="utf-8")
+            log_record = json.loads(log_text)
+
+        self.assertEqual(log_record["event"], "ai_call_attempt")
+        self.assertEqual(log_record["details"]["feature"], "basis_chat")
+        self.assertEqual(log_record["details"]["provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(log_record["details"]["model"], "gpt-test")
+        self.assertEqual(log_record["details"]["status"], "success")
+        self.assertEqual(log_record["details"]["duration_ms"], 1234)
+        self.assertEqual(log_record["details"]["input_tokens"], 321)
+        self.assertEqual(log_record["details"]["output_tokens"], 45)
+        self.assertEqual(log_record["details"]["image_count"], 2)
+        self.assertEqual(log_record["details"]["pdf_count"], 1)
+        self.assertIn("AI provider call attempt", log_record["meaning"])
+        self.assertIn("[omitted]", log_text)
+        self.assertIn("sk-...", log_text)
+        self.assertNotIn("Secret Customer", log_text)
+        self.assertNotIn("Secret item", log_text)
+        self.assertNotIn("Secret generated output", log_text)
+        self.assertNotIn("sk-test-secret456", log_text)
+
     def test_local_logs_explain_actual_generator_layout_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(webapp.os.environ, {webapp.LOG_CONTEXT_ENV_NAME: "actual"}):
@@ -5729,8 +5837,12 @@ class WebappServerTest(unittest.TestCase):
     def test_basis_chat_failure_events_are_loggable(self):
         for event in (
             "openai_basis_chat_failed",
+            "openai_basis_chat_model_retry",
+            "deepseek_basis_chat_model_retry",
             "basis_chat_failed",
+            "basis_chat_model_retry",
             "basis_chat_worker_failed",
+            "ai_call_attempt",
             "server_pricing_reference_import_timing",
             "ai_pricing_reference_import_timing",
         ):
@@ -10156,25 +10268,69 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)), mock_pricing_metadata_enrichment():
-                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
-                    with LocalRunnerServer() as runner:
-                        session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
-                        request = urllib.request.Request(
-                            f"{runner.base_url}/api/settings/pricing-references",
-                            data=json.dumps(payload).encode("utf-8"),
-                            headers={
-                                "Content-Type": "application/json",
-                                session["csrf_header"]: session["csrf_token"],
-                            },
-                            method="POST",
-                        )
-                        response = urllib.request.urlopen(request, timeout=3)
-                        body = json.loads(response.read().decode("utf-8"))
+                with mock.patch.object(webapp, "schedule_pricing_reference_ai_metadata_enrichment", return_value=True) as schedule_enrichment:
+                    with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                        with LocalRunnerServer() as runner:
+                            session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                            request = urllib.request.Request(
+                                f"{runner.base_url}/api/settings/pricing-references",
+                                data=json.dumps(payload).encode("utf-8"),
+                                headers={
+                                    "Content-Type": "application/json",
+                                    session["csrf_header"]: session["csrf_token"],
+                                },
+                                method="POST",
+                            )
+                            response = urllib.request.urlopen(request, timeout=3)
+                            body = json.loads(response.read().decode("utf-8"))
+                    schedule_enrichment.assert_called_once_with("endpoint-ref")
                 metadata = json.loads((Path(tmp) / "endpoint-ref" / "reference.json").read_text(encoding="utf-8"))
 
         self.assertEqual(body["status"], "saved")
         self.assertEqual(body["pricing_reference"]["source"], "bundled")
         self.assertEqual(metadata["label"], "Endpoint Ref")
+
+    def test_apply_saved_pricing_reference_ai_metadata_enrichment_updates_pack(self):
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "async-ref",
+                "label": "Async Ref",
+                "tax": {"label": "GST", "rate": 0.09},
+                "currency": "SGD",
+                "items": [with_required_pricing_metadata({
+                    "id": "graphics-lightbox",
+                    "section": "Graphics",
+                    "description": "Lightbox graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 40,
+                    "markup_multiplier": 1.5,
+                    "match_terms": ["deterministic lightbox"],
+                    "object_families": ["deterministic_family"],
+                })],
+            })
+
+        ai_items = [
+            {
+                **reference["items"][0],
+                "match_terms": ["lightbox graphics", "illuminated fabric graphic"],
+                "object_families": ["illuminated_graphics"],
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                with mock.patch.object(webapp, "ai_pricing_reference_metadata_enrichment", return_value=(ai_items, [])) as enrichment:
+                    updated = webapp.apply_saved_pricing_reference_ai_metadata_enrichment("async-ref")
+                catalog = json.loads((Path(tmp) / "async-ref" / "pricing-catalog.json").read_text(encoding="utf-8"))
+                metadata = json.loads((Path(tmp) / "async-ref" / "reference.json").read_text(encoding="utf-8"))
+
+        self.assertTrue(updated)
+        enrichment.assert_called_once()
+        self.assertEqual(metadata["label"], "Async Ref")
+        self.assertIn("lightbox graphics", catalog["items"][0]["match_terms"])
+        self.assertIn("illuminated fabric graphic", catalog["items"][0]["match_terms"])
+        self.assertIn("illuminated_graphics", catalog["items"][0]["object_families"])
 
     def test_pricing_reference_save_endpoint_noops_unchanged_existing_repo_pack(self):
         with mock_pricing_metadata_enrichment():
