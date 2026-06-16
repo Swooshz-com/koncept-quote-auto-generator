@@ -114,6 +114,28 @@ function quoteBasisSections(platformText = "100mm raised platform with needle pu
       ],
     },
     {
+      id: "av-equipment-rental-items",
+      title: "AV Equipment Rental Items",
+      lines: [
+        {
+          tag: "Custom",
+          text: "Custom - Large format LED video wall mounted on deep-blue feature wall.",
+          quantity: 1,
+          unit: "lot",
+          confidence_pct: 78,
+          custom_pricing: true,
+          possible_pricing_matches: [
+            {
+              pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+              description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+              section: "AV Equipment Rental Items",
+              unit: "nos",
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: "graphics",
       title: "Graphics",
       lines: [
@@ -309,6 +331,9 @@ async function main() {
     await page.locator("#analysisConfirmStartButton").click();
     await page.locator("#quoteBasisPanel.is-active").waitFor({ timeout: 15000 });
     await page.locator('[data-revise-section="platform"]').first().waitFor({ timeout: 15000 });
+    const possibleMatchText = "Large format LED video wall mounted on deep-blue feature wall.";
+    const possibleMatchReference = 'nos. 85" LED TV Monitor (With Speaker - Full HD)';
+    await basisLineRow(page, possibleMatchText).locator(".basis-line-possible-match", { hasText: possibleMatchReference }).waitFor({ timeout: 15000 });
     const basisShot = await screenshot(page, "ai-basis-chat-basis.png");
 
     const customGraphicsText = "Printed graphics pending manual pricing.";
@@ -342,6 +367,13 @@ async function main() {
 
     await page.locator("#basisChatCloseButton").click();
     await page.locator("#basisChatOverlay").waitFor({ state: "hidden", timeout: 15000 });
+    await basisLineRow(page, possibleMatchText).locator(".basis-line-possible-match", { hasText: possibleMatchReference }).click();
+    await basisLineRow(page, possibleMatchText).locator(".basis-line-pill", { hasText: "Confirm" }).waitFor({ timeout: 15000 });
+    await basisLineRow(page, possibleMatchText).locator(".basis-line-catalog-reference", { hasText: possibleMatchReference }).waitFor({ timeout: 15000 });
+    const remainingPossibleMatchButtons = await basisLineRow(page, possibleMatchText).locator(".basis-line-possible-match").count();
+    if (remainingPossibleMatchButtons !== 0) {
+      throw new Error("Possible pricing match button remained after selecting the pricing reference candidate.");
+    }
     for (let remaining = await page.locator(".basis-line-row.basis-line-confirm").count(); remaining > 0;) {
       await page.locator(".basis-line-row.basis-line-confirm [data-basis-tag=\"Include\"]").first().click();
       remaining = await page.locator(".basis-line-row.basis-line-confirm").count();

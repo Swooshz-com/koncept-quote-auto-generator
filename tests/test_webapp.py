@@ -2101,6 +2101,178 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(water_line["pricing_keyword"].startswith("water-connection-"))
         self.assertIn(water_line["pricing_reference_description"], {"nos. water inlet and outlet", "nos. sink connection"})
 
+    def test_remote_draft_keeps_catalog_matches_confirm_and_custom_rows_ai_confirm(self):
+        reference_id = "catalog-confirm-custom-review-test"
+        catalog_items = [
+            {
+                "id": "floor-design-needle-velour-carpet-in-colour",
+                "section": "Floor Design",
+                "description": "sqm needle velour carpet in colour",
+                "unit_hint": "sqm",
+                "match_terms": ["needle velour carpet", "velour floor finish"],
+                "object_families": ["carpet"],
+                "category_order": 1,
+                "item_order": 1,
+            }
+        ]
+        ai_basis = {
+            "project": {"booth_width": 6, "booth_depth": 6},
+            "quote_basis_sections": [
+                {
+                    "id": "floor-design",
+                    "title": "Floor Design",
+                    "lines": [
+                        {
+                            "tag": "Confirm",
+                            "text": "[ sqm needle velour carpet in colour ] - Full booth floor finish",
+                            "quantity": 36,
+                            "unit": "sqm",
+                            "confidence_pct": 92,
+                            "pricing_keyword": "floor-design-needle-velour-carpet-in-colour",
+                        }
+                    ],
+                },
+                {
+                    "id": "project-services",
+                    "title": "AV Equipment Rental Items",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "Large wall-mounted video display for exterior presentation wall.",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 88,
+                        }
+                    ],
+                },
+                {
+                    "id": "project-services",
+                    "title": "Services and Logistics",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "Booth assembly and dismantling",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 88,
+                        }
+                    ],
+                },
+            ],
+            "line_items": [
+                {
+                    "section": "Floor Design",
+                    "quantity": 36,
+                    "unit": "sqm",
+                    "description": "[ sqm needle velour carpet in colour ] - Full booth floor finish",
+                    "pricing_keyword": "floor-design-needle-velour-carpet-in-colour",
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_test_pricing_reference(Path(tmp), reference_id, catalog_items)
+            payload = {**valid_payload(), "pricing_reference_id": reference_id}
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                result = webapp.finalized_remote_draft_result(
+                    payload,
+                    ai_basis,
+                    "openai",
+                    "OpenAI",
+                    {"booth_width": 6, "booth_depth": 6, "booth_size": "6m x 6m", "dimension_source": "user"},
+                    [],
+                )
+
+        lines = [
+            line
+            for section in result["quote_basis_sections"]
+            for line in section["lines"]
+        ]
+        catalog_line = next(line for line in lines if line.get("pricing_keyword") == "floor-design-needle-velour-carpet-in-colour")
+        video_line = next(line for line in lines if "video display" in line.get("text", ""))
+        custom_line = next(line for line in lines if line.get("text") == "Booth assembly and dismantling")
+        self.assertEqual(catalog_line["tag"], "Confirm")
+        self.assertEqual(video_line["tag"], "Custom")
+        self.assertNotIn("pricing_keyword", video_line)
+        self.assertEqual(custom_line["tag"], "Custom")
+
+    def test_remote_draft_adds_possible_pricing_matches_to_custom_review_lines(self):
+        reference_id = "possible-match-review-test"
+        catalog_items = [
+            {
+                "id": "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+                "section": "AV Equipment Rental Items",
+                "description": 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+                "unit_hint": "nos",
+                "match_terms": ["display"],
+                "object_families": ["av_equipment"],
+                "category_order": 1,
+                "item_order": 1,
+            }
+        ]
+        ai_basis = {
+            "project": {"booth_width": 6, "booth_depth": 6},
+            "quote_basis_sections": [
+                {
+                    "id": "av-equipment-rental-items",
+                    "title": "AV Equipment Rental Items",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "Large wall-mounted video display for exterior feature wall.",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 88,
+                        }
+                    ],
+                },
+                {
+                    "id": "services-and-logistics",
+                    "title": "Services and Logistics",
+                    "lines": [
+                        {
+                            "tag": "Custom",
+                            "text": "On-site installation, dismantling, project management and coordination.",
+                            "quantity": 1,
+                            "unit": "lot",
+                            "confidence_pct": 90,
+                        }
+                    ],
+                },
+            ],
+            "line_items": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_test_pricing_reference(Path(tmp), reference_id, catalog_items)
+            payload = {**valid_payload(), "pricing_reference_id": reference_id}
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                result = webapp.finalized_remote_draft_result(
+                    payload,
+                    ai_basis,
+                    "openai",
+                    "OpenAI",
+                    {"booth_width": 6, "booth_depth": 6, "booth_size": "6m x 6m", "dimension_source": "user"},
+                    [],
+                )
+
+        lines = [
+            line
+            for section in result["quote_basis_sections"]
+            for line in section["lines"]
+        ]
+        video_line = next(line for line in lines if "video display" in line.get("text", ""))
+        service_line = next(line for line in lines if "On-site installation" in line.get("text", ""))
+
+        self.assertEqual(video_line["tag"], "Custom")
+        self.assertNotIn("pricing_keyword", video_line)
+        self.assertEqual(
+            video_line["possible_pricing_matches"][0]["pricing_keyword"],
+            "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+        )
+        self.assertIn('85" LED TV Monitor', video_line["possible_pricing_matches"][0]["description"])
+        self.assertNotIn("possible_pricing_matches", service_line)
+
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
         parsed = {
             "quote_basis_sections": [
@@ -8436,10 +8608,12 @@ eval([
   "isCustomPricingBasisLine",
   "isPendingAiProposalLine",
   "normalizeConfidence",
+  "normalizePossiblePricingMatches",
   "splitBasisDecisionText",
   "normalizeBasisLines",
   "parseBasisLine",
   "normalizeQuoteBasisSections",
+  "confirmOnlyQuoteBasisSections",
   "basisSections",
   "bracketedCatalogReferenceParts",
   "outputCatalogDescription",
@@ -9799,10 +9973,12 @@ eval([
   "numberOrNull",
   "orderNumber",
   "normalizeConfidence",
+  "normalizePossiblePricingMatches",
   "splitBasisDecisionText",
   "normalizeBasisLines",
   "parseBasisLine",
   "normalizeQuoteBasisSections",
+  "confirmOnlyQuoteBasisSections",
   "basisSections",
   "unresolvedConfirmLines",
   "basisConfirmBlockReason",
@@ -9822,9 +9998,13 @@ eval([
             "basisPillTitle",
             "catalogBackedBasisDisplayParts",
             "basisLineTextHtml",
+            "basisPossibleMatchesHtml",
             "renderBasisLine",
             "quoteBasisFromSections",
             "cloneQuoteBasisSections",
+            "possibleMatchBasisDetailText",
+            "catalogBackedPossibleMatchText",
+  "applyPossiblePricingMatch",
   "retagBasisLine",
   "retagBasisSectionConfirmLines",
 ].map(extractFunction).join("\n"));
@@ -9858,6 +10038,35 @@ const catalogBackedLine = normalizeBasisLines({
 assert.strictEqual(catalogBackedLine.pricing_keyword, "graphics-vinyl-printed-graphics");
 assert.strictEqual(catalogBackedLine.catalog_description, "sqm of vinyl printed graphics");
 assert.strictEqual(catalogBackedLine.pricing_reference_description, "sqm of vinyl printed graphics");
+const possibleMatchLine = normalizeBasisLines({
+  tag: "Custom",
+  text: "Large wall-mounted LED video display for exterior presentation wall.",
+  quantity: 1,
+  unit: "lot",
+  possible_pricing_matches: [{
+    pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+    description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+    section: "AV Equipment Rental Items",
+    unit: "nos",
+  }],
+})[0];
+assert.strictEqual(possibleMatchLine.possible_pricing_matches[0].pricing_keyword, "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd");
+const possibleMatchHtml = renderBasisLine({ id: "av-equipment-rental-items", title: "AV Equipment Rental Items" }, possibleMatchLine, 0);
+assert.ok(possibleMatchHtml.includes("Possible match"));
+assert.ok(possibleMatchHtml.includes('nos. 85&quot; LED TV Monitor'));
+assert.ok(possibleMatchHtml.includes('data-basis-possible-match-index="0"'));
+const confirmedDraftSections = confirmOnlyQuoteBasisSections([{
+  id: "graphics",
+  title: "Graphics",
+  lines: [
+    { tag: "Include", text: "catalog graphics", pricing_keyword: "graphics-vinyl-printed-graphics" },
+    { tag: "Include", text: "uncertain add-on" },
+    { tag: "Custom", text: "manual feature panel", custom_pricing: true },
+  ],
+}]);
+assert.strictEqual(confirmedDraftSections[0].lines[0].tag, "Confirm");
+assert.strictEqual(confirmedDraftSections[0].lines[1].tag, "Confirm");
+assert.strictEqual(confirmedDraftSections[0].lines[2].tag, "Custom");
 assert.strictEqual(basisCatalogReferenceTitle(catalogBackedLine), "");
 assert.strictEqual(basisLineTitle(catalogBackedLine), "");
 assert.strictEqual(basisPillTitle(catalogBackedLine, "Confirm"), "");
@@ -9945,6 +10154,43 @@ function updateQuoteBasisCard(source) {
 function syncControlStates() {
   synced += 1;
 }
+
+state.quoteBasisSections = [{
+  id: "av-equipment-rental-items",
+  title: "AV Equipment Rental Items",
+  lines: [{
+    tag: "Custom",
+    text: "Custom - Large format LED video wall mounted on deep-blue feature wall.",
+    quantity: 1,
+    unit: "lot",
+    custom_pricing: true,
+    possible_pricing_matches: [{
+      pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+      description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+      section: "AV Equipment Rental Items",
+      unit: "nos",
+    }],
+  }],
+}];
+applyPossiblePricingMatch("av-equipment-rental-items", 0, 0);
+const selectedPossibleMatchLine = state.quoteBasisSections[0].lines[0];
+assert.strictEqual(selectedPossibleMatchLine.tag, "Confirm");
+assert.strictEqual(selectedPossibleMatchLine.pricing_keyword, "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd");
+assert.strictEqual(selectedPossibleMatchLine.catalog_description, 'nos. 85" LED TV Monitor (With Speaker - Full HD)');
+assert.strictEqual(selectedPossibleMatchLine.pricing_reference_description, 'nos. 85" LED TV Monitor (With Speaker - Full HD)');
+assert.strictEqual(selectedPossibleMatchLine.quantity, 1);
+assert.strictEqual(selectedPossibleMatchLine.unit, "nos");
+assert.strictEqual(selectedPossibleMatchLine.custom_pricing, undefined);
+assert.strictEqual(selectedPossibleMatchLine.custom_confirmed, undefined);
+assert.strictEqual(selectedPossibleMatchLine.possible_pricing_matches, undefined);
+assert.ok(selectedPossibleMatchLine.text.startsWith('[ nos. 85" LED TV Monitor (With Speaker - Full HD) ] - '));
+assert.ok(selectedPossibleMatchLine.text.includes("Large format LED video wall mounted on deep-blue feature wall."));
+assert.ok(!selectedPossibleMatchLine.text.includes("Custom -"));
+assert.strictEqual(
+  state.quoteBasis["av-equipment-rental-items"],
+  'Confirm: [ nos. 85" LED TV Monitor (With Speaker - Full HD) ] - Large format LED video wall mounted on deep-blue feature wall.'
+);
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
 
 state.quoteBasisSections = [{
   id: "graphics",

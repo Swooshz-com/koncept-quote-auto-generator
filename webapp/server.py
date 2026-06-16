@@ -6688,7 +6688,7 @@ def build_quote_draft_prompt(payload: dict[str, Any]) -> str:
         "Do not paraphrase catalog-backed product names into generic object names; choose the closest safe pricing_catalog id and keep the catalog description intact. "
         "Do not collapse composite visible scope into broad 'custom' or '1 lot' package lines when pricing_catalog has matching rows for its parts. Split composite scope into the closest catalog-backed rows first, then add Custom rows only for the truly unmatched remainder. "
         "When visible or requested scope is genuinely not represented in pricing_catalog, do not invent a catalog keyword: add a quote_basis_sections line with tag Custom as an optional AI suggestion/manual-pricing row, and add a matching line_items row with empty pricing_keyword, price_mode Priced, and no unit_price_override so the operator can decide whether to source or ignore it. "
-        "Use tag Confirm for catalog-backed lines that still need the operator's include/exclude decision. "
+        "Use tag Confirm for catalog-backed lines that are part of the visible, requested, or reasonably recommended quote scope so the operator can include, exclude, or revise them before finalizing. "
         "Use confidence_pct as an integer from 0 to 100 to show how strongly the uploaded images and quote context support that line. "
         "Use higher confidence for clearly visible or explicitly stated scope, and lower confidence for inferred or unclear scope. "
         "Do not turn visible items into generic 'please confirm' placeholders. "
@@ -7443,6 +7443,89 @@ def quote_basis_sections_with_catalog_exact_lines(
             return None
         return scored[0][1]
 
+    def possible_pricing_match_from_item(item: dict[str, Any], score: int) -> dict[str, Any]:
+        match = {
+            "pricing_keyword": clean_text(item.get("id")),
+            "description": clean_customer_quote_line_text(item.get("pricing_reference_description") or item.get("catalog_description") or item.get("description")),
+            "section": normalize_catalog_section(item.get("section")),
+            "unit": catalog_item_unit_hint(item),
+            "score": score,
+        }
+        reference_section = clean_basis_section_title(item.get("reference_section"))
+        if reference_section:
+            match["reference_section"] = reference_section
+        return {key: value for key, value in match.items() if value not in (None, "")}
+
+    def score_possible_catalog_item_for_line(line: dict[str, Any], item: dict[str, Any], section: dict[str, Any] | None = None) -> int:
+        if not isinstance(section, dict) or not section_matches_item(section, item):
+            return 0
+        line_text = clean_customer_quote_line_text(line.get("text"))
+        if line_has_exclusion_scope(line_text):
+            return 0
+        line_tokens = catalog_match_tokens(line_text)
+        if not line_tokens:
+            return 0
+        item_tokens: set[str] = set()
+        best_value_ratio = 0.0
+        for value in catalog_match_values(item):
+            value_tokens = catalog_match_tokens(value)
+            item_tokens.update(value_tokens)
+            if value_tokens:
+                value_overlap = line_tokens & value_tokens
+                best_value_ratio = max(best_value_ratio, len(value_overlap) / max(len(value_tokens), 1))
+        overlap = line_tokens & item_tokens
+        if not overlap:
+            return 0
+        raw_unit = normalize_pricing_unit(line.get("unit"))
+        item_unit = catalog_item_unit_hint(item)
+        unit_bonus = 4 if raw_unit and item_unit and raw_unit == item_unit else 0
+        score = len(overlap) * 10 + round(best_value_ratio * 10) + 8 + unit_bonus
+        return score if score >= 20 else 0
+
+    def possible_catalog_items_for_line(line: dict[str, Any], section: dict[str, Any], limit: int = 3) -> list[dict[str, Any]]:
+        if is_default_dimension_basis_line(line) or clean_text(line.get("pricing_keyword")):
+            return []
+        scored = [
+            (score_possible_catalog_item_for_line(line, item, section), item)
+            for item in exact_catalog_items
+        ]
+        scored = [(score, item) for score, item in scored if score > 0]
+        if not scored:
+            return []
+        scored.sort(key=lambda entry: (-entry[0], clean_text(entry[1].get("id"))))
+        top_score = scored[0][0]
+        tied_items = [item for score, item in scored if score == top_score]
+        preferred = None
+        if len(tied_items) > 1:
+            preferred = resolve_tied_catalog_variant_item(clean_customer_quote_line_text(line.get("text")), tied_items)
+        if preferred:
+            scored.sort(key=lambda entry: (entry[1] is not preferred, -entry[0], clean_text(entry[1].get("id"))))
+        matches: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for score, item in scored:
+            item_id = clean_text(item.get("id"))
+            if not item_id or item_id in seen:
+                continue
+            seen.add(item_id)
+            matches.append(possible_pricing_match_from_item(item, score))
+            if len(matches) >= limit:
+                break
+        return matches
+
+    def attach_possible_pricing_matches(sections: list[dict[str, Any]]) -> None:
+        for section in sections:
+            for line in section.get("lines") or []:
+                if not isinstance(line, dict):
+                    continue
+                if normalize_basis_tag(line.get("tag")) != "Custom" or clean_text(line.get("pricing_keyword")):
+                    line.pop("possible_pricing_matches", None)
+                    continue
+                matches = possible_catalog_items_for_line(line, section)
+                if matches:
+                    line["possible_pricing_matches"] = matches
+                else:
+                    line.pop("possible_pricing_matches", None)
+
     def comparable_basis_text(value: Any) -> str:
         bracketed = bracketed_catalog_reference_parts(value)
         text = clean_customer_quote_line_text(bracketed[0] if bracketed else value).casefold()
@@ -7724,8 +7807,10 @@ def quote_basis_sections_with_catalog_exact_lines(
                 if item_has_catalog_reference(line) or is_default_dimension_basis_line(line):
                     continue
                 mark_line_custom_for_manual_pricing(line)
+    final_sections = merge_duplicate_sections(next_sections)
+    attach_possible_pricing_matches(final_sections)
     return [
-        section for section in merge_duplicate_sections(next_sections)
+        section for section in final_sections
         if [line for line in (section.get("lines") or []) if isinstance(line, dict) and clean_text(line.get("text"))]
     ]
 

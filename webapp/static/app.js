@@ -2762,6 +2762,32 @@ function normalizeConfidence(value) {
   return Math.min(100, Math.max(0, Math.round(number)));
 }
 
+function normalizePossiblePricingMatches(value = []) {
+  if (!Array.isArray(value)) return [];
+  const matches = [];
+  const seen = new Set();
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const pricingKeyword = String(entry.pricing_keyword || entry.id || "").trim();
+    const description = cleanCustomerQuoteLineText(entry.description || entry.pricing_reference_description || entry.catalog_description || "");
+    if (!pricingKeyword || !description || seen.has(pricingKeyword)) return;
+    seen.add(pricingKeyword);
+    const match = {
+      pricing_keyword: pricingKeyword,
+      description,
+      section: normalizeCategoryTitle(entry.section || entry.reference_section || ""),
+      unit: normalizeUnit(entry.unit || ""),
+    };
+    if (entry.catalog_unit_price !== undefined && entry.catalog_unit_price !== null && String(entry.catalog_unit_price).trim() !== "") {
+      match.catalog_unit_price = entry.catalog_unit_price;
+    }
+    const score = Number(entry.score);
+    if (Number.isFinite(score)) match.score = score;
+    matches.push(match);
+  });
+  return matches.slice(0, 3);
+}
+
 function splitBasisDecisionText(text = "", defaultTag = "Confirm") {
   const legacyConfirmTag = "assump" + "tion";
   const raw = String(text || "").trim();
@@ -2809,6 +2835,8 @@ function normalizeBasisLines(line = "") {
       if (confidence !== null) next.confidence = confidence;
       if (hasCustomPricing || normalizeBasisTag(parsed.tag) === "Custom") next.custom_pricing = true;
       if (line.custom_confirmed) next.custom_confirmed = true;
+      const possibleMatches = normalizePossiblePricingMatches(line.possible_pricing_matches || line.possible_catalog_matches || []);
+      if (possibleMatches.length) next.possible_pricing_matches = possibleMatches;
       return next;
     });
   }
@@ -5073,6 +5101,20 @@ function basisLineTextHtml(line = {}) {
   `;
 }
 
+function basisPossibleMatchesHtml(section, line, index) {
+  const matches = normalizePossiblePricingMatches(line.possible_pricing_matches || []);
+  if (!matches.length || !basisLineAcceptsAsAiProposal(line)) return "";
+  return `
+    <span class="basis-line-possible-matches" aria-label="Possible pricing reference matches">
+      ${matches.map((match, matchIndex) => `
+        <button class="basis-line-possible-match" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-possible-match-index="${matchIndex}" title="Use this pricing reference match">
+          Possible match: ${escapeHtml(match.description)}
+        </button>
+      `).join("")}
+    </span>
+  `;
+}
+
 function renderBasisLine(section, line, index) {
   const tag = normalizeBasisTag(line.tag);
   const customPricing = isCustomPricingBasisLine(line);
@@ -5103,7 +5145,7 @@ function renderBasisLine(section, line, index) {
         <span class="basis-confidence-pill" title="AI confidence">${escapeHtml(confidenceLabel)}</span>
         <span class="basis-quantity-text">${escapeHtml(quantityLabel)}</span>
       </span>
-      <span class="basis-line-text"${lineTitleAttribute}>${basisLineTextHtml(line)}</span>
+      <span class="basis-line-text"${lineTitleAttribute}>${basisLineTextHtml(line)}${basisPossibleMatchesHtml(section, line, index)}</span>
       <span class="basis-line-actions">
         ${primaryAction}
         <button class="basis-line-tag-button" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-tag="Exclude" aria-label="Mark this line as excluded" title="Mark excluded">X</button>
@@ -5205,6 +5247,58 @@ function basisFieldLabel(field) {
 
 function updateQuoteBasisCard(source = "edited") {
   elements.basisReviewSurface.innerHTML = renderQuoteBasisMessage(state.quoteBasis, source);
+}
+
+function possibleMatchBasisDetailText(line = {}) {
+  const text = cleanCustomerQuoteLineText(line.text || line.description || "");
+  return text.replace(/^\s*(?:include|confirm|custom|manual|extra|needs pricing|ai confirm)\s*[-:]\s*/i, "").trim();
+}
+
+function catalogBackedPossibleMatchText(line = {}, match = {}) {
+  const reference = pricingReferenceLineText(match.description || match.pricing_reference_description || match.catalog_description || "");
+  const detail = possibleMatchBasisDetailText(line) || reference;
+  return `[ ${reference} ] - ${detail}`;
+}
+
+function applyPossiblePricingMatch(sectionId, lineIndex, matchIndex) {
+  if (!sectionId) return;
+  const sections = cloneQuoteBasisSections(state.quoteBasisSections);
+  const section = sections.find((item) => item.id === sectionId);
+  const lineNumber = Number(lineIndex);
+  const selectedIndex = Number(matchIndex);
+  if (!section || !Number.isInteger(lineNumber) || !section.lines[lineNumber]) return;
+  const currentLine = section.lines[lineNumber];
+  const matches = normalizePossiblePricingMatches(currentLine.possible_pricing_matches || currentLine.possible_catalog_matches || []);
+  if (!Number.isInteger(selectedIndex) || !matches[selectedIndex]) return;
+  const match = matches[selectedIndex];
+  const reference = pricingReferenceLineText(match.description);
+  const nextLine = {
+    ...currentLine,
+    tag: "Confirm",
+    text: catalogBackedPossibleMatchText(currentLine, match),
+    pricing_keyword: match.pricing_keyword,
+    catalog_description: reference,
+    pricing_reference_description: reference,
+  };
+  if (match.unit) nextLine.unit = match.unit;
+  if (match.catalog_unit_price !== undefined && match.catalog_unit_price !== null && String(match.catalog_unit_price).trim() !== "") {
+    nextLine.catalog_unit_price = match.catalog_unit_price;
+  }
+  delete nextLine.custom_pricing;
+  delete nextLine.custom_confirmed;
+  delete nextLine.custom;
+  delete nextLine.manual_pricing;
+  delete nextLine.pricing_tag;
+  delete nextLine.pricing_status;
+  delete nextLine.possible_pricing_matches;
+  delete nextLine.possible_catalog_matches;
+  section.lines[lineNumber] = nextLine;
+  state.quoteBasisSections = sections;
+  state.quoteBasis = quoteBasisFromSections(sections);
+  state.basisConfirmed = false;
+  state.downloadFile = null;
+  updateQuoteBasisCard("edited");
+  syncControlStates();
 }
 
 function retagBasisLine(sectionId, lineIndex, nextTag) {
@@ -6701,6 +6795,15 @@ function handleQuoteBasisClick(event) {
     retagBasisSectionConfirmLines(
       sectionAction.dataset.basisSection || "",
       sectionAction.dataset.basisSectionAction || ""
+    );
+    return;
+  }
+  const possibleMatchButton = event.target.closest("[data-basis-possible-match-index]");
+  if (possibleMatchButton) {
+    applyPossiblePricingMatch(
+      possibleMatchButton.dataset.basisSection || "",
+      Number(possibleMatchButton.dataset.basisLineIndex),
+      Number(possibleMatchButton.dataset.basisPossibleMatchIndex)
     );
     return;
   }
