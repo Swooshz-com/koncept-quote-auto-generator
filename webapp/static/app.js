@@ -3975,9 +3975,14 @@ async function savePricingReferenceFromModal(event) {
     setPricingReferenceCurrencyControls(currency);
     renderPricingReferencePreview(state.pendingPricingReference);
     capturePricingReferenceEditSnapshot(state.pendingPricingReference);
+    const metadataEnrichmentStatus = String(data.metadata_enrichment_status || "").trim();
     state.pricingReferenceSavedNotice = data.unchanged
       ? "No file changes were needed."
-      : "Saved successfully.";
+      : metadataEnrichmentStatus === "completed"
+        ? "Saved successfully. Matching clues updated."
+        : metadataEnrichmentStatus === "failed"
+          ? "Saved, but matching clue enrichment did not complete."
+          : "Saved successfully.";
     setPricingReferenceSaveButtonState({
       canSave: Boolean(state.pendingPricingReference?.canSave),
       reason: pricingReferenceSaveBlockReason(state.pendingPricingReference),

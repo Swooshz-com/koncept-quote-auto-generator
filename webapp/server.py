@@ -365,8 +365,6 @@ MAX_PROMPT_CATALOG_MATCH_TERMS = 6
 # and pricing-reference storage partitioned by authenticated user/account.
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
-PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS: set[threading.Thread] = set()
-PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK = threading.Lock()
 
 
 class RequestBodyError(ValueError):
@@ -776,15 +774,15 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
     elif event == "server_pricing_reference_import_timing":
         meaning = "Pricing-reference upload/import timing. Check details.route and details.timings_ms to see whether local extraction, AI cleanup, or row validation dominated the wait."
     elif event == "ai_pricing_reference_import_timing":
-        meaning = "AI cleaned an uploaded pricing reference into editable rows before save. Check details.provider_attempts, row_count, can_save, and fallback fields; this is not the post-save metadata clue pass."
+        meaning = "AI cleaned an uploaded pricing reference into editable rows before save. Check details.provider_attempts, row_count, can_save, and fallback fields; this is not the matching-metadata clue pass."
     elif event == "ai_pricing_reference_metadata_enrichment_completed":
-        meaning = "AI enriched a saved pricing reference with matching clues such as match_terms and object_families. It should not change customer-facing descriptions, prices, or quote output by itself."
+        meaning = "AI enriched pricing-reference rows with matching clues such as match_terms and object_families. It should not change customer-facing descriptions, prices, or quote output by itself."
     elif event == "ai_call_attempt":
         feature = log_event_name(details.get("feature"))
         if feature == "pricing_reference_import":
             meaning = "Provider attempt for pricing-reference import cleanup. This turns an uploaded messy file into editable pricing rows before save."
         elif feature == "pricing_reference_metadata_enrichment":
-            meaning = "Provider attempt for post-save pricing metadata enrichment. This writes matching clues only; pricing rows remain reviewable and deterministic matching still decides suggestions."
+            meaning = "Provider attempt for pricing-reference matching metadata enrichment. This writes matching clues only; pricing rows remain reviewable and deterministic matching still decides suggestions."
         else:
             meaning = "AI provider call attempt metadata. Check provider, model, feature, status, duration, retry/fallback, and token/count fields without raw prompts or customer content."
     elif event == "abuse_signal":
@@ -3935,6 +3933,50 @@ def pricing_reference_ai_metadata_enrichment_configured() -> bool:
     return any(text_ai_provider_api_key(provider) for provider in pricing_reference_ai_metadata_enrichment_provider_order())
 
 
+def pricing_reference_with_ai_metadata_before_save(reference: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    safe_id = safe_resource_id(reference.get("id") or reference.get("label"), "")
+    if not pricing_reference_ai_metadata_enrichment_configured():
+        return reference, "not_configured"
+    items = [
+        copy.deepcopy(item)
+        for item in (reference.get("items") if isinstance(reference.get("items"), list) else [])
+        if isinstance(item, dict)
+    ]
+    if not safe_id or not items:
+        return reference, "skipped"
+    enriched_items, errors = ai_pricing_reference_metadata_enrichment(
+        clean_text(reference.get("label")) or safe_id,
+        items,
+        reference_id=safe_id,
+        operator_stage="save_matching_metadata",
+    )
+    if errors or not enriched_items:
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_id,
+                "errors": safe_error_messages(errors or ["AI pricing metadata enrichment returned no rows."]),
+            },
+        )
+        return reference, "failed"
+    pricing_reference_enrichment.enrich_pricing_reference_items(enriched_items)
+    metadata_errors = pricing_reference_metadata_quality_errors(enriched_items)
+    if metadata_errors:
+        write_local_log(
+            "server_error",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "reference_id": safe_id,
+                "errors": safe_error_messages(metadata_errors),
+            },
+        )
+        return reference, "failed"
+    enriched_reference = copy.deepcopy(reference)
+    enriched_reference["items"] = enriched_items
+    return enriched_reference, "completed"
+
+
 def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> bool:
     safe_id = safe_resource_id(reference_id, "")
     if not safe_id:
@@ -3989,47 +4031,6 @@ def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> b
     return True
 
 
-def run_scheduled_pricing_reference_ai_metadata_enrichment(
-    reference_id: str,
-    ai_tracking_context: dict[str, Any] | None = None,
-) -> None:
-    with ai_log_tracking_scope(ai_tracking_context):
-        try:
-            apply_saved_pricing_reference_ai_metadata_enrichment(reference_id)
-        except Exception as exc:  # pragma: no cover - defensive background boundary
-            write_local_log(
-                "server_error",
-                {
-                    "source": "pricing_reference_metadata_enrichment",
-                    "reference_id": safe_resource_id(reference_id, ""),
-                    "errors": safe_error_messages([str(exc)]),
-                },
-            )
-        finally:
-            current = threading.current_thread()
-            with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
-                PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.discard(current)
-
-
-def schedule_pricing_reference_ai_metadata_enrichment(
-    reference_id: str,
-    ai_tracking_context: dict[str, Any] | None = None,
-) -> bool:
-    safe_id = safe_resource_id(reference_id, "")
-    if not safe_id or not pricing_reference_ai_metadata_enrichment_configured():
-        return False
-    thread = threading.Thread(
-        target=run_scheduled_pricing_reference_ai_metadata_enrichment,
-        args=(safe_id, ai_tracking_context),
-        name=f"pricing-metadata-enrichment-{safe_id[:32]}",
-        daemon=True,
-    )
-    with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
-        PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.add(thread)
-    thread.start()
-    return True
-
-
 def pricing_reference_is_profile_default(reference_id: str) -> bool:
     safe_id = safe_resource_id(reference_id, "")
     if not safe_id:
@@ -4074,7 +4075,7 @@ def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
 
 
 AI_PRICING_IMPORT_NOT_CONFIGURED = "AI pricing catalog import is not configured for the selected AI provider. Configure the selected provider API key, then upload the messy pricing file again. The template remains optional for clean manual entry."
-AI_PRICING_METADATA_NOT_CONFIGURED = "AI pricing reference metadata enrichment is not configured. Configure the selected AI provider API key to enable optional post-save metadata enrichment."
+AI_PRICING_METADATA_NOT_CONFIGURED = "AI pricing reference metadata enrichment is not configured. Configure the selected AI provider API key to enable optional matching metadata enrichment."
 
 
 def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -4481,12 +4482,14 @@ def ai_pricing_reference_metadata_enrichment(
     *,
     reference_id: str = "",
     ai_run_id: str = "",
+    operator_stage: str = "post_save_matching_metadata",
 ) -> tuple[list[dict[str, Any]], list[str]]:
     if not items:
         return items, []
     started_at = time.perf_counter()
     ai_run_id = clean_text(ai_run_id) or new_ai_run_id()
     safe_reference_id = safe_resource_id(reference_id, "")
+    safe_operator_stage = clean_text(operator_stage) or "post_save_matching_metadata"
     source_metadata = source_file_log_metadata(filename)
     provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
     provider_order = [provider]
@@ -4527,7 +4530,7 @@ def ai_pricing_reference_metadata_enrichment(
                     status="missing_api_key",
                     duration_ms=0,
                     ai_run_id=ai_run_id,
-                    operator_stage="post_save_matching_metadata",
+                    operator_stage=safe_operator_stage,
                     reference_id=safe_reference_id,
                     row_count=len(items),
                     batch_count=len(batches),
@@ -4573,7 +4576,7 @@ def ai_pricing_reference_metadata_enrichment(
                             status="failed",
                             duration_ms=duration_ms,
                             ai_run_id=ai_run_id,
-                            operator_stage="post_save_matching_metadata",
+                            operator_stage=safe_operator_stage,
                             reference_id=safe_reference_id,
                             row_count=len(batch),
                             batch_index=batch_index,
@@ -4603,7 +4606,7 @@ def ai_pricing_reference_metadata_enrichment(
                         status="success",
                         duration_ms=duration_ms,
                         ai_run_id=ai_run_id,
-                        operator_stage="post_save_matching_metadata",
+                        operator_stage=safe_operator_stage,
                         reference_id=safe_reference_id,
                         row_count=len(batch),
                         batch_index=batch_index,
@@ -4648,7 +4651,7 @@ def ai_pricing_reference_metadata_enrichment(
             {
                 "source": "pricing_reference_metadata_enrichment",
                 "ai_run_id": ai_run_id,
-                "operator_stage": "post_save_matching_metadata",
+                "operator_stage": safe_operator_stage,
                 "reference_id": safe_reference_id,
                 "selected_provider": provider,
                 "completed_provider": completed_provider,
@@ -10161,12 +10164,17 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                         "Choose a different pricing reference name, or switch to Manage to edit it."
                     )
                 reference = normalize_pricing_reference_payload(payload)
+                with ai_log_tracking_scope(request_ai_tracking):
+                    reference, metadata_enrichment_status = pricing_reference_with_ai_metadata_before_save(reference)
                 saved = save_pricing_reference_pack(reference)
-                schedule_pricing_reference_ai_metadata_enrichment(reference["id"], request_ai_tracking)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
-            self.send_json({"status": "saved", "pricing_reference": saved})
+            self.send_json({
+                "status": "saved",
+                "pricing_reference": saved,
+                "metadata_enrichment_status": metadata_enrichment_status,
+            })
             return
 
         if parsed.path == "/api/settings/profiles":

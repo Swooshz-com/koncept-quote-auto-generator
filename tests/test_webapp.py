@@ -229,7 +229,7 @@ def mock_pricing_metadata_enrichment():
     return mock.patch.object(
         webapp,
         "ai_pricing_reference_metadata_enrichment",
-        side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
+        side_effect=lambda filename, items, **kwargs: (fake_ai_metadata_enriched_items(items), []),
     )
 
 
@@ -6431,7 +6431,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("matching clues", metadata_meaning)
         self.assertIn("should not change customer-facing descriptions", metadata_meaning)
         self.assertIn("import cleanup", import_attempt_meaning)
-        self.assertIn("post-save pricing metadata", metadata_attempt_meaning)
+        self.assertIn("pricing-reference matching metadata", metadata_attempt_meaning)
 
     def test_ai_pricing_reference_logs_include_simple_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -8635,6 +8635,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("state.pricingReferenceSaveBusy = false;", save_reference_body)
         self.assertIn("Saved, but the settings list could not refresh.", save_reference_body)
         self.assertIn("state.pricingReferenceSavedNotice", save_reference_body)
+        self.assertIn("Matching clues updated.", save_reference_body)
+        self.assertIn("Saved, but matching clue enrichment did not complete.", save_reference_body)
         self.assertIn("state.pricingReferenceId = savedReference.id || \"\";", save_reference_body)
         self.assertIn("updatePricingReferenceDeleteButton();", save_reference_body)
         self.assertLess(
@@ -11310,36 +11312,35 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         }
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)), mock_pricing_metadata_enrichment():
-                with mock.patch.object(webapp, "schedule_pricing_reference_ai_metadata_enrichment", return_value=True) as schedule_enrichment:
-                    with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
-                        with LocalRunnerServer() as runner:
-                            session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
-                            request = urllib.request.Request(
-                                f"{runner.base_url}/api/settings/pricing-references",
-                                data=json.dumps(payload).encode("utf-8"),
-                                headers={
-                                    "Content-Type": "application/json",
-                                    session["csrf_header"]: session["csrf_token"],
-                                },
-                                method="POST",
-                            )
-                            response = urllib.request.urlopen(request, timeout=3)
-                            body = json.loads(response.read().decode("utf-8"))
-                    schedule_enrichment.assert_called_once_with("endpoint-ref", {
-                        "auth_mode": "local",
-                        "auth_required": False,
-                        "authenticated": False,
-                        "user_id": "local-dev",
-                        "account_id": "default",
-                        "company_id": "default",
-                        "role": "admin",
-                    })
+            with (
+                mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)),
+                mock.patch.object(webapp, "pricing_reference_ai_metadata_enrichment_configured", return_value=True),
+                mock_pricing_metadata_enrichment() as metadata_enrichment,
+            ):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                        request = urllib.request.Request(
+                            f"{runner.base_url}/api/settings/pricing-references",
+                            data=json.dumps(payload).encode("utf-8"),
+                            headers={
+                                "Content-Type": "application/json",
+                                session["csrf_header"]: session["csrf_token"],
+                            },
+                            method="POST",
+                        )
+                        response = urllib.request.urlopen(request, timeout=3)
+                        body = json.loads(response.read().decode("utf-8"))
+                metadata_enrichment.assert_called_once()
                 metadata = json.loads((Path(tmp) / "endpoint-ref" / "reference.json").read_text(encoding="utf-8"))
+                catalog = json.loads((Path(tmp) / "endpoint-ref" / "pricing-catalog.json").read_text(encoding="utf-8"))
 
         self.assertEqual(body["status"], "saved")
+        self.assertEqual(body["metadata_enrichment_status"], "completed")
         self.assertEqual(body["pricing_reference"]["source"], "bundled")
         self.assertEqual(metadata["label"], "Endpoint Ref")
+        self.assertIn("ai metadata row-1", catalog["items"][0]["match_terms"])
+        self.assertIn("ai_family", catalog["items"][0]["object_families"])
 
     def test_apply_saved_pricing_reference_ai_metadata_enrichment_updates_pack(self):
         with mock_pricing_metadata_enrichment():
