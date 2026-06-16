@@ -311,7 +311,6 @@ DEEPSEEK_API_KEY_ENV_NAME = "DEEPSEEK_API_KEY"
 DEEPSEEK_MODEL_ENV_NAME = "DEEPSEEK_MODEL"
 DEEPSEEK_BASIS_LINE_MODEL_ENV_NAME = "DEEPSEEK_BASIS_LINE_MODEL"
 DEEPSEEK_BASIS_ANSWER_MODEL_ENV_NAME = "DEEPSEEK_BASIS_ANSWER_MODEL"
-DEEPSEEK_BASIS_PROPOSAL_MODEL_ENV_NAME = "DEEPSEEK_BASIS_PROPOSAL_MODEL"
 DEEPSEEK_PRICING_IMPORT_MODEL_ENV_NAME = "DEEPSEEK_PRICING_IMPORT_MODEL"
 DEEPSEEK_PRICING_METADATA_MODEL_ENV_NAME = "DEEPSEEK_PRICING_METADATA_MODEL"
 DEEPSEEK_BASE_URL_ENV_NAME = "DEEPSEEK_BASE_URL"
@@ -319,7 +318,6 @@ DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME = "DEEPSEEK_REQUEST_TIMEOUT_SECONDS"
 DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME = "DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS"
 AI_BASIS_LINE_PROVIDER_ENV_NAME = "AI_BASIS_LINE_PROVIDER"
 AI_BASIS_ANSWER_PROVIDER_ENV_NAME = "AI_BASIS_ANSWER_PROVIDER"
-AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME = "AI_BASIS_PROPOSAL_PROVIDER"
 AI_PRICING_IMPORT_PROVIDER_ENV_NAME = "AI_PRICING_IMPORT_PROVIDER"
 DEFAULT_BOOTH_WIDTH_METRES = 6.0
 DEFAULT_BOOTH_DEPTH_METRES = 6.0
@@ -5087,7 +5085,6 @@ def text_ai_route_uses_deepseek_by_default(env_name: str) -> bool:
         env_name in {
             AI_BASIS_LINE_PROVIDER_ENV_NAME,
             AI_BASIS_ANSWER_PROVIDER_ENV_NAME,
-            AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME,
             AI_PRICING_IMPORT_PROVIDER_ENV_NAME,
         }
         and bool(clean_text(read_dotenv_value(DEEPSEEK_API_KEY_ENV_NAME)))
@@ -5160,10 +5157,6 @@ def configured_deepseek_basis_line_model() -> str:
     return configured_deepseek_route_model(DEEPSEEK_BASIS_LINE_MODEL_ENV_NAME, DEEPSEEK_FLASH_MODEL)
 
 
-def configured_deepseek_basis_proposal_model() -> str:
-    return configured_deepseek_route_model(DEEPSEEK_BASIS_PROPOSAL_MODEL_ENV_NAME, DEEPSEEK_PRO_MODEL)
-
-
 def configured_deepseek_pricing_import_model() -> str:
     return configured_deepseek_route_model(DEEPSEEK_PRICING_IMPORT_MODEL_ENV_NAME, DEEPSEEK_PRO_MODEL)
 
@@ -5197,7 +5190,7 @@ def openai_basis_chat_models(payload: dict[str, Any]) -> list[str]:
         )
     if basis_chat_has_selected_line(payload):
         return unique_model_sequence(configured_openai_basis_line_model(), configured_openai_draft_model())
-    return unique_model_sequence(configured_openai_draft_model())
+    return unique_model_sequence(configured_openai_basis_answer_model(), configured_openai_basis_line_model(), configured_openai_draft_model())
 
 
 def deepseek_basis_chat_models(payload: dict[str, Any]) -> list[str]:
@@ -5205,7 +5198,7 @@ def deepseek_basis_chat_models(payload: dict[str, Any]) -> list[str]:
         return unique_model_sequence(configured_deepseek_basis_answer_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
     if basis_chat_has_selected_line(payload):
         return unique_model_sequence(configured_deepseek_basis_line_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
-    return unique_model_sequence(configured_deepseek_basis_proposal_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
+    return unique_model_sequence(configured_deepseek_basis_answer_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
 
 
 def basis_chat_provider_env_name(payload: dict[str, Any]) -> str:
@@ -5213,7 +5206,7 @@ def basis_chat_provider_env_name(payload: dict[str, Any]) -> str:
         return AI_BASIS_ANSWER_PROVIDER_ENV_NAME
     if basis_chat_has_selected_line(payload):
         return AI_BASIS_LINE_PROVIDER_ENV_NAME
-    return AI_BASIS_PROPOSAL_PROVIDER_ENV_NAME
+    return AI_BASIS_ANSWER_PROVIDER_ENV_NAME
 
 
 def basis_chat_provider_model_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
@@ -6907,6 +6900,7 @@ def build_basis_chat_prompt(payload: dict[str, Any]) -> str:
         proposal_target_rule = (
             "For required_intent=answer, return intent=answer with answer text only. "
             "Do not return proposal, replacement_line, quote_basis, or quote_basis_sections. "
+            "If the operator asks for a quote-basis edit without a selected_basis_line, tell them to select a specific quote-basis line and use Re for that line. "
         )
     elif selected_line:
         response_schema = (
@@ -6918,13 +6912,9 @@ def build_basis_chat_prompt(payload: dict[str, Any]) -> str:
             "For selected-line proposals, return proposal.replacement_line only; preserve unchanged wording as much as possible, and do not explain the change in the answer field. "
         )
     else:
-        response_schema = (
-            "{\"intent\":\"answer|proposal\",\"answer\":\"\","
-            "\"proposal\":{\"message\":\"\",\"quote_basis_sections\":[]}}"
-        )
+        response_schema = "{\"intent\":\"answer\",\"answer\":\"\"}"
         proposal_target_rule = (
-            "For required_intent=proposal without a selected_basis_line, return intent=proposal with proposal.quote_basis_sections as the complete updated basis. "
-            "Do not return proposal.replacement_line when selected_basis_line is empty. "
+            "Return intent=answer with answer text only. Select a specific quote-basis line before drafting edits; quote-scope proposal edits are not supported. "
         )
     return (
         "You are helping an operator review a customer-facing quotation basis. "
@@ -6950,10 +6940,6 @@ def build_basis_chat_prompt(payload: dict[str, Any]) -> str:
         "Use intent=answer only when required_intent=answer and the operator asks what, why, meaning, clarify, or asks a genuine question. "
         "For answers, write concise clean Markdown with **bold keys**, '-' bullets, short sections, and compact tables only when useful. "
         "No text walls: keep every paragraph to one short sentence, prefer bullets for multi-step ideas, and keep the answer under 70 words. "
-        "For whole-basis changes that affect multiple lines, return proposal.quote_basis_sections as the complete updated basis, preserving unchanged sections and lines exactly. "
-        "When the operator asks to add a category or section, add a new quote_basis_sections entry with that title and at least one review line so the section is visible after Apply. "
-        "When the operator asks to include or exclude lines, change the tag on the matching line or lines to Include or Exclude and preserve their text. "
-        "When excluding a Custom line, preserve custom_pricing=true if you include that field. "
         "Keep proposal.message to one short approval question, for example asking whether to change to the proposed full sentence. "
         "Use tag Include, Custom, or Exclude only when the operator clearly asks for that decision; otherwise keep the current tag. "
         "Use confidence_pct as an integer 0 to 100. Preserve the current confidence when the requested edit does not change certainty. "
@@ -6968,6 +6954,8 @@ def basis_chat_required_intent(payload: dict[str, Any]) -> str:
     question = clean_multiline(basis_chat.get("question") or payload.get("user_feedback")).strip()
     selected_line = clean_multiline(basis_chat.get("line"))
     if not question:
+        return "answer"
+    if not selected_line:
         return "answer"
 
     lowered = question.lower()
@@ -8319,133 +8307,6 @@ def basis_chat_words(value: Any) -> set[str]:
     return words
 
 
-def basis_chat_global_tag_action(question: str) -> str:
-    lowered = clean_text(question).lower()
-    if re.search(r"\b(include|included)\b", lowered):
-        return "Include"
-    if re.search(r"\b(exclude|excluded|remove|delete|no)\b", lowered):
-        return "Exclude"
-    return ""
-
-
-BASIS_CHAT_TAG_COMMAND_STOPWORDS = {
-    "all",
-    "and",
-    "basis",
-    "line",
-    "lines",
-    "make",
-    "please",
-    "quote",
-    "section",
-    "sections",
-    "the",
-    "this",
-}
-
-
-def basis_chat_global_tag_command_words(question: str) -> set[str]:
-    action_words = {"include", "included", "exclude", "excluded", "remove", "delete", "no"}
-    return {
-        word
-        for word in basis_chat_words(question)
-        if word not in action_words and word not in BASIS_CHAT_TAG_COMMAND_STOPWORDS
-    }
-
-
-def basis_chat_added_section_title(question: str) -> str:
-    text = clean_text(question).strip(" .,:;")
-    if not text:
-        return ""
-    patterns = (
-        r"\badd(?:\s+(?:a|an|new))?\s+(?P<title>.+?)\s+(?:category|section)\b",
-        r"\badd(?:\s+(?:a|an|new))?\s+(?:category|section)\s+(?:called|named)?\s*(?P<title>.+?)$",
-        r"\bnew\s+(?:category|section)\s+(?:called|named)?\s*(?P<title>.+?)$",
-    )
-    raw_title = ""
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if match:
-            raw_title = clean_basis_section_title(match.group("title"))
-            break
-    if not raw_title:
-        return ""
-    raw_title = re.sub(r"^(?:called|named|for)\s+", "", raw_title, flags=re.IGNORECASE)
-    raw_title = re.sub(r"\s+(?:category|section)$", "", raw_title, flags=re.IGNORECASE).strip(" .,:;")
-    if not raw_title or section_title_lookup_key(raw_title) in {"add", "new", "category", "section"}:
-        return ""
-    return raw_title.upper() if raw_title.isupper() else raw_title.title() if raw_title.islower() else raw_title
-
-
-def quote_basis_sections_apply_add_section_command(
-    payload: dict[str, Any],
-    sections: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
-    if clean_multiline(basis_chat.get("line")):
-        return sections
-    requested_title = basis_chat_added_section_title(basis_chat.get("question") or payload.get("user_feedback"))
-    if not requested_title:
-        return sections
-
-    pricing_reference_sections = pricing_reference_section_names_for_payload(payload)
-    reference_title = exact_pricing_reference_section_title(requested_title, pricing_reference_sections)
-    title = reference_title or requested_title
-    title_key = section_title_lookup_key(title)
-    next_sections = copy.deepcopy(sections)
-    if any(section_title_lookup_key(section.get("title")) == title_key for section in next_sections):
-        return next_sections
-
-    line: dict[str, Any] = {
-        "tag": "Confirm" if reference_title else "Custom",
-        "text": f"{title} scope to be confirmed.",
-        "confidence": 50,
-    }
-    if not reference_title:
-        line["custom_pricing"] = True
-    next_sections.append({
-        "id": safe_section_id(title, f"section-{len(next_sections) + 1}"),
-        "title": title,
-        "lines": [line],
-    })
-    return next_sections
-
-
-def quote_basis_sections_apply_global_tag_command(
-    payload: dict[str, Any],
-    sections: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
-    if clean_multiline(basis_chat.get("line")):
-        return sections
-    question = clean_multiline(basis_chat.get("question") or payload.get("user_feedback"))
-    action = basis_chat_global_tag_action(question)
-    if action not in {"Include", "Exclude"}:
-        return sections
-    command_words = basis_chat_global_tag_command_words(question)
-    if not command_words:
-        return sections
-
-    next_sections = copy.deepcopy(sections)
-    target_custom = "custom" in command_words
-    for section in next_sections:
-        section_words = basis_chat_words(section.get("id")) | basis_chat_words(section.get("title"))
-        section_matches = bool(command_words & section_words)
-        for line in section.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            custom_pricing = line.get("custom_pricing") or normalize_basis_tag(line.get("tag")) == "Custom"
-            line_matches = section_matches or bool(command_words & basis_chat_words(line.get("text")))
-            if target_custom and custom_pricing:
-                line["tag"] = action
-                line["custom_pricing"] = True
-            elif line_matches and not target_custom:
-                if custom_pricing:
-                    line["custom_pricing"] = True
-                line["tag"] = action
-    return next_sections
-
-
 def normalize_basis_chat_result(parsed: dict[str, Any], payload: dict[str, Any], source: str) -> dict[str, Any]:
     intent = clean_text(parsed.get("intent")).lower()
     raw_proposal = parsed.get("proposal") if isinstance(parsed.get("proposal"), dict) else {}
@@ -8453,32 +8314,17 @@ def normalize_basis_chat_result(parsed: dict[str, Any], payload: dict[str, Any],
     required_intent = basis_chat_required_intent(payload)
 
     if has_proposal:
+        basis_chat = payload.get("basis_chat") if isinstance(payload.get("basis_chat"), dict) else {}
+        if not clean_multiline(basis_chat.get("line")):
+            raise OpenAIAnalysisError("AI basis chat proposals require a selected quote-basis line.")
         if required_intent == "answer":
             raise OpenAIAnalysisError("AI basis chat returned a proposal for a question instead of an answer.")
         message = clean_multiline(raw_proposal.get("message") or parsed.get("message"))
         line_items = normalized_basis_chat_line_items(raw_proposal.get("line_items") or parsed.get("line_items"), payload)
-        raw_sections_payload: dict[str, Any] | None = None
-        if isinstance(raw_proposal.get("quote_basis_sections"), list):
-            raw_sections_payload = {"quote_basis_sections": raw_proposal.get("quote_basis_sections")}
-        elif isinstance(raw_proposal.get("quote_basis"), dict):
-            raw_sections_payload = {"quote_basis": raw_proposal.get("quote_basis")}
-        elif isinstance(parsed.get("quote_basis_sections"), list):
-            raw_sections_payload = {"quote_basis_sections": parsed.get("quote_basis_sections")}
-        elif isinstance(parsed.get("quote_basis"), dict):
-            raw_sections_payload = {"quote_basis": parsed.get("quote_basis")}
-
-        sections = (
-            normalize_quote_basis_sections(raw_sections_payload, pricing_reference_section_names_for_payload(payload))
-            if raw_sections_payload
-            else []
-        )
-        if not sections and "replacement_line" in raw_proposal:
-            sections = replacement_line_sections(payload, raw_proposal.get("replacement_line"))
+        sections = replacement_line_sections(payload, raw_proposal.get("replacement_line"))
         sections = quote_basis_sections_preserve_custom_pricing(payload, sections)
-        sections = quote_basis_sections_apply_add_section_command(payload, sections)
         if not sections:
             raise OpenAIAnalysisError("AI basis chat did not return a usable proposal.")
-        sections = quote_basis_sections_apply_global_tag_command(payload, sections)
         line_items = sort_line_items_by_pricing_reference_order(payload, line_items)
         sections = sort_quote_basis_sections_by_pricing_reference_order(payload, sections)
 

@@ -4957,7 +4957,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn('"selected_basis_quantity": "12"', prompt)
         self.assertIn('"selected_basis_unit": "sqm"', prompt)
 
-    def test_basis_chat_global_prompt_forbids_replacement_line_without_selection(self):
+    def test_basis_chat_quote_scope_edit_prompt_is_answer_only(self):
         payload = valid_payload()
         payload["basis_chat"] = {
             "question": "change all BRASIL graphics to GAY graphics",
@@ -4969,8 +4969,11 @@ class WebappServerTest(unittest.TestCase):
 
         prompt = webapp.build_basis_chat_prompt(payload)
 
-        self.assertIn("quote_basis_sections", prompt)
-        self.assertIn("Do not return proposal.replacement_line when selected_basis_line is empty", prompt)
+        self.assertEqual(webapp.basis_chat_required_intent(payload), "answer")
+        self.assertIn('{"intent":"answer","answer":""}', prompt)
+        self.assertIn("select a specific quote-basis line", prompt)
+        self.assertIn("Do not return proposal", prompt)
+        self.assertNotIn("\"quote_basis_sections\"", prompt)
         self.assertNotIn("\"replacement_line\"", prompt)
 
     def test_basis_chat_answer_prompt_uses_answer_only_schema(self):
@@ -5342,7 +5345,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(line["custom_pricing"])
         self.assertEqual(line["text"], "GAY graphics on the front low wall cladding panels, printed and mounted as shown in the render.")
 
-    def test_basis_chat_global_proposal_preserves_custom_pricing_flag(self):
+    def test_basis_chat_quote_scope_proposal_response_is_rejected(self):
         payload = valid_payload()
         payload["quote_basis_sections"] = [
             {
@@ -5382,107 +5385,10 @@ class WebappServerTest(unittest.TestCase):
             },
         }
 
-        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+        with self.assertRaises(webapp.OpenAIAnalysisError) as context:
+            webapp.normalize_basis_chat_result(parsed, payload, "openai")
 
-        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
-        self.assertEqual(line["tag"], "Exclude")
-        self.assertTrue(line["custom_pricing"])
-
-    def test_basis_chat_global_include_command_retags_matching_section(self):
-        payload = valid_payload()
-        payload["quote_basis_sections"] = [
-            {
-                "id": "lighting-and-electrical",
-                "title": "Lighting and Electrical",
-                "lines": [
-                    {"tag": "Confirm", "text": "nos. 10W LED Spotlight"},
-                    {"tag": "Confirm", "text": "nos. LED recess downlight 3 inch"},
-                ],
-            }
-        ]
-        payload["basis_chat"] = {
-            "question": "include all lighting and electrical lines",
-            "scope": "quote",
-            "field": "",
-            "line_index": -1,
-            "line": "",
-        }
-        parsed = {
-            "intent": "proposal",
-            "proposal": {
-                "quote_basis_sections": [
-                    {
-                        "id": "lighting-and-electrical",
-                        "title": "Lighting and Electrical",
-                        "lines": [
-                            {"tag": "Confirm", "text": "nos. 10W LED Spotlight"},
-                            {"tag": "Confirm", "text": "nos. LED recess downlight 3 inch"},
-                        ],
-                    }
-                ],
-            },
-        }
-
-        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
-
-        tags = [line["tag"] for line in result["proposal"]["quote_basis_sections"][0]["lines"]]
-        self.assertEqual(tags, ["Include", "Include"])
-
-    def test_basis_chat_global_add_category_command_appends_visible_section(self):
-        payload = valid_payload()
-        payload["quote_basis_sections"] = [
-            {
-                "id": "floor-design",
-                "title": "Floor Design",
-                "lines": [{"tag": "Include", "text": "sqm needle punch carpet in colour", "confidence_pct": 92}],
-            }
-        ]
-        payload["basis_chat"] = {
-            "question": "add a gay category",
-            "scope": "quote",
-            "field": "",
-            "line_index": -1,
-            "line": "",
-        }
-        parsed = {
-            "intent": "proposal",
-            "proposal": {
-                "message": "Add a new category.",
-                "quote_basis_sections": [
-                    {
-                        "id": "floor-design",
-                        "title": "Floor Design",
-                        "lines": [{"tag": "Include", "text": "sqm needle punch carpet in colour", "confidence_pct": 92}],
-                    }
-                ],
-            },
-        }
-
-        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
-
-        sections = result["proposal"]["quote_basis_sections"]
-        self.assertEqual([section["title"] for section in sections], ["Floor Design", "Gay"])
-        added_line = sections[1]["lines"][0]
-        self.assertEqual(added_line["tag"], "Custom")
-        self.assertEqual(added_line["text"], "Gay scope to be confirmed.")
-        self.assertTrue(added_line["custom_pricing"])
-
-    def test_basis_chat_global_add_reference_category_uses_exact_section_title(self):
-        payload = valid_payload()
-        payload["quote_basis_sections"] = []
-        payload["basis_chat"] = {
-            "question": "add graphics category",
-            "scope": "quote",
-            "field": "",
-            "line_index": -1,
-            "line": "",
-        }
-
-        result = webapp.normalize_basis_chat_result({"intent": "proposal", "proposal": {"quote_basis_sections": []}}, payload, "openai")
-
-        sections = result["proposal"]["quote_basis_sections"]
-        self.assertEqual(sections[-1]["title"], "Graphics")
-        self.assertEqual(sections[-1]["lines"][0]["tag"], "Confirm")
+        self.assertIn("selected quote-basis line", str(context.exception))
 
     def test_openai_basis_chat_answer_uses_answer_model_env(self):
         payload = valid_payload()
@@ -5519,7 +5425,6 @@ class WebappServerTest(unittest.TestCase):
             self.assertEqual(webapp.configured_deepseek_model(), "deepseek-v4-pro")
             self.assertEqual(webapp.configured_deepseek_basis_answer_model(), "deepseek-v4-flash")
             self.assertEqual(webapp.configured_deepseek_basis_line_model(), "deepseek-v4-flash")
-            self.assertEqual(webapp.configured_deepseek_basis_proposal_model(), "deepseek-v4-pro")
             self.assertEqual(webapp.configured_deepseek_pricing_import_model(), "deepseek-v4-pro")
             self.assertEqual(webapp.configured_deepseek_pricing_metadata_model(), "deepseek-v4-flash")
 
@@ -5549,7 +5454,9 @@ class WebappServerTest(unittest.TestCase):
             }
             self.assertEqual(webapp.deepseek_basis_chat_models(line_payload), ["deepseek-v4-flash", "deepseek-v4-pro"])
             self.assertEqual(webapp.deepseek_basis_chat_models(answer_payload), ["deepseek-v4-flash", "deepseek-v4-pro"])
-            self.assertEqual(webapp.deepseek_basis_chat_models(quote_payload), ["deepseek-v4-pro"])
+            self.assertEqual(webapp.basis_chat_required_intent(quote_payload), "answer")
+            self.assertEqual(webapp.basis_chat_provider_env_name(quote_payload), webapp.AI_BASIS_ANSWER_PROVIDER_ENV_NAME)
+            self.assertEqual(webapp.deepseek_basis_chat_models(quote_payload), ["deepseek-v4-flash", "deepseek-v4-pro"])
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "deepseek-test-model" if name == webapp.DEEPSEEK_MODEL_ENV_NAME else ""):
             self.assertEqual(webapp.configured_deepseek_model(), "deepseek-test-model")
@@ -5565,7 +5472,6 @@ class WebappServerTest(unittest.TestCase):
                 webapp.DEEPSEEK_MODEL_ENV_NAME: "deepseek-global-test",
                 webapp.DEEPSEEK_BASIS_ANSWER_MODEL_ENV_NAME: "deepseek-answer-test",
                 webapp.DEEPSEEK_BASIS_LINE_MODEL_ENV_NAME: "deepseek-line-test",
-                webapp.DEEPSEEK_BASIS_PROPOSAL_MODEL_ENV_NAME: "deepseek-proposal-test",
                 webapp.DEEPSEEK_PRICING_IMPORT_MODEL_ENV_NAME: "deepseek-import-test",
                 webapp.DEEPSEEK_PRICING_METADATA_MODEL_ENV_NAME: "deepseek-metadata-test",
             }
@@ -5574,7 +5480,6 @@ class WebappServerTest(unittest.TestCase):
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
             self.assertEqual(webapp.configured_deepseek_basis_answer_model(), "deepseek-answer-test")
             self.assertEqual(webapp.configured_deepseek_basis_line_model(), "deepseek-line-test")
-            self.assertEqual(webapp.configured_deepseek_basis_proposal_model(), "deepseek-proposal-test")
             self.assertEqual(webapp.configured_deepseek_pricing_import_model(), "deepseek-import-test")
             self.assertEqual(webapp.configured_deepseek_pricing_metadata_model(), "deepseek-metadata-test")
 
@@ -5678,6 +5583,93 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["messages"][0]["role"], "system")
         self.assertEqual(body["messages"][1]["role"], "user")
         self.assertEqual(enriched[0]["object_families"], ["flooring"])
+
+    def test_openai_pricing_import_uses_basis_line_model(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "currency": "SGD",
+                "items": [
+                    {
+                        "section": "Floor Design",
+                        "description": "sqm needle punch carpet in colour",
+                        "unit_hint": "sqm",
+                        "internal_cost": "0",
+                        "markup_multiplier": "1",
+                        "remarks": "",
+                        "aliases": [],
+                    }
+                ],
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                "OPENAI_BASIS_LINE_MODEL": "gpt-basis-line-test",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_openai_pricing_catalog_import(
+                    "pricing.xlsx",
+                    {"rows": [{"Item": "sqm needle punch carpet in colour"}]},
+                    {"label": "GST", "rate": 0.09},
+                    "sk-test-redacted",
+                )
+                route_model = webapp.text_ai_provider_model_for_feature(
+                    webapp.AI_PROVIDER_OPENAI,
+                    "pricing_reference_import",
+                )
+
+        body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertEqual(body["model"], "gpt-basis-line-test")
+        self.assertEqual(route_model, "gpt-basis-line-test")
+        self.assertEqual(result["currency"], "SGD")
+
+    def test_openai_pricing_metadata_uses_basis_line_model(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "items": [
+                    {
+                        "id": "floor.carpet",
+                        "match_terms": ["needle punch carpet"],
+                        "object_families": ["flooring"],
+                    }
+                ]
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                "OPENAI_BASIS_LINE_MODEL": "gpt-basis-line-test",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_openai_pricing_catalog_metadata(
+                    "pricing.xlsx",
+                    [
+                        {
+                            "id": "floor.carpet",
+                            "section": "Floor Design",
+                            "description": "sqm needle punch carpet in colour",
+                            "unit_hint": "sqm",
+                        }
+                    ],
+                    "sk-test-redacted",
+                )
+                route_model = webapp.text_ai_provider_model_for_feature(
+                    webapp.AI_PROVIDER_OPENAI,
+                    "pricing_reference_metadata_enrichment",
+                )
+
+        body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertEqual(body["model"], "gpt-basis-line-test")
+        self.assertEqual(route_model, "gpt-basis-line-test")
+        self.assertEqual(result["items"][0]["object_families"], ["flooring"])
 
     def test_deepseek_pricing_import_default_timeout_allows_full_attempt(self):
         with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
@@ -6071,7 +6063,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
         self.assertEqual(result["currency"], "SGD")
 
-    def test_openai_whole_basis_chat_uses_draft_model_env(self):
+    def test_openai_quote_scope_edit_uses_answer_model_env(self):
         payload = valid_payload()
         payload["basis_chat"] = {
             "question": "include all lighting and electrical lines",
@@ -6083,19 +6075,8 @@ class WebappServerTest(unittest.TestCase):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({
-                "intent": "proposal",
-                "proposal": {
-                    "message": "Apply this whole-basis update?",
-                    "quote_basis_sections": [
-                        {
-                            "id": "lighting-and-electrical",
-                            "title": "Lighting and Electrical",
-                            "lines": [
-                                {"tag": "Include", "text": "Standard 13A sockets and LED lighting only."},
-                            ],
-                        },
-                    ],
-                },
+                "intent": "answer",
+                "answer": "Select a specific quote-basis line and use Re to edit it.",
             })
         }).encode("utf-8")
 
@@ -6114,8 +6095,8 @@ class WebappServerTest(unittest.TestCase):
 
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
-        self.assertEqual(body["model"], "gpt-draft-mini-test")
-        self.assertEqual(result["type"], "proposal")
+        self.assertEqual(body["model"], "gpt-basis-answer-nano-test")
+        self.assertEqual(result["type"], "answer")
 
     def test_openai_line_basis_chat_retries_with_draft_model_after_invalid_basis_line_output(self):
         payload = valid_payload()

@@ -442,11 +442,11 @@ OPENAI_DRAFT_MODEL=<model-id-or-app-alias>
 OPENAI_DRAFT_REASONING_EFFORT=high
 OPENAI_DRAFT_HIGH_QUALITY_REASONING_EFFORT=xhigh
 OPENAI_BASIS_LINE_MODEL=<model-id-or-app-alias>
+OPENAI_BASIS_ANSWER_MODEL=<model-id-or-app-alias>
 DEEPSEEK_API_KEY=<deepseek-key-if-used>
 DEEPSEEK_MODEL=deepseek-v4-pro
 DEEPSEEK_BASIS_LINE_MODEL=deepseek-v4-flash
 DEEPSEEK_BASIS_ANSWER_MODEL=deepseek-v4-flash
-DEEPSEEK_BASIS_PROPOSAL_MODEL=deepseek-v4-pro
 DEEPSEEK_PRICING_IMPORT_MODEL=deepseek-v4-pro
 DEEPSEEK_PRICING_METADATA_MODEL=deepseek-v4-flash
 ```
@@ -476,8 +476,7 @@ call an external server; provider analysis is the network boundary.
 Set `DEEPSEEK_API_KEY` to use DeepSeek for text-only work. Low-risk label-maker
 routes can use Flash by default (`DEEPSEEK_BASIS_LINE_MODEL`,
 `DEEPSEEK_BASIS_ANSWER_MODEL`, and `DEEPSEEK_PRICING_METADATA_MODEL`), while
-whole-basis proposals and messy pricing import normalization stay on Pro
-(`DEEPSEEK_BASIS_PROPOSAL_MODEL` and `DEEPSEEK_PRICING_IMPORT_MODEL`).
+messy pricing import normalization stays on Pro (`DEEPSEEK_PRICING_IMPORT_MODEL`).
 `DEEPSEEK_MODEL` remains the legacy/global DeepSeek fallback model. A custom
 non-Pro value still acts as a global override, but `DEEPSEEK_MODEL=deepseek-v4-pro`
 does not suppress Flash route defaults.
