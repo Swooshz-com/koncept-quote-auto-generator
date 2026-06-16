@@ -11103,7 +11103,15 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                             )
                             response = urllib.request.urlopen(request, timeout=3)
                             body = json.loads(response.read().decode("utf-8"))
-                    schedule_enrichment.assert_called_once_with("endpoint-ref")
+                    schedule_enrichment.assert_called_once_with("endpoint-ref", {
+                        "auth_mode": "local",
+                        "auth_required": False,
+                        "authenticated": False,
+                        "user_id": "local-dev",
+                        "account_id": "default",
+                        "company_id": "default",
+                        "role": "admin",
+                    })
                 metadata = json.loads((Path(tmp) / "endpoint-ref" / "reference.json").read_text(encoding="utf-8"))
 
         self.assertEqual(body["status"], "saved")
