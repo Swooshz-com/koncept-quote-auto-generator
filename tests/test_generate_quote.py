@@ -246,6 +246,22 @@ def row_break_ids(sheet):
     return [int(brk.attrib["id"]) for brk in row_breaks.findall(f"{NS_MAIN}brk")]
 
 
+def empty_addressed_cell_refs(path):
+    refs = []
+    with zipfile.ZipFile(path) as zf:
+        for name in sorted(item for item in zf.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", item)):
+            sheet = ET.fromstring(zf.read(name))
+            for cell_node in sheet.iter(f"{NS_MAIN}c"):
+                has_content = (
+                    cell_node.find(f"{NS_MAIN}v") is not None
+                    or cell_node.find(f"{NS_MAIN}is") is not None
+                    or cell_node.find(f"{NS_MAIN}f") is not None
+                )
+                if cell_node.attrib.get("r") and not has_content:
+                    refs.append(f"{name}!{cell_node.attrib['r']}")
+    return refs
+
+
 def manual_print_page_for_row(row_number):
     if row_number <= quote.FIRST_PRINT_PAGE_END_ROW:
         return 1
@@ -388,6 +404,16 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
             visual_items = [item for item in catalog["items"] if item.get("visual_references")]
             self.assertGreaterEqual(len(visual_items), 5)
+            broken_refs = [
+                (item["id"], ref)
+                for item in visual_items
+                for ref in item["visual_references"]
+                if not ref.get("source")
+                or not ref.get("path")
+                or ref.get("data_url")
+                or not (out.parent / ref["path"]).is_file()
+            ]
+            self.assertEqual(broken_refs, [])
             first_ref = visual_items[0]["visual_references"][0]
             self.assertIn("source", first_ref)
             self.assertIn("path", first_ref)
@@ -396,6 +422,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
             ai_reference_markdown = pricing_catalog.catalog_to_ai_reference_markdown(catalog)
             self.assertIn("Visual references:", ai_reference_markdown)
+
+    def test_v11_pricing_workbook_has_no_empty_addressed_cells(self):
+        self.assertEqual(empty_addressed_cell_refs(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx"), [])
 
     def test_extract_price_rows_reads_json_catalog(self):
         catalog_path = KONCEPT_CATALOG

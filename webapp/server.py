@@ -2618,7 +2618,9 @@ def xlsx_col_index(cell_ref: str, max_columns: int = MAX_PRICING_REFERENCE_XLSX_
 
 
 def xlsx_col_name(index: int) -> str:
-    value = max(1, index)
+    if index < 0:
+        raise ValueError("XLSX column index must be non-negative.")
+    value = index + 1
     letters = ""
     while value:
         value, remainder = divmod(value - 1, 26)
@@ -2971,13 +2973,14 @@ def pricing_reference_template_sheet_xml(rows: list[list[str]], *, hide_internal
     row_xml: list[str] = []
     for row_index, row in enumerate(rows, start=1):
         cells = []
-        for column_index, value in enumerate(row, start=1):
+        for column_index, value in enumerate(row):
             ref = f"{xlsx_col_name(column_index)}{row_index}"
             cells.append(
                 f'<c r="{ref}" t="inlineStr"><is><t>{xml_escape(clean_text(value))}</t></is></c>'
             )
         row_xml.append(f'<row r="{row_index}">{"".join(cells)}</row>')
-    dimension = f"A1:{xlsx_col_name(max(len(row) for row in rows))}{len(rows)}"
+    max_column_index = max(len(row) for row in rows) - 1
+    dimension = f"A1:{xlsx_col_name(max_column_index)}{len(rows)}"
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '

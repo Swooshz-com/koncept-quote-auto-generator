@@ -17,6 +17,7 @@ from pathlib import Path
 import sys
 import types
 from unittest import mock
+from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -155,6 +156,23 @@ def xlsx_with_single_cell(cell_ref: str, value: str = "section", *, shared_strin
         if shared_strings:
             zf.writestr("xl/sharedStrings.xml", shared_strings)
     return buffer.getvalue()
+
+
+def empty_addressed_cell_refs_from_xlsx(raw: bytes) -> list[str]:
+    refs: list[str] = []
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        for name in sorted(item for item in zf.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", item)):
+            sheet = ET.fromstring(zf.read(name))
+            for cell_node in sheet.iter(f"{webapp.NS_MAIN}c"):
+                has_content = (
+                    cell_node.find(f"{webapp.NS_MAIN}v") is not None
+                    or cell_node.find(f"{webapp.NS_MAIN}is") is not None
+                    or cell_node.find(f"{webapp.NS_MAIN}f") is not None
+                )
+                if cell_node.attrib.get("r") and not has_content:
+                    refs.append(f"{name}!{cell_node.attrib['r']}")
+    return refs
+
 
 def minimal_pricing_reference_xlsx(headers: list[str] | None = None) -> bytes:
     headers = headers or ["section", "description", "unit_hint", "internal_cost", "markup_multiplier", "remarks", "aliases"]
@@ -2743,11 +2761,23 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["layout"], "sectioned-pricing-workbook")
         self.assertEqual(result["errors"], [])
         self.assertGreater(result["rowCount"], 20)
+        self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         descriptions = [item["description"] for item in result["items"]]
         self.assertIn("m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal", descriptions)
         self.assertIn("nos. 10W LED Spotlight", descriptions)
         self.assertIn("sqm 100mm raised platform with aluminum edging", descriptions)
         self.assertIn('nos. 42" LED TV Monitor (With Speaker - Full HD)', descriptions)
+        incomplete_rows = [
+            item.get("id")
+            for item in result["items"]
+            if not item.get("id")
+            or not item.get("section")
+            or not item.get("description")
+            or not item.get("unit_hint")
+            or item.get("internal_cost") in ("", None)
+            or item.get("markup_multiplier") in ("", None)
+        ]
+        self.assertEqual(incomplete_rows, [])
         self.assertFalse([item["description"] for item in result["items"] if not item.get("unit_hint")])
         truss = next(item for item in result["items"] if item["description"] == "m rental of 300mm x 300mm Aluminium Box Truss")
         self.assertEqual(truss["unit_hint"], "m")
@@ -2808,6 +2838,16 @@ class WebappServerTest(unittest.TestCase):
 
         visual_items = [item for item in result["items"] if item.get("visual_references")]
         self.assertGreaterEqual(len(visual_items), 5)
+        broken_refs = [
+            (item["id"], ref)
+            for item in visual_items
+            for ref in item["visual_references"]
+            if not ref.get("source")
+            or not ref.get("data_url")
+            or not ref.get("anchor_row")
+            or not ref.get("anchor_col")
+        ]
+        self.assertEqual(broken_refs, [])
         combined = json.dumps(visual_items)
         self.assertIn("xl/media/", combined)
         self.assertIn("data:image/", combined)
@@ -3402,6 +3442,7 @@ class WebappServerTest(unittest.TestCase):
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
 
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
+        self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         self.assertNotIn("aliases", headers)
         self.assertGreaterEqual(len(rows), 2)
         self.assertTrue(rows[0]["id"].startswith("example-"))
@@ -3459,6 +3500,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("V1.1", " ".join(result["errors"]))
 
     def test_xlsx_pricing_reference_rejects_unbounded_cell_references(self):
+        self.assertEqual(webapp.xlsx_col_name(0), "A")
+        self.assertEqual(webapp.xlsx_col_name(1), "B")
+        self.assertEqual(webapp.xlsx_col_name(25), "Z")
+        self.assertEqual(webapp.xlsx_col_name(26), "AA")
         self.assertEqual(webapp.xlsx_col_index("XFD1", max_columns=webapp.MAX_XLSX_EXCEL_COLUMNS), webapp.MAX_XLSX_EXCEL_COLUMNS - 1)
         with self.assertRaises(ValueError):
             webapp.xlsx_col_index("XFE1", max_columns=webapp.MAX_XLSX_EXCEL_COLUMNS)
@@ -3472,6 +3517,20 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertTrue(result["errors"])
         self.assertIn("invalid cell reference", " ".join(result["errors"]))
+
+    def test_xlsx_rows_for_ai_uses_real_excel_column_labels(self):
+        raw = minimal_pricing_reference_xlsx(["section", "description", "unit_hint"])
+
+        rows = webapp.xlsx_rows_for_ai(raw)
+
+        self.assertEqual(
+            rows[0]["non_empty_cells"],
+            {"A": "section", "B": "description", "C": "unit_hint"},
+        )
+        self.assertEqual(
+            rows[1]["non_empty_cells"],
+            {"A": "Structures", "B": "White painted walling", "C": "sqm"},
+        )
 
     def test_xlsx_pricing_reference_rejects_large_uncompressed_xml(self):
         shared_strings = (
