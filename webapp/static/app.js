@@ -1399,6 +1399,7 @@ function normalizeLineItem(item = {}) {
     source_basis_line_id: item.source_basis_line_id || "",
     category_order: orderNumber(item.category_order) ?? "",
     item_order: orderNumber(item.item_order) ?? "",
+    basis_order: orderNumber(item.basis_order) ?? "",
     status: item.status || "",
   };
 }
@@ -2785,7 +2786,7 @@ function normalizePossiblePricingMatches(value = []) {
     if (Number.isFinite(score)) match.score = score;
     matches.push(match);
   });
-  return matches.slice(0, 3);
+  return matches;
 }
 
 function splitBasisDecisionText(text = "", defaultTag = "Confirm") {
@@ -2918,6 +2919,7 @@ function normalizeOutputRow(row = {}) {
     source_basis_line_id: row.source_basis_line_id || "",
     category_order: orderNumber(row.category_order) ?? "",
     item_order: orderNumber(row.item_order) ?? "",
+    basis_order: orderNumber(row.basis_order) ?? "",
     status: row.status || "",
   });
 }
@@ -4308,13 +4310,20 @@ function outputRowAllowedByBasis(row = {}) {
   return hasReviewedBasis ? matched && allowed : !matched || allowed;
 }
 
-function matchingAllowedBasisLineForOutputRow(row = {}) {
+function basisOrderValue(sectionIndex = 0, lineIndex = 0) {
+  return (sectionIndex + 1) * 100000 + lineIndex + 1;
+}
+
+function matchingAllowedBasisEntryForOutputRow(row = {}) {
   const reviewedSections = normalizeQuoteBasisSections(state.quoteBasisSections);
   const hasReviewedBasis = reviewedSections.some((section) => (section.lines || []).length > 0);
   if (!hasReviewedBasis) return null;
   const sourceId = String(row.source_basis_line_id || "").trim();
-  for (const section of reviewedSections) {
-    for (const line of (section.lines || [])) {
+  for (let sectionIndex = 0; sectionIndex < reviewedSections.length; sectionIndex += 1) {
+    const section = reviewedSections[sectionIndex];
+    const lines = section.lines || [];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
       if (!basisLineAllowsOutput(line)) continue;
       const lineIds = [line.id, line.source_line_item_id].map((value) => String(value || "").trim()).filter(Boolean);
       const sourceMatch = sourceId && lineIds.includes(sourceId);
@@ -4323,16 +4332,30 @@ function matchingAllowedBasisLineForOutputRow(row = {}) {
       if (sourceId && lineIds.length && !sourceMatch) continue;
       const textMatch = outputRowCoversBasisLine(row, line.text || "", sectionTitle)
         || outputRowCoversBasisLine(row, line.catalog_description || "", sectionTitle);
-      if (sourceMatch || keywordMatch || textMatch) return line;
+      if (sourceMatch || keywordMatch || textMatch) {
+        return {
+          line,
+          section,
+          sectionIndex,
+          lineIndex,
+          basis_order: basisOrderValue(sectionIndex, lineIndex),
+        };
+      }
     }
   }
   return null;
 }
 
+function matchingAllowedBasisLineForOutputRow(row = {}) {
+  return matchingAllowedBasisEntryForOutputRow(row)?.line || null;
+}
+
 function inheritBasisOutputFields(row = {}) {
-  const line = matchingAllowedBasisLineForOutputRow(row);
+  const basisEntry = matchingAllowedBasisEntryForOutputRow(row);
+  const line = basisEntry?.line;
   if (!line) return row;
   const next = { ...row };
+  next.basis_order = basisEntry.basis_order;
   if (line.quantity !== undefined && line.quantity !== null && String(line.quantity).trim() !== "") {
     next.quantity = line.quantity;
   }
@@ -4345,10 +4368,15 @@ function inheritBasisOutputFields(row = {}) {
   if ((next.catalog_unit_price === "" || next.catalog_unit_price === null || next.catalog_unit_price === undefined) && line.catalog_unit_price !== undefined && line.catalog_unit_price !== null && String(line.catalog_unit_price).trim() !== "") {
     next.catalog_unit_price = line.catalog_unit_price;
   }
-  if (!next.catalog_description && line.catalog_description) {
+  if (line.pricing_keyword) {
+    next.pricing_keyword = line.pricing_keyword;
+    const description = outputCatalogDescription(line);
+    if (description) next.description = description;
+  }
+  if (line.catalog_description && (line.pricing_keyword || !next.catalog_description)) {
     next.catalog_description = line.catalog_description;
   }
-  if (!next.pricing_reference_description && line.pricing_reference_description) {
+  if (line.pricing_reference_description && (line.pricing_keyword || !next.pricing_reference_description)) {
     next.pricing_reference_description = line.pricing_reference_description;
   }
   return normalizeOutputRow(next);
@@ -4380,8 +4408,8 @@ function dedupeOutputRows(rows = []) {
 
 function includedBasisOutputRows(existingRows = []) {
   const rows = [];
-  basisSections(state.quoteBasisSections).forEach((section) => {
-    (section.lines || []).forEach((line) => {
+  basisSections(state.quoteBasisSections).forEach((section, sectionIndex) => {
+    (section.lines || []).forEach((line, lineIndex) => {
       const customPricing = isCustomPricingBasisLine(line);
       if (!basisLineAllowsOutput(line)) return;
       if (basisLineIsInformationalDimension(line)) return;
@@ -4408,6 +4436,7 @@ function includedBasisOutputRows(existingRows = []) {
         source_basis_line_id: line.id || line.source_line_item_id || "",
         category_order: line.category_order ?? "",
         item_order: line.item_order ?? "",
+        basis_order: basisOrderValue(sectionIndex, lineIndex),
         status: customPricing ? "custom" : "needs-pricing",
       }));
     });
@@ -4432,6 +4461,7 @@ function outputRowFromLineItem(item = {}) {
     source_basis_line_id: normalized.source_basis_line_id,
     category_order: normalized.category_order,
     item_order: normalized.item_order,
+    basis_order: normalized.basis_order,
     status: normalized.status || "",
   });
 }
@@ -4507,6 +4537,24 @@ function sortOutputRows(rows = state.outputRows) {
     const sectionCompare = compareText(a.row.section).localeCompare(compareText(b.row.section));
     const descriptionCompare = compareText(a.row.description).localeCompare(compareText(b.row.description));
     if (state.outputSortMode === "pricing_reference") {
+      const aBasisOrder = orderNumber(a.row.basis_order);
+      const bBasisOrder = orderNumber(b.row.basis_order);
+      if (aBasisOrder !== null || bBasisOrder !== null) {
+        return compareOrderValues([
+          aBasisOrder ?? 999999,
+          categoryOrderValue(a.row),
+          orderNumber(a.row.item_order) || 999999,
+          a.index,
+        ], [
+          bBasisOrder ?? 999999,
+          categoryOrderValue(b.row),
+          orderNumber(b.row.item_order) || 999999,
+          b.index,
+        ])
+          || sectionCompare
+          || descriptionCompare
+          || a.index - b.index;
+      }
       return compareOrderValues(pricingReferenceOrder(a.row, a.index), pricingReferenceOrder(b.row, b.index))
         || sectionCompare
         || descriptionCompare
@@ -4983,6 +5031,7 @@ function basisSections(sections = state.quoteBasisSections) {
 function unresolvedConfirmLines(sections = state.quoteBasisSections) {
   return basisSections(sections)
     .flatMap((section) => (section.lines || [])
+      .filter((line) => !basisLineIsInformationalDimension(line))
       .filter((line) => normalizeBasisTag(line.tag) === "Confirm" || isPendingAiProposalLine(line))
       .map((line) => `${section.title}: ${line.text}`));
 }
@@ -5199,6 +5248,29 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
     ? `<span class="quote-basis-quality-pill">High Quality</span>`
     : "";
   const sections = basisSections(state.quoteBasisSections.length ? state.quoteBasisSections : normalizeQuoteBasisSections(basis));
+  const reviewSections = sections
+    .map((section) => ({
+      ...section,
+      reviewLineEntries: (section.lines || [])
+        .map((line, index) => ({ line, index }))
+        .filter((entry) => !basisLineIsInformationalDimension(entry.line)),
+    }))
+    .map((section) => ({ ...section, lines: section.reviewLineEntries.map((entry) => entry.line) }))
+    .filter((section) => section.reviewLineEntries.length);
+  const dimensionLines = sections.flatMap((section) => (section.lines || [])
+    .filter((line) => basisLineIsInformationalDimension(line))
+    .map((line) => cleanCustomerQuoteLineText(line.text || line.description || "")))
+    .filter(Boolean);
+  const dimensionDisplay = dimensionLines.length
+    ? `
+      <div class="basis-visual-display" aria-label="Booth display details">
+        <strong>Booth Details</strong>
+        <ul>
+          ${dimensionLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+        </ul>
+      </div>
+    `
+    : "";
   return `
     <div class="assistant-card quote-basis-card ${aiFailed ? "quote-basis-card-failed" : ""}">
       <div class="quote-basis-header">
@@ -5212,14 +5284,16 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         </div>
         <div class="quote-basis-source">
           <span>${aiFailed ? "Source: Local fallback only" : `Source: ${escapeHtml(outputPricingSourceLabel())}`}</span>
-          <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(sections)))}</strong>
+          <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(reviewSections)))}</strong>
         </div>
       </div>
       ${renderAnalysisFindings()}
       ${renderBasisConfirmSummary(sections)}
+      ${dimensionDisplay}
       ${renderBasisTagLegend()}
-      <div class="basis-review-grid">
-        ${sections.map((section) => `
+      ${reviewSections.length ? `
+        <div class="basis-review-grid">
+          ${reviewSections.map((section) => `
           <div class="basis-review-item">
             <div class="basis-section-heading">
               <h4>${escapeHtml(section.title)}</h4>
@@ -5230,11 +5304,12 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
               </span>
             </div>
             <ul class="basis-line-list">
-              ${(section.lines || []).map((line, index) => renderBasisLine(section, line, index)).join("")}
+              ${section.reviewLineEntries.map((entry) => renderBasisLine(section, entry.line, entry.index)).join("")}
             </ul>
           </div>
-        `).join("")}
-      </div>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -5274,7 +5349,7 @@ function applyPossiblePricingMatch(sectionId, lineIndex, matchIndex) {
   const reference = pricingReferenceLineText(match.description);
   const nextLine = {
     ...currentLine,
-    tag: "Confirm",
+    tag: "Include",
     text: catalogBackedPossibleMatchText(currentLine, match),
     pricing_keyword: match.pricing_keyword,
     catalog_description: reference,
@@ -5297,6 +5372,13 @@ function applyPossiblePricingMatch(sectionId, lineIndex, matchIndex) {
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
   state.downloadFile = null;
+  if (Array.isArray(state.outputRows) && state.outputRows.length && Array.isArray(state.lineItems)) {
+    refreshOutputRowsFromLineItems();
+    state.lineItems = outputRowsToLineItems();
+    if (typeof renderPricingMatches === "function") renderPricingMatches(state.outputRows);
+    if (typeof renderMatchSummary === "function") renderMatchSummary({ pricing_matches: state.outputRows });
+    if (typeof renderOutputValidationMessages === "function") renderOutputValidationMessages(outputRowsValid().errors);
+  }
   updateQuoteBasisCard("edited");
   syncControlStates();
 }

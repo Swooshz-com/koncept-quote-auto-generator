@@ -368,7 +368,7 @@ async function main() {
     await page.locator("#basisChatCloseButton").click();
     await page.locator("#basisChatOverlay").waitFor({ state: "hidden", timeout: 15000 });
     await basisLineRow(page, possibleMatchText).locator(".basis-line-possible-match", { hasText: possibleMatchReference }).click();
-    await basisLineRow(page, possibleMatchText).locator(".basis-line-pill", { hasText: "Confirm" }).waitFor({ timeout: 15000 });
+    await basisLineRow(page, possibleMatchText).locator(".basis-line-pill", { hasText: "Include" }).waitFor({ timeout: 15000 });
     await basisLineRow(page, possibleMatchText).locator(".basis-line-catalog-reference", { hasText: possibleMatchReference }).waitFor({ timeout: 15000 });
     const remainingPossibleMatchButtons = await basisLineRow(page, possibleMatchText).locator(".basis-line-possible-match").count();
     if (remainingPossibleMatchButtons !== 0) {

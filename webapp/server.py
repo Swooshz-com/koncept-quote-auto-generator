@@ -7482,7 +7482,7 @@ def quote_basis_sections_with_catalog_exact_lines(
         score = len(overlap) * 10 + round(best_value_ratio * 10) + 8 + unit_bonus
         return score if score >= 20 else 0
 
-    def possible_catalog_items_for_line(line: dict[str, Any], section: dict[str, Any], limit: int = 3) -> list[dict[str, Any]]:
+    def possible_catalog_items_for_line(line: dict[str, Any], section: dict[str, Any]) -> list[dict[str, Any]]:
         if is_default_dimension_basis_line(line) or clean_text(line.get("pricing_keyword")):
             return []
         scored = [
@@ -7508,8 +7508,6 @@ def quote_basis_sections_with_catalog_exact_lines(
                 continue
             seen.add(item_id)
             matches.append(possible_pricing_match_from_item(item, score))
-            if len(matches) >= limit:
-                break
         return matches
 
     def attach_possible_pricing_matches(sections: list[dict[str, Any]]) -> None:

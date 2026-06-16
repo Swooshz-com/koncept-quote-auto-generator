@@ -2200,15 +2200,16 @@ class WebappServerTest(unittest.TestCase):
         reference_id = "possible-match-review-test"
         catalog_items = [
             {
-                "id": "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+                "id": f"av-equipment-rental-items-nos-{size}-led-tv-monitor-with-speaker-full-hd",
                 "section": "AV Equipment Rental Items",
-                "description": 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+                "description": f'nos. {size}" LED TV Monitor (With Speaker - Full HD)',
                 "unit_hint": "nos",
                 "match_terms": ["display"],
                 "object_families": ["av_equipment"],
                 "category_order": 1,
-                "item_order": 1,
+                "item_order": index + 1,
             }
+            for index, size in enumerate((24, 42, 55, 85))
         ]
         ai_basis = {
             "project": {"booth_width": 6, "booth_depth": 6},
@@ -2266,11 +2267,21 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(video_line["tag"], "Custom")
         self.assertNotIn("pricing_keyword", video_line)
-        self.assertEqual(
-            video_line["possible_pricing_matches"][0]["pricing_keyword"],
+        self.assertEqual(len(video_line["possible_pricing_matches"]), 4)
+        video_match_keywords = [
+            match["pricing_keyword"]
+            for match in video_line["possible_pricing_matches"]
+        ]
+        self.assertIn(
             "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+            video_match_keywords,
         )
-        self.assertIn('85" LED TV Monitor', video_line["possible_pricing_matches"][0]["description"])
+        video_85_match = next(
+            match
+            for match in video_line["possible_pricing_matches"]
+            if match["pricing_keyword"] == "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd"
+        )
+        self.assertIn('85" LED TV Monitor', video_85_match["description"])
         self.assertNotIn("possible_pricing_matches", service_line)
 
     def test_normalize_ai_draft_preserves_all_model_line_items(self):
@@ -8596,6 +8607,7 @@ eval([
   "normalizeQuoteBasisTitle",
   "cleanCustomerQuoteLineText",
   "pricingReferenceLineText",
+  "bracketedCatalogReferenceParts",
   "leadingNumber",
   "formatQuantityNumber",
   "normalizeQuantityPrefixUnit",
@@ -8632,6 +8644,8 @@ eval([
   "outputRowCoversBasisEntry",
   "basisLineAllowsOutput",
   "outputRowAllowedByBasis",
+  "basisOrderValue",
+  "matchingAllowedBasisEntryForOutputRow",
   "matchingAllowedBasisLineForOutputRow",
   "inheritBasisOutputFields",
   "outputRowDedupeKey",
@@ -8697,6 +8711,73 @@ assert.strictEqual(state.outputRows.length, 1);
 assert.strictEqual(state.outputRows[0].catalog_unit_price, 60);
 assert.strictEqual(state.outputRows[0].amount, 2160);
 assert.strictEqual(state.outputRows[0].description, "sqm 100mm raised platform with aluminum edging");
+state.quoteBasisSections = originalBasisSections;
+
+state.quoteBasisSections = [{
+  id: "counters-and-cabinets",
+  title: "COUNTERS AND CABINETS",
+  lines: [{
+    id: "basis-counter-selected",
+    tag: "Include",
+    text: "[ nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal ] - Curved reception counter with Kent logo panel, teal trim and illuminated blue plinth.",
+    quantity: 1,
+    unit: "nos",
+    pricing_keyword: "counters-and-cabinets-1m-lockable-counter-laminated-finished",
+    catalog_description: "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+    pricing_reference_description: "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+    category_order: 9,
+    item_order: 9,
+  }],
+}, {
+  id: "av-equipment-rental-items",
+  title: "AV Equipment Rental Items",
+  lines: [{
+    id: "basis-video-selected",
+    tag: "Include",
+    text: "[ nos. 85\" LED TV Monitor (With Speaker - Full HD) ] - Large-format LED video wall integrated into navy feature wall.",
+    quantity: 1,
+    unit: "nos",
+    pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+    catalog_description: "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
+    pricing_reference_description: "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
+    category_order: 1,
+    item_order: 1,
+  }],
+}];
+state.lineItems = [{
+  section: "AV Equipment Rental Items",
+  description: "Large-format LED video wall integrated into navy feature wall.",
+  quantity: 1,
+  unit: "nos",
+  pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
+  catalog_unit_price: 675,
+  source_basis_line_id: "basis-video-selected",
+  category_order: 1,
+  item_order: 1,
+}, {
+  section: "COUNTERS AND CABINETS",
+  description: "Curved reception counter with Kent logo panel, teal trim and illuminated blue plinth.",
+  quantity: 1,
+  unit: "nos",
+  pricing_keyword: "counters-and-cabinets-1m-lockable-counter-laminated-finished",
+  catalog_unit_price: 1800,
+  source_basis_line_id: "basis-counter-selected",
+  category_order: 9,
+  item_order: 9,
+}];
+state.outputRows = [];
+refreshOutputRowsFromLineItems();
+assert.deepStrictEqual(
+  state.outputRows.map((row) => row.description),
+  [
+    "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+    "nos. 85\" LED TV Monitor (With Speaker - Full HD)",
+  ]
+);
+assert.deepStrictEqual(
+  state.outputRows.map((row) => row.source_basis_line_id),
+  ["basis-counter-selected", "basis-video-selected"]
+);
 state.quoteBasisSections = originalBasisSections;
 
 state.quoteBasisSections = [{
@@ -9918,6 +9999,8 @@ function extractFunction(name) {
 const state = {
   pricingReferenceId: "default-ref",
   pricingReferenceSource: "",
+  aiFailed: false,
+  lastAnalysisMode: "standard",
   pricingReferences: [
     { id: "default-ref", items: [{ section: "Floor Coverings", description: "Raised platform flooring" }] },
   ],
@@ -9937,6 +10020,15 @@ const state = {
     },
   ],
 };
+const ANALYSIS_MODE_STANDARD = "standard";
+const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const GENERIC_FAILURE_MESSAGE = "Failed.";
+const BASIS_TAGS = [
+  ["Include", "Include", "Confirmed in the draft"],
+  ["Exclude", "Exclude", "Not included unless requested"],
+  ["Custom", "AI Proposal", "Not found in pricing reference"],
+  ["Confirm", "Confirm", "Needs include, exclude, or revision"],
+];
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -9946,7 +10038,10 @@ function escapeHtml(value = "") {
     "'": "&#39;",
   }[char]));
 }
+function outputPricingSourceLabel() { return "Pricing reference"; }
+function renderAnalysisFindings() { return ""; }
 eval([
+  "normalizeAnalysisMode",
   "normalizeTextNewlines",
   "splitLines",
   "safeId",
@@ -9959,6 +10054,7 @@ eval([
   "normalizeQuoteBasisTitle",
   "cleanCustomerQuoteLineText",
   "pricingReferenceLineText",
+  "bracketedCatalogReferenceParts",
   "leadingNumber",
   "formatQuantityNumber",
   "normalizeQuantityPrefixUnit",
@@ -9980,6 +10076,8 @@ eval([
   "normalizeQuoteBasisSections",
   "confirmOnlyQuoteBasisSections",
   "basisSections",
+  "isInformationalDimensionText",
+  "basisLineIsInformationalDimension",
   "unresolvedConfirmLines",
   "basisConfirmBlockReason",
   "outputComparableText",
@@ -9993,6 +10091,7 @@ eval([
             "basisTotalLineCount",
             "basisTotalLineLabel",
             "renderBasisConfirmSummary",
+            "renderBasisTagLegend",
             "basisCatalogReferenceTitle",
             "basisLineTitle",
             "basisPillTitle",
@@ -10000,6 +10099,7 @@ eval([
             "basisLineTextHtml",
             "basisPossibleMatchesHtml",
             "renderBasisLine",
+            "renderQuoteBasisMessage",
             "quoteBasisFromSections",
             "cloneQuoteBasisSections",
             "possibleMatchBasisDetailText",
@@ -10043,14 +10143,15 @@ const possibleMatchLine = normalizeBasisLines({
   text: "Large wall-mounted LED video display for exterior presentation wall.",
   quantity: 1,
   unit: "lot",
-  possible_pricing_matches: [{
-    pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
-    description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+  possible_pricing_matches: [24, 42, 55, 85].map((size) => ({
+    pricing_keyword: `av-equipment-rental-items-nos-${size}-led-tv-monitor-with-speaker-full-hd`,
+    description: `nos. ${size}" LED TV Monitor (With Speaker - Full HD)`,
     section: "AV Equipment Rental Items",
     unit: "nos",
-  }],
+  })),
 })[0];
-assert.strictEqual(possibleMatchLine.possible_pricing_matches[0].pricing_keyword, "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd");
+assert.strictEqual(possibleMatchLine.possible_pricing_matches.length, 4);
+assert.strictEqual(possibleMatchLine.possible_pricing_matches[3].pricing_keyword, "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd");
 const possibleMatchHtml = renderBasisLine({ id: "av-equipment-rental-items", title: "AV Equipment Rental Items" }, possibleMatchLine, 0);
 assert.ok(possibleMatchHtml.includes("Possible match"));
 assert.ok(possibleMatchHtml.includes('nos. 85&quot; LED TV Monitor'));
@@ -10106,6 +10207,59 @@ assert.strictEqual(basisTotalLineLabel(3), "Total lines: 3");
 assert.strictEqual(basisTotalLineLabel(1), "Total lines: 1");
 const summaryHtml = renderBasisConfirmSummary(state.quoteBasisSections);
 assert.strictEqual(summaryHtml, "");
+state.quoteBasisSections = [{
+  id: "floor-design",
+  title: "Floor Design",
+  lines: [{
+    tag: "Custom",
+    text: "Booth size 9m width x 10.5m depth; overall floor area 94.5 sqm",
+    quantity: 94.5,
+    unit: "sqm",
+    custom_pricing: true,
+  }],
+}];
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
+const dimensionBasisHtml = renderQuoteBasisMessage(state.quoteBasis, "edited");
+assert.ok(dimensionBasisHtml.includes("basis-visual-display"));
+assert.ok(dimensionBasisHtml.includes("Booth size 9m width x 10.5m depth; overall floor area 94.5 sqm"));
+assert.ok(!dimensionBasisHtml.includes('class="basis-line-row'));
+assert.ok(!dimensionBasisHtml.includes('data-basis-line-index="0"'));
+state.quoteBasisSections = [{
+  id: "floor-design",
+  title: "Floor Design",
+  lines: [{
+    tag: "Custom",
+    text: "Booth size 9m width x 10.5m depth; overall floor area 94.5 sqm",
+    quantity: 94.5,
+    unit: "sqm",
+    custom_pricing: true,
+  }, {
+    tag: "Confirm",
+    text: "sqm needle punch carpet in colour",
+    quantity: 94.5,
+    unit: "sqm",
+  }],
+}];
+const mixedDimensionBasisHtml = renderQuoteBasisMessage(state.quoteBasis, "edited");
+assert.ok(mixedDimensionBasisHtml.includes("basis-visual-display"));
+assert.ok(mixedDimensionBasisHtml.includes("sqm needle punch carpet in colour"));
+assert.ok(mixedDimensionBasisHtml.includes('data-basis-line-index="1"'));
+assert.ok(!mixedDimensionBasisHtml.includes('data-basis-line-index="0"'));
+state.quoteBasisSections = [
+  {
+    id: "platform",
+    title: "Platform / Flooring",
+    lines: [
+      { tag: "Include", text: "Raised platform." },
+      { tag: "Include", text: "Finish colour." },
+    ],
+  },
+  {
+    id: "graphics",
+    title: "Graphics / Signage",
+    lines: [{ tag: "Exclude", text: "LED screens." }],
+  },
+];
 const lineHtml = renderBasisLine(
   { id: "platform", title: "Flooring / Platform" },
   { tag: "Confirm", text: "sqm 100mm raised platform with aluminum edging", confidence: 92, quantity: 36, unit: "sqm", pricing_reference_description: "sqm 100mm raised platform with aluminum edging" },
@@ -10174,7 +10328,7 @@ state.quoteBasisSections = [{
 }];
 applyPossiblePricingMatch("av-equipment-rental-items", 0, 0);
 const selectedPossibleMatchLine = state.quoteBasisSections[0].lines[0];
-assert.strictEqual(selectedPossibleMatchLine.tag, "Confirm");
+assert.strictEqual(selectedPossibleMatchLine.tag, "Include");
 assert.strictEqual(selectedPossibleMatchLine.pricing_keyword, "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd");
 assert.strictEqual(selectedPossibleMatchLine.catalog_description, 'nos. 85" LED TV Monitor (With Speaker - Full HD)');
 assert.strictEqual(selectedPossibleMatchLine.pricing_reference_description, 'nos. 85" LED TV Monitor (With Speaker - Full HD)');
@@ -10188,9 +10342,9 @@ assert.ok(selectedPossibleMatchLine.text.includes("Large format LED video wall m
 assert.ok(!selectedPossibleMatchLine.text.includes("Custom -"));
 assert.strictEqual(
   state.quoteBasis["av-equipment-rental-items"],
-  'Confirm: [ nos. 85" LED TV Monitor (With Speaker - Full HD) ] - Large format LED video wall mounted on deep-blue feature wall.'
+  'Include: [ nos. 85" LED TV Monitor (With Speaker - Full HD) ] - Large format LED video wall mounted on deep-blue feature wall.'
 );
-assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "Resolve all review lines before confirming quotation basis.");
+assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
 
 state.quoteBasisSections = [{
   id: "graphics",

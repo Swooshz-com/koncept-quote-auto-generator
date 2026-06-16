@@ -1572,6 +1572,37 @@ select:focus {
   display: none;
 }
 
+.basis-visual-display {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d5e3ee;
+  border-radius: var(--radius-sm);
+  background: #f7fbff;
+  color: #183047;
+}
+
+.basis-visual-display strong {
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.basis-visual-display ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.basis-visual-display li {
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .basis-empty-state {
   display: grid;
   align-content: center;
