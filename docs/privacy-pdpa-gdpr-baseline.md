@@ -25,6 +25,9 @@ This baseline covers:
 - Assign support-safe error or ticket references for user-visible failures; keep detailed diagnostics server-side only.
 - Keep logs privacy-minimized and redact secrets, tokens, API keys, Authorization headers, cookies, raw images, and long customer text.
 - Store usage records per authenticated user/account in production, including provider, model, mode, image count, token usage when available, estimated cost, status, and error reference.
+- Use AI usage records for abuse prevention, cost control, security review, support diagnostics, and billing/entitlement enforcement.
+- Usage records must be sufficient to identify and block abusive users or accounts, but must not store raw prompts, raw uploaded files, raw generated quotations, API keys, cookies, Authorization headers, or long customer text.
+- Support user-level and account-level AI rate limits, spend caps, temporary blocks, and audit records for block/unblock decisions.
 - Define and enforce retention periods for uploads, generated files, AI payloads, usage records, and logs before production launch.
 - Provide a user support path for access, correction, deletion, portability, restriction/objection, and consent withdrawal requests where applicable.
 - Do not add analytics, trackers, pixels, external scripts, or third-party embeds without explicit privacy review and user notice/consent where required.
@@ -34,7 +37,8 @@ This baseline covers:
 ## Current Local Development Behavior
 
 - The local app stores workflow state in the browser, writes generated files under local repo output directories, and writes diagnostics under the root `_logs` folder.
-- Uploaded images and quote data may be sent to the configured AI provider when analysis is run.
+- Uploaded images, uploaded PDFs, rendered PDF page images, and quote data may be sent to the configured AI provider when analysis is run.
+- OpenAI is the current full PDF/image draft-analysis provider; DeepSeek may be configured only for text-only quote-basis chat and pricing-reference import normalization.
 - Pricing references saved through the local app are stored as repo pricing-reference packs.
 - Error UI should show a short retry/support message with an error reference, while detailed provider errors stay in local logs.
 
@@ -43,7 +47,7 @@ This baseline covers:
 - Publish the current privacy notice and link it from the app shell.
 - Replace local-only role simulation with authenticated users and durable account/user IDs.
 - Add database-backed user/account data partitioning with row-level access controls.
-- Add usage/cost logging per user and expose an admin usage view.
+- Add privacy-minimized usage/cost logging per user and account, plus an owner/admin usage view for abuse detection, cost control, and billing support.
 - Add retention/deletion jobs for uploads, generated quotes, logs, and AI payload records.
 - Finalize support contact details and data request workflow.
 - Complete AI provider data processing and sub-processor review.

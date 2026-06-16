@@ -291,9 +291,9 @@ def generate_layout_workbook(brief_updates=None):
             "date_label": "Date:",
         },
         "signature": {
-            "koncept_signatory": "Francies Cheng",
-            "koncept_title": "Director",
-            "koncept_date_label": "Date:",
+            "company_signatory": "Francies Cheng",
+            "company_title": "Director",
+            "company_date_label": "Date:",
         },
     }
     if brief_updates:
@@ -358,7 +358,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(len(catalog["items"]), 2)
 
         wall = catalog["items"][0]
-        self.assertEqual(wall["id"], "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
+        self.assertEqual(wall["id"], "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
         self.assertNotIn("source_row", wall)
         self.assertEqual(wall["section"], "Booth Structure")
         self.assertEqual(wall["description"], "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal")
@@ -367,7 +367,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIn("single side partition wall at height 2.4m", wall["aliases"])
 
         lettering = catalog["items"][1]
-        self.assertEqual(lettering["id"], "booth-structure.3d-backlit-lettering")
+        self.assertEqual(lettering["id"], "booth-structure-3d-backlit-lettering")
         self.assertEqual(lettering["remarks"], ["Backlit Lettering", "NOTE: Per set max 2m long"])
 
         ai_reference_markdown = pricing_catalog.catalog_to_ai_reference_markdown(catalog)
@@ -402,22 +402,27 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         rows = quote.extract_price_rows(catalog_path)
 
         self.assertGreaterEqual(len(rows), 100)
-        self.assertEqual(rows[0].pricing_id, "floor-design.needle-punch-carpet-in-colour")
+        self.assertEqual(rows[0].pricing_id, "floor-design-needle-punch-carpet-in-colour")
         self.assertEqual(rows[0].section, "Floor Design")
-        self.assertEqual(rows[0].description, "m2 needle punch carpet in colour")
+        self.assertEqual(rows[0].description, "sqm needle punch carpet in colour")
         self.assertEqual(rows[0].unit_hint, "sqm")
-        self.assertEqual(rows[0].cost, 7)
-        self.assertEqual(rows[0].gst_multiplier, 1.09)
+        first_catalog_item = json.loads(catalog_path.read_text(encoding="utf-8"))["items"][0]
+        self.assertEqual(rows[0].cost, first_catalog_item["internal_cost"])
+        self.assertEqual(rows[0].gst_multiplier, 1.0)
         self.assertEqual(rows[0].markup, 1.5)
         self.assertIn("needle punch", rows[0].aliases)
 
-        wall_row = next(row for row in rows if row.pricing_id == "booth-structure.single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
+        wall_row = next(row for row in rows if row.pricing_id == "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
         self.assertEqual(wall_row.description, "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal")
         self.assertEqual(wall_row.remark, "Backwall or any partition; PAINTED")
 
-        graphics_row = next(row for row in rows if row.pricing_id == "graphics.vinyl-printed-graphics")
-        self.assertEqual(graphics_row.description, "m2 of vinyl printed graphics")
+        graphics_row = next(row for row in rows if row.pricing_id == "graphics-vinyl-printed-graphics")
+        self.assertEqual(graphics_row.description, "sqm of vinyl printed graphics")
         self.assertIn("printed graphics on wall", graphics_row.remark.lower())
+
+        self.assertFalse([row.pricing_id for row in rows if not row.unit_hint])
+        truss_row = next(row for row in rows if row.pricing_id == "hanging-structure-m-rental-of-300mm-x-300mm-aluminium-box-truss")
+        self.assertEqual(truss_row.unit_hint, "m")
 
     def test_catalog_id_pricing_keyword_matches_exact_catalog_item(self):
         rows = quote.extract_price_rows(KONCEPT_CATALOG)
@@ -426,7 +431,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertEqual(status, "matched")
         self.assertIsNotNone(match)
-        self.assertEqual(match.pricing_id, "graphics.vinyl-printed-graphics")
+        self.assertEqual(match.pricing_id, "graphics-vinyl-printed-graphics")
 
     def test_catalog_matching_uses_numeric_size_and_explicit_unit_context(self):
         rows = quote.extract_price_rows(KONCEPT_CATALOG)
@@ -442,7 +447,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(
             match.pricing_id,
-            "electrical-fittings-excluding-connection-fees-by-organiser.led-recess-downlight-6",
+            "electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-6",
         )
 
         sqm_status, sqm_match, _ = quote.find_price_match(
@@ -459,11 +464,11 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         )
 
         self.assertEqual(sqm_status, "matched")
-        self.assertEqual(sqm_match.pricing_id, "graphics.vinyl-printed-graphics")
+        self.assertEqual(sqm_match.pricing_id, "graphics-vinyl-printed-graphics")
         self.assertEqual(nos_status, "matched")
         self.assertEqual(
             nos_match.pricing_id,
-            "graphics.digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+            "graphics-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
         )
 
     def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
@@ -706,6 +711,37 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             issues,
         )
 
+    def test_fractional_information_counter_requires_quantity_review(self):
+        rows = [
+            quote.PriceRow(
+                row_number=1,
+                section="COUNTERS AND CABINETS",
+                description="nos. of 1m length x 1m height x 0.5m Width lockable information counter",
+                unit_hint="nos",
+                cost=800,
+                gst_multiplier=1.0,
+                markup=1.5,
+                remark="",
+                pricing_id="counters.lockable-information-counter",
+                aliases=["lockable information counter"],
+            )
+        ]
+        brief = {
+            "line_items": [{
+                "section": "COUNTERS AND CABINETS",
+                "quantity": 0.5,
+                "unit": "m length",
+                "description": "0.5m length lockable information counter",
+                "pricing_keyword": "lockable information counter",
+            }]
+        }
+
+        [line] = quote.prepare_lines(brief, rows, allow_ambiguous=True)
+
+        self.assertEqual(line.match_status, "quantity-review")
+        self.assertIsNone(line.matched_price)
+        self.assertIsNone(line.amount)
+
     def test_structure_sections_are_itemized_by_default(self):
         lines = [
             quote.QuoteLine(
@@ -875,9 +911,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "date_label": "Date:",
             },
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
-                "koncept_date_label": "Date:",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
             },
         }
         price = quote.PriceRow(1, "Electrical", "nos. 10W LED Spotlight", "nos", 45, 1.09, 1, "")
@@ -937,8 +973,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             "line_items": [],
             "payment_terms": [],
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
             },
         }
         price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
@@ -990,8 +1026,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             "line_items": [],
             "payment_terms": [],
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
             },
         }
         price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
@@ -1041,8 +1077,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             "line_items": [],
             "payment_terms": [],
             "signature": {
-                "koncept_signatory": "Francies Cheng",
-                "koncept_title": "Director",
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
             },
         }
         price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
@@ -1358,9 +1394,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "date_label": "Signed date:",
             },
             "signature": {
-                "koncept_signatory": "Morgan Lee",
-                "koncept_title": "Sales Lead",
-                "koncept_date_label": "Company signed date:",
+                "company_signatory": "Morgan Lee",
+                "company_title": "Sales Lead",
+                "company_date_label": "Company signed date:",
             },
         }
         price = quote.PriceRow(1, "Floor", "m2 needle punch carpet in colour", "sqm", 7, 1.09, 1.5, "")
