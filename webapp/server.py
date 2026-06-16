@@ -331,6 +331,8 @@ LOCAL_SECRET_REDACTION = "[local-runner-key]"
 OPENAI_REQUEST_TIMEOUT_SECONDS = 1800
 DEEPSEEK_REQUEST_TIMEOUT_SECONDS = 1800
 DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS = 120
+DEEPSEEK_PRICING_IMPORT_MAX_OUTPUT_TOKENS = 8000
+DEEPSEEK_PRICING_METADATA_MAX_OUTPUT_TOKENS = 12000
 OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
 MAX_PROMPT_CATALOG_ROWS = 180
@@ -555,6 +557,9 @@ def ai_failure_metadata(
         "error_type": type(chain[-1]).__name__ if chain else type(exception).__name__,
         "safe_error_summary": summaries[failure_kind],
     }
+    diagnostics = safe_ai_output_diagnostics(getattr(exception, "diagnostics", {}))
+    if diagnostics:
+        metadata.update(diagnostics)
     if http_status:
         metadata["http_status"] = int(http_status)
     if timeout_seconds is not None:
@@ -3609,6 +3614,45 @@ def build_pricing_catalog_metadata_prompt(source_name: str, items: list[dict[str
     )
 
 
+def deepseek_json_system_prompt(error_context: str = "") -> str:
+    context = clean_text(error_context).lower()
+    if "metadata" in context:
+        example = {
+            "items": [
+                {
+                    "id": "example-row-id",
+                    "match_terms": ["example exact service name"],
+                    "object_families": ["example_service_family"],
+                }
+            ]
+        }
+    elif "pricing import" in context:
+        example = {
+            "currency": "SGD",
+            "items": [
+                {
+                    "section": "Example Section",
+                    "description": "lot example catalog service",
+                    "unit_hint": "lot",
+                    "internal_cost": "100",
+                    "markup_multiplier": "1.5",
+                    "remarks": "example source remark",
+                    "aliases": ["example catalog service"],
+                    "category_order": 1,
+                    "item_order": 1,
+                }
+            ],
+        }
+    else:
+        example = {"result": "example"}
+    return (
+        "Return exactly one valid JSON object. Do not include markdown, code fences, commentary, or any text outside the JSON object. "
+        "Use double-quoted JSON keys and strings. Use arrays where the schema shows arrays. "
+        "If a value is unknown, use an empty string or empty array instead of prose. "
+        f"EXAMPLE JSON OUTPUT: {json.dumps(example, ensure_ascii=True)}"
+    )
+
+
 def request_deepseek_chat_completion_json_data(
     prompt: str,
     api_key: str,
@@ -3622,11 +3666,13 @@ def request_deepseek_chat_completion_json_data(
         "messages": [
             {
                 "role": "system",
-                "content": "Return exactly one valid JSON object. Do not include markdown, code fences, commentary, or any text outside the JSON object.",
+                "content": deepseek_json_system_prompt(error_context),
             },
             {"role": "user", "content": prompt},
         ],
+        "thinking": {"type": "disabled"},
         "response_format": {"type": "json_object"},
+        "temperature": 0,
         "max_tokens": max_tokens,
         "stream": False,
     }
@@ -3670,7 +3716,12 @@ def request_deepseek_json_object(
     timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     data = request_deepseek_chat_completion_json_data(prompt, api_key, model, max_tokens, error_context, timeout_seconds)
-    return parse_json_object(chat_completions_output_text(data))
+    output_text = chat_completions_output_text(data)
+    diagnostics = chat_completions_output_diagnostics(data, output_text)
+    try:
+        return parse_json_object(output_text)
+    except OpenAIAnalysisError as exc:
+        raise AIModelOutputError(str(exc), diagnostics=diagnostics) from exc
 
 
 def request_openai_pricing_catalog_import(source_name: str, content: Any, tax: dict[str, Any], api_key: str) -> dict[str, Any]:
@@ -3712,7 +3763,7 @@ def request_deepseek_pricing_catalog_import(source_name: str, content: Any, tax:
         build_pricing_catalog_import_prompt(source_name, content, tax),
         api_key,
         configured_deepseek_model(),
-        4000,
+        DEEPSEEK_PRICING_IMPORT_MAX_OUTPUT_TOKENS,
         "pricing import",
         configured_deepseek_pricing_import_timeout_seconds(),
     )
@@ -3723,7 +3774,7 @@ def request_deepseek_pricing_catalog_metadata(source_name: str, items: list[dict
         build_pricing_catalog_metadata_prompt(source_name, items),
         api_key,
         configured_deepseek_model(),
-        12000,
+        DEEPSEEK_PRICING_METADATA_MAX_OUTPUT_TOKENS,
         "pricing metadata enrichment",
     )
 
@@ -6093,7 +6144,9 @@ class OpenAIAnalysisError(RuntimeError):
 
 
 class AIModelOutputError(OpenAIAnalysisError):
-    pass
+    def __init__(self, message: str, diagnostics: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
 
 
 def provider_http_error_message(provider: str, exc: urllib.error.HTTPError) -> str:
@@ -6183,6 +6236,71 @@ def chat_completions_output_text(data: dict[str, Any]) -> str:
                 elif isinstance(item, str):
                     chunks.append(item)
     return "\n".join(chunks).strip()
+
+
+SAFE_AI_OUTPUT_DIAGNOSTIC_KEYS = {
+    "choice_count",
+    "finish_reason",
+    "input_tokens",
+    "output_tokens",
+    "output_contains_json_object_bounds",
+    "output_empty",
+    "output_has_markdown_fence",
+    "output_length",
+    "output_starts_with_json_object",
+    "total_tokens",
+}
+
+
+def safe_ai_output_diagnostics(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    diagnostics: dict[str, Any] = {}
+    for key in SAFE_AI_OUTPUT_DIAGNOSTIC_KEYS:
+        item = value.get(key)
+        if isinstance(item, bool):
+            diagnostics[key] = item
+        elif isinstance(item, int) and 0 <= item <= 10_000_000:
+            diagnostics[key] = item
+        elif isinstance(item, str):
+            text = clean_text(item).lower()
+            if re.fullmatch(r"[a-z0-9_-]{1,64}", text):
+                diagnostics[key] = text
+    return diagnostics
+
+
+def token_usage_diagnostics(data: dict[str, Any]) -> dict[str, int]:
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    mapping = {
+        "prompt_tokens": "input_tokens",
+        "completion_tokens": "output_tokens",
+        "total_tokens": "total_tokens",
+    }
+    diagnostics: dict[str, int] = {}
+    for source_key, target_key in mapping.items():
+        value = usage.get(source_key)
+        if isinstance(value, int) and value >= 0:
+            diagnostics[target_key] = value
+    return diagnostics
+
+
+def chat_completions_output_diagnostics(data: dict[str, Any], output_text: str) -> dict[str, Any]:
+    cleaned = output_text.strip()
+    choices = data.get("choices") if isinstance(data.get("choices"), list) else []
+    diagnostics: dict[str, Any] = {
+        "choice_count": len(choices),
+        "output_length": len(output_text),
+        "output_empty": not bool(cleaned),
+        "output_starts_with_json_object": cleaned.startswith("{"),
+        "output_contains_json_object_bounds": cleaned.find("{") != -1 and cleaned.rfind("}") > cleaned.find("{"),
+        "output_has_markdown_fence": cleaned.startswith("```"),
+        **token_usage_diagnostics(data),
+    }
+    if choices and isinstance(choices[0], dict):
+        finish_reason = clean_text(choices[0].get("finish_reason")).lower()
+        if re.fullmatch(r"[a-z0-9_-]{1,64}", finish_reason):
+            diagnostics["finish_reason"] = finish_reason
+    return safe_ai_output_diagnostics(diagnostics)
 
 
 def parse_json_object(text: str) -> dict[str, Any]:

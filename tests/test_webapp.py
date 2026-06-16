@@ -5406,6 +5406,58 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["messages"][1]["role"], "user")
         self.assertEqual(result["currency"], "SGD")
 
+    def test_deepseek_pricing_import_request_uses_json_hardening(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": json.dumps({
+                            "currency": "SGD",
+                            "items": [
+                                {
+                                    "section": "Floor Design",
+                                    "description": "sqm needle punch carpet in colour",
+                                    "unit_hint": "sqm",
+                                    "internal_cost": "0",
+                                    "markup_multiplier": "1",
+                                    "remarks": "",
+                                    "aliases": [],
+                                }
+                            ],
+                        })
+                    },
+                }
+            ]
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.DEEPSEEK_MODEL_ENV_NAME: "deepseek-test-model",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", return_value=response) as urlopen:
+                result = webapp.request_deepseek_pricing_catalog_import(
+                    "pricing.xlsx",
+                    {"rows": [{"Item": "sqm needle punch carpet in colour"}]},
+                    {"label": "GST", "rate": 0.09},
+                    "ds-test-redacted",
+                )
+
+        body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        system_message = body["messages"][0]["content"]
+        self.assertEqual(result["currency"], "SGD")
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["thinking"], {"type": "disabled"})
+        self.assertEqual(body["temperature"], 0)
+        self.assertGreaterEqual(body["max_tokens"], 8000)
+        self.assertIn("EXAMPLE JSON OUTPUT", system_message)
+        self.assertIn('"items"', system_message)
+
     def test_deepseek_pricing_import_timeout_falls_back_to_openai_quickly(self):
         good_openai = mock.MagicMock()
         good_openai.__enter__.return_value.read.return_value = json.dumps({
@@ -5509,6 +5561,71 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(timing_logs[0]["source_file_extension"], "xlsx")
         self.assertNotIn("filename", timing_logs[0])
         self.assertNotIn("Sensitive Customer", json.dumps(timing_logs[0]))
+
+    def test_deepseek_pricing_import_logs_safe_output_diagnostics(self):
+        bad_deepseek = mock.MagicMock()
+        bad_deepseek.__enter__.return_value.read.return_value = json.dumps({
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"content": ""},
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 123,
+                "completion_tokens": 0,
+                "total_tokens": 123,
+            },
+        }).encode("utf-8")
+        good_openai = mock.MagicMock()
+        good_openai.__enter__.return_value.read.return_value = json.dumps({
+            "output_text": json.dumps({
+                "currency": "SGD",
+                "items": [
+                    {
+                        "section": "Floor Design",
+                        "description": "sqm needle punch carpet in colour",
+                        "unit_hint": "sqm",
+                        "internal_cost": "0",
+                        "markup_multiplier": "1",
+                        "remarks": "",
+                        "aliases": [],
+                    }
+                ],
+            })
+        }).encode("utf-8")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_deepseek, good_openai]):
+                with mock.patch.object(webapp, "write_local_log") as write_log:
+                    result = webapp.ai_pricing_reference_import_preview(
+                        "Sensitive Customer Pricing.xlsx",
+                        {"rows": [{"Item": "sqm needle punch carpet in colour"}]},
+                        {"label": "GST", "rate": 0.09},
+                    )
+
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual([entry["provider"] for entry in ai_attempt_logs], [webapp.AI_PROVIDER_DEEPSEEK, webapp.AI_PROVIDER_OPENAI])
+        self.assertEqual(ai_attempt_logs[0]["failure_kind"], "model_output_invalid")
+        self.assertEqual(ai_attempt_logs[0]["output_empty"], True)
+        self.assertEqual(ai_attempt_logs[0]["output_length"], 0)
+        self.assertEqual(ai_attempt_logs[0]["output_contains_json_object_bounds"], False)
+        self.assertEqual(ai_attempt_logs[0]["choice_count"], 1)
+        self.assertEqual(ai_attempt_logs[0]["finish_reason"], "stop")
+        self.assertEqual(ai_attempt_logs[0]["input_tokens"], 123)
+        self.assertEqual(ai_attempt_logs[0]["output_tokens"], 0)
+        self.assertEqual(ai_attempt_logs[0]["total_tokens"], 123)
+        self.assertEqual(ai_attempt_logs[1]["fallback_from"], webapp.AI_PROVIDER_DEEPSEEK)
+        self.assertNotIn("Sensitive Customer", json.dumps(ai_attempt_logs))
+        self.assertNotIn("sqm needle punch", json.dumps(ai_attempt_logs))
 
     def test_deepseek_basis_chat_bad_output_falls_back_to_openai(self):
         payload = valid_payload()
