@@ -143,6 +143,20 @@ SECTIONED_WORKBOOK_COL_MARKUP = 9
 SECTIONED_WORKBOOK_COL_REMARKS = 11
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
 PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
+PRICING_REFERENCE_EXPORT_COLUMNS = (
+    *PRICING_REFERENCE_TEMPLATE_COLUMNS,
+    "aliases",
+    "match_terms",
+    "object_families",
+    "category_order",
+    "item_order",
+    "default_quantity",
+    "default_quote_amount",
+    "gst_multiplier",
+    "currency",
+    "tax_label",
+    "tax_rate",
+)
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
         "example-services-standard-coordination",
@@ -2274,6 +2288,15 @@ def sanitize_visual_reference_path(value: Any) -> str:
 
 
 def sanitize_visual_references(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, str):
+        text = clean_text(value)
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return []
+        value = parsed
     if not isinstance(value, list):
         return []
     refs: list[dict[str, Any]] = []
@@ -2836,6 +2859,19 @@ def rows_from_xlsx_raw_rows(rows: list[list[str]]) -> tuple[list[str], list[dict
     return headers, records
 
 
+def rows_from_xlsx_rows_with_numbers(rows: list[tuple[int, list[str]]]) -> tuple[list[str], list[dict[str, Any]]]:
+    if not rows:
+        return [], []
+    headers = [clean_text(header) for header in rows[0][1]]
+    records: list[dict[str, Any]] = []
+    for row_number, row in rows[1:]:
+        record = {header: row[index] if index < len(row) else "" for index, header in enumerate(headers) if header}
+        if any(record.values()):
+            record["_source_row"] = row_number
+            records.append(record)
+    return headers, records
+
+
 def rows_from_xlsx_bytes(raw: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     return rows_from_xlsx_raw_rows(xlsx_raw_rows_from_bytes(raw))
 
@@ -3003,7 +3039,10 @@ def attach_visual_references_to_pricing_rows(rows: list[dict[str, Any]], visual_
         )
         if abs(nearest_row - anchor_row) > 6:
             continue
-        item_refs = nearest_item.setdefault("visual_references", [])
+        item_refs = nearest_item.get("visual_references")
+        if not isinstance(item_refs, list):
+            item_refs = sanitize_visual_references(item_refs)
+            nearest_item["visual_references"] = item_refs
         if len(item_refs) >= MAX_PRICING_REFERENCE_VISUALS_PER_ITEM:
             continue
         item_refs.append(visual_ref)
@@ -3118,7 +3157,12 @@ def markdown_text_from_bytes(raw: bytes) -> str:
     return raw.decode("utf-8-sig", errors="replace")[:MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES]
 
 
-def pricing_reference_template_sheet_xml(rows: list[list[str]], *, hide_internal_id: bool = False) -> str:
+def pricing_reference_template_sheet_xml(
+    rows: list[list[str]],
+    *,
+    hide_internal_id: bool = False,
+    drawing_rel_id: str = "",
+) -> str:
     row_xml: list[str] = []
     for row_index, row in enumerate(rows, start=1):
         cells = []
@@ -3150,7 +3194,8 @@ def pricing_reference_template_sheet_xml(rows: list[list[str]], *, hide_internal
         )
         + '</cols>'
         f'<sheetData>{"".join(row_xml)}</sheetData>'
-        '</worksheet>'
+        + (f'<drawing r:id="{xml_escape(clean_text(drawing_rel_id))}"/>' if clean_text(drawing_rel_id) else "")
+        + '</worksheet>'
     )
 
 
@@ -3208,6 +3253,275 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
 
 def pricing_reference_template_xlsx_bytes() -> bytes:
     return generated_pricing_reference_template_xlsx_bytes()
+
+
+def pricing_reference_export_cell_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return ""
+        return f"{value:g}"
+    return sanitize_formula_text(value)
+
+
+def pricing_reference_export_joined_terms(value: Any) -> str:
+    if isinstance(value, list):
+        return "; ".join(
+            pricing_reference_export_cell_value(item)
+            for item in value
+            if pricing_reference_export_cell_value(item)
+        )
+    return pricing_reference_export_cell_value(value)
+
+
+def pricing_reference_export_rows(items: list[dict[str, Any]], detail: dict[str, Any] | None = None) -> list[list[str]]:
+    rows = [list(PRICING_REFERENCE_EXPORT_COLUMNS)]
+    detail = detail if isinstance(detail, dict) else {}
+    tax = normalized_tax_config(detail.get("tax"))
+    for index, item in enumerate(sorted_pricing_reference_items(items), start=1):
+        source = item if isinstance(item, dict) else {}
+        row: list[str] = []
+        for column in PRICING_REFERENCE_EXPORT_COLUMNS:
+            if column == "section":
+                value = source.get("reference_section") or source.get("section")
+            elif column in {"remarks", "aliases", "match_terms", "object_families"}:
+                value = pricing_reference_export_joined_terms(source.get(column))
+            elif column == "item_order":
+                value = source.get("item_order") or index
+            elif column == "currency":
+                value = normalize_currency_label(detail.get("currency"))
+            elif column == "tax_label":
+                value = normalize_tax_label(tax.get("label"))
+            elif column == "tax_rate":
+                value = normalize_tax_rate(tax.get("rate"), DEFAULT_TAX_RATE)
+            else:
+                value = source.get(column)
+            row.append(pricing_reference_export_cell_value(value))
+        rows.append(row)
+    return rows
+
+
+def pricing_reference_export_visual_summary_rows(items: list[dict[str, Any]]) -> list[list[str]]:
+    rows = [["item_id", "section", "description", "visual_reference_count", "visual_reference_sources"]]
+    for item in sorted_pricing_reference_items(items):
+        if not isinstance(item, dict):
+            continue
+        refs = sanitize_visual_references(item.get("visual_references"))
+        if not refs:
+            continue
+        sources = [
+            pricing_reference_export_cell_value(ref.get("path") or ref.get("source"))
+            for ref in refs
+            if isinstance(ref, dict) and clean_text(ref.get("path") or ref.get("source"))
+        ]
+        rows.append([
+            pricing_reference_export_cell_value(item.get("id")),
+            pricing_reference_export_cell_value(item.get("reference_section") or item.get("section")),
+            pricing_reference_export_cell_value(item.get("description")),
+            str(len(refs)),
+            "; ".join(sources),
+        ])
+    if len(rows) == 1:
+        rows.append(["", "", "", "0", "No saved visual references in this pricing pack."])
+    return rows
+
+
+def pricing_reference_export_reference_rows(detail: dict[str, Any]) -> list[list[str]]:
+    tax = normalized_tax_config(detail.get("tax"))
+    return [
+        ["Swooshz Pricing Reference Export"],
+        ["Reference ID", pricing_reference_export_cell_value(detail.get("id"))],
+        ["Reference name", pricing_reference_export_cell_value(detail.get("label"))],
+        ["Description", pricing_reference_export_cell_value(detail.get("description"))],
+        ["Currency", normalize_currency_label(detail.get("currency"))],
+        ["Tax label", normalize_tax_label(tax.get("label"))],
+        ["Tax rate", f"{normalize_tax_rate(tax.get('rate'), DEFAULT_TAX_RATE):g}"],
+        ["Item count", str(int(parse_pricing_number(detail.get("item_count")) or 0))],
+        ["Exported at", utc_timestamp()],
+        ["Import note", "Upload this workbook through Pricing Reference Settings > Import to recreate the pricing rows."],
+    ]
+
+
+def pricing_reference_export_media(items: list[dict[str, Any]], pack: PricingReferencePack) -> list[dict[str, Any]]:
+    media: list[dict[str, Any]] = []
+    used_names: set[str] = set()
+    image_column_index = len(PRICING_REFERENCE_EXPORT_COLUMNS) + 1
+    for row_number, item in enumerate(sorted_pricing_reference_items(items), start=2):
+        if len(media) >= MAX_PRICING_REFERENCE_VISUALS:
+            break
+        refs = resolve_visual_references(item.get("visual_references"), pack.directory) if isinstance(item, dict) else []
+        for ref_index, ref in enumerate(refs, start=1):
+            if len(media) >= MAX_PRICING_REFERENCE_VISUALS:
+                break
+            inline = data_url_inline_image(clean_text(ref.get("data_url"))) if isinstance(ref, dict) else None
+            if not inline:
+                continue
+            try:
+                image_bytes = base64.b64decode(inline["data"], validate=True)
+            except (binascii.Error, KeyError):
+                continue
+            if not image_bytes or len(image_bytes) > MAX_PRICING_REFERENCE_VISUAL_BYTES:
+                continue
+            mime_type = inline.get("mime_type", "image/png")
+            fallback = f"{safe_catalog_item_id(item.get('id'), f'row-{row_number}')}-{ref_index}" if isinstance(item, dict) else f"row-{row_number}-{ref_index}"
+            filename = unique_visual_asset_filename(
+                ref.get("path") or ref.get("source") if isinstance(ref, dict) else "",
+                fallback,
+                mime_type,
+                used_names,
+            )
+            media.append({
+                "filename": filename,
+                "mime_type": mime_type,
+                "bytes": image_bytes,
+                "row": row_number,
+                "col": image_column_index,
+            })
+    return media
+
+
+def xlsx_drawing_xml(media: list[dict[str, Any]]) -> str:
+    anchors: list[str] = []
+    for index, image in enumerate(media, start=1):
+        row = max(0, int(image.get("row") or 1) - 1)
+        col = max(0, int(image.get("col") or 0))
+        anchors.append(
+            '<xdr:twoCellAnchor editAs="oneCell">'
+            f'<xdr:from><xdr:col>{col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'
+            f'<xdr:to><xdr:col>{col + 2}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row + 5}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'
+            '<xdr:pic>'
+            f'<xdr:nvPicPr><xdr:cNvPr id="{index}" name="Pricing reference image {index}"/><xdr:cNvPicPr/></xdr:nvPicPr>'
+            f'<xdr:blipFill><a:blip r:embed="rId{index}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'
+            '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1200000" cy="900000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>'
+            '</xdr:pic>'
+            '<xdr:clientData/>'
+            '</xdr:twoCellAnchor>'
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'{"".join(anchors)}'
+        '</xdr:wsDr>'
+    )
+
+
+def xlsx_drawing_rels_xml(media: list[dict[str, Any]]) -> str:
+    rels = []
+    for index, image in enumerate(media, start=1):
+        target = f"../media/{xml_escape(clean_text(image.get('filename')))}"
+        rels.append(
+            f'<Relationship Id="rId{index}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            f'Target="{target}"/>'
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f'{"".join(rels)}'
+        '</Relationships>'
+    )
+
+
+def generated_pricing_reference_export_xlsx_bytes(detail: dict[str, Any], pack: PricingReferencePack) -> bytes:
+    raw_items = detail.get("items") if isinstance(detail.get("items"), list) else []
+    items = [item for item in raw_items if isinstance(item, dict)]
+    media = pricing_reference_export_media(items, pack)
+    sheets = [
+        ("Pricing Reference", pricing_reference_export_rows(items, detail)),
+        ("Reference Info", pricing_reference_export_reference_rows(detail)),
+        ("Visual References", pricing_reference_export_visual_summary_rows(items)),
+    ]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        image_defaults = {
+            Path(clean_text(image.get("filename"))).suffix.lower().lstrip("."): clean_text(image.get("mime_type"))
+            for image in media
+            if clean_text(image.get("filename")) and clean_text(image.get("mime_type"))
+        }
+        content_type_defaults = [
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+            '<Default Extension="xml" ContentType="application/xml"/>',
+            *[
+                f'<Default Extension="{xml_escape(extension)}" ContentType="{xml_escape(mime_type)}"/>'
+                for extension, mime_type in sorted(image_defaults.items())
+                if extension
+            ],
+        ]
+        sheet_overrides = "".join(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            for index, _sheet in enumerate(sheets, start=1)
+        )
+        zf.writestr("[Content_Types].xml", (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            f'{"".join(content_type_defaults)}'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            f'{sheet_overrides}'
+            + ('<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' if media else '')
+            + '</Types>'
+        ))
+        zf.writestr("_rels/.rels", (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>'
+        ))
+        workbook_sheets = "".join(
+            f'<sheet name="{xml_escape(sheet_name)}" sheetId="{index}" r:id="rId{index}"/>'
+            for index, (sheet_name, _rows) in enumerate(sheets, start=1)
+        )
+        zf.writestr("xl/workbook.xml", (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<sheets>{workbook_sheets}</sheets></workbook>'
+        ))
+        workbook_rels = "".join(
+            f'<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
+            for index, _sheet in enumerate(sheets, start=1)
+        )
+        zf.writestr("xl/_rels/workbook.xml.rels", (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'{workbook_rels}'
+            '</Relationships>'
+        ))
+        for index, (_sheet_name, rows) in enumerate(sheets, start=1):
+            zf.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                pricing_reference_template_sheet_xml(rows, hide_internal_id=(index == 1), drawing_rel_id="rId1" if index == 1 and media else ""),
+            )
+        if media:
+            zf.writestr("xl/worksheets/_rels/sheet1.xml.rels", (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>'
+                '</Relationships>'
+            ))
+            zf.writestr("xl/drawings/drawing1.xml", xlsx_drawing_xml(media))
+            zf.writestr("xl/drawings/_rels/drawing1.xml.rels", xlsx_drawing_rels_xml(media))
+            for image in media:
+                zf.writestr(f"xl/media/{safe_segment(clean_text(image.get('filename')), 'image.png')}", image["bytes"])
+    return buffer.getvalue()
+
+
+def pricing_reference_export_xlsx(reference_id: str) -> tuple[str, bytes] | None:
+    safe_id = safe_resource_id(reference_id, "")
+    if not safe_id:
+        raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+    detail = pricing_reference_pack_detail(safe_id)
+    if not detail:
+        return None
+    pack = load_pricing_reference_pack(safe_id)
+    filename_base = safe_segment(clean_text(detail.get("label")) or safe_id, safe_id)
+    return f"{filename_base}-pricing-reference.xlsx", generated_pricing_reference_export_xlsx_bytes(detail, pack)
 
 
 def static_asset_version(relative_path: str) -> str:
@@ -4470,7 +4784,9 @@ def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]
         if extension == "csv":
             headers, rows = rows_from_csv_bytes(raw)
         else:
-            headers, rows = rows_from_xlsx_bytes(raw)
+            rows_with_numbers = xlsx_rows_with_numbers_from_bytes(raw)
+            headers, rows = rows_from_xlsx_rows_with_numbers(rows_with_numbers)
+            attach_visual_references_to_pricing_rows(rows, xlsx_visual_references_from_bytes(raw))
         normalized_result = validate_pricing_reference_rows(rows, headers, filename)
         normalized_result["layout"] = "normalized-pricing-reference"
         normalized_result["currency"] = detect_currency_from_rows(headers, rows) or DEFAULT_CURRENCY_LABEL
@@ -9527,6 +9843,23 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             self.send_json({"pricing_references": list_pricing_references()})
             return
+        pricing_reference_export_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)/export\.xlsx", path)
+        if pricing_reference_export_match:
+            allowed, error = require_permission("canManagePricingReferences")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            try:
+                export = pricing_reference_export_xlsx(pricing_reference_export_match.group(1))
+            except ValueError as exc:
+                self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
+                return
+            if not export:
+                self.send_json({"error": "Not found"}, status=404)
+                return
+            filename, body = export
+            self.send_xlsx_download(filename, body)
+            return
         pricing_reference_detail_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", path)
         if pricing_reference_detail_match:
             allowed, error = require_permission("canManagePricingReferences")
@@ -9998,16 +10331,22 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_pricing_reference_template(self) -> None:
-        filename = "swooshz-pricing-reference-template.xlsx"
-        body = pricing_reference_template_xlsx_bytes()
+    def send_xlsx_download(self, filename: str, body: bytes) -> None:
+        safe_filename = safe_segment(filename, "pricing-reference.xlsx")
+        if not safe_filename.lower().endswith(".xlsx"):
+            safe_filename = f"{safe_filename}.xlsx"
         self.send_response(200)
         self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.send_security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def send_pricing_reference_template(self) -> None:
+        filename = "swooshz-pricing-reference-template.xlsx"
+        body = pricing_reference_template_xlsx_bytes()
+        self.send_xlsx_download(filename, body)
 
     def log_message(self, format: str, *args: Any) -> None:
         safe_stderr("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), format % args))

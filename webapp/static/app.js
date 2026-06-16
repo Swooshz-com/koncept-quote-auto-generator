@@ -288,6 +288,7 @@ const elements = {
   pricingReferenceModal: qs("#pricingReferenceModal"),
   pricingReferenceForm: qs("#pricingReferenceForm"),
   pricingReferenceName: qs("#pricingReferenceName"),
+  exportPricingReferenceButton: qs("#exportPricingReferenceButton"),
   pricingReferenceTemplateButton: qs("#pricingReferenceTemplateButton"),
   pricingReferenceFile: qs("#pricingReferenceFile"),
   pricingReferenceFileName: qs("#pricingReferenceFileName"),
@@ -2266,6 +2267,27 @@ function canDeleteSelectedPricingReference() {
   return !protectedPricingReferenceReason(deletionPricingReference());
 }
 
+function pricingReferenceExportBlockReason(reference = deletionPricingReference()) {
+  if (!reference) return "Select a pricing reference first.";
+  if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
+  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be exported here.";
+  if (!String(reference.id || "").trim()) return "Select a pricing reference first.";
+  return "";
+}
+
+function updatePricingReferenceExportButton() {
+  const button = elements.exportPricingReferenceButton;
+  if (!button) return;
+  const mode = normalizePricingReferenceSettingsMode(state.pricingReferenceSettingsMode);
+  const shouldShow = mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && canManagePricingReferences();
+  button.hidden = !shouldShow;
+  const reason = pricingReferenceExportBlockReason(deletionPricingReference());
+  const busy = pricingReferenceOperationBusy();
+  button.disabled = !shouldShow || Boolean(reason) || busy;
+  button.title = busy ? "Pricing reference operation is still running." : reason || "Export this pricing reference as an importable Excel workbook.";
+  button.setAttribute("aria-disabled", String(button.disabled));
+}
+
 function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
@@ -2409,9 +2431,13 @@ function syncPricingReferenceSettingsMode() {
   });
   if (elements.pricingReferenceTemplateFooter) {
     elements.pricingReferenceTemplateFooter.hidden = false;
-    elements.pricingReferenceTemplateFooter.classList.toggle("is-placeholder", mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT);
-    elements.pricingReferenceTemplateFooter.setAttribute("aria-hidden", String(mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT));
+    elements.pricingReferenceTemplateFooter.classList.remove("is-placeholder");
+    elements.pricingReferenceTemplateFooter.setAttribute("aria-hidden", "false");
   }
+  if (elements.pricingReferenceTemplateButton) {
+    elements.pricingReferenceTemplateButton.hidden = mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT;
+  }
+  updatePricingReferenceExportButton();
   syncPricingReferenceImportSetupVisibility();
   renderPricingReferenceManageStatus();
 }
@@ -2492,6 +2518,7 @@ function updatePricingReferenceDeleteButton() {
   button.disabled = Boolean(reason) || busy;
   button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this repo pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
+  updatePricingReferenceExportButton();
 }
 
 function pricingReferenceDeleteConfirmReference() {
@@ -3115,6 +3142,7 @@ function setPricingReferenceModalBusyState(busy = false, reason = "") {
     elements.pricingReferenceTemplateButton.setAttribute("tabindex", disabled ? "-1" : "0");
     elements.pricingReferenceTemplateButton.title = disabledTitle;
   }
+  updatePricingReferenceExportButton();
   const busyControls = [
     elements.pricingReferenceName,
     elements.pricingReferenceTaxLabel,
@@ -3123,6 +3151,7 @@ function setPricingReferenceModalBusyState(busy = false, reason = "") {
     elements.pricingReferenceCurrencyCustom,
     elements.pricingReferenceManageTab,
     elements.pricingReferenceImportTab,
+    elements.exportPricingReferenceButton,
     elements.deletePricingReferenceSelect,
     elements.deletePricingReferenceButton,
     elements.cancelPricingReferenceDeleteButton,
@@ -3713,6 +3742,29 @@ async function downloadPricingReferenceTemplate(event) {
     link.remove();
   } catch (error) {
     window.location.href = templateUrl;
+  }
+}
+
+function exportSelectedPricingReference(event) {
+  event.preventDefault();
+  if (pricingReferenceOperationBusy()) return;
+  const reference = deletionPricingReference();
+  const reason = pricingReferenceExportBlockReason(reference);
+  if (reason) {
+    updatePricingReferenceExportButton();
+    return;
+  }
+  const referenceId = String(reference.id || "").trim();
+  const exportUrl = `/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx?t=${Date.now()}`;
+  try {
+    const link = document.createElement("a");
+    link.href = exportUrl;
+    link.download = `${safeId(reference.label || reference.id || "pricing-reference", "pricing-reference")}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    window.location.href = exportUrl;
   }
 }
 
@@ -7155,6 +7207,7 @@ function wireEvents() {
   elements.confirmPricingReferenceDeleteButton?.addEventListener("click", deleteSelectedPricingReference);
   elements.outputSortMode?.addEventListener("change", () => { state.outputSortMode = elements.outputSortMode.value; renderPricingMatches(state.outputRows); renderMatchSummary({ pricing_matches: state.outputRows }); syncControlStates(); });
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
+  elements.exportPricingReferenceButton?.addEventListener("click", exportSelectedPricingReference);
   elements.pricingReferenceTemplateButton.addEventListener("click", downloadPricingReferenceTemplate);
   elements.pricingReferenceFile.addEventListener("change", handlePricingReferenceFileChange);
   elements.pricingReferenceCurrency?.addEventListener("change", () => {

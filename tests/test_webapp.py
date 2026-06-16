@@ -3671,6 +3671,68 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("exampleRows", result)
         self.assertNotIn("example", " ".join(result["warnings"]).lower())
 
+    def test_pricing_reference_export_xlsx_round_trips_saved_pack_with_images(self):
+        data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "export-ref",
+                "label": "Export Ref",
+                "description": "Exportable reference.",
+                "tax": {"label": "GST", "rate": 0.09},
+                "currency": "USD",
+                "items": [with_required_pricing_metadata({
+                    "id": "chair-row",
+                    "section": "Furniture Rental",
+                    "description": "nos. White chair rental",
+                    "unit_hint": "nos",
+                    "internal_cost": 30,
+                    "markup_multiplier": 1.5,
+                    "aliases": ["white chair", "chair rental"],
+                    "match_terms": ["chair rental"],
+                    "object_families": ["chair"],
+                    "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 155, "data_url": data_url}],
+                })],
+            })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                filename, raw = webapp.pricing_reference_export_xlsx("export-ref")
+                headers, rows = webapp.rows_from_xlsx_bytes(raw)
+                result = webapp.validate_pricing_reference_upload({
+                    "filename": filename,
+                    "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+                    + base64.b64encode(raw).decode("ascii"),
+                })
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        response = urllib.request.urlopen(
+                            f"{runner.base_url}/api/settings/pricing-references/export-ref/export.xlsx",
+                            timeout=3,
+                        )
+                        downloaded = response.read()
+                        content_type = response.headers["Content-Type"]
+                        disposition = response.headers["Content-Disposition"]
+
+        self.assertEqual(filename, "Export-Ref-pricing-reference.xlsx")
+        self.assertEqual(content_type, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.assertIn("Export-Ref-pricing-reference.xlsx", disposition)
+        self.assertGreater(len(downloaded), 0)
+        self.assertEqual(headers, list(webapp.PRICING_REFERENCE_EXPORT_COLUMNS))
+        self.assertEqual(rows[0]["description"], "nos. White chair rental")
+        self.assertIn("chair rental", rows[0]["match_terms"])
+        self.assertEqual(result["errors"], [])
+        self.assertTrue(result["canSave"])
+        self.assertEqual(result["currency"], "USD")
+        self.assertEqual(result["items"][0]["description"], "nos. White chair rental")
+        self.assertIn("chair rental", result["items"][0]["match_terms"])
+        self.assertIn("chair", result["items"][0]["object_families"])
+        self.assertTrue(result["items"][0]["visual_references"][0]["source"].startswith("xl/media/"))
+        self.assertEqual(result["items"][0]["visual_references"][0]["data_url"], data_url)
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            self.assertIn("xl/drawings/drawing1.xml", zf.namelist())
+            self.assertTrue(any(name.startswith("xl/media/") for name in zf.namelist()))
+
     def test_non_template_pricing_reference_upload_is_rejected(self):
         raw = minimal_pricing_reference_xlsx(["old_id", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
         result = webapp.validate_pricing_reference_upload({
@@ -8544,6 +8606,10 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('elements.pricingReferenceFile.accept = PRICING_REFERENCE_FILE_ACCEPT;', js)
         self.assertIn('/api/pricing-reference/template.xlsx', html)
         self.assertIn("downloadPricingReferenceTemplate", js)
+        self.assertIn("Export Selected", html)
+        self.assertIn("exportPricingReferenceButton", html)
+        self.assertIn("exportSelectedPricingReference", js)
+        self.assertIn('/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx', js)
         download_template_body = js.split("async function downloadPricingReferenceTemplate", 1)[1].split("function openPricingReferenceModal", 1)[0]
         self.assertNotIn("clearPricingReferenceDraft", download_template_body)
         self.assertNotIn("setPricingReferenceSettingsMode", download_template_body)

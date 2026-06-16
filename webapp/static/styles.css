@@ -3690,7 +3690,8 @@ body.privacy-page {
   line-height: 1.45;
 }
 
-.pricing-template-download {
+.pricing-template-download,
+.pricing-reference-export-button {
   min-width: 172px;
   min-height: 48px;
   padding: 0 20px;
@@ -3702,13 +3703,15 @@ body.privacy-page {
   white-space: nowrap;
 }
 
-.pricing-template-download:hover:not(:disabled):not([aria-disabled="true"]) {
+.pricing-template-download:hover:not(:disabled):not([aria-disabled="true"]),
+.pricing-reference-export-button:hover:not(:disabled):not([aria-disabled="true"]) {
   border-color: #2563eb;
   background: #dbeafe;
   color: #0b3b76;
 }
 
-.pricing-template-download:active:not(:disabled):not([aria-disabled="true"]) {
+.pricing-template-download:active:not(:disabled):not([aria-disabled="true"]),
+.pricing-reference-export-button:active:not(:disabled):not([aria-disabled="true"]) {
   box-shadow: var(--shadow-xs);
 }
 
@@ -3748,12 +3751,14 @@ body.privacy-page {
 }
 
 .pricing-reference-template-footer .pricing-template-download,
+.pricing-reference-template-footer .pricing-reference-export-button,
 .pricing-reference-action-buttons .secondary-button,
 .pricing-reference-action-buttons .primary-button {
   min-height: 48px;
 }
 
 .modal-overlay.is-busy .pricing-template-download,
+.modal-overlay.is-busy .pricing-reference-export-button,
 .modal-overlay.is-busy .file-picker-control {
   pointer-events: none;
   cursor: not-allowed;
@@ -4578,7 +4583,8 @@ body.privacy-page {
     min-width: 0;
   }
 
-  .pricing-template-download {
+  .pricing-template-download,
+  .pricing-reference-export-button {
     justify-self: stretch;
   }
 
