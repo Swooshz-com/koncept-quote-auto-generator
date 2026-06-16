@@ -3165,6 +3165,9 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && !pricingReferenceHasPendingChanges(result)) {
     return state.pricingReferenceSavedNotice ? "Saved." : "No changes to save.";
   }
+  if (!String(elements.pricingReferenceName?.value || "").trim()) {
+    return "Enter a pricing reference name before saving.";
+  }
   const nameConflict = pricingReferenceImportNameConflictMessage();
   if (nameConflict) return nameConflict;
   if (elements.pricingReferenceCurrency?.value === CUSTOM_CURRENCY_VALUE && !customCurrencyInputIsValid()) {
@@ -3417,9 +3420,14 @@ function pricingReferenceSaveGuidance(result = state.pendingPricingReference) {
   const nameConflict = pricingReferenceImportNameConflictMessage();
   if (nameConflict) return "Choose a different pricing reference name before saving.";
   const reason = pricingReferenceSaveBlockReason(result);
+  if (reason) {
+    return result.canSave
+      ? `Complete the required pricing reference details before saving. ${reason}`
+      : `Fix all flagged problems before saving this reference. ${reason}`;
+  }
   return result.canSave
     ? "Basic row checks passed. Review any attention notes before saving."
-    : `Fix all flagged problems before saving this reference.${reason ? ` ${reason}` : ""}`;
+    : "Fix all flagged problems before saving this reference.";
 }
 
 function pricingReferenceTableSummaryText(result = state.pendingPricingReference) {
@@ -4108,7 +4116,6 @@ async function deleteRepoPricingReference(referenceId) {
       const fallback = defaultPricingReference() || state.pricingReferences[0] || null;
       state.pricingReferenceId = fallback?.id || "";
       state.pricingReferenceSource = fallback ? pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallback)).source : "";
-      clearGeneratedQuoteState();
     }
     hidePricingReferenceDeleteConfirm();
     clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });

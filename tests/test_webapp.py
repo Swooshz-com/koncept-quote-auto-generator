@@ -8103,6 +8103,125 @@ assert.strictEqual(resolvedProfileIdForPayload(), "koncept");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_delete_active_pricing_reference_preserves_quote_basis(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+        delete_reference_body = js.split("async function deleteRepoPricingReference", 1)[1].split("function requestSelectedPricingReferenceDelete", 1)[0]
+        self.assertNotIn("clearGeneratedQuoteState();", delete_reference_body)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const asyncMarker = `async function ${name}`;
+  const marker = `function ${name}`;
+  const asyncStart = source.indexOf(asyncMarker);
+  const start = asyncStart >= 0 ? asyncStart : source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "koncept";
+const DEFAULT_PRICING_REFERENCE_ID = "default-ref";
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const state = {
+  profileId: DEFAULT_PROFILE_ID,
+  pricingReferenceId: "new-ref",
+  pricingReferenceSource: "bundled",
+  defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
+  profiles: [{ id: DEFAULT_PROFILE_ID, default_pricing_reference: DEFAULT_PRICING_REFERENCE_ID }],
+  pricingReferences: [
+    { id: "new-ref", label: "New Ref", source: "bundled" },
+    { id: "default-ref", label: "Default Ref", source: "bundled" },
+  ],
+  quoteBasis: { graphics: "Include: retained graphic wall" },
+  quoteBasisSections: [{
+    id: "graphics",
+    title: "Graphics",
+    lines: [{ tag: "Include", text: "retained graphic wall" }],
+  }],
+  pricingReferenceDeleteBusy: false,
+  pricingReferenceDeleteError: "",
+  pricingReferenceSettingsMode: "manage",
+};
+const elements = {};
+let clearGeneratedCount = 0;
+let deleteUrl = "";
+
+function protectedPricingReferenceReason() { return ""; }
+function updatePricingReferenceDeleteButton() {}
+function renderPricingReferenceDeleteConfirm() {}
+function setPricingReferenceModalBusyState() {}
+function genericFailureMessages() { return ["Failed."]; }
+function hidePricingReferenceDeleteConfirm() {}
+function clearPricingReferenceDraft() {}
+async function loadProfiles() {}
+function renderProfileOptions() {}
+function renderPricingReferenceDeleteOptions() {}
+function syncPricingReferenceSettingsMode() {}
+function syncControlStates() {}
+function clearGeneratedQuoteState() {
+  clearGeneratedCount += 1;
+  state.quoteBasis = {};
+  state.quoteBasisSections = [];
+}
+global.fetch = async (url) => {
+  deleteUrl = String(url);
+  return {
+    ok: true,
+    json: async () => ({
+      pricing_references: [{ id: "default-ref", label: "Default Ref", source: "bundled" }],
+    }),
+  };
+};
+
+eval([
+  "pricingReferenceSelectValue",
+  "pricingReferenceSelectionFromValue",
+  "mergePricingReferences",
+  "currentProfile",
+  "defaultPricingReference",
+  "syncSelectedPricingReference",
+  "deleteRepoPricingReference",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  await deleteRepoPricingReference("new-ref");
+  assert.strictEqual(deleteUrl, "/api/settings/pricing-references/new-ref");
+  assert.strictEqual(state.pricingReferenceId, "default-ref");
+  assert.strictEqual(clearGeneratedCount, 0);
+  assert.strictEqual(state.quoteBasis.graphics, "Include: retained graphic wall");
+  assert.strictEqual(state.quoteBasisSections.length, 1);
+  assert.strictEqual(state.quoteBasisSections[0].lines[0].text, "retained graphic wall");
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_background_chat_fallback_is_removed(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
@@ -9677,6 +9796,90 @@ assert.strictEqual(pricingReferenceShouldWarnBeforeUnload(), false);
 assert.strictEqual(handleBeforeUnload(cleanUnloadEvent), undefined);
 assert.strictEqual(unloadPrevented, false);
 assert.strictEqual(state.isPageUnloading, true);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_save_feedback_requires_name(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("Enter a pricing reference name before saving.", js)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const CUSTOM_CURRENCY_VALUE = "__CUSTOM__";
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
+const state = {
+  pricingReferenceImportBusy: false,
+  pricingReferenceSaveBusy: false,
+  pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_IMPORT,
+  editingPricingReferenceId: "",
+  pricingReferenceSavedNotice: "",
+  pricingReferences: [],
+  pendingPricingReference: {
+    items: [{ warning: "OK" }],
+    errors: [],
+    canSave: true,
+  },
+};
+const elements = {
+  pricingReferenceName: { value: "" },
+  pricingReferenceCurrency: { value: "SGD" },
+  pricingReferenceCurrencyCustom: { value: "", hidden: true, required: false },
+};
+function normalizePricingReferenceSettingsMode(value = "") {
+  return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    ? PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    : PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+}
+function pricingReferenceHasPendingChanges() { return true; }
+function pricingReferenceImportNameConflictMessage() { return ""; }
+function customCurrencyInputIsValid() { return /^[A-Z]{3}$/.test(String(elements.pricingReferenceCurrencyCustom.value || "").trim().toUpperCase()); }
+
+eval([
+  "pricingReferenceSaveBlockReason",
+  "pricingReferenceSaveGuidance",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Enter a pricing reference name before saving.");
+assert.ok(pricingReferenceSaveGuidance(state.pendingPricingReference).includes("Enter a pricing reference name before saving."));
+
+elements.pricingReferenceName.value = "Valid Reference";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "");
+
+elements.pricingReferenceCurrency.value = CUSTOM_CURRENCY_VALUE;
+elements.pricingReferenceCurrencyCustom.value = "S";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Enter a 3-letter currency code before saving.");
+assert.ok(pricingReferenceSaveGuidance(state.pendingPricingReference).includes("Enter a 3-letter currency code before saving."));
 """
         completed = subprocess.run(
             [node, "-e", script],
