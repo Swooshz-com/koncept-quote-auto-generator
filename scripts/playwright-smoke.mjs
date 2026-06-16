@@ -207,7 +207,7 @@ async function main() {
     }
 
     const bodyText = await page.locator("body").innerText();
-    if (!bodyText.includes("Images") || !bodyText.includes("Customer") || !bodyText.includes("Quote date")) {
+    if (!bodyText.includes("Upload") || !bodyText.includes("Customer") || !bodyText.includes("Quote date")) {
       throw new Error("Rendered page did not include the expected workspace text.");
     }
 
