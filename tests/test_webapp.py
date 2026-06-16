@@ -4243,6 +4243,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(ai_attempt_logs[0]["analysis_mode"], webapp.DRAFT_ANALYSIS_MODE_STANDARD)
         self.assertGreaterEqual(ai_attempt_logs[0]["image_count"], 1)
         self.assertIsInstance(ai_attempt_logs[0]["duration_ms"], int)
+        self.assertEqual(ai_attempt_logs[0]["quote_basis_key_count"], len(result["quote_basis"]))
+        self.assertEqual(ai_attempt_logs[0]["quote_basis_section_count"], len(result["quote_basis_sections"]))
+        self.assertEqual(ai_attempt_logs[0]["line_item_count"], len(result["line_items"]))
+        completion_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "openai_draft_completed"]
+        self.assertEqual(len(completion_logs), 1)
+        self.assertEqual(completion_logs[0]["provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertTrue(completion_logs[0]["model"])
+        self.assertEqual(completion_logs[0]["quote_basis_section_count"], len(result["quote_basis_sections"]))
+        self.assertEqual(completion_logs[0]["line_item_count"], len(result["line_items"]))
 
     def test_draft_quote_basis_keeps_dynamic_ai_quote_basis_keys(self):
         payload = valid_payload()
@@ -6491,12 +6500,45 @@ class WebappServerTest(unittest.TestCase):
 
         expected_summary = (
             "TEST | OK | Pricing import cleanup | deepseek/deepseek-v4-pro | "
-            "status=success | rows=14 | attempt=1/2 | stage=import_cleanup | "
+            "status=success | details=duration=1234ms; rows=14; attempt=1/2; stage=import_cleanup | "
             "run=ai_test123 | user=local-dev"
         )
         self.assertEqual(log_record["summary"], expected_summary)
-        self.assertIn("| Time (SGT) | Run | Result | Task | Provider / Model | Status | Rows | Attempt | Stage | AI Run | User |", summary_text)
-        self.assertIn("| TEST | OK | Pricing import cleanup | deepseek/deepseek-v4-pro | success | 14 | 1/2 | import_cleanup | ai_test123 | local-dev |", summary_text)
+        self.assertIn("| Time (SGT) | Run | Result | Event | Task | Provider / Model | Status | Details | AI Run | User |", summary_text)
+        self.assertIn("| TEST | OK | ai_pricing_reference_import_timing | Pricing import cleanup | deepseek/deepseek-v4-pro | success | duration=1234ms; rows=14; attempt=1/2; stage=import_cleanup | ai_test123 | local-dev |", summary_text)
+
+    def test_ai_quote_draft_summary_includes_draft_counts_and_media(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logged = webapp.write_local_log(
+                "ai_call_attempt",
+                {
+                    "feature": "draft_quote_basis",
+                    "provider": webapp.AI_PROVIDER_OPENAI,
+                    "model": "gpt-test",
+                    "status": "success",
+                    "duration_ms": 390797,
+                    "image_count": 0,
+                    "pdf_count": 1,
+                    "analysis_mode": "standard",
+                    "quote_basis_section_count": 11,
+                    "line_item_count": 39,
+                },
+                log_root=Path(tmp),
+            )
+            self.assertTrue(logged)
+            log_path = next((Path(tmp) / "ai").glob("*.jsonl"))
+            summary_path = next((Path(tmp) / "ai").glob("*.summary.md"))
+            log_record = json.loads(log_path.read_text(encoding="utf-8"))
+            summary_text = summary_path.read_text(encoding="utf-8").strip()
+
+        self.assertIn(
+            "details=duration=390797ms; media=0 img/1 pdf; sections=11; lines=39; mode=standard",
+            log_record["summary"],
+        )
+        self.assertIn(
+            "| TEST | OK | ai_call_attempt | Quote basis draft | openai/gpt-test | success | duration=390797ms; media=0 img/1 pdf; sections=11; lines=39; mode=standard |  | local-dev |",
+            summary_text,
+        )
 
     def test_ai_logs_include_privacy_safe_user_tracking_context(self):
         session = {
@@ -7163,6 +7205,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("renderBasisFailureState(message)", js)
         self.assertIn(".basis-line-meta", css)
         self.assertIn("grid-template-columns: 26px max-content minmax(0, 1fr) var(--basis-action-width);", css)
+        self.assertIn(".basis-line-possible-matches {\n  display: inline-flex;\n  flex-direction: column;", css)
+        self.assertIn(".basis-line-possible-match {\n  align-self: flex-start;", css)
         self.assertNotIn("grid-template-columns: repeat(3, var(--basis-legend-pill-width));", css)
         self.assertNotIn("grid-template-columns: repeat(3, var(--basis-pill-width));", css)
         self.assertIn(".topbar-controls {\n    display: grid;\n    grid-template-columns: 1fr 1fr;", css)

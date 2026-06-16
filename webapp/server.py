@@ -877,20 +877,84 @@ def ai_log_summary_int(value: Any) -> int | None:
     return int(text) if re.fullmatch(r"\d+", text) else None
 
 
+def ai_log_summary_selected_attempt(details: dict[str, Any]) -> dict[str, Any]:
+    attempts = details.get("provider_attempts")
+    if not isinstance(attempts, list):
+        return {}
+    usable_attempts = [attempt for attempt in attempts if isinstance(attempt, dict)]
+    success_attempt = next((attempt for attempt in usable_attempts if log_event_name(attempt.get("status")) == "success"), None)
+    return success_attempt or (usable_attempts[0] if usable_attempts else {})
+
+
 def ai_log_summary_attempt_label(details: dict[str, Any]) -> str:
     attempt_index = ai_log_summary_int(details.get("attempt_index"))
     attempt_count = ai_log_summary_int(details.get("attempt_count"))
-    attempts = details.get("provider_attempts")
-    if (attempt_index is None or attempt_count is None) and isinstance(attempts, list):
-        usable_attempts = [attempt for attempt in attempts if isinstance(attempt, dict)]
-        success_attempt = next((attempt for attempt in usable_attempts if log_event_name(attempt.get("status")) == "success"), None)
-        selected_attempt = success_attempt or (usable_attempts[0] if usable_attempts else None)
-        if selected_attempt:
-            attempt_index = attempt_index or ai_log_summary_int(selected_attempt.get("attempt_index"))
-            attempt_count = attempt_count or ai_log_summary_int(selected_attempt.get("attempt_count"))
+    selected_attempt = ai_log_summary_selected_attempt(details)
+    if selected_attempt:
+        attempt_index = attempt_index or ai_log_summary_int(selected_attempt.get("attempt_index"))
+        attempt_count = attempt_count or ai_log_summary_int(selected_attempt.get("attempt_count"))
     if attempt_index is None or attempt_count is None:
         return ""
     return f"{attempt_index}/{attempt_count}"
+
+
+def ai_log_summary_duration_ms(details: dict[str, Any]) -> int | None:
+    duration_ms = ai_log_summary_int(details.get("duration_ms"))
+    if duration_ms is not None:
+        return duration_ms
+    selected_attempt = ai_log_summary_selected_attempt(details)
+    if selected_attempt:
+        return ai_log_summary_int(selected_attempt.get("duration_ms"))
+    return None
+
+
+def ai_log_summary_detail_parts(details: dict[str, Any], simple: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    duration_ms = ai_log_summary_duration_ms(details)
+    if duration_ms is not None:
+        parts.append(f"duration={duration_ms}ms")
+    image_count = ai_log_summary_int(details.get("image_count"))
+    pdf_count = ai_log_summary_int(details.get("pdf_count"))
+    if image_count is not None or pdf_count is not None:
+        parts.append(f"media={image_count or 0} img/{pdf_count or 0} pdf")
+    input_tokens = ai_log_summary_int(details.get("input_tokens"))
+    output_tokens = ai_log_summary_int(details.get("output_tokens"))
+    total_tokens = ai_log_summary_int(details.get("total_tokens"))
+    if input_tokens is not None or output_tokens is not None or total_tokens is not None:
+        parts.append(f"tokens={input_tokens or 0}/{output_tokens or 0}/{total_tokens or 0}")
+    row_count = ai_log_summary_int(simple.get("rows"))
+    if row_count is None:
+        row_count = ai_log_summary_int(details.get("row_count"))
+    if row_count is not None:
+        parts.append(f"rows={row_count}")
+    rows_enriched = ai_log_summary_int(details.get("rows_enriched"))
+    if rows_enriched is not None:
+        parts.append(f"enriched={rows_enriched}")
+    raw_item_count = ai_log_summary_int(details.get("raw_item_count"))
+    if raw_item_count is not None:
+        parts.append(f"raw_items={raw_item_count}")
+    section_count = ai_log_summary_int(details.get("quote_basis_section_count"))
+    if section_count is not None:
+        parts.append(f"sections={section_count}")
+    line_item_count = ai_log_summary_int(details.get("line_item_count"))
+    if line_item_count is not None:
+        parts.append(f"lines={line_item_count}")
+    basis_key_count = ai_log_summary_int(details.get("quote_basis_key_count"))
+    if basis_key_count is not None:
+        parts.append(f"basis_keys={basis_key_count}")
+    analysis_mode = ai_log_summary_field(details.get("analysis_mode"))
+    if analysis_mode:
+        parts.append(f"mode={analysis_mode}")
+    attempt_label = ai_log_summary_attempt_label(details)
+    if attempt_label:
+        parts.append(f"attempt={attempt_label}")
+    stage = ai_log_summary_field(details.get("operator_stage"))
+    if stage:
+        parts.append(f"stage={stage}")
+    error_count = ai_log_summary_int(details.get("error_count"))
+    if error_count:
+        parts.append(f"errors={error_count}")
+    return parts
 
 
 def ai_log_human_summary(record: dict[str, Any]) -> str:
@@ -909,15 +973,9 @@ def ai_log_human_summary(record: dict[str, Any]) -> str:
         f"{provider}/{model}",
         f"status={status}",
     ]
-    row_count = ai_log_summary_int(simple.get("rows"))
-    if row_count is not None:
-        parts.append(f"rows={row_count}")
-    attempt_label = ai_log_summary_attempt_label(details)
-    if attempt_label:
-        parts.append(f"attempt={attempt_label}")
-    stage = ai_log_summary_field(details.get("operator_stage"))
-    if stage:
-        parts.append(f"stage={stage}")
+    detail_summary = "; ".join(ai_log_summary_detail_parts(details, simple))
+    if detail_summary:
+        parts.append(f"details={detail_summary}")
     ai_run_id = ai_log_summary_field(details.get("ai_run_id"))
     if ai_run_id:
         parts.append(f"run={ai_run_id}")
@@ -931,12 +989,11 @@ AI_LOG_SUMMARY_MD_COLUMNS = (
     "Time (SGT)",
     "Run",
     "Result",
+    "Event",
     "Task",
     "Provider / Model",
     "Status",
-    "Rows",
-    "Attempt",
-    "Stage",
+    "Details",
     "AI Run",
     "User",
 )
@@ -953,17 +1010,15 @@ def ai_log_summary_markdown_row(record: dict[str, Any]) -> str:
     result = "OK" if simple.get("ok") else "CHECK"
     provider = ai_log_summary_field(simple.get("provider") or "unknown")
     model = ai_log_summary_field(simple.get("model") or "not_logged")
-    row_count = ai_log_summary_int(simple.get("rows"))
     values = [
         record.get("timestamp_sgt"),
         run,
         result,
+        record.get("event"),
         simple.get("task") or ai_log_simple_task(record.get("event", ""), details),
         f"{provider}/{model}",
         simple.get("status") or "logged",
-        str(row_count) if row_count is not None else "",
-        ai_log_summary_attempt_label(details),
-        details.get("operator_stage"),
+        "; ".join(ai_log_summary_detail_parts(details, simple)),
         details.get("ai_run_id"),
         details.get("user_id"),
     ]
@@ -9319,6 +9374,7 @@ def finalized_remote_draft_result(
     provider_label: str,
     fallback_project: dict[str, Any],
     fallback_line_items: list[dict[str, Any]],
+    diagnostic_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     has_payload_context = payload is not None
     basis, line_items, project, sections = unpack_ai_draft(ai_basis, payload)
@@ -9366,9 +9422,13 @@ def finalized_remote_draft_result(
                 line["custom_pricing"] = True
                 line.pop("pricing_keyword", None)
     adjusted_basis = quote_basis_from_sections(adjusted_sections)
+    final_line_items = line_items or fallback_line_items
+    diagnostic_details = ai_draft_diagnostic_details(source, adjusted_basis, adjusted_sections, final_line_items)
+    if isinstance(diagnostic_metadata, dict):
+        diagnostic_details.update({key: value for key, value in diagnostic_metadata.items() if value not in (None, "", [], {})})
     write_local_log(
         f"{source}_draft_completed",
-        ai_draft_diagnostic_details(source, adjusted_basis, adjusted_sections, line_items),
+        diagnostic_details,
     )
     return {
         "status": "drafted",
@@ -9376,7 +9436,7 @@ def finalized_remote_draft_result(
         "analysis_mode": draft_analysis_mode(payload),
         "quote_basis": adjusted_basis,
         "quote_basis_sections": adjusted_sections,
-        "line_items": line_items or fallback_line_items,
+        "line_items": final_line_items,
         "project": project,
     }
 
@@ -9395,18 +9455,36 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
         attempt_started_at = time.perf_counter()
         analysis_mode = draft_analysis_mode(payload)
         image_count, pdf_count = ai_payload_media_counts(payload)
+        draft_model = configured_openai_draft_model(analysis_mode)
         try:
             ai_basis = request_openai_quote_basis(payload, openai_key)
-            result = finalized_remote_draft_result(payload, ai_basis, "openai", "OpenAI", fallback_project, fallback_line_items)
+            result = finalized_remote_draft_result(
+                payload,
+                ai_basis,
+                "openai",
+                "OpenAI",
+                fallback_project,
+                fallback_line_items,
+                {
+                    "provider": AI_PROVIDER_OPENAI,
+                    "model": draft_model,
+                    "analysis_mode": analysis_mode,
+                    "image_count": image_count,
+                    "pdf_count": pdf_count,
+                },
+            )
             log_ai_call_attempt(
                 feature="draft_quote_basis",
                 provider=AI_PROVIDER_OPENAI,
-                model=configured_openai_draft_model(analysis_mode),
+                model=draft_model,
                 status="success",
                 duration_ms=elapsed_milliseconds(attempt_started_at),
                 analysis_mode=analysis_mode,
                 image_count=image_count,
                 pdf_count=pdf_count,
+                quote_basis_key_count=len(result.get("quote_basis") if isinstance(result.get("quote_basis"), dict) else {}),
+                quote_basis_section_count=len(result.get("quote_basis_sections") if isinstance(result.get("quote_basis_sections"), list) else []),
+                line_item_count=len(result.get("line_items") if isinstance(result.get("line_items"), list) else []),
             )
             return result
         except OpenAIAnalysisError as exc:
@@ -9415,7 +9493,7 @@ def draft_quote_basis(payload: dict[str, Any]) -> dict[str, Any]:
             log_ai_call_attempt(
                 feature="draft_quote_basis",
                 provider=AI_PROVIDER_OPENAI,
-                model=configured_openai_draft_model(analysis_mode),
+                model=draft_model,
                 status="failed",
                 duration_ms=elapsed_milliseconds(attempt_started_at),
                 analysis_mode=analysis_mode,
