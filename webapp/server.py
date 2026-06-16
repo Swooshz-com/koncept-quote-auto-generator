@@ -862,6 +862,71 @@ def ai_log_simple_summary(event: str, details: dict[str, Any], context: str) -> 
     return simple
 
 
+def ai_log_summary_field(value: Any) -> str:
+    return clean_text(value).replace("|", "/")
+
+
+def ai_log_summary_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    text = clean_text(value)
+    return int(text) if re.fullmatch(r"\d+", text) else None
+
+
+def ai_log_summary_attempt_label(details: dict[str, Any]) -> str:
+    attempt_index = ai_log_summary_int(details.get("attempt_index"))
+    attempt_count = ai_log_summary_int(details.get("attempt_count"))
+    attempts = details.get("provider_attempts")
+    if (attempt_index is None or attempt_count is None) and isinstance(attempts, list):
+        usable_attempts = [attempt for attempt in attempts if isinstance(attempt, dict)]
+        success_attempt = next((attempt for attempt in usable_attempts if log_event_name(attempt.get("status")) == "success"), None)
+        selected_attempt = success_attempt or (usable_attempts[0] if usable_attempts else None)
+        if selected_attempt:
+            attempt_index = attempt_index or ai_log_summary_int(selected_attempt.get("attempt_index"))
+            attempt_count = attempt_count or ai_log_summary_int(selected_attempt.get("attempt_count"))
+    if attempt_index is None or attempt_count is None:
+        return ""
+    return f"{attempt_index}/{attempt_count}"
+
+
+def ai_log_human_summary(record: dict[str, Any]) -> str:
+    details = record.get("details") if isinstance(record.get("details"), dict) else {}
+    simple = record.get("simple") if isinstance(record.get("simple"), dict) else {}
+    run = ai_log_summary_field(simple.get("run")).upper() or ("TEST" if record.get("is_test") else "REAL")
+    result = "OK" if simple.get("ok") else "CHECK"
+    task = ai_log_summary_field(simple.get("task") or ai_log_simple_task(record.get("event", ""), details))
+    provider = ai_log_summary_field(simple.get("provider") or "unknown")
+    model = ai_log_summary_field(simple.get("model") or "not_logged")
+    status = ai_log_summary_field(simple.get("status") or "logged")
+    parts = [
+        run,
+        result,
+        task,
+        f"{provider}/{model}",
+        f"status={status}",
+    ]
+    row_count = ai_log_summary_int(simple.get("rows"))
+    if row_count is not None:
+        parts.append(f"rows={row_count}")
+    attempt_label = ai_log_summary_attempt_label(details)
+    if attempt_label:
+        parts.append(f"attempt={attempt_label}")
+    stage = ai_log_summary_field(details.get("operator_stage"))
+    if stage:
+        parts.append(f"stage={stage}")
+    ai_run_id = ai_log_summary_field(details.get("ai_run_id"))
+    if ai_run_id:
+        parts.append(f"run={ai_run_id}")
+    user_id = ai_log_summary_field(details.get("user_id"))
+    if user_id:
+        parts.append(f"user={user_id}")
+    return " | ".join(part for part in parts if part)
+
+
 def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | None = None) -> bool:
     event = log_event_name(event_type)
     if not is_loggable_event(event):
@@ -886,9 +951,14 @@ def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | N
         }
         if log_event_category(event) == "ai":
             record["simple"] = ai_log_simple_summary(event, safe_details if isinstance(safe_details, dict) else {}, context)
+            record["summary"] = ai_log_human_summary(record)
         path = root / f"{now:%Y-%m-%d}.jsonl"
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=True) + "\n")
+        if log_event_category(event) == "ai" and clean_text(record.get("summary")):
+            summary_path = root / f"{now:%Y-%m-%d}.summary.log"
+            with summary_path.open("a", encoding="utf-8") as f:
+                f.write(f"{record['timestamp_sgt']} | {record['summary']}\n")
         return True
     except OSError as exc:
         safe_stderr(f"Could not write local webapp log: {exc}\n")

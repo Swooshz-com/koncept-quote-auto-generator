@@ -6455,6 +6455,44 @@ class WebappServerTest(unittest.TestCase):
             "rows": 14,
         })
 
+    def test_ai_logs_write_human_readable_summary_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logged = webapp.write_local_log(
+                "ai_pricing_reference_import_timing",
+                {
+                    "operator_stage": "import_cleanup",
+                    "ai_run_id": "ai_test123",
+                    "selected_provider": webapp.AI_PROVIDER_DEEPSEEK,
+                    "completed_provider": webapp.AI_PROVIDER_DEEPSEEK,
+                    "provider_attempts": [
+                        {
+                            "provider": webapp.AI_PROVIDER_DEEPSEEK,
+                            "model": "deepseek-v4-pro",
+                            "status": "success",
+                            "duration_ms": 1234,
+                            "attempt_index": 1,
+                            "attempt_count": 2,
+                        }
+                    ],
+                    "row_count": 14,
+                    "can_save": True,
+                },
+                log_root=Path(tmp),
+            )
+            self.assertTrue(logged)
+            log_path = next((Path(tmp) / "ai").glob("*.jsonl"))
+            summary_path = next((Path(tmp) / "ai").glob("*.summary.log"))
+            log_record = json.loads(log_path.read_text(encoding="utf-8"))
+            summary_text = summary_path.read_text(encoding="utf-8").strip()
+
+        expected_summary = (
+            "TEST | OK | Pricing import cleanup | deepseek/deepseek-v4-pro | "
+            "status=success | rows=14 | attempt=1/2 | stage=import_cleanup | "
+            "run=ai_test123 | user=local-dev"
+        )
+        self.assertEqual(log_record["summary"], expected_summary)
+        self.assertTrue(summary_text.endswith(expected_summary))
+
     def test_ai_logs_include_privacy_safe_user_tracking_context(self):
         session = {
             "user": {
