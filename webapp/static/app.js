@@ -773,10 +773,18 @@ function elapsedStartedMs(value) {
 }
 
 function updateElapsedTimer(elementId, startedAt) {
+  const targets = [];
   const elapsed = document.getElementById(elementId);
-  if (!elapsed) return;
+  if (elapsed) targets.push(elapsed);
+  document.querySelectorAll("[data-elapsed-timer-id]").forEach((candidate) => {
+    if (candidate.dataset.elapsedTimerId === elementId && !targets.includes(candidate)) targets.push(candidate);
+  });
+  if (!targets.length) return;
   const startedMs = elapsedStartedMs(startedAt);
-  elapsed.textContent = `Elapsed ${formatElapsedDuration(startedMs ? Date.now() - startedMs : 0)}`;
+  const elapsedText = `Elapsed ${formatElapsedDuration(startedMs ? Date.now() - startedMs : 0)}`;
+  targets.forEach((target) => {
+    target.textContent = elapsedText;
+  });
 }
 
 function stopElapsedTimer(elementId) {
@@ -2323,6 +2331,7 @@ function pricingReferenceSaveProgressMarkup() {
       <span class="pricing-reference-spinner" aria-hidden="true"></span>
       <strong>Saving pricing reference</strong>
       <p>Please wait while reviewed rows are validated and saved.</p>
+      <span class="ai-elapsed pricing-reference-save-elapsed" data-elapsed-timer-id="pricingReferenceSaveElapsed" aria-live="polite">Elapsed 0:00</span>
     </div>
   `;
 }
@@ -2463,6 +2472,7 @@ function handlePricingReferenceImportTabClick() {
 function clearPricingReferenceDraft(options = {}) {
   closePricingReferenceTableOverlay();
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
   state.pricingReferenceImportFileSelected = false;
@@ -3738,6 +3748,7 @@ async function handlePricingReferenceFileChange() {
   const currentNameId = pricingReferenceNameId(elements.pricingReferenceName?.value || "");
   state.pricingReferenceImportFileSelected = true;
   state.pricingReferenceSaveBusy = false;
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pricingReferenceEditSnapshot = "";
   state.pricingReferenceSavedNotice = "";
   if (elements.pricingReferenceFileName) {
@@ -3818,6 +3829,7 @@ function exportSelectedPricingReference(event) {
 
 function openPricingReferenceModal() {
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
   state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
@@ -3853,6 +3865,7 @@ function closePricingReferenceModal() {
   }
   closePricingReferenceTableOverlay();
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   elements.pricingReferenceModal.classList.remove("is-open");
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
@@ -3882,8 +3895,10 @@ async function editSelectedPricingReference(options = {}) {
   state.editingPricingReferenceId = summaryReference.id || "";
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
+  state.pricingReferenceSaveBusy = false;
   state.pricingReferenceImportToken = "";
   stopElapsedTimer("pricingReferenceImportElapsed");
+  stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pricingReferenceEditNotice = "";
   const reference = await fetchPricingReferenceDetail(summaryReference).catch(() => null);
   if (state.pricingReferenceAutoLoadToken !== loadToken) return;
@@ -3955,6 +3970,7 @@ async function savePricingReferenceFromModal(event) {
     renderPricingReferencePreview(result || pricingReferenceValidationResult([], [], 0, ""));
     return;
   }
+  const saveStartedAt = Date.now();
   state.pricingReferenceSaveBusy = true;
   setPricingReferenceSaveButtonState({
     busy: true,
@@ -3963,6 +3979,7 @@ async function savePricingReferenceFromModal(event) {
   });
   renderPricingReferencePreview(result);
   renderPricingReferenceManageStatus(result);
+  startElapsedTimer("pricingReferenceSaveElapsed", saveStartedAt);
   let didSave = false;
   try {
     const { ok, data } = await postJson("/api/settings/pricing-references", {
@@ -3975,8 +3992,9 @@ async function savePricingReferenceFromModal(event) {
       update_existing: Boolean(state.editingPricingReferenceId),
       editing_reference_id: state.editingPricingReferenceId || "",
     });
-    state.pricingReferenceSaveBusy = false;
     if (!ok) {
+      state.pricingReferenceSaveBusy = false;
+      stopElapsedTimer("pricingReferenceSaveElapsed");
       renderPricingReferencePreview({ ...result, errors: genericFailureMessages(data), error_reference: errorReferenceFrom(data) });
       renderPricingReferenceManageStatus({ ...result, errors: genericFailureMessages(data), error_reference: errorReferenceFrom(data) });
       setPricingReferenceSaveButtonState({
@@ -4021,6 +4039,8 @@ async function savePricingReferenceFromModal(event) {
     if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = data.unchanged ? "Already saved" : "Saved reference";
     setPricingReferenceTaxControls(tax);
     setPricingReferenceCurrencyControls(currency);
+    state.pricingReferenceSaveBusy = false;
+    stopElapsedTimer("pricingReferenceSaveElapsed");
     renderPricingReferencePreview(state.pendingPricingReference);
     capturePricingReferenceEditSnapshot(state.pendingPricingReference);
     const metadataEnrichmentStatus = String(data.metadata_enrichment_status || "").trim();
@@ -4039,6 +4059,7 @@ async function savePricingReferenceFromModal(event) {
     syncControlStates();
   } catch (error) {
     state.pricingReferenceSaveBusy = false;
+    stopElapsedTimer("pricingReferenceSaveElapsed");
     const fallbackResult = state.pendingPricingReference || result || pricingReferenceValidationResult([], [], 0, "");
     const errors = didSave
       ? ["Saved, but the settings list could not refresh. Reload the app and check the pricing reference list."]
