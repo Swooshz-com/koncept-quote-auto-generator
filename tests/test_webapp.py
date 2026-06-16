@@ -6338,6 +6338,87 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Secret generated output", log_text)
         self.assertNotIn("sk-test-secret456", log_text)
 
+    def test_ai_logs_include_privacy_safe_user_tracking_context(self):
+        session = {
+            "user": {
+                "subject": "user-123",
+                "account": "account-456",
+                "email": "alex@example.com",
+                "name": "Alex Tan",
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(webapp.os.environ, {"APP_MODE": "deploy", "AUTH_REQUIRED": "true"}, clear=True):
+                tracking = webapp.ai_log_tracking_metadata(session)
+                with webapp.ai_log_tracking_scope(tracking):
+                    logged = webapp.log_ai_call_attempt(
+                        feature="basis_chat",
+                        provider=webapp.AI_PROVIDER_OPENAI,
+                        model="gpt-test",
+                        status="success",
+                        duration_ms=42,
+                        log_root=Path(tmp),
+                    )
+            self.assertTrue(logged)
+            log_path = next((Path(tmp) / "ai").glob("*.jsonl"))
+            log_text = log_path.read_text(encoding="utf-8")
+            log_record = json.loads(log_text)
+
+        details = log_record["details"]
+        self.assertEqual(details["auth_mode"], "deploy")
+        self.assertTrue(details["auth_required"])
+        self.assertTrue(details["authenticated"])
+        self.assertEqual(details["user_id"], "user-123")
+        self.assertEqual(details["account_id"], "account-456")
+        self.assertEqual(details["company_id"], webapp.DEFAULT_COMPANY_ID)
+        self.assertEqual(details["role"], "viewer")
+        self.assertNotIn("email", details)
+        self.assertNotIn("name", details)
+        self.assertNotIn("alex@example.com", log_text)
+        self.assertNotIn("Alex Tan", log_text)
+
+    def test_queued_ai_job_logs_keep_user_tracking_context(self):
+        payload = valid_payload()
+        payload["basis_chat"] = {
+            "question": "what does this mean?",
+            "scope": "line",
+            "field": "platform",
+            "line_index": 0,
+            "line": "Confirm: 100mm raised platform with needle punch carpet.",
+        }
+        tracking = {
+            "auth_mode": "deploy",
+            "auth_required": True,
+            "authenticated": True,
+            "user_id": "user-123",
+            "account_id": "account-456",
+            "company_id": webapp.DEFAULT_COMPANY_ID,
+            "role": "operator",
+        }
+
+        def fake_basis_chat(_payload):
+            webapp.log_ai_call_attempt(
+                feature="basis_chat",
+                provider=webapp.AI_PROVIDER_OPENAI,
+                model="gpt-test",
+                status="success",
+                duration_ms=5,
+            )
+            return {"status": "answered", "type": "answer", "answer": "OK"}
+
+        with mock.patch.object(webapp, "request_configured_basis_chat", side_effect=fake_basis_chat):
+            with mock.patch.object(webapp, "write_local_log", return_value=True) as write_log:
+                created = webapp.create_job("basis_chat", payload, ai_tracking_context=tracking)
+                job = wait_for_job(created["job_id"])
+
+        self.assertEqual(job["status"], "completed")
+        ai_attempts = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual(len(ai_attempts), 1)
+        self.assertEqual(ai_attempts[0]["user_id"], "user-123")
+        self.assertEqual(ai_attempts[0]["account_id"], "account-456")
+        self.assertEqual(ai_attempts[0]["company_id"], webapp.DEFAULT_COMPANY_ID)
+        self.assertEqual(ai_attempts[0]["role"], "operator")
+
     def test_local_logs_explain_actual_generator_layout_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(webapp.os.environ, {webapp.LOG_CONTEXT_ENV_NAME: "actual"}):

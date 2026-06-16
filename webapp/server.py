@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import contextlib
 import copy
 import csv
 import datetime as dt
@@ -213,6 +214,7 @@ POST_RATE_LIMITS = {
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
+AI_LOG_TRACKING_CONTEXT = threading.local()
 ALLOWED_LOG_EVENTS = {
     "abuse_signal",
     "ai_call_attempt",
@@ -575,6 +577,72 @@ def ai_failure_metadata(
     return metadata
 
 
+def privacy_safe_tracking_id(value: Any, fallback: str = "") -> str:
+    raw = clean_text(value)
+    if not raw:
+        return fallback
+    if "@" not in raw and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", raw):
+        return raw
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"sha256:{digest}"
+
+
+def normalized_ai_log_tracking_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    source = metadata if isinstance(metadata, dict) else {}
+    auth_required_value = source.get("auth_required") if "auth_required" in source else auth_required()
+    authenticated_value = source.get("authenticated") if "authenticated" in source else False
+    role = clean_text(source.get("role")) or current_permissions().get("role")
+    return {
+        "auth_mode": clean_text(source.get("auth_mode")) or configured_app_mode(),
+        "auth_required": bool(auth_required_value),
+        "authenticated": bool(authenticated_value),
+        "user_id": privacy_safe_tracking_id(source.get("user_id"), "local-dev"),
+        "account_id": privacy_safe_tracking_id(source.get("account_id"), DEFAULT_COMPANY_ID),
+        "company_id": safe_company_id(source.get("company_id"), DEFAULT_COMPANY_ID),
+        "role": role_permissions(role).get("role", "viewer"),
+    }
+
+
+def ai_log_tracking_metadata(session: dict[str, Any] | None = None, *, company_id: str = DEFAULT_COMPANY_ID) -> dict[str, Any]:
+    user = session.get("user") if isinstance(session, dict) and isinstance(session.get("user"), dict) else {}
+    subject = clean_text(user.get("subject"))
+    account = clean_text(user.get("account")) or subject
+    authenticated = bool(subject)
+    company = safe_company_id(company_id, DEFAULT_COMPANY_ID)
+    return normalized_ai_log_tracking_metadata({
+        "auth_mode": configured_app_mode(),
+        "auth_required": auth_required(),
+        "authenticated": authenticated,
+        "user_id": privacy_safe_tracking_id(subject, "authenticated-user" if authenticated else "local-dev"),
+        "account_id": privacy_safe_tracking_id(account, company),
+        "company_id": company,
+        "role": current_permissions().get("role"),
+    })
+
+
+def current_ai_log_tracking_metadata() -> dict[str, Any]:
+    metadata = getattr(AI_LOG_TRACKING_CONTEXT, "metadata", None)
+    if isinstance(metadata, dict) and metadata:
+        return normalized_ai_log_tracking_metadata(metadata)
+    return ai_log_tracking_metadata(None)
+
+
+@contextlib.contextmanager
+def ai_log_tracking_scope(metadata: dict[str, Any] | None):
+    previous = getattr(AI_LOG_TRACKING_CONTEXT, "metadata", None)
+    AI_LOG_TRACKING_CONTEXT.metadata = normalized_ai_log_tracking_metadata(metadata)
+    try:
+        yield
+    finally:
+        if previous is None:
+            try:
+                delattr(AI_LOG_TRACKING_CONTEXT, "metadata")
+            except AttributeError:
+                pass
+        else:
+            AI_LOG_TRACKING_CONTEXT.metadata = previous
+
+
 def log_ai_call_attempt(
     *,
     feature: str,
@@ -630,6 +698,7 @@ def log_ai_call_attempt(
             record["error_count"] = len(error_values)
         if safe_details:
             record["details"] = safe_details
+    record.update(current_ai_log_tracking_metadata())
     return write_local_log("ai_call_attempt", record, log_root=log_root)
 
 
@@ -714,12 +783,15 @@ def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | N
     event = log_event_name(event_type)
     if not is_loggable_event(event):
         return False
+    log_details = details if isinstance(details, dict) else {}
+    if log_event_category(event) == "ai":
+        log_details = {**log_details, **current_ai_log_tracking_metadata()}
     root = (log_root or configured_log_root()) / log_event_category(event)
     try:
         root.mkdir(parents=True, exist_ok=True)
         now = dt.datetime.now(dt.UTC)
         context = current_log_context()
-        safe_details = sanitize_log_value(details)
+        safe_details = sanitize_log_value(log_details)
         record = {
             "timestamp": now.isoformat().replace("+00:00", "Z"),
             "timestamp_sgt": sgt_timestamp(now),
@@ -3355,31 +3427,38 @@ def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> b
     return True
 
 
-def run_scheduled_pricing_reference_ai_metadata_enrichment(reference_id: str) -> None:
-    try:
-        apply_saved_pricing_reference_ai_metadata_enrichment(reference_id)
-    except Exception as exc:  # pragma: no cover - defensive background boundary
-        write_local_log(
-            "server_error",
-            {
-                "source": "pricing_reference_metadata_enrichment",
-                "reference_id": safe_resource_id(reference_id, ""),
-                "errors": safe_error_messages([str(exc)]),
-            },
-        )
-    finally:
-        current = threading.current_thread()
-        with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
-            PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.discard(current)
+def run_scheduled_pricing_reference_ai_metadata_enrichment(
+    reference_id: str,
+    ai_tracking_context: dict[str, Any] | None = None,
+) -> None:
+    with ai_log_tracking_scope(ai_tracking_context):
+        try:
+            apply_saved_pricing_reference_ai_metadata_enrichment(reference_id)
+        except Exception as exc:  # pragma: no cover - defensive background boundary
+            write_local_log(
+                "server_error",
+                {
+                    "source": "pricing_reference_metadata_enrichment",
+                    "reference_id": safe_resource_id(reference_id, ""),
+                    "errors": safe_error_messages([str(exc)]),
+                },
+            )
+        finally:
+            current = threading.current_thread()
+            with PRICING_REFERENCE_AI_METADATA_ENRICHMENT_LOCK:
+                PRICING_REFERENCE_AI_METADATA_ENRICHMENT_THREADS.discard(current)
 
 
-def schedule_pricing_reference_ai_metadata_enrichment(reference_id: str) -> bool:
+def schedule_pricing_reference_ai_metadata_enrichment(
+    reference_id: str,
+    ai_tracking_context: dict[str, Any] | None = None,
+) -> bool:
     safe_id = safe_resource_id(reference_id, "")
     if not safe_id or not pricing_reference_ai_metadata_enrichment_configured():
         return False
     thread = threading.Thread(
         target=run_scheduled_pricing_reference_ai_metadata_enrichment,
-        args=(safe_id,),
+        args=(safe_id, ai_tracking_context),
         name=f"pricing-metadata-enrichment-{safe_id[:32]}",
         daemon=True,
     )
@@ -9288,7 +9367,22 @@ def finish_basis_chat_job(job_id: str, payload: dict[str, Any]) -> None:
         set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
 
 
-def create_job(job_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+def run_job_worker(
+    worker: Any,
+    job_id: str,
+    payload: dict[str, Any],
+    ai_tracking_context: dict[str, Any] | None = None,
+) -> None:
+    with ai_log_tracking_scope(ai_tracking_context):
+        worker(job_id, payload)
+
+
+def create_job(
+    job_type: str,
+    payload: dict[str, Any],
+    *,
+    ai_tracking_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     normalized_type = clean_text(job_type).lower()
     if normalized_type not in {"draft", "generate", "basis_chat"}:
         return {"status": "blocked", "errors": ["Job type must be draft, basis_chat, or generate."]}
@@ -9327,7 +9421,11 @@ def create_job(job_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         "basis_chat": finish_basis_chat_job,
         "generate": finish_generate_job,
     }[normalized_type]
-    thread = threading.Thread(target=worker, args=(job_id, payload), daemon=True)
+    thread = threading.Thread(
+        target=run_job_worker,
+        args=(worker, job_id, payload, ai_tracking_context),
+        daemon=True,
+    )
     set_job_state(job_id, status="running")
     thread.start()
     with JOBS_LOCK:
@@ -9565,6 +9663,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         except RequestBodyError as exc:
             self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=exc.status)
             return
+        request_ai_tracking = self.current_ai_log_tracking()
 
         if parsed.path == "/api/pricing-reference/validate":
             self.send_json(validate_pricing_reference_upload(payload))
@@ -9575,7 +9674,8 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            self.send_json(pricing_reference_import_preview(payload))
+            with ai_log_tracking_scope(request_ai_tracking):
+                self.send_json(pricing_reference_import_preview(payload))
             return
 
         if parsed.path == "/api/settings/pricing-references":
@@ -9601,7 +9701,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                     )
                 reference = normalize_pricing_reference_payload(payload)
                 saved = save_pricing_reference_pack(reference)
-                schedule_pricing_reference_ai_metadata_enrichment(reference["id"])
+                schedule_pricing_reference_ai_metadata_enrichment(reference["id"], request_ai_tracking)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -9625,7 +9725,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/jobs":
             job_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else payload
             job_type = clean_text(payload.get("type") or payload.get("job_type"))
-            result = create_job(job_type, job_payload)
+            result = create_job(job_type, job_payload, ai_tracking_context=request_ai_tracking)
             if result.get("status") == "blocked":
                 self.send_json(result, status=400)
                 return
@@ -9641,31 +9741,32 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/draft":
-            if not image_entries(payload):
-                errors = safe_error_messages([MISSING_IMAGES_MESSAGE])
-                write_local_log("draft_blocked", {"errors": errors})
-                self.send_json({"status": "blocked", "errors": errors}, status=400)
-                return
-            image_error = image_limit_error(payload)
-            if image_error:
-                errors = safe_error_messages([image_error])
-                write_local_log("draft_blocked", {"errors": errors})
-                self.send_json({"status": "blocked", "errors": errors}, status=400)
-                return
-            missing_details = quote_detail_missing_fields(payload)
-            if missing_details:
-                errors = safe_error_messages([f"Fill quote details before AI analysis: {', '.join(missing_details)}."])
-                write_local_log("draft_blocked", {"errors": errors})
-                self.send_json({"status": "blocked", "errors": errors}, status=400)
-                return
-            try:
-                result = draft_quote_basis(payload)
-                self.send_json(result)
-            except OpenAIAnalysisError as exc:
-                errors = safe_error_messages([str(exc)])
-                error_reference = new_error_reference()
-                write_local_log("draft_failed", {"error_reference": error_reference, "errors": errors})
-                self.send_json({"status": "failed", "errors": errors, "error_reference": error_reference}, status=502)
+            with ai_log_tracking_scope(request_ai_tracking):
+                if not image_entries(payload):
+                    errors = safe_error_messages([MISSING_IMAGES_MESSAGE])
+                    write_local_log("draft_blocked", {"errors": errors})
+                    self.send_json({"status": "blocked", "errors": errors}, status=400)
+                    return
+                image_error = image_limit_error(payload)
+                if image_error:
+                    errors = safe_error_messages([image_error])
+                    write_local_log("draft_blocked", {"errors": errors})
+                    self.send_json({"status": "blocked", "errors": errors}, status=400)
+                    return
+                missing_details = quote_detail_missing_fields(payload)
+                if missing_details:
+                    errors = safe_error_messages([f"Fill quote details before AI analysis: {', '.join(missing_details)}."])
+                    write_local_log("draft_blocked", {"errors": errors})
+                    self.send_json({"status": "blocked", "errors": errors}, status=400)
+                    return
+                try:
+                    result = draft_quote_basis(payload)
+                    self.send_json(result)
+                except OpenAIAnalysisError as exc:
+                    errors = safe_error_messages([str(exc)])
+                    error_reference = new_error_reference()
+                    write_local_log("draft_failed", {"error_reference": error_reference, "errors": errors})
+                    self.send_json({"status": "failed", "errors": errors, "error_reference": error_reference}, status=502)
             return
 
         if parsed.path == "/api/generate":
@@ -9743,6 +9844,9 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
 
     def current_auth_session(self) -> dict[str, Any] | None:
         return session_from_cookie_header(self.headers.get("Cookie", ""))
+
+    def current_ai_log_tracking(self) -> dict[str, Any]:
+        return ai_log_tracking_metadata(self.current_auth_session())
 
     def block_unauthenticated_request(self, path: str) -> bool:
         if not auth_required():
