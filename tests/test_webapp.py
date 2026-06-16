@@ -8190,7 +8190,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".basis-confidence-pill", css)
         self.assertIn("AI confidence", js)
         self.assertIn("AI confidence level in quote basis line", js)
-        self.assertIn("basisTotalLineCount(sections)", js)
+        self.assertIn("basisTotalLineCount(reviewSections)", js)
         self.assertIn("Total lines:", js)
         self.assertIn(".basis-line-custom .basis-line-icon::before {\n  content: \"\\2713\";\n}", css)
         self.assertNotIn('content: "$";', css)
@@ -9936,6 +9936,7 @@ function renderBasisConfirmSummary() { return ""; }
 function renderBasisTagLegend() { return ""; }
 function renderBasisLine(section, line) { return `<li>${escapeHtml(line.text)}</li>`; }
 function normalizeQuoteBasisSections() { return state.quoteBasisSections; }
+function basisLineIsInformationalDimension() { return false; }
 
 eval([
   "normalizeAnalysisMode",
