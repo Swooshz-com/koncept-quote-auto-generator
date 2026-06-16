@@ -19,8 +19,10 @@ This playbook covers:
 ## Model Routing
 
 - Without `DEEPSEEK_API_KEY`, `Re` selected-line edits use `OPENAI_BASIS_LINE_MODEL`, answer-style `Ask For Changes` uses `OPENAI_BASIS_ANSWER_MODEL`, and whole-basis proposals use `OPENAI_DRAFT_MODEL`.
-- With `DEEPSEEK_API_KEY`, text-only basis chat uses `DEEPSEEK_MODEL`, defaulting to `deepseek-v4-pro`.
-- If a DeepSeek route fails or returns malformed/unusable JSON, retry through OpenAI when `OPENAI_API_KEY` is configured.
+- With `DEEPSEEK_API_KEY`, text-only basis chat uses route-specific DeepSeek model defaults: `Re` selected-line edits use `DEEPSEEK_BASIS_LINE_MODEL` defaulting to `deepseek-v4-flash`, answer-style `Ask For Changes` uses `DEEPSEEK_BASIS_ANSWER_MODEL` defaulting to `deepseek-v4-flash`, and whole-basis proposals use `DEEPSEEK_BASIS_PROPOSAL_MODEL` defaulting to `deepseek-v4-pro`.
+- `DEEPSEEK_MODEL` remains the legacy/global DeepSeek fallback model, defaulting to `deepseek-v4-pro`. A custom non-Pro value still acts as a global override, but `DEEPSEEK_MODEL=deepseek-v4-pro` does not suppress Flash route defaults.
+- Flash-routed DeepSeek basis chat must retry the Pro/global DeepSeek model before falling back to OpenAI.
+- If a DeepSeek route fails or returns malformed/unusable JSON, retry through the next configured model/provider when available, including OpenAI when `OPENAI_API_KEY` is configured.
 - Provider/network/auth failures should be sanitized in user-facing errors and logs. Do not leak raw provider responses or keys.
 
 This playbook does not cover:

@@ -5514,11 +5514,69 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["max_output_tokens"], 1200)
         self.assertEqual(result["answer"], "- **Meaning:** Platform height.")
 
-    def test_deepseek_defaults_use_single_pro_model_for_text_routes(self):
+    def test_deepseek_defaults_route_flash_for_low_risk_text_routes(self):
         with mock.patch.object(webapp, "read_dotenv_value", return_value=""):
             self.assertEqual(webapp.configured_deepseek_model(), "deepseek-v4-pro")
+            self.assertEqual(webapp.configured_deepseek_basis_answer_model(), "deepseek-v4-flash")
+            self.assertEqual(webapp.configured_deepseek_basis_line_model(), "deepseek-v4-flash")
+            self.assertEqual(webapp.configured_deepseek_basis_proposal_model(), "deepseek-v4-pro")
+            self.assertEqual(webapp.configured_deepseek_pricing_import_model(), "deepseek-v4-pro")
+            self.assertEqual(webapp.configured_deepseek_pricing_metadata_model(), "deepseek-v4-flash")
+
+            line_payload = valid_payload()
+            line_payload["basis_chat"] = {
+                "question": "change 100mm to 150mm",
+                "scope": "line",
+                "field": "platform",
+                "line_index": 0,
+                "line": "Confirm: 100mm raised platform.",
+            }
+            answer_payload = valid_payload()
+            answer_payload["basis_chat"] = {
+                "question": "what does this mean?",
+                "scope": "quote",
+                "field": "",
+                "line_index": -1,
+                "line": "",
+            }
+            quote_payload = valid_payload()
+            quote_payload["basis_chat"] = {
+                "question": "include all lighting and electrical lines",
+                "scope": "quote",
+                "field": "",
+                "line_index": -1,
+                "line": "",
+            }
+            self.assertEqual(webapp.deepseek_basis_chat_models(line_payload), ["deepseek-v4-flash", "deepseek-v4-pro"])
+            self.assertEqual(webapp.deepseek_basis_chat_models(answer_payload), ["deepseek-v4-flash", "deepseek-v4-pro"])
+            self.assertEqual(webapp.deepseek_basis_chat_models(quote_payload), ["deepseek-v4-pro"])
+
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "deepseek-test-model" if name == webapp.DEEPSEEK_MODEL_ENV_NAME else ""):
             self.assertEqual(webapp.configured_deepseek_model(), "deepseek-test-model")
+            self.assertEqual(webapp.configured_deepseek_basis_line_model(), "deepseek-test-model")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "deepseek-v4-pro" if name == webapp.DEEPSEEK_MODEL_ENV_NAME else ""):
+            self.assertEqual(webapp.configured_deepseek_basis_answer_model(), "deepseek-v4-flash")
+            self.assertEqual(webapp.configured_deepseek_basis_line_model(), "deepseek-v4-flash")
+            self.assertEqual(webapp.configured_deepseek_pricing_metadata_model(), "deepseek-v4-flash")
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_MODEL_ENV_NAME: "deepseek-global-test",
+                webapp.DEEPSEEK_BASIS_ANSWER_MODEL_ENV_NAME: "deepseek-answer-test",
+                webapp.DEEPSEEK_BASIS_LINE_MODEL_ENV_NAME: "deepseek-line-test",
+                webapp.DEEPSEEK_BASIS_PROPOSAL_MODEL_ENV_NAME: "deepseek-proposal-test",
+                webapp.DEEPSEEK_PRICING_IMPORT_MODEL_ENV_NAME: "deepseek-import-test",
+                webapp.DEEPSEEK_PRICING_METADATA_MODEL_ENV_NAME: "deepseek-metadata-test",
+            }
+            return values.get(name, "")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            self.assertEqual(webapp.configured_deepseek_basis_answer_model(), "deepseek-answer-test")
+            self.assertEqual(webapp.configured_deepseek_basis_line_model(), "deepseek-line-test")
+            self.assertEqual(webapp.configured_deepseek_basis_proposal_model(), "deepseek-proposal-test")
+            self.assertEqual(webapp.configured_deepseek_pricing_import_model(), "deepseek-import-test")
+            self.assertEqual(webapp.configured_deepseek_pricing_metadata_model(), "deepseek-metadata-test")
 
     def test_deepseek_basis_chat_uses_chat_completions_json_mode(self):
         payload = valid_payload()
@@ -5563,7 +5621,7 @@ class WebappServerTest(unittest.TestCase):
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
-        self.assertEqual(body["model"], "deepseek-v4-pro")
+        self.assertEqual(body["model"], "deepseek-v4-flash")
         self.assertEqual(body["response_format"], {"type": "json_object"})
         self.assertEqual(body["messages"][0]["role"], "system")
         self.assertIn("Return exactly one valid JSON object", body["messages"][0]["content"])
@@ -5615,7 +5673,7 @@ class WebappServerTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(errors, [])
         self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
-        self.assertEqual(body["model"], "deepseek-v4-pro")
+        self.assertEqual(body["model"], "deepseek-v4-flash")
         self.assertEqual(body["response_format"], {"type": "json_object"})
         self.assertEqual(body["messages"][0]["role"], "system")
         self.assertEqual(body["messages"][1]["role"], "user")
@@ -5909,6 +5967,10 @@ class WebappServerTest(unittest.TestCase):
         bad_deepseek.__enter__.return_value.read.return_value = json.dumps({
             "choices": [{"message": {"content": "not valid json"}}]
         }).encode("utf-8")
+        bad_deepseek_pro = mock.MagicMock()
+        bad_deepseek_pro.__enter__.return_value.read.return_value = json.dumps({
+            "choices": [{"message": {"content": "still not valid json"}}]
+        }).encode("utf-8")
         good_openai = mock.MagicMock()
         good_openai.__enter__.return_value.read.return_value = json.dumps({
             "output_text": json.dumps({
@@ -5934,13 +5996,15 @@ class WebappServerTest(unittest.TestCase):
             return values.get(name, "")
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
-            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_deepseek, good_openai]) as urlopen:
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_deepseek, bad_deepseek_pro, good_openai]) as urlopen:
                 result = webapp.answer_basis_chat(payload)
 
         first_body = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
         second_body = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
-        self.assertEqual(first_body["model"], "deepseek-v4-pro")
-        self.assertEqual(second_body["model"], "gpt-basis-line-mini-test")
+        third_body = json.loads(urlopen.call_args_list[2].args[0].data.decode("utf-8"))
+        self.assertEqual(first_body["model"], "deepseek-v4-flash")
+        self.assertEqual(second_body["model"], "deepseek-v4-pro")
+        self.assertEqual(third_body["model"], "gpt-basis-line-mini-test")
         self.assertEqual(result["type"], "proposal")
 
     def test_basis_chat_fallback_logs_ai_call_attempts(self):
@@ -5969,8 +6033,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(result["type"], "proposal")
         ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
-        self.assertEqual([entry["provider"] for entry in ai_attempt_logs], [webapp.AI_PROVIDER_DEEPSEEK, webapp.AI_PROVIDER_OPENAI])
-        self.assertEqual([entry["status"] for entry in ai_attempt_logs], ["failed", "success"])
+        self.assertEqual([entry["provider"] for entry in ai_attempt_logs], [webapp.AI_PROVIDER_DEEPSEEK, webapp.AI_PROVIDER_DEEPSEEK, webapp.AI_PROVIDER_OPENAI])
+        self.assertEqual([entry["status"] for entry in ai_attempt_logs], ["failed", "failed", "success"])
         self.assertEqual({entry["feature"] for entry in ai_attempt_logs}, {"basis_chat"})
         self.assertTrue(all(isinstance(entry["duration_ms"], int) for entry in ai_attempt_logs))
 

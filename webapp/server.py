@@ -304,8 +304,14 @@ AI_PROVIDER_DEEPSEEK = "deepseek"
 SUPPORTED_TEXT_AI_PROVIDERS = {AI_PROVIDER_OPENAI, AI_PROVIDER_DEEPSEEK}
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_PRO_MODEL = "deepseek-v4-pro"
+DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
 DEEPSEEK_API_KEY_ENV_NAME = "DEEPSEEK_API_KEY"
 DEEPSEEK_MODEL_ENV_NAME = "DEEPSEEK_MODEL"
+DEEPSEEK_BASIS_LINE_MODEL_ENV_NAME = "DEEPSEEK_BASIS_LINE_MODEL"
+DEEPSEEK_BASIS_ANSWER_MODEL_ENV_NAME = "DEEPSEEK_BASIS_ANSWER_MODEL"
+DEEPSEEK_BASIS_PROPOSAL_MODEL_ENV_NAME = "DEEPSEEK_BASIS_PROPOSAL_MODEL"
+DEEPSEEK_PRICING_IMPORT_MODEL_ENV_NAME = "DEEPSEEK_PRICING_IMPORT_MODEL"
+DEEPSEEK_PRICING_METADATA_MODEL_ENV_NAME = "DEEPSEEK_PRICING_METADATA_MODEL"
 DEEPSEEK_BASE_URL_ENV_NAME = "DEEPSEEK_BASE_URL"
 DEEPSEEK_REQUEST_TIMEOUT_ENV_NAME = "DEEPSEEK_REQUEST_TIMEOUT_SECONDS"
 DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME = "DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS"
@@ -3769,7 +3775,7 @@ def request_deepseek_pricing_catalog_import(source_name: str, content: Any, tax:
     return request_deepseek_json_object(
         build_pricing_catalog_import_prompt(source_name, content, tax),
         api_key,
-        configured_deepseek_model(),
+        configured_deepseek_pricing_import_model(),
         DEEPSEEK_PRICING_IMPORT_MAX_OUTPUT_TOKENS,
         "pricing import",
         configured_deepseek_pricing_import_timeout_seconds(),
@@ -3780,7 +3786,7 @@ def request_deepseek_pricing_catalog_metadata(source_name: str, items: list[dict
     return request_deepseek_json_object(
         build_pricing_catalog_metadata_prompt(source_name, items),
         api_key,
-        configured_deepseek_model(),
+        configured_deepseek_pricing_metadata_model(),
         DEEPSEEK_PRICING_METADATA_MAX_OUTPUT_TOKENS,
         "pricing metadata enrichment",
     )
@@ -3853,7 +3859,7 @@ def ai_pricing_reference_metadata_enrichment(
     try:
         for provider_index, candidate_provider in enumerate(provider_order, start=1):
             api_key = text_ai_provider_api_key(candidate_provider)
-            candidate_model = text_ai_provider_default_model(candidate_provider)
+            candidate_model = text_ai_provider_model_for_feature(candidate_provider, "pricing_reference_metadata_enrichment")
             timeout_seconds = ai_provider_timeout_seconds(candidate_provider, "pricing_reference_metadata_enrichment")
             if not api_key:
                 missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
@@ -4031,7 +4037,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
         previous_provider = ""
         for provider_index, candidate_provider in enumerate(provider_order, start=1):
             api_key = text_ai_provider_api_key(candidate_provider)
-            candidate_model = text_ai_provider_default_model(candidate_provider)
+            candidate_model = text_ai_provider_model_for_feature(candidate_provider, "pricing_reference_import")
             timeout_seconds = ai_provider_timeout_seconds(candidate_provider, "pricing_reference_import")
             if not api_key:
                 missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
@@ -5031,6 +5037,17 @@ def text_ai_provider_default_model(provider: str) -> str:
     return configured_openai_basis_line_model()
 
 
+def text_ai_provider_model_for_feature(provider: str, feature: str) -> str:
+    if provider == AI_PROVIDER_DEEPSEEK:
+        feature_key = log_event_name(feature)
+        if feature_key == "pricing_reference_import":
+            return configured_deepseek_pricing_import_model()
+        if feature_key == "pricing_reference_metadata_enrichment":
+            return configured_deepseek_pricing_metadata_model()
+        return configured_deepseek_model()
+    return text_ai_provider_default_model(provider)
+
+
 def configured_deepseek_base_url() -> str:
     raw = clean_text(read_dotenv_value(DEEPSEEK_BASE_URL_ENV_NAME)) or DEEPSEEK_BASE_URL
     if not re.match(r"^https?://", raw, flags=re.IGNORECASE):
@@ -5044,6 +5061,36 @@ def configured_deepseek_chat_completions_url() -> str:
 
 def configured_deepseek_model() -> str:
     return safe_segment(read_dotenv_value(DEEPSEEK_MODEL_ENV_NAME), DEEPSEEK_PRO_MODEL)
+
+
+def configured_deepseek_route_model(env_name: str, fallback: str) -> str:
+    route_model = safe_segment(read_dotenv_value(env_name), "")
+    if route_model:
+        return route_model
+    global_model = safe_segment(read_dotenv_value(DEEPSEEK_MODEL_ENV_NAME), "")
+    if global_model and global_model != DEEPSEEK_PRO_MODEL:
+        return global_model
+    return fallback
+
+
+def configured_deepseek_basis_answer_model() -> str:
+    return configured_deepseek_route_model(DEEPSEEK_BASIS_ANSWER_MODEL_ENV_NAME, DEEPSEEK_FLASH_MODEL)
+
+
+def configured_deepseek_basis_line_model() -> str:
+    return configured_deepseek_route_model(DEEPSEEK_BASIS_LINE_MODEL_ENV_NAME, DEEPSEEK_FLASH_MODEL)
+
+
+def configured_deepseek_basis_proposal_model() -> str:
+    return configured_deepseek_route_model(DEEPSEEK_BASIS_PROPOSAL_MODEL_ENV_NAME, DEEPSEEK_PRO_MODEL)
+
+
+def configured_deepseek_pricing_import_model() -> str:
+    return configured_deepseek_route_model(DEEPSEEK_PRICING_IMPORT_MODEL_ENV_NAME, DEEPSEEK_PRO_MODEL)
+
+
+def configured_deepseek_pricing_metadata_model() -> str:
+    return configured_deepseek_route_model(DEEPSEEK_PRICING_METADATA_MODEL_ENV_NAME, DEEPSEEK_FLASH_MODEL)
 
 
 def basis_chat_has_selected_line(payload: dict[str, Any]) -> bool:
@@ -5075,8 +5122,11 @@ def openai_basis_chat_models(payload: dict[str, Any]) -> list[str]:
 
 
 def deepseek_basis_chat_models(payload: dict[str, Any]) -> list[str]:
-    _ = payload
-    return unique_model_sequence(configured_deepseek_model())
+    if basis_chat_required_intent(payload) == "answer":
+        return unique_model_sequence(configured_deepseek_basis_answer_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
+    if basis_chat_has_selected_line(payload):
+        return unique_model_sequence(configured_deepseek_basis_line_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
+    return unique_model_sequence(configured_deepseek_basis_proposal_model(), configured_deepseek_model(), DEEPSEEK_PRO_MODEL)
 
 
 def basis_chat_provider_env_name(payload: dict[str, Any]) -> str:

@@ -59,9 +59,12 @@ After save, the pricing reference text is authoritative. Later quote-basis and o
 AI provider routing:
 
 - Pricing import normalization and metadata enrichment use `AI_PRICING_IMPORT_PROVIDER` when set.
-- When `DEEPSEEK_API_KEY` is present and no explicit provider override is set, DeepSeek is tried first with `DEEPSEEK_MODEL`.
+- When `DEEPSEEK_API_KEY` is present and no explicit provider override is set, DeepSeek is tried first.
+- DeepSeek pricing import normalization uses `DEEPSEEK_PRICING_IMPORT_MODEL`, defaulting to `deepseek-v4-pro`.
+- DeepSeek pricing metadata enrichment uses `DEEPSEEK_PRICING_METADATA_MODEL`, defaulting to `deepseek-v4-flash`.
+- `DEEPSEEK_MODEL` remains the legacy/global DeepSeek fallback model, defaulting to `deepseek-v4-pro`. A custom non-Pro value still acts as a global override, but `DEEPSEEK_MODEL=deepseek-v4-pro` does not suppress Flash route defaults.
 - OpenAI remains the fallback provider and uses `OPENAI_BASIS_LINE_MODEL`.
-- DeepSeek pricing import normalization uses a dedicated failover timeout, `DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS` (default 60 seconds), so messy imports give DeepSeek a full bounded attempt before malformed or stalled responses fall back to OpenAI. Other DeepSeek routes continue to use `DEEPSEEK_REQUEST_TIMEOUT_SECONDS`.
+- DeepSeek pricing import normalization uses a dedicated failover timeout, `DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS` (default 120 seconds), so messy imports give DeepSeek a full bounded attempt before malformed or stalled responses fall back to OpenAI. Other DeepSeek routes continue to use `DEEPSEEK_REQUEST_TIMEOUT_SECONDS`.
 
 ## Saved order and matching metadata
 
