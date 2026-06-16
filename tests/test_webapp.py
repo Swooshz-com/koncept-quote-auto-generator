@@ -10809,6 +10809,40 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertFalse(reference_dir_exists)
         self.assertNotIn("delete-me-ref", {item["id"] for item in body["pricing_references"]})
 
+    def test_pricing_reference_ai_metadata_enrichment_does_not_recreate_deleted_pack(self):
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": "delete-race-ref",
+                "label": "Delete Race Ref",
+                "tax": {"label": "GST", "rate": 0.09},
+                "items": [with_required_pricing_metadata({
+                    "id": "row-1",
+                    "section": "Graphics",
+                    "description": "Printed graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 10,
+                    "markup_multiplier": 2,
+                })],
+            })
+
+        def delete_during_ai_call(label, items, **kwargs):
+            webapp.delete_pricing_reference_pack(kwargs["reference_id"])
+            return [dict(item) for item in items], []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                with mock.patch.object(
+                    webapp,
+                    "ai_pricing_reference_metadata_enrichment",
+                    side_effect=delete_during_ai_call,
+                ):
+                    applied = webapp.apply_saved_pricing_reference_ai_metadata_enrichment("delete-race-ref")
+                reference_dir_exists = (Path(tmp) / "delete-race-ref").exists()
+
+        self.assertFalse(applied)
+        self.assertFalse(reference_dir_exists)
+
     def test_pricing_reference_delete_blocks_default_pack(self):
         with self.assertRaisesRegex(ValueError, "Default pricing references cannot be deleted"):
             webapp.delete_pricing_reference_pack(webapp.DEFAULT_PRICING_REFERENCE_ID)

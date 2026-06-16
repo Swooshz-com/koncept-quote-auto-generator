@@ -3299,6 +3299,7 @@ def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> b
     detail = pricing_reference_pack_detail(safe_id)
     if not detail:
         return False
+    initial_saved_at = clean_text(detail.get("saved_at"))
     items = [dict(item) for item in (detail.get("items") if isinstance(detail.get("items"), list) else []) if isinstance(item, dict)]
     if not items:
         return False
@@ -3328,6 +3329,9 @@ def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> b
                 "errors": safe_error_messages(metadata_errors),
             },
         )
+        return False
+    latest_detail = pricing_reference_pack_detail(safe_id)
+    if not latest_detail or clean_text(latest_detail.get("saved_at")) != initial_saved_at:
         return False
     save_pricing_reference_pack({
         "id": safe_id,
