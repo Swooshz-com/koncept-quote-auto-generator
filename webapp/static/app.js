@@ -2437,7 +2437,7 @@ function syncPricingReferenceSettingsMode() {
   if (elements.pricingReferenceTemplateButton) {
     elements.pricingReferenceTemplateButton.hidden = mode !== PRICING_REFERENCE_SETTINGS_MODE_IMPORT;
   }
-  updatePricingReferenceExportButton();
+  if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
   syncPricingReferenceImportSetupVisibility();
   renderPricingReferenceManageStatus();
 }
@@ -2518,7 +2518,7 @@ function updatePricingReferenceDeleteButton() {
   button.disabled = Boolean(reason) || busy;
   button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this repo pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
-  updatePricingReferenceExportButton();
+  if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
 }
 
 function pricingReferenceDeleteConfirmReference() {
@@ -3142,7 +3142,7 @@ function setPricingReferenceModalBusyState(busy = false, reason = "") {
     elements.pricingReferenceTemplateButton.setAttribute("tabindex", disabled ? "-1" : "0");
     elements.pricingReferenceTemplateButton.title = disabledTitle;
   }
-  updatePricingReferenceExportButton();
+  if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
   const busyControls = [
     elements.pricingReferenceName,
     elements.pricingReferenceTaxLabel,
