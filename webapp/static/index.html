@@ -618,6 +618,17 @@
                     </label>
                     <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>Delete Reference</button>
                   </div>
+                  <div class="pricing-reference-delete-confirm" id="pricingReferenceDeleteConfirm" role="group" aria-labelledby="pricingReferenceDeleteConfirmTitle" hidden>
+                    <div>
+                      <strong id="pricingReferenceDeleteConfirmTitle">Delete pricing reference?</strong>
+                      <p id="pricingReferenceDeleteConfirmText">This removes the saved repo pricing reference pack from this local app.</p>
+                    </div>
+                    <p class="pricing-reference-delete-error" id="pricingReferenceDeleteError" hidden></p>
+                    <div class="pricing-reference-delete-confirm-actions">
+                      <button class="secondary-button" type="button" id="cancelPricingReferenceDeleteButton">Cancel</button>
+                      <button class="secondary-button danger-button" type="button" id="confirmPricingReferenceDeleteButton">Delete</button>
+                    </div>
+                  </div>
                 </section>
                 <div class="pricing-reference-manage-status" id="pricingReferenceManageStatus" hidden></div>
               </section>

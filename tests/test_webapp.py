@@ -2810,6 +2810,7 @@ class WebappServerTest(unittest.TestCase):
         ai_log = log_calls["ai_pricing_reference_import_timing"]
         self.assertEqual(ai_log["selected_provider"], webapp.AI_PROVIDER_OPENAI)
         self.assertEqual(ai_log["completed_provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(ai_log["operator_stage"], "import_cleanup")
         self.assertEqual(ai_log["raw_item_count"], 1)
         self.assertEqual(ai_log["provider_attempts"][0]["status"], "success")
         self.assertIsInstance(ai_log["provider_attempts"][0]["duration_ms"], int)
@@ -2823,6 +2824,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(ai_attempt_logs[0]["feature"], "pricing_reference_import")
         self.assertEqual(ai_attempt_logs[0]["provider"], webapp.AI_PROVIDER_OPENAI)
         self.assertEqual(ai_attempt_logs[0]["status"], "success")
+        self.assertEqual(ai_attempt_logs[0]["operator_stage"], "import_cleanup")
         self.assertEqual(ai_attempt_logs[0]["ai_run_id"], ai_log["ai_run_id"])
         self.assertEqual(ai_attempt_logs[0]["attempt_index"], 1)
         self.assertEqual(ai_attempt_logs[0]["attempt_count"], 1)
@@ -6311,6 +6313,14 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(log_record["details"]["output_tokens"], 45)
         self.assertEqual(log_record["details"]["image_count"], 2)
         self.assertEqual(log_record["details"]["pdf_count"], 1)
+        self.assertEqual(log_record["simple"], {
+            "run": "test",
+            "task": "Quote basis chat",
+            "provider": webapp.AI_PROVIDER_OPENAI,
+            "model": "gpt-test",
+            "status": "success",
+            "ok": True,
+        })
         self.assertIn("AI provider call attempt", log_record["meaning"])
         self.assertIn("[omitted]", log_text)
         self.assertIn("sk-...", log_text)
@@ -6318,6 +6328,70 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("Secret item", log_text)
         self.assertNotIn("Secret generated output", log_text)
         self.assertNotIn("sk-test-secret456", log_text)
+
+    def test_ai_pricing_reference_log_meanings_name_operator_stage(self):
+        import_meaning = webapp.log_meaning(
+            "ai_pricing_reference_import_timing",
+            {"operator_stage": "import_cleanup"},
+            "actual",
+        )
+        metadata_meaning = webapp.log_meaning(
+            "ai_pricing_reference_metadata_enrichment_completed",
+            {"operator_stage": "post_save_matching_metadata"},
+            "actual",
+        )
+        import_attempt_meaning = webapp.log_meaning(
+            "ai_call_attempt",
+            {"feature": "pricing_reference_import"},
+            "actual",
+        )
+        metadata_attempt_meaning = webapp.log_meaning(
+            "ai_call_attempt",
+            {"feature": "pricing_reference_metadata_enrichment"},
+            "actual",
+        )
+
+        self.assertIn("uploaded pricing reference", import_meaning)
+        self.assertIn("before save", import_meaning)
+        self.assertIn("matching clues", metadata_meaning)
+        self.assertIn("should not change customer-facing descriptions", metadata_meaning)
+        self.assertIn("import cleanup", import_attempt_meaning)
+        self.assertIn("post-save pricing metadata", metadata_attempt_meaning)
+
+    def test_ai_pricing_reference_logs_include_simple_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logged = webapp.write_local_log(
+                "ai_pricing_reference_import_timing",
+                {
+                    "operator_stage": "import_cleanup",
+                    "selected_provider": webapp.AI_PROVIDER_DEEPSEEK,
+                    "completed_provider": webapp.AI_PROVIDER_DEEPSEEK,
+                    "provider_attempts": [
+                        {
+                            "provider": webapp.AI_PROVIDER_DEEPSEEK,
+                            "model": "deepseek-v4-pro",
+                            "status": "success",
+                            "duration_ms": 1234,
+                        }
+                    ],
+                    "row_count": 14,
+                    "can_save": True,
+                },
+                log_root=Path(tmp),
+            )
+            self.assertTrue(logged)
+            log_path = next((Path(tmp) / "ai").glob("*.jsonl"))
+            log_record = json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(log_record["simple"], {
+            "run": "test",
+            "task": "Pricing import cleanup",
+            "provider": webapp.AI_PROVIDER_DEEPSEEK,
+            "model": "deepseek-v4-pro",
+            "status": "success",
+            "ok": True,
+            "rows": 14,
+        })
 
     def test_ai_logs_include_privacy_safe_user_tracking_context(self):
         session = {
@@ -8413,6 +8487,11 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Saved, but the settings list could not refresh.", save_reference_body)
         self.assertIn("state.pricingReferenceSavedNotice", save_reference_body)
         self.assertIn("state.pricingReferenceId = savedReference.id || \"\";", save_reference_body)
+        self.assertIn("updatePricingReferenceDeleteButton();", save_reference_body)
+        self.assertLess(
+            save_reference_body.index("renderPricingReferenceDeleteOptions();"),
+            save_reference_body.index("updatePricingReferenceDeleteButton();"),
+        )
         self.assertLess(
             save_reference_body.index("renderPricingReferencePreview(state.pendingPricingReference);"),
             save_reference_body.index("capturePricingReferenceEditSnapshot(state.pendingPricingReference);"),
@@ -8428,11 +8507,19 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricingReferenceTaxRate", html)
         self.assertIn("pricingReferenceDeleteSection", html)
         self.assertIn("deletePricingReferenceSelect", html)
+        self.assertIn("pricingReferenceDeleteConfirm", html)
+        self.assertIn("cancelPricingReferenceDeleteButton", html)
+        self.assertIn("confirmPricingReferenceDeleteButton", html)
         self.assertIn("Delete Reference", html)
         self.assertNotIn("editPricingReferenceButton", html)
         self.assertNotIn("Edit Rows", html)
         self.assertIn("Save Changes", js)
         self.assertIn("deleteRepoPricingReference", js)
+        self.assertIn("requestSelectedPricingReferenceDelete", js)
+        self.assertIn("showPricingReferenceDeleteConfirm", js)
+        self.assertIn("hidePricingReferenceDeleteConfirm", js)
+        self.assertNotIn("window.prompt", js)
+        self.assertNotIn("window.alert", js)
         delete_reference_body = js.split("async function deleteRepoPricingReference", 1)[1].split("async function deleteSelectedPricingReference", 1)[0]
         self.assertIn("clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });", delete_reference_body)
         self.assertIn("await loadProfiles();", delete_reference_body)
@@ -8506,6 +8593,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-delete-section .pricing-reference-field-title {\n  color: #2d3b4f;", css)
         self.assertIn("grid-template-columns: minmax(260px, 1fr) auto;", css)
         self.assertIn(".pricing-reference-delete-controls .compact-control {\n  margin: 0;\n  width: 100%;", css)
+        self.assertIn(".pricing-reference-delete-confirm", css)
+        self.assertIn(".pricing-reference-delete-confirm-actions", css)
         self.assertNotIn(".pricing-reference-edit-button", css)
         self.assertIn(".pricing-reference-delete-button {\n  min-width: 118px;\n  min-height: 40px;", css)
         self.assertIn(".pricing-reference-delete-button {\n  min-width: 138px;\n}", css)
@@ -11178,6 +11267,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         call_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
         self.assertEqual(len(call_logs), 1)
         self.assertEqual(call_logs[0]["reference_id"], "async-ref")
+        self.assertEqual(call_logs[0]["operator_stage"], "post_save_matching_metadata")
         self.assertRegex(call_logs[0]["ai_run_id"], r"^ai_[a-f0-9]{16}$")
         self.assertEqual(call_logs[0]["batch_index"], 1)
         self.assertEqual(call_logs[0]["batch_count"], 1)
@@ -11191,6 +11281,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(len(rollup_logs), 1)
         self.assertEqual(rollup_logs[0]["status"], "success")
         self.assertEqual(rollup_logs[0]["reference_id"], "async-ref")
+        self.assertEqual(rollup_logs[0]["operator_stage"], "post_save_matching_metadata")
         self.assertEqual(rollup_logs[0]["completed_provider"], webapp.AI_PROVIDER_DEEPSEEK)
         self.assertEqual(rollup_logs[0]["row_count"], 1)
         self.assertEqual(rollup_logs[0]["rows_enriched"], 1)

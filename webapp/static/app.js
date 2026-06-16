@@ -168,6 +168,9 @@ const state = {
   pricingReferenceEditNotice: "",
   pricingReferenceAutoLoadToken: "",
   pricingReferenceSavedNotice: "",
+  pricingReferenceDeleteConfirmId: "",
+  pricingReferenceDeleteError: "",
+  pricingReferenceDeleteBusy: false,
   permissions: {
     role: "viewer",
     canManageSettings: false,
@@ -300,6 +303,12 @@ const elements = {
   pricingReferenceEditorBody: qs("#pricingReferenceEditorBody"),
   pricingReferenceDeleteSection: qs("#pricingReferenceDeleteSection"),
   deletePricingReferenceSelect: qs("#deletePricingReferenceSelect"),
+  pricingReferenceDeleteConfirm: qs("#pricingReferenceDeleteConfirm"),
+  pricingReferenceDeleteConfirmTitle: qs("#pricingReferenceDeleteConfirmTitle"),
+  pricingReferenceDeleteConfirmText: qs("#pricingReferenceDeleteConfirmText"),
+  pricingReferenceDeleteError: qs("#pricingReferenceDeleteError"),
+  cancelPricingReferenceDeleteButton: qs("#cancelPricingReferenceDeleteButton"),
+  confirmPricingReferenceDeleteButton: qs("#confirmPricingReferenceDeleteButton"),
   pricingReferenceTableOverlay: qs("#pricingReferenceTableOverlay"),
   pricingReferenceTableSummary: qs("#pricingReferenceTableSummary"),
   pricingReferenceTableBody: qs("#pricingReferenceTableBody"),
@@ -2409,6 +2418,9 @@ function syncPricingReferenceSettingsMode() {
 
 function setPricingReferenceSettingsMode(mode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE, options = {}) {
   state.pricingReferenceSettingsMode = normalizePricingReferenceSettingsMode(mode);
+  if (state.pricingReferenceSettingsMode !== PRICING_REFERENCE_SETTINGS_MODE_MANAGE) {
+    hidePricingReferenceDeleteConfirm();
+  }
   syncPricingReferenceSettingsMode();
   if (options.focus) {
     const target = state.pricingReferenceSettingsMode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
@@ -2438,6 +2450,7 @@ function clearPricingReferenceDraft(options = {}) {
   state.pricingReferenceEditNotice = "";
   state.pricingReferenceAutoLoadToken = "";
   state.pricingReferenceSavedNotice = "";
+  hidePricingReferenceDeleteConfirm();
   if (options.clearFile) {
     if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
     if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
@@ -2475,9 +2488,65 @@ function updatePricingReferenceDeleteButton() {
   if (!button) return;
   const reference = deletionPricingReference();
   const reason = protectedPricingReferenceReason(reference);
-  button.disabled = Boolean(reason);
-  button.title = reason || "Delete this repo pricing reference.";
+  const busy = pricingReferenceOperationBusy();
+  button.disabled = Boolean(reason) || busy;
+  button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this repo pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
+}
+
+function pricingReferenceDeleteConfirmReference() {
+  const referenceId = String(state.pricingReferenceDeleteConfirmId || "").trim();
+  if (!referenceId) return null;
+  return state.pricingReferences.find((reference) => reference.id === referenceId && String(reference.source || "bundled") === "bundled") || null;
+}
+
+function hidePricingReferenceDeleteConfirm() {
+  state.pricingReferenceDeleteConfirmId = "";
+  state.pricingReferenceDeleteError = "";
+  if (elements.pricingReferenceDeleteConfirm) elements.pricingReferenceDeleteConfirm.hidden = true;
+  if (elements.pricingReferenceDeleteError) {
+    elements.pricingReferenceDeleteError.hidden = true;
+    elements.pricingReferenceDeleteError.textContent = "";
+  }
+}
+
+function renderPricingReferenceDeleteConfirm() {
+  const panel = elements.pricingReferenceDeleteConfirm;
+  if (!panel) return;
+  const reference = pricingReferenceDeleteConfirmReference();
+  if (!reference) {
+    panel.hidden = true;
+    return;
+  }
+  const label = reference.label || reference.id || "this pricing reference";
+  panel.hidden = false;
+  if (elements.pricingReferenceDeleteConfirmTitle) {
+    elements.pricingReferenceDeleteConfirmTitle.textContent = `Delete ${label}?`;
+  }
+  if (elements.pricingReferenceDeleteConfirmText) {
+    elements.pricingReferenceDeleteConfirmText.textContent = "This removes the saved repo pricing reference pack from this local app. Existing quotes already generated from it are not changed.";
+  }
+  if (elements.pricingReferenceDeleteError) {
+    const message = String(state.pricingReferenceDeleteError || "").trim();
+    elements.pricingReferenceDeleteError.hidden = !message;
+    elements.pricingReferenceDeleteError.textContent = message;
+  }
+  [elements.cancelPricingReferenceDeleteButton, elements.confirmPricingReferenceDeleteButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = state.pricingReferenceDeleteBusy;
+    button.setAttribute("aria-disabled", String(button.disabled));
+  });
+  if (elements.confirmPricingReferenceDeleteButton) {
+    elements.confirmPricingReferenceDeleteButton.textContent = state.pricingReferenceDeleteBusy ? "Deleting..." : "Delete";
+  }
+}
+
+function showPricingReferenceDeleteConfirm(reference) {
+  if (!reference) return;
+  state.pricingReferenceDeleteConfirmId = reference.id || "";
+  state.pricingReferenceDeleteError = "";
+  renderPricingReferenceDeleteConfirm();
+  window.setTimeout(() => elements.cancelPricingReferenceDeleteButton?.focus(), 0);
 }
 
 function openSettingsModal() {
@@ -2506,7 +2575,7 @@ const PRICING_REFERENCE_METADATA_STALE_FIELDS = new Set([
 ]);
 
 function pricingReferenceOperationBusy() {
-  return Boolean(state.pricingReferenceImportBusy || state.pricingReferenceSaveBusy);
+  return Boolean(state.pricingReferenceImportBusy || state.pricingReferenceSaveBusy || state.pricingReferenceDeleteBusy);
 }
 
 function pricingReferenceSnapshotItem(item = {}) {
@@ -3056,6 +3125,8 @@ function setPricingReferenceModalBusyState(busy = false, reason = "") {
     elements.pricingReferenceImportTab,
     elements.deletePricingReferenceSelect,
     elements.deletePricingReferenceButton,
+    elements.cancelPricingReferenceDeleteButton,
+    elements.confirmPricingReferenceDeleteButton,
     elements.pricingReferenceTableCloseButton,
     ...Array.from(elements.pricingReferencePreview?.querySelectorAll("button, input, select, textarea") || []),
     ...Array.from(elements.pricingReferenceManageStatus?.querySelectorAll("button, input, select, textarea") || []),
@@ -3661,6 +3732,7 @@ function openPricingReferenceModal() {
   state.pricingReferenceEditNotice = "";
   state.pricingReferenceAutoLoadToken = "";
   state.pricingReferenceSavedNotice = "";
+  hidePricingReferenceDeleteConfirm();
   if (elements.pricingReferenceName) elements.pricingReferenceName.value = "";
   if (elements.pricingReferenceFile) elements.pricingReferenceFile.value = "";
   if (elements.pricingReferenceFileName) elements.pricingReferenceFileName.textContent = "No file chosen";
@@ -3697,6 +3769,7 @@ function closePricingReferenceModal() {
   state.pricingReferenceEditNotice = "";
   state.pricingReferenceAutoLoadToken = "";
   state.pricingReferenceSavedNotice = "";
+  hidePricingReferenceDeleteConfirm();
   syncPricingReferenceSettingsMode();
 }
 
@@ -3823,12 +3896,14 @@ async function savePricingReferenceFromModal(event) {
     syncSelectedPricingReference();
     renderProfileOptions();
     renderPricingReferenceDeleteOptions();
+    hidePricingReferenceDeleteConfirm();
     if (elements.deletePricingReferenceSelect && savedReference.id) {
       const savedValue = pricingReferenceSelectValue(savedReference);
       if ([...elements.deletePricingReferenceSelect.options].some((option) => option.value === savedValue)) {
         elements.deletePricingReferenceSelect.value = savedValue;
       }
     }
+    updatePricingReferenceDeleteButton();
     state.editingPricingReferenceId = savedReference.id || state.editingPricingReferenceId || safeId(name, "pricing-reference");
     state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
     state.pricingReferenceImportFileSelected = false;
@@ -3887,38 +3962,61 @@ async function deleteRepoPricingReference(referenceId) {
     updatePricingReferenceDeleteButton();
     return;
   }
-  const label = reference.label || reference.id;
-  const confirmed = window.prompt(`Type ${label} to delete this pricing reference.`) === label;
-  if (!confirmed) return;
-  const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
-    method: "DELETE",
-    headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
-  }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
-  if (!ok) {
-    window.alert(genericFailureMessages(data).join("\n"));
+  state.pricingReferenceDeleteBusy = true;
+  state.pricingReferenceDeleteError = "";
+  renderPricingReferenceDeleteConfirm();
+  setPricingReferenceModalBusyState(true, "Deleting pricing reference...");
+  updatePricingReferenceDeleteButton();
+  try {
+    const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
+      method: "DELETE",
+      headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
+    }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
+    if (!ok) {
+      state.pricingReferenceDeleteError = genericFailureMessages(data).join(" ");
+      renderPricingReferenceDeleteConfirm();
+      return;
+    }
+    state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : state.pricingReferences);
+    if (state.pricingReferenceId === reference.id) {
+      const fallback = defaultPricingReference() || state.pricingReferences[0] || null;
+      state.pricingReferenceId = fallback?.id || "";
+      state.pricingReferenceSource = fallback ? pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallback)).source : "";
+      clearGeneratedQuoteState();
+    }
+    hidePricingReferenceDeleteConfirm();
+    clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
+    state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+    await loadProfiles();
+    syncSelectedPricingReference();
+    renderProfileOptions();
+    renderPricingReferenceDeleteOptions();
+    syncPricingReferenceSettingsMode();
+  } catch (error) {
+    state.pricingReferenceDeleteError = genericFailureMessages(error).join(" ");
+    renderPricingReferenceDeleteConfirm();
+  } finally {
+    state.pricingReferenceDeleteBusy = false;
+    setPricingReferenceModalBusyState(false);
+    renderPricingReferenceDeleteConfirm();
+    updatePricingReferenceDeleteButton();
+    syncControlStates();
+  }
+}
+
+function requestSelectedPricingReferenceDelete() {
+  const selected = deletionPricingReference();
+  if (!selected || !canDeleteSelectedPricingReference()) {
     updatePricingReferenceDeleteButton();
     return;
   }
-  state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : state.pricingReferences);
-  if (state.pricingReferenceId === reference.id) {
-    const fallback = defaultPricingReference() || state.pricingReferences[0] || null;
-    state.pricingReferenceId = fallback?.id || "";
-    state.pricingReferenceSource = fallback ? pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallback)).source : "";
-    clearGeneratedQuoteState();
-  }
-  clearPricingReferenceDraft({ clearFile: true, resetMetadata: true });
-  state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
-  await loadProfiles();
-  syncSelectedPricingReference();
-  renderProfileOptions();
-  renderPricingReferenceDeleteOptions();
-  syncPricingReferenceSettingsMode();
-  syncControlStates();
+  showPricingReferenceDeleteConfirm(selected);
 }
 
 async function deleteSelectedPricingReference() {
-  const selected = deletionPricingReference();
-  if (!selected || !canDeleteSelectedPricingReference()) {
+  const selected = pricingReferenceDeleteConfirmReference();
+  if (!selected || protectedPricingReferenceReason(selected)) {
+    hidePricingReferenceDeleteConfirm();
     updatePricingReferenceDeleteButton();
     return;
   }
@@ -7029,7 +7127,11 @@ function wireEvents() {
       } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
-        closePricingReferenceModal();
+        if (elements.pricingReferenceDeleteConfirm && !elements.pricingReferenceDeleteConfirm.hidden) {
+          hidePricingReferenceDeleteConfirm();
+        } else {
+          closePricingReferenceModal();
+        }
       } else if (!elements.analysisConfirmModal.hidden) {
         closeAnalysisConfirmModal();
       }
@@ -7044,10 +7146,13 @@ function wireEvents() {
   elements.pricingReferenceManageTab?.addEventListener("click", () => setPricingReferenceSettingsMode(PRICING_REFERENCE_SETTINGS_MODE_MANAGE, { focus: true }));
   elements.pricingReferenceImportTab?.addEventListener("click", handlePricingReferenceImportTabClick);
   elements.deletePricingReferenceSelect?.addEventListener("change", () => {
+    hidePricingReferenceDeleteConfirm();
     updatePricingReferenceDeleteButton();
     editSelectedPricingReference({ openTable: false });
   });
-  elements.deletePricingReferenceButton?.addEventListener("click", deleteSelectedPricingReference);
+  elements.deletePricingReferenceButton?.addEventListener("click", requestSelectedPricingReferenceDelete);
+  elements.cancelPricingReferenceDeleteButton?.addEventListener("click", hidePricingReferenceDeleteConfirm);
+  elements.confirmPricingReferenceDeleteButton?.addEventListener("click", deleteSelectedPricingReference);
   elements.outputSortMode?.addEventListener("change", () => { state.outputSortMode = elements.outputSortMode.value; renderPricingMatches(state.outputRows); renderMatchSummary({ pricing_matches: state.outputRows }); syncControlStates(); });
   elements.pricingReferenceForm.addEventListener("submit", savePricingReferenceFromModal);
   elements.pricingReferenceTemplateButton.addEventListener("click", downloadPricingReferenceTemplate);

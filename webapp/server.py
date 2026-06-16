@@ -760,13 +760,19 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
     elif event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
         meaning = "Remote AI analysis was unavailable or unconfigured, so the app used or offered a local fallback path."
     elif event == "server_pricing_reference_import_timing":
-        meaning = "Pricing-reference import timing. Check details.timings_ms to see whether local extraction, AI normalization, or validation dominated the wait."
+        meaning = "Pricing-reference upload/import timing. Check details.route and details.timings_ms to see whether local extraction, AI cleanup, or row validation dominated the wait."
     elif event == "ai_pricing_reference_import_timing":
-        meaning = "AI pricing-reference import timing. Check details.provider_attempts for provider duration, fallback, and completion status."
+        meaning = "AI cleaned an uploaded pricing reference into editable rows before save. Check details.provider_attempts, row_count, can_save, and fallback fields; this is not the post-save metadata clue pass."
     elif event == "ai_pricing_reference_metadata_enrichment_completed":
-        meaning = "AI pricing-reference metadata enrichment rollup. Check details.reference_id, provider attempts, row counts, fallback, status, and duration."
+        meaning = "AI enriched a saved pricing reference with matching clues such as match_terms and object_families. It should not change customer-facing descriptions, prices, or quote output by itself."
     elif event == "ai_call_attempt":
-        meaning = "AI provider call attempt metadata. Check provider, model, feature, status, duration, retry/fallback, and token/count fields without raw prompts or customer content."
+        feature = log_event_name(details.get("feature"))
+        if feature == "pricing_reference_import":
+            meaning = "Provider attempt for pricing-reference import cleanup. This turns an uploaded messy file into editable pricing rows before save."
+        elif feature == "pricing_reference_metadata_enrichment":
+            meaning = "Provider attempt for post-save pricing metadata enrichment. This writes matching clues only; pricing rows remain reviewable and deterministic matching still decides suggestions."
+        else:
+            meaning = "AI provider call attempt metadata. Check provider, model, feature, status, duration, retry/fallback, and token/count fields without raw prompts or customer content."
     elif event == "abuse_signal":
         meaning = security_reasons.get(reason, "The local runner detected repeated or suspicious local requests.")
     else:
@@ -775,6 +781,71 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
     if context == "test":
         return f"Test validation log: {meaning}"
     return f"Actual local-runner log: {meaning}"
+
+
+def ai_log_simple_task(event: str, details: dict[str, Any]) -> str:
+    feature = log_event_name(details.get("feature") or details.get("source") or event)
+    if feature in {"draft_quote_basis", "openai_draft_completed"} or event in {"openai_draft_completed", "draft_failed", "draft_worker_failed", "draft_blocked"}:
+        return "Quote basis draft"
+    if feature == "basis_chat" or "basis_chat" in event:
+        return "Quote basis chat"
+    if feature == "pricing_reference_import" or event == "ai_pricing_reference_import_timing":
+        return "Pricing import cleanup"
+    if feature == "pricing_reference_metadata_enrichment" or event == "ai_pricing_reference_metadata_enrichment_completed":
+        return "Pricing metadata clues"
+    if event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
+        return "AI draft fallback"
+    return clean_text(feature).replace("_", " ").title() or "AI"
+
+
+def ai_log_simple_status(event: str, details: dict[str, Any]) -> str:
+    status = log_event_name(details.get("status"))
+    if status:
+        return status
+    if event in {"openai_draft_completed"}:
+        return "success"
+    if event in {"draft_blocked", "draft_failed", "draft_worker_failed", "basis_chat_failed", "basis_chat_worker_failed", "openai_draft_failed", "openai_basis_chat_failed"}:
+        return "failed"
+    if event in {"ai_draft_fallback_used", "ai_draft_remote_unconfigured"}:
+        return "fallback"
+    if event == "ai_pricing_reference_import_timing":
+        return "success" if clean_text(details.get("completed_provider")) else "failed"
+    return "logged"
+
+
+def ai_log_simple_provider_model(details: dict[str, Any]) -> tuple[str, str]:
+    provider = clean_text(details.get("provider") or details.get("completed_provider") or details.get("selected_provider") or details.get("source"))
+    model = clean_text(details.get("model"))
+    attempts = details.get("provider_attempts")
+    if isinstance(attempts, list):
+        usable_attempts = [attempt for attempt in attempts if isinstance(attempt, dict)]
+        success_attempt = next((attempt for attempt in usable_attempts if log_event_name(attempt.get("status")) == "success"), None)
+        selected_attempt = success_attempt or (usable_attempts[0] if usable_attempts else None)
+        if selected_attempt:
+            provider = provider or clean_text(selected_attempt.get("provider"))
+            model = model or clean_text(selected_attempt.get("model"))
+    return provider, model
+
+
+def ai_log_simple_summary(event: str, details: dict[str, Any], context: str) -> dict[str, Any]:
+    source_details = details if isinstance(details, dict) else {}
+    provider, model = ai_log_simple_provider_model(source_details)
+    status = ai_log_simple_status(event, source_details)
+    task = ai_log_simple_task(event, source_details)
+    simple = {
+        "run": "test" if context == "test" else "real",
+        "task": task,
+        "provider": provider or "unknown",
+        "model": model or "not_logged",
+        "status": status,
+        "ok": status in {"success", "completed", "logged"},
+    }
+    row_count = source_details.get("row_count")
+    if isinstance(row_count, int):
+        simple["rows"] = row_count
+    elif isinstance(row_count, float) and row_count.is_integer():
+        simple["rows"] = int(row_count)
+    return simple
 
 
 def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | None = None) -> bool:
@@ -799,6 +870,8 @@ def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | N
             "meaning": log_meaning(event, safe_details if isinstance(safe_details, dict) else {}, context),
             "details": safe_details,
         }
+        if log_event_category(event) == "ai":
+            record["simple"] = ai_log_simple_summary(event, safe_details if isinstance(safe_details, dict) else {}, context)
         path = root / f"{now:%Y-%m-%d}.jsonl"
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=True) + "\n")
@@ -3962,6 +4035,7 @@ def ai_pricing_reference_metadata_enrichment(
                     status="missing_api_key",
                     duration_ms=0,
                     ai_run_id=ai_run_id,
+                    operator_stage="post_save_matching_metadata",
                     reference_id=safe_reference_id,
                     row_count=len(items),
                     batch_count=len(batches),
@@ -4007,6 +4081,7 @@ def ai_pricing_reference_metadata_enrichment(
                             status="failed",
                             duration_ms=duration_ms,
                             ai_run_id=ai_run_id,
+                            operator_stage="post_save_matching_metadata",
                             reference_id=safe_reference_id,
                             row_count=len(batch),
                             batch_index=batch_index,
@@ -4036,6 +4111,7 @@ def ai_pricing_reference_metadata_enrichment(
                         status="success",
                         duration_ms=duration_ms,
                         ai_run_id=ai_run_id,
+                        operator_stage="post_save_matching_metadata",
                         reference_id=safe_reference_id,
                         row_count=len(batch),
                         batch_index=batch_index,
@@ -4080,6 +4156,7 @@ def ai_pricing_reference_metadata_enrichment(
             {
                 "source": "pricing_reference_metadata_enrichment",
                 "ai_run_id": ai_run_id,
+                "operator_stage": "post_save_matching_metadata",
                 "reference_id": safe_reference_id,
                 "selected_provider": provider,
                 "completed_provider": completed_provider,
@@ -4140,6 +4217,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                     status="missing_api_key",
                     duration_ms=0,
                     ai_run_id=ai_run_id,
+                    operator_stage="import_cleanup",
                     attempt_index=provider_index,
                     attempt_count=len(provider_order),
                     **source_metadata,
@@ -4178,6 +4256,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                     status="failed",
                     duration_ms=duration_ms,
                     ai_run_id=ai_run_id,
+                    operator_stage="import_cleanup",
                     attempt_index=provider_index,
                     attempt_count=len(provider_order),
                     fallback_to=provider_order[provider_index] if provider_index < len(provider_order) else "",
@@ -4202,6 +4281,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
             })
             success_metadata = {
                 "ai_run_id": ai_run_id,
+                "operator_stage": "import_cleanup",
                 "attempt_index": provider_index,
                 "attempt_count": len(provider_order),
                 **source_metadata,
@@ -4262,6 +4342,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
             {
                 "source": "pricing_reference_import",
                 "ai_run_id": ai_run_id,
+                "operator_stage": "import_cleanup",
                 "selected_provider": provider,
                 "completed_provider": selected_provider,
                 "provider_attempts": provider_attempts,
