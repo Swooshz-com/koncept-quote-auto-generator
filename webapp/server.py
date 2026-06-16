@@ -233,6 +233,7 @@ ALLOWED_LOG_EVENTS = {
     "openai_draft_completed",
     "openai_draft_failed",
     "ai_pricing_reference_import_timing",
+    "ai_pricing_reference_metadata_enrichment_completed",
     "security_event",
     "server_pricing_reference_import_timing",
     "server_error",
@@ -453,6 +454,116 @@ def elapsed_milliseconds(started_at: float) -> int:
     return max(0, int(round((time.perf_counter() - started_at) * 1000)))
 
 
+def new_ai_run_id() -> str:
+    return f"ai_{secrets.token_hex(8)}"
+
+
+def source_file_log_metadata(filename: Any) -> dict[str, Any]:
+    name = clean_text(filename)
+    metadata: dict[str, Any] = {}
+    if name:
+        metadata["source_filename_sha256"] = hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+    extension = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if re.fullmatch(r"[a-z0-9]{1,12}", extension):
+        metadata["source_file_extension"] = extension
+    return metadata
+
+
+def exception_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        chain.append(current)
+        seen.add(id(current))
+        current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
+    return chain
+
+
+def first_exception_of_type(exc: BaseException, expected_type: type[BaseException]) -> BaseException | None:
+    for candidate in exception_chain(exc):
+        if isinstance(candidate, expected_type):
+            return candidate
+    return None
+
+
+def ai_provider_timeout_seconds(provider: str, feature: str = "") -> int | None:
+    provider_key = clean_text(provider).lower()
+    feature_key = log_event_name(feature)
+    if provider_key == AI_PROVIDER_DEEPSEEK and feature_key == "pricing_reference_import":
+        return configured_deepseek_pricing_import_timeout_seconds()
+    if provider_key == AI_PROVIDER_DEEPSEEK:
+        return configured_deepseek_timeout_seconds()
+    if provider_key == AI_PROVIDER_OPENAI:
+        return configured_openai_timeout_seconds()
+    return None
+
+
+def ai_failure_metadata(
+    exc: BaseException | str,
+    *,
+    provider: str = "",
+    timeout_seconds: int | None = None,
+    error_reference: str = "",
+) -> dict[str, Any]:
+    exception = exc if isinstance(exc, BaseException) else RuntimeError(clean_text(exc))
+    chain = exception_chain(exception)
+    combined_text = " ".join(clean_text(item) for item in chain).lower()
+    http_error = first_exception_of_type(exception, urllib.error.HTTPError)
+    url_error = first_exception_of_type(exception, urllib.error.URLError)
+    json_error = first_exception_of_type(exception, json.JSONDecodeError)
+    http_status = getattr(http_error, "code", None) if http_error else None
+
+    if "missing:" in combined_text:
+        failure_kind = "missing_api_key"
+    elif any(is_timeout_exception(item) for item in chain):
+        failure_kind = "timeout"
+    elif http_status == 429:
+        failure_kind = "rate_limited"
+    elif http_status in TRANSIENT_OPENAI_HTTP_CODES:
+        failure_kind = "upstream_unavailable"
+    elif http_status:
+        failure_kind = "http_error"
+    elif url_error:
+        failure_kind = "network_error"
+    elif json_error or "invalid json" in combined_text:
+        failure_kind = "invalid_json"
+    elif "omitted pricing rows" in combined_text or "failed validation" in combined_text:
+        failure_kind = "schema_validation_failed"
+    elif "returned no usable" in combined_text:
+        failure_kind = "model_output_invalid"
+    elif isinstance(exception, AIModelOutputError):
+        failure_kind = "model_output_invalid"
+    else:
+        failure_kind = "provider_error"
+
+    provider_label = clean_text(provider).title() or "AI provider"
+    summaries = {
+        "missing_api_key": f"{provider_label} is missing an API key.",
+        "timeout": f"{provider_label} request timed out before a usable response.",
+        "rate_limited": f"{provider_label} returned HTTP 429 rate limiting.",
+        "upstream_unavailable": f"{provider_label} returned a temporary upstream HTTP error.",
+        "http_error": f"{provider_label} returned an HTTP error.",
+        "network_error": f"{provider_label} connection failed before a usable response.",
+        "invalid_json": f"{provider_label} returned invalid JSON.",
+        "schema_validation_failed": f"{provider_label} returned JSON that failed the expected schema checks.",
+        "model_output_invalid": f"{provider_label} returned output that could not be used.",
+        "provider_error": f"{provider_label} call failed before a usable response.",
+    }
+    metadata: dict[str, Any] = {
+        "failure_kind": failure_kind,
+        "error_type": type(chain[-1]).__name__ if chain else type(exception).__name__,
+        "safe_error_summary": summaries[failure_kind],
+    }
+    if http_status:
+        metadata["http_status"] = int(http_status)
+    if timeout_seconds is not None:
+        metadata["timeout_seconds"] = int(timeout_seconds)
+    if clean_text(error_reference):
+        metadata["error_reference"] = clean_text(error_reference)
+    return metadata
+
+
 def log_ai_call_attempt(
     *,
     feature: str,
@@ -495,7 +606,19 @@ def log_ai_call_attempt(
         if value not in (None, "", [], {}):
             record[key] = value
     if details:
-        record["details"] = details
+        safe_details = dict(details)
+        raw_errors = safe_details.pop("errors", None) if record["status"] in {"failed", "missing_api_key"} else None
+        if raw_errors:
+            error_values = raw_errors if isinstance(raw_errors, list) else [raw_errors]
+            for key, value in ai_failure_metadata(
+                clean_text(error_values[0]) if error_values else "",
+                provider=record["provider"],
+                timeout_seconds=record.get("timeout_seconds") if isinstance(record.get("timeout_seconds"), int) else None,
+            ).items():
+                record.setdefault(key, value)
+            record["error_count"] = len(error_values)
+        if safe_details:
+            record["details"] = safe_details
     return write_local_log("ai_call_attempt", record, log_root=log_root)
 
 
@@ -562,6 +685,8 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         meaning = "Pricing-reference import timing. Check details.timings_ms to see whether local extraction, AI normalization, or validation dominated the wait."
     elif event == "ai_pricing_reference_import_timing":
         meaning = "AI pricing-reference import timing. Check details.provider_attempts for provider duration, fallback, and completion status."
+    elif event == "ai_pricing_reference_metadata_enrichment_completed":
+        meaning = "AI pricing-reference metadata enrichment rollup. Check details.reference_id, provider attempts, row counts, fallback, status, and duration."
     elif event == "ai_call_attempt":
         meaning = "AI provider call attempt metadata. Check provider, model, feature, status, duration, retry/fallback, and token/count fields without raw prompts or customer content."
     elif event == "abuse_signal":
@@ -3172,7 +3297,11 @@ def apply_saved_pricing_reference_ai_metadata_enrichment(reference_id: str) -> b
     items = [dict(item) for item in (detail.get("items") if isinstance(detail.get("items"), list) else []) if isinstance(item, dict)]
     if not items:
         return False
-    enriched_items, errors = ai_pricing_reference_metadata_enrichment(clean_text(detail.get("label")) or safe_id, items)
+    enriched_items, errors = ai_pricing_reference_metadata_enrichment(
+        clean_text(detail.get("label")) or safe_id,
+        items,
+        reference_id=safe_id,
+    )
     if errors or not enriched_items:
         write_local_log(
             "server_error",
@@ -3640,82 +3769,195 @@ def merge_pricing_reference_ai_metadata(
     return enriched, []
 
 
-def ai_pricing_reference_metadata_enrichment(filename: str, items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+def ai_pricing_reference_metadata_enrichment(
+    filename: str,
+    items: list[dict[str, Any]],
+    *,
+    reference_id: str = "",
+    ai_run_id: str = "",
+) -> tuple[list[dict[str, Any]], list[str]]:
     if not items:
         return items, []
+    started_at = time.perf_counter()
+    ai_run_id = clean_text(ai_run_id) or new_ai_run_id()
+    safe_reference_id = safe_resource_id(reference_id, "")
+    source_metadata = source_file_log_metadata(filename)
     provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
     provider_order = [provider]
     if provider != AI_PROVIDER_OPENAI:
         provider_order.append(AI_PROVIDER_OPENAI)
     errors: list[str] = []
+    provider_attempts: list[dict[str, Any]] = []
+    completed_provider = ""
+    rows_enriched = 0
+    rollup_status = "failed"
     batches = pricing_reference_metadata_batches(items)
-    for candidate_provider in provider_order:
-        api_key = text_ai_provider_api_key(candidate_provider)
-        candidate_model = text_ai_provider_default_model(candidate_provider)
-        if not api_key:
-            missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
-            errors.append(missing_error)
-            log_ai_call_attempt(
-                feature="pricing_reference_metadata_enrichment",
-                provider=candidate_provider,
-                model=candidate_model,
-                status="missing_api_key",
-                duration_ms=0,
-                details={"errors": safe_error_messages([missing_error])},
-                row_count=len(items),
-                batch_count=len(batches),
-            )
-            continue
-        raw_metadata_items: list[dict[str, Any]] = []
-        try:
-            for batch_index, batch in enumerate(batches, start=1):
-                batch_name = f"{filename} metadata batch {batch_index}/{len(batches)}" if len(batches) > 1 else filename
-                attempt_started_at = time.perf_counter()
-                try:
-                    if candidate_provider == AI_PROVIDER_DEEPSEEK:
-                        parsed = request_deepseek_pricing_catalog_metadata(batch_name, batch, api_key)
-                    else:
-                        parsed = request_openai_pricing_catalog_metadata(batch_name, batch, api_key)
-                except OpenAIAnalysisError as exc:
-                    log_ai_call_attempt(
-                        feature="pricing_reference_metadata_enrichment",
-                        provider=candidate_provider,
-                        model=candidate_model,
-                        status="failed",
-                        duration_ms=elapsed_milliseconds(attempt_started_at),
-                        details={"errors": safe_error_messages([str(exc)])},
-                        row_count=len(batch),
-                        batch_index=batch_index,
-                        batch_count=len(batches),
-                    )
-                    raise
+    try:
+        for provider_index, candidate_provider in enumerate(provider_order, start=1):
+            api_key = text_ai_provider_api_key(candidate_provider)
+            candidate_model = text_ai_provider_default_model(candidate_provider)
+            timeout_seconds = ai_provider_timeout_seconds(candidate_provider, "pricing_reference_metadata_enrichment")
+            if not api_key:
+                missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
+                errors.append(missing_error)
+                failure_metadata = ai_failure_metadata(
+                    missing_error,
+                    provider=candidate_provider,
+                    timeout_seconds=timeout_seconds,
+                )
+                provider_attempts.append({
+                    "provider": candidate_provider,
+                    "model": candidate_model,
+                    "status": "missing_api_key",
+                    "duration_ms": 0,
+                    "attempt_index": provider_index,
+                    "attempt_count": len(provider_order),
+                    **failure_metadata,
+                })
                 log_ai_call_attempt(
                     feature="pricing_reference_metadata_enrichment",
                     provider=candidate_provider,
                     model=candidate_model,
-                    status="success",
-                    duration_ms=elapsed_milliseconds(attempt_started_at),
-                    row_count=len(batch),
-                    batch_index=batch_index,
+                    status="missing_api_key",
+                    duration_ms=0,
+                    ai_run_id=ai_run_id,
+                    reference_id=safe_reference_id,
+                    row_count=len(items),
                     batch_count=len(batches),
+                    attempt_index=provider_index,
+                    attempt_count=len(provider_order),
+                    **source_metadata,
+                    **failure_metadata,
                 )
-                parsed_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
-                raw_metadata_items.extend([item for item in parsed_items if isinstance(item, dict)])
-        except OpenAIAnalysisError as exc:
-            errors.append(str(exc))
-            continue
-        enriched, merge_errors = merge_pricing_reference_ai_metadata(items, raw_metadata_items)
-        if not merge_errors:
-            return enriched, []
-        errors.extend(merge_errors)
-    missing_key_errors = [error for error in errors if "Missing:" in error]
-    if missing_key_errors and len(missing_key_errors) == len(errors):
-        return [], [AI_PRICING_METADATA_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
-    return [], safe_error_messages(errors or [AI_PRICING_METADATA_NOT_CONFIGURED])
+                continue
+            raw_metadata_items: list[dict[str, Any]] = []
+            try:
+                for batch_index, batch in enumerate(batches, start=1):
+                    batch_name = f"{filename} metadata batch {batch_index}/{len(batches)}" if len(batches) > 1 else filename
+                    attempt_started_at = time.perf_counter()
+                    try:
+                        if candidate_provider == AI_PROVIDER_DEEPSEEK:
+                            parsed = request_deepseek_pricing_catalog_metadata(batch_name, batch, api_key)
+                        else:
+                            parsed = request_openai_pricing_catalog_metadata(batch_name, batch, api_key)
+                    except OpenAIAnalysisError as exc:
+                        duration_ms = elapsed_milliseconds(attempt_started_at)
+                        failure_metadata = ai_failure_metadata(
+                            exc,
+                            provider=candidate_provider,
+                            timeout_seconds=timeout_seconds,
+                        )
+                        provider_attempts.append({
+                            "provider": candidate_provider,
+                            "model": candidate_model,
+                            "status": "failed",
+                            "duration_ms": duration_ms,
+                            "row_count": len(batch),
+                            "batch_index": batch_index,
+                            "batch_count": len(batches),
+                            "attempt_index": provider_index,
+                            "attempt_count": len(provider_order),
+                            **failure_metadata,
+                        })
+                        log_ai_call_attempt(
+                            feature="pricing_reference_metadata_enrichment",
+                            provider=candidate_provider,
+                            model=candidate_model,
+                            status="failed",
+                            duration_ms=duration_ms,
+                            ai_run_id=ai_run_id,
+                            reference_id=safe_reference_id,
+                            row_count=len(batch),
+                            batch_index=batch_index,
+                            batch_count=len(batches),
+                            attempt_index=provider_index,
+                            attempt_count=len(provider_order),
+                            **source_metadata,
+                            **failure_metadata,
+                        )
+                        raise
+                    duration_ms = elapsed_milliseconds(attempt_started_at)
+                    provider_attempts.append({
+                        "provider": candidate_provider,
+                        "model": candidate_model,
+                        "status": "success",
+                        "duration_ms": duration_ms,
+                        "row_count": len(batch),
+                        "batch_index": batch_index,
+                        "batch_count": len(batches),
+                        "attempt_index": provider_index,
+                        "attempt_count": len(provider_order),
+                    })
+                    log_ai_call_attempt(
+                        feature="pricing_reference_metadata_enrichment",
+                        provider=candidate_provider,
+                        model=candidate_model,
+                        status="success",
+                        duration_ms=duration_ms,
+                        ai_run_id=ai_run_id,
+                        reference_id=safe_reference_id,
+                        row_count=len(batch),
+                        batch_index=batch_index,
+                        batch_count=len(batches),
+                        attempt_index=provider_index,
+                        attempt_count=len(provider_order),
+                        **source_metadata,
+                    )
+                    parsed_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
+                    raw_metadata_items.extend([item for item in parsed_items if isinstance(item, dict)])
+            except OpenAIAnalysisError as exc:
+                errors.append(str(exc))
+                continue
+            enriched, merge_errors = merge_pricing_reference_ai_metadata(items, raw_metadata_items)
+            if not merge_errors:
+                completed_provider = candidate_provider
+                rows_enriched = len(enriched)
+                rollup_status = "success"
+                return enriched, []
+            failure_metadata = ai_failure_metadata(
+                OpenAIAnalysisError("AI metadata enrichment failed validation."),
+                provider=candidate_provider,
+                timeout_seconds=timeout_seconds,
+            )
+            provider_attempts.append({
+                "provider": candidate_provider,
+                "model": candidate_model,
+                "status": "failed",
+                "duration_ms": 0,
+                "attempt_index": provider_index,
+                "attempt_count": len(provider_order),
+                **failure_metadata,
+            })
+            errors.extend(merge_errors)
+        missing_key_errors = [error for error in errors if "Missing:" in error]
+        if missing_key_errors and len(missing_key_errors) == len(errors):
+            return [], [AI_PRICING_METADATA_NOT_CONFIGURED, *safe_error_messages(missing_key_errors)]
+        return [], safe_error_messages(errors or [AI_PRICING_METADATA_NOT_CONFIGURED])
+    finally:
+        write_local_log(
+            "ai_pricing_reference_metadata_enrichment_completed",
+            {
+                "source": "pricing_reference_metadata_enrichment",
+                "ai_run_id": ai_run_id,
+                "reference_id": safe_reference_id,
+                "selected_provider": provider,
+                "completed_provider": completed_provider,
+                "status": rollup_status,
+                "duration_ms": elapsed_milliseconds(started_at),
+                "row_count": len(items),
+                "rows_enriched": rows_enriched,
+                "batch_count": len(batches),
+                "provider_attempts": provider_attempts,
+                "error_count": len(errors),
+                **source_metadata,
+            },
+        )
 
 
 def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[str, Any]) -> dict[str, Any]:
     started_at = time.perf_counter()
+    ai_run_id = new_ai_run_id()
+    source_metadata = source_file_log_metadata(filename)
     provider = configured_text_ai_provider(AI_PRICING_IMPORT_PROVIDER_ENV_NAME)
     parsed: dict[str, Any] | None = None
     errors: list[str] = []
@@ -3728,17 +3970,27 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
     if provider != AI_PROVIDER_OPENAI:
         provider_order.append(AI_PROVIDER_OPENAI)
     try:
-        for candidate_provider in provider_order:
+        previous_provider = ""
+        for provider_index, candidate_provider in enumerate(provider_order, start=1):
             api_key = text_ai_provider_api_key(candidate_provider)
             candidate_model = text_ai_provider_default_model(candidate_provider)
+            timeout_seconds = ai_provider_timeout_seconds(candidate_provider, "pricing_reference_import")
             if not api_key:
                 missing_error = f"Selected provider: {candidate_provider}. Missing: {text_ai_provider_key_env_name(candidate_provider)}."
                 errors.append(missing_error)
+                failure_metadata = ai_failure_metadata(
+                    missing_error,
+                    provider=candidate_provider,
+                    timeout_seconds=timeout_seconds,
+                )
                 provider_attempts.append({
                     "provider": candidate_provider,
+                    "model": candidate_model,
                     "status": "missing_api_key",
                     "duration_ms": 0,
-                    "errors": safe_error_messages([missing_error]),
+                    "attempt_index": provider_index,
+                    "attempt_count": len(provider_order),
+                    **failure_metadata,
                 })
                 log_ai_call_attempt(
                     feature="pricing_reference_import",
@@ -3746,8 +3998,13 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                     model=candidate_model,
                     status="missing_api_key",
                     duration_ms=0,
-                    details={"errors": safe_error_messages([missing_error])},
+                    ai_run_id=ai_run_id,
+                    attempt_index=provider_index,
+                    attempt_count=len(provider_order),
+                    **source_metadata,
+                    **failure_metadata,
                 )
+                previous_provider = candidate_provider
                 continue
             attempt_started_at = time.perf_counter()
             try:
@@ -3756,33 +4013,67 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                 else:
                     parsed = request_openai_pricing_catalog_import(filename, content, tax, api_key)
             except OpenAIAnalysisError as exc:
+                duration_ms = elapsed_milliseconds(attempt_started_at)
+                failure_metadata = ai_failure_metadata(
+                    exc,
+                    provider=candidate_provider,
+                    timeout_seconds=timeout_seconds,
+                )
                 errors.append(str(exc))
                 provider_attempts.append({
                     "provider": candidate_provider,
+                    "model": candidate_model,
                     "status": "failed",
-                    "duration_ms": elapsed_milliseconds(attempt_started_at),
-                    "errors": safe_error_messages([str(exc)]),
+                    "duration_ms": duration_ms,
+                    "attempt_index": provider_index,
+                    "attempt_count": len(provider_order),
+                    "fallback_to": provider_order[provider_index] if provider_index < len(provider_order) else "",
+                    **failure_metadata,
                 })
                 log_ai_call_attempt(
                     feature="pricing_reference_import",
                     provider=candidate_provider,
                     model=candidate_model,
                     status="failed",
-                    duration_ms=elapsed_milliseconds(attempt_started_at),
-                    details={"errors": safe_error_messages([str(exc)])},
+                    duration_ms=duration_ms,
+                    ai_run_id=ai_run_id,
+                    attempt_index=provider_index,
+                    attempt_count=len(provider_order),
+                    fallback_to=provider_order[provider_index] if provider_index < len(provider_order) else "",
+                    **source_metadata,
+                    **failure_metadata,
                 )
+                previous_provider = candidate_provider
                 continue
-            provider_attempts.append({
+            duration_ms = elapsed_milliseconds(attempt_started_at)
+            success_attempt = {
                 "provider": candidate_provider,
+                "model": candidate_model,
                 "status": "success",
-                "duration_ms": elapsed_milliseconds(attempt_started_at),
+                "duration_ms": duration_ms,
+                "attempt_index": provider_index,
+                "attempt_count": len(provider_order),
+            }
+            if previous_provider:
+                success_attempt["fallback_from"] = previous_provider
+            provider_attempts.append({
+                **success_attempt,
             })
+            success_metadata = {
+                "ai_run_id": ai_run_id,
+                "attempt_index": provider_index,
+                "attempt_count": len(provider_order),
+                **source_metadata,
+            }
+            if previous_provider:
+                success_metadata["fallback_from"] = previous_provider
             log_ai_call_attempt(
                 feature="pricing_reference_import",
                 provider=candidate_provider,
                 model=candidate_model,
                 status="success",
-                duration_ms=elapsed_milliseconds(attempt_started_at),
+                duration_ms=duration_ms,
+                **success_metadata,
             )
             selected_provider = candidate_provider
             if parsed is not None:
@@ -3829,7 +4120,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
             "ai_pricing_reference_import_timing",
             {
                 "source": "pricing_reference_import",
-                "filename": filename,
+                "ai_run_id": ai_run_id,
                 "selected_provider": provider,
                 "completed_provider": selected_provider,
                 "provider_attempts": provider_attempts,
@@ -3837,6 +4128,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
                 "row_count": result.get("rowCount") if isinstance(result, dict) else 0,
                 "layout": result.get("layout") if isinstance(result, dict) else "",
                 "can_save": result.get("canSave") if isinstance(result, dict) else False,
+                **source_metadata,
                 "timings_ms": {
                     "total": elapsed_milliseconds(started_at),
                     "validate_rows": validate_rows_ms,

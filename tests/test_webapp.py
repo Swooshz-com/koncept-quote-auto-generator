@@ -2585,12 +2585,21 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(ai_log["raw_item_count"], 1)
         self.assertEqual(ai_log["provider_attempts"][0]["status"], "success")
         self.assertIsInstance(ai_log["provider_attempts"][0]["duration_ms"], int)
+        self.assertRegex(ai_log["ai_run_id"], r"^ai_[a-f0-9]{16}$")
+        self.assertEqual(ai_log["source_file_extension"], "csv")
+        self.assertNotIn("filename", ai_log)
+        self.assertNotIn("messy.csv", json.dumps(ai_log))
         self.assertIsInstance(ai_log["timings_ms"]["validate_rows"], int)
         ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
         self.assertEqual(len(ai_attempt_logs), 1)
         self.assertEqual(ai_attempt_logs[0]["feature"], "pricing_reference_import")
         self.assertEqual(ai_attempt_logs[0]["provider"], webapp.AI_PROVIDER_OPENAI)
         self.assertEqual(ai_attempt_logs[0]["status"], "success")
+        self.assertEqual(ai_attempt_logs[0]["ai_run_id"], ai_log["ai_run_id"])
+        self.assertEqual(ai_attempt_logs[0]["attempt_index"], 1)
+        self.assertEqual(ai_attempt_logs[0]["attempt_count"], 1)
+        self.assertEqual(ai_attempt_logs[0]["source_file_extension"], "csv")
+        self.assertNotIn("filename", ai_attempt_logs[0])
         self.assertIsInstance(ai_attempt_logs[0]["duration_ms"], int)
 
     def test_pricing_reference_import_logs_deterministic_timing_without_ai(self):
@@ -5438,6 +5447,68 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(urlopen.call_args_list[0].kwargs["timeout"], 12)
         self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
         self.assertEqual(result["currency"], "SGD")
+
+    def test_pricing_reference_import_fallback_logs_classified_failure_and_correlation(self):
+        parsed = {
+            "currency": "SGD",
+            "items": [
+                {
+                    "section": "Floor Design",
+                    "description": "sqm needle punch carpet in colour",
+                    "unit_hint": "sqm",
+                    "internal_cost": "0",
+                    "markup_multiplier": "1",
+                    "remarks": "",
+                    "aliases": [],
+                }
+            ],
+        }
+
+        def dotenv(name):
+            values = {
+                webapp.DEEPSEEK_API_KEY_ENV_NAME: "ds-test-redacted",
+                webapp.DEEPSEEK_PRICING_IMPORT_TIMEOUT_ENV_NAME: "12",
+                webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+            }
+            return values.get(name, "")
+
+        deepseek_error = webapp.OpenAIAnalysisError(
+            "DeepSeek analysis failed due to network timeout: Secret Customer prompt leaked. Check provider status."
+        )
+        deepseek_error.__cause__ = TimeoutError("timed out with Secret Customer prompt leaked")
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
+            with mock.patch.object(webapp, "request_deepseek_pricing_catalog_import", side_effect=deepseek_error):
+                with mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed):
+                    with mock.patch.object(webapp, "write_local_log") as write_log:
+                        result = webapp.ai_pricing_reference_import_preview(
+                            "Sensitive Customer Pricing.xlsx",
+                            {"rows": [{"Item": "sqm needle punch carpet in colour"}]},
+                            {"label": "GST", "rate": 0.09},
+                        )
+
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        ai_attempt_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual([entry["provider"] for entry in ai_attempt_logs], [webapp.AI_PROVIDER_DEEPSEEK, webapp.AI_PROVIDER_OPENAI])
+        self.assertEqual([entry["status"] for entry in ai_attempt_logs], ["failed", "success"])
+        self.assertEqual(ai_attempt_logs[0]["failure_kind"], "timeout")
+        self.assertEqual(ai_attempt_logs[0]["timeout_seconds"], 12)
+        self.assertEqual(ai_attempt_logs[0]["attempt_index"], 1)
+        self.assertEqual(ai_attempt_logs[0]["attempt_count"], 2)
+        self.assertEqual(ai_attempt_logs[1]["fallback_from"], webapp.AI_PROVIDER_DEEPSEEK)
+        self.assertEqual(ai_attempt_logs[1]["attempt_index"], 2)
+        self.assertEqual(ai_attempt_logs[1]["attempt_count"], 2)
+        self.assertEqual(ai_attempt_logs[0]["ai_run_id"], ai_attempt_logs[1]["ai_run_id"])
+        self.assertNotIn("Secret Customer", json.dumps(ai_attempt_logs))
+
+        timing_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_pricing_reference_import_timing"]
+        self.assertEqual(len(timing_logs), 1)
+        self.assertEqual(timing_logs[0]["completed_provider"], webapp.AI_PROVIDER_OPENAI)
+        self.assertEqual(timing_logs[0]["provider_attempts"][0]["failure_kind"], "timeout")
+        self.assertEqual(timing_logs[0]["provider_attempts"][1]["fallback_from"], webapp.AI_PROVIDER_DEEPSEEK)
+        self.assertEqual(timing_logs[0]["source_file_extension"], "xlsx")
+        self.assertNotIn("filename", timing_logs[0])
+        self.assertNotIn("Sensitive Customer", json.dumps(timing_logs[0]))
 
     def test_deepseek_basis_chat_bad_output_falls_back_to_openai(self):
         payload = valid_payload()
@@ -10331,6 +10402,63 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertIn("lightbox graphics", catalog["items"][0]["match_terms"])
         self.assertIn("illuminated fabric graphic", catalog["items"][0]["match_terms"])
         self.assertIn("illuminated_graphics", catalog["items"][0]["object_families"])
+
+    def test_ai_pricing_metadata_enrichment_logs_rollup_with_reference_id(self):
+        items = [
+            with_required_pricing_metadata({
+                "id": "graphics-lightbox",
+                "section": "Graphics",
+                "description": "Lightbox graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 40,
+                "markup_multiplier": 1.5,
+                "match_terms": ["deterministic lightbox"],
+                "object_families": ["deterministic_family"],
+            })
+        ]
+        parsed = {
+            "items": [
+                {
+                    "id": "graphics-lightbox",
+                    "match_terms": ["lightbox graphics", "illuminated fabric graphic"],
+                    "object_families": ["illuminated_graphics"],
+                }
+            ]
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "ds-test-redacted" if name == webapp.DEEPSEEK_API_KEY_ENV_NAME else ""):
+            with mock.patch.object(webapp, "request_deepseek_pricing_catalog_metadata", return_value=parsed):
+                with mock.patch.object(webapp, "write_local_log") as write_log:
+                    enriched, errors = webapp.ai_pricing_reference_metadata_enrichment(
+                        "Sensitive Customer Pricing.xlsx",
+                        items,
+                        reference_id="async-ref",
+                    )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(enriched[0]["object_families"], ["illuminated_graphics"])
+        call_logs = [call.args[1] for call in write_log.call_args_list if call.args[0] == "ai_call_attempt"]
+        self.assertEqual(len(call_logs), 1)
+        self.assertEqual(call_logs[0]["reference_id"], "async-ref")
+        self.assertRegex(call_logs[0]["ai_run_id"], r"^ai_[a-f0-9]{16}$")
+        self.assertEqual(call_logs[0]["batch_index"], 1)
+        self.assertEqual(call_logs[0]["batch_count"], 1)
+        self.assertNotIn("Sensitive Customer", json.dumps(call_logs[0]))
+
+        rollup_logs = [
+            call.args[1]
+            for call in write_log.call_args_list
+            if call.args[0] == "ai_pricing_reference_metadata_enrichment_completed"
+        ]
+        self.assertEqual(len(rollup_logs), 1)
+        self.assertEqual(rollup_logs[0]["status"], "success")
+        self.assertEqual(rollup_logs[0]["reference_id"], "async-ref")
+        self.assertEqual(rollup_logs[0]["completed_provider"], webapp.AI_PROVIDER_DEEPSEEK)
+        self.assertEqual(rollup_logs[0]["row_count"], 1)
+        self.assertEqual(rollup_logs[0]["rows_enriched"], 1)
+        self.assertEqual(rollup_logs[0]["ai_run_id"], call_logs[0]["ai_run_id"])
+        self.assertNotIn("filename", rollup_logs[0])
+        self.assertNotIn("Sensitive Customer", json.dumps(rollup_logs[0]))
 
     def test_pricing_reference_save_endpoint_noops_unchanged_existing_repo_pack(self):
         with mock_pricing_metadata_enrichment():
