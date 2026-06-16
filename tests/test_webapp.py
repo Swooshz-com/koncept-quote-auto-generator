@@ -2748,6 +2748,85 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("painted walling", result["items"][0]["match_terms"])
         self.assertEqual(result["items"][0]["object_families"], ["wall_system"])
 
+    def test_messy_pricing_reference_import_keeps_description_cell_commercial_notes_out_of_remarks(self):
+        raw = (
+            "Item,Cost,Markup\n"
+            "\"nos. rigging point for Overhead Structure or Aluminium Box Truss\n"
+            "• Prices are not inclusive of truss\",300,1.5\n"
+        ).encode("utf-8")
+        parsed = {
+            "items": [{
+                "section": "Hanging Structure",
+                "description": "nos. rigging point for Overhead Structure or Aluminium Box Truss",
+                "unit_hint": "nos",
+                "internal_cost": 300,
+                "markup_multiplier": 1.5,
+                "remarks": ["RIGGING POINT", "Prices are not inclusive of truss"],
+                "aliases": ["RIGGING POINT", "Overhead Structure", "Aluminium Box Truss"],
+            }]
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed), \
+                mock.patch.object(webapp, "ai_pricing_reference_metadata_enrichment") as metadata_enrichment:
+            result = webapp.pricing_reference_import_preview({
+                "filename": "messy.csv",
+                "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+            })
+
+        metadata_enrichment.assert_not_called()
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["errors"], [])
+        item = result["items"][0]
+        self.assertEqual(
+            item["description"],
+            "nos. rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss",
+        )
+        self.assertEqual(item["remarks"], ["RIGGING POINT"])
+
+    def test_ai_pricing_reference_import_repairs_xlsx_column_letter_description_notes(self):
+        parsed = {
+            "items": [{
+                "section": "Hanging Structure",
+                "description": "rigging point for Overhead Structure or Aluminium Box Truss",
+                "unit_hint": "nos",
+                "internal_cost": 300,
+                "markup_multiplier": 1.5,
+                "remarks": ["RIGGING POINT", "Prices are not inclusive of truss"],
+                "aliases": ["RIGGING POINT", "Overhead Structure", "Aluminium Box Truss"],
+            }]
+        }
+
+        def dotenv(name):
+            return "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed):
+            result = webapp.ai_pricing_reference_import_preview(
+                "messy.xlsx",
+                {
+                    "headers": [],
+                    "rows": [{
+                        "row_index": 12,
+                        "non_empty_cells": {
+                            "A": "Hanging Structure",
+                            "B": "nos. RIGGING POINT for Overhead Structure or Aluminium Box Truss\n• Prices are not inclusive of truss",
+                            "C": "nos",
+                            "D": "300",
+                            "E": "1.5",
+                        },
+                    }],
+                },
+                {"label": "GST", "rate": 0.09},
+            )
+
+        item = result["items"][0]
+        self.assertEqual(
+            item["description"],
+            "rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss",
+        )
+        self.assertEqual(item["remarks"], ["RIGGING POINT"])
+
     def test_messy_pricing_reference_import_keeps_selected_currency_when_ai_invents_currency(self):
         raw = "Item,Price\nWhite painted walling per sqm,50\n".encode("utf-8")
         parsed = {
@@ -5265,6 +5344,50 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(str(line["quantity"]), "14")
         self.assertEqual(line["unit"], "nos")
 
+    def test_basis_chat_qty_shorthand_updates_quantity_column_when_ai_keeps_text(self):
+        payload = valid_payload()
+        payload["quote_basis_sections"] = [
+            {
+                "title": "Furniture Rental",
+                "lines": [
+                    {
+                        "tag": "Include",
+                        "text": "[ nos. Bistro Chairs ] - Loose seating for lounge area.",
+                        "quantity": 12,
+                        "unit": "nos",
+                        "confidence_pct": 90,
+                    }
+                ],
+            }
+        ]
+        payload["basis_chat"] = {
+            "question": "60 qty",
+            "field": "furniture-rental",
+            "line_index": 0,
+            "line": "Include: [ nos. Bistro Chairs ] - Loose seating for lounge area.",
+            "quantity": 12,
+            "unit": "nos",
+            "quantity_label": "12 nos",
+        }
+        parsed = {
+            "intent": "proposal",
+            "proposal": {
+                "message": "Update quantity.",
+                "replacement_line": {
+                    "tag": "Include",
+                    "text": "[ nos. Bistro Chairs ] - Loose seating for lounge area.",
+                    "confidence_pct": 90,
+                },
+            },
+        }
+
+        result = webapp.normalize_basis_chat_result(parsed, payload, "openai")
+
+        line = result["proposal"]["quote_basis_sections"][0]["lines"][0]
+        self.assertEqual(line["text"], "[ nos. Bistro Chairs ] - Loose seating for lounge area.")
+        self.assertEqual(str(line["quantity"]), "60")
+        self.assertEqual(line["unit"], "nos")
+
     def test_basis_chat_edit_request_rejects_plain_answer(self):
         payload = valid_payload()
         payload["quote_basis_sections"] = [
@@ -5295,6 +5418,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(webapp.basis_chat_requested_keywords(">blue, green and yellow\n\nred"), ["red"])
         self.assertEqual(webapp.basis_chat_requested_keywords("7x7"), ["7"])
         self.assertEqual(webapp.basis_chat_requested_keywords("actually 6m x 3m"), ["6m", "3m"])
+        self.assertEqual(webapp.basis_chat_requested_keywords("60 qty"), ["60"])
         self.assertEqual(webapp.basis_chat_required_intent({"basis_chat": {"question": "can this be changed to GAY graphics?", "line": "Custom: BRASIL graphics"}}), "proposal")
 
     def test_basis_chat_edit_request_allows_arrow_shorthand_replacement(self):
@@ -6244,7 +6368,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(body["model"], "gpt-basis-answer-nano-test")
         self.assertEqual(result["type"], "answer")
 
-    def test_openai_line_basis_chat_retries_with_draft_model_after_invalid_basis_line_output(self):
+    def test_openai_line_basis_chat_does_not_retry_draft_model_after_invalid_basis_line_output(self):
         payload = valid_payload()
         payload["basis_chat"] = {
             "question": "change 100mm to 150mm",
@@ -6283,15 +6407,12 @@ class WebappServerTest(unittest.TestCase):
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=dotenv):
             with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_response, good_response]) as urlopen:
-                result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+                with self.assertRaises(webapp.OpenAIAnalysisError):
+                    webapp.request_openai_basis_chat(payload, "sk-test-redacted")
 
+        self.assertEqual(urlopen.call_count, 1)
         first_body = json.loads(urlopen.call_args_list[0].args[0].data.decode("utf-8"))
-        second_body = json.loads(urlopen.call_args_list[1].args[0].data.decode("utf-8"))
         self.assertEqual(first_body["model"], "gpt-basis-line-mini-test")
-        self.assertEqual(second_body["model"], "gpt-draft-mini-test")
-        platform_section = next(section for section in result["proposal"]["quote_basis_sections"] if section["id"] == "platform")
-        next_line = platform_section["lines"][0]
-        self.assertEqual(next_line["text"], "150mm raised platform with needle punch carpet.")
 
     def test_openai_line_basis_chat_http_error_does_not_retry_draft_model(self):
         payload = valid_payload()
@@ -8829,9 +8950,18 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("Saved, but matching clue enrichment did not complete.", save_reference_body)
         self.assertIn("state.pricingReferenceId = savedReference.id || \"\";", save_reference_body)
         self.assertIn("updatePricingReferenceDeleteButton();", save_reference_body)
+        render_preview_body = js.split("function renderPricingReferencePreview", 1)[1].split("function pricingReferenceModalTax", 1)[0]
+        self.assertIn("const requiredDetailsBlocked = pricingReferenceSaveBlockReasonIsRequiredDetails(saveBlockReason);", render_preview_body)
+        self.assertIn("const hardSaveBlockReason = Boolean(saveBlockReason) && !requiredDetailsBlocked && !informationalBlockReason;", render_preview_body)
+        self.assertIn('const tone = hasFixes ? "error" : hasReviewNotes || warnings.length ? "warn" : "ok";', render_preview_body)
         self.assertLess(
             save_reference_body.index("renderPricingReferenceDeleteOptions();"),
             save_reference_body.index("updatePricingReferenceDeleteButton();"),
+        )
+        save_success_body = save_reference_body.split("didSave = true;", 1)[1].split("} catch (error) {", 1)[0]
+        self.assertGreater(
+            save_success_body.rindex("updatePricingReferenceDeleteButton();"),
+            save_success_body.index("state.pricingReferenceSaveBusy = false;"),
         )
         self.assertLess(
             save_reference_body.index("renderPricingReferencePreview(state.pendingPricingReference);"),
@@ -8859,6 +8989,14 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("requestSelectedPricingReferenceDelete", js)
         self.assertIn("showPricingReferenceDeleteConfirm", js)
         self.assertIn("hidePricingReferenceDeleteConfirm", js)
+        mark_draft_changed_body = js.split("function markPricingReferenceDraftChanged()", 1)[1].split("function pricingReferenceNameId", 1)[0]
+        tax_label_listener = js.split('elements.pricingReferenceTaxLabel?.addEventListener("change", () => {', 1)[1].split("});", 1)[0]
+        tax_rate_listener = js.split('elements.pricingReferenceTaxRate?.addEventListener("input", () => {', 1)[1].split("});", 1)[0]
+        name_listener = js.split('elements.pricingReferenceName?.addEventListener("input", () => {', 1)[1].split("});", 1)[0]
+        self.assertIn("renderPricingReferencePreview(state.pendingPricingReference);", mark_draft_changed_body)
+        self.assertIn("markPricingReferenceDraftChanged();", tax_label_listener)
+        self.assertIn("markPricingReferenceDraftChanged();", tax_rate_listener)
+        self.assertIn("markPricingReferenceDraftChanged();", name_listener)
         self.assertNotIn("window.prompt", js)
         self.assertNotIn("window.alert", js)
         delete_reference_body = js.split("async function deleteRepoPricingReference", 1)[1].split("async function deleteSelectedPricingReference", 1)[0]
@@ -9853,6 +9991,8 @@ const state = {
 };
 const elements = {
   pricingReferenceName: { value: "" },
+  pricingReferenceTaxLabel: { value: "GST" },
+  pricingReferenceTaxRate: { value: "9" },
   pricingReferenceCurrency: { value: "SGD" },
   pricingReferenceCurrencyCustom: { value: "", hidden: true, required: false },
 };
@@ -9866,6 +10006,7 @@ function pricingReferenceImportNameConflictMessage() { return ""; }
 function customCurrencyInputIsValid() { return /^[A-Z]{3}$/.test(String(elements.pricingReferenceCurrencyCustom.value || "").trim().toUpperCase()); }
 
 eval([
+  "pricingReferenceSaveBlockReasonIsRequiredDetails",
   "pricingReferenceSaveBlockReason",
   "pricingReferenceSaveGuidance",
 ].map(extractFunction).join("\n"));
@@ -9876,10 +10017,123 @@ assert.ok(pricingReferenceSaveGuidance(state.pendingPricingReference).includes("
 elements.pricingReferenceName.value = "Valid Reference";
 assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "");
 
+elements.pricingReferenceTaxLabel.value = "";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Select a tax label before saving.");
+
+elements.pricingReferenceTaxLabel.value = "GST";
+elements.pricingReferenceTaxRate.value = "";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Enter a tax rate between 0 and 100 before saving.");
+
+elements.pricingReferenceTaxRate.value = "101";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Enter a tax rate between 0 and 100 before saving.");
+
+elements.pricingReferenceTaxRate.value = "9";
+elements.pricingReferenceCurrency.value = "";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Choose a currency before saving.");
+
+elements.pricingReferenceCurrency.value = "SGD";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "");
+
 elements.pricingReferenceCurrency.value = CUSTOM_CURRENCY_VALUE;
 elements.pricingReferenceCurrencyCustom.value = "S";
 assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "Enter a 3-letter currency code before saving.");
 assert.ok(pricingReferenceSaveGuidance(state.pendingPricingReference).includes("Enter a 3-letter currency code before saving."));
+
+elements.pricingReferenceCurrencyCustom.value = "JPY";
+assert.strictEqual(pricingReferenceSaveBlockReason(state.pendingPricingReference), "");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_save_guidance_blocks_on_required_metadata(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const CUSTOM_CURRENCY_VALUE = "__CUSTOM__";
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
+const classes = new Set(["is-ok"]);
+const guidance = {
+  textContent: "",
+  classList: {
+    toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
+    contains(name) { return classes.has(name); },
+  },
+};
+const state = {
+  pricingReferenceImportBusy: false,
+  pricingReferenceSaveBusy: false,
+  pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_IMPORT,
+  editingPricingReferenceId: "",
+  pricingReferenceSavedNotice: "",
+  pricingReferences: [],
+  pendingPricingReference: { items: [{ warning: "OK" }], errors: [], canSave: true },
+};
+const elements = {
+  pricingReferenceTableSummary: { textContent: "" },
+  pricingReferencePreview: { querySelector(selector) { return selector === ".pricing-reference-save-guidance" ? guidance : null; } },
+  pricingReferenceName: { value: "Valid Reference" },
+  pricingReferenceTaxLabel: { value: "GST" },
+  pricingReferenceTaxRate: { value: "9" },
+  pricingReferenceCurrency: { value: CUSTOM_CURRENCY_VALUE },
+  pricingReferenceCurrencyCustom: { value: "S", hidden: false, required: true },
+};
+function normalizePricingReferenceSettingsMode(value = "") {
+  return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    ? PRICING_REFERENCE_SETTINGS_MODE_IMPORT
+    : PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
+}
+function pricingReferenceHasPendingChanges() { return true; }
+function pricingReferenceImportNameConflictMessage() { return ""; }
+function customCurrencyInputIsValid() { return /^[A-Z]{3}$/.test(String(elements.pricingReferenceCurrencyCustom.value || "").trim().toUpperCase()); }
+
+eval([
+  "sentenceLineBreakText",
+  "pricingReferenceSaveBlockReasonIsRequiredDetails",
+  "pricingReferenceSaveBlockReason",
+  "pricingReferenceSaveGuidance",
+  "pricingReferenceTableSummaryText",
+  "updatePricingReferenceGuidanceDisplays",
+].map(extractFunction).join("\n"));
+
+updatePricingReferenceGuidanceDisplays(state.pendingPricingReference);
+assert.ok(guidance.textContent.includes("Enter a 3-letter currency code before saving."));
+assert.strictEqual(guidance.classList.contains("is-blocked"), true);
+assert.strictEqual(guidance.classList.contains("is-ok"), false);
+
+elements.pricingReferenceCurrencyCustom.value = "JPY";
+updatePricingReferenceGuidanceDisplays(state.pendingPricingReference);
+assert.strictEqual(guidance.classList.contains("is-blocked"), false);
+assert.strictEqual(guidance.classList.contains("is-ok"), true);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -10263,10 +10517,13 @@ const CURRENCY_OPTIONS = [
   ["SGD", "Singapore Dollar"],
   ["USD", "US Dollar"],
 ];
+let saveBlockReason = "";
+function pricingReferenceSaveBlockReason() { return saveBlockReason; }
 
 eval([
   "isStandardCurrencyCode",
   "isValidCurrencyCode",
+  "pricingReferenceSaveBlockReasonIsRequiredDetails",
   "humanizeImportLayoutLabel",
   "pricingReferenceRowIssues",
   "compactPreviewList",
@@ -10307,6 +10564,29 @@ const invalidCurrencyAttention = pricingReferencePreviewAttention({ items: [{ wa
   currencyNeedsReview: !isValidCurrencyCode("GA"),
 });
 assert.ok(invalidCurrencyAttention.some((item) => item.label === "Currency review"));
+
+saveBlockReason = "Enter a 3-letter currency code before saving.";
+const blockedCurrencyAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0, canSave: true }, {
+  currency: "Custom",
+  currencyNeedsReview: true,
+});
+assert.ok(blockedCurrencyAttention.some((item) => item.tone === "warn" && item.label === "Required details" && item.text.includes("3-letter currency")));
+assert.ok(!blockedCurrencyAttention.some((item) => item.label === "Currency review"));
+
+saveBlockReason = "Enter a pricing reference name before saving.";
+const blockedNameAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0, canSave: true }, {
+  currency: "SGD",
+  currencyNeedsReview: false,
+});
+assert.ok(blockedNameAttention.some((item) => item.tone === "warn" && item.label === "Required details" && item.text.includes("pricing reference name")));
+
+saveBlockReason = "Enter a tax rate between 0 and 100 before saving.";
+const blockedTaxAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0, canSave: true }, {
+  currency: "SGD",
+  currencyNeedsReview: false,
+});
+assert.ok(blockedTaxAttention.some((item) => item.tone === "warn" && item.label === "Required details" && item.text.includes("tax rate")));
+saveBlockReason = "";
 
 const blockedRowsAttention = pricingReferencePreviewAttention({ items: [{ warning: "OK" }], missing: [], errors: [], warnings: [], skipped: 0, canSave: false }, {
   currency: "SGD",
@@ -10392,10 +10672,15 @@ const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const elements = {
   pricingReferenceSaveButton: saveButton,
   pricingReferenceModal: { classList },
-  pricingReferenceCloseButton: { setAttribute() {} },
-  pricingReferenceCancelButton: { setAttribute() {} },
-  pricingReferenceFile: {},
-  pricingReferenceTemplateButton: { setAttribute() {} },
+  pricingReferenceCloseButton: { dataset: {}, setAttribute() {} },
+  pricingReferenceCancelButton: { dataset: {}, setAttribute() {} },
+  pricingReferenceFile: { dataset: {}, setAttribute() {} },
+  pricingReferenceTemplateButton: { dataset: {}, setAttribute() {} },
+  pricingReferenceName: { value: "Selected Pricing", dataset: {}, setAttribute() {} },
+  pricingReferenceTaxLabel: { value: "GST", dataset: {}, setAttribute() {} },
+  pricingReferenceTaxRate: { value: "9", dataset: {}, setAttribute() {} },
+  pricingReferenceCurrency: { value: "SGD", dataset: {}, setAttribute() {} },
+  pricingReferenceCurrencyCustom: { value: "", hidden: true, required: false, dataset: {}, setAttribute() {} },
 };
 function normalizePricingReferenceSettingsMode(value = "") {
   return String(value || "").trim().toLowerCase() === PRICING_REFERENCE_SETTINGS_MODE_IMPORT
@@ -10406,6 +10691,7 @@ function syncPricingReferenceSettingsMode() {}
 function pricingReferenceOperationBusy() { return Boolean(state.pricingReferenceImportBusy || state.pricingReferenceSaveBusy); }
 function pricingReferenceHasPendingChanges() { return true; }
 function pricingReferenceImportNameConflictMessage() { return ""; }
+function customCurrencyInputIsValid() { return /^[A-Z]{3}$/.test(String(elements.pricingReferenceCurrencyCustom.value || "").trim().toUpperCase()); }
 
 eval([
   "safeId",
@@ -11421,6 +11707,8 @@ eval([
   "unbracketedCatalogReferenceText",
   "simpleBasisEditFragment",
   "replaceReferenceDimensionToken",
+  "basisChatRequestedQuantityValue",
+  "basisLineTextHasLiteralQuantityWord",
   "markBasisLineAsManualPricing",
   "buildSelectedLineFragmentReplacementProposal",
 ].map(extractFunction).join("\n"));
@@ -11449,6 +11737,108 @@ assert.strictEqual(literalLine.text, "Professional Engineer Endorsement for stru
 assert.strictEqual(literalLine.custom_pricing, true);
 assert.strictEqual(literalLine.custom_confirmed, true);
 assert.strictEqual(literalLine.pricing_keyword, undefined);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_line_revise_qty_shorthand_updates_quantity_without_ai(self):
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  quoteBasisSections: [{
+    id: "furniture-rental",
+    title: "Furniture Rental",
+    lines: [{
+      tag: "Include",
+      text: "[ nos. Bistro Chairs ] - Loose seating for lounge area.",
+      quantity: 12,
+      unit: "nos",
+      confidence: 90,
+    }],
+  }],
+  lineItems: [],
+  basisChat: {
+    scope: "line",
+    sectionId: "furniture-rental",
+    lineIndex: 0,
+  },
+};
+function normalizeUnit(value = "") { return String(value || "").trim(); }
+function basisDisplayTitle(value = "") { return String(value || "").trim(); }
+function normalizeCategoryTitle(value = "") { return basisDisplayTitle(value) || "General"; }
+function exactPricingReferenceSectionTitle() { return ""; }
+function sectionTitleKey(value = "") { return String(value || "").toLowerCase().trim(); }
+function referenceSectionTitleAliases(value = "") { return [String(value || "").trim()].filter(Boolean); }
+
+eval([
+  "safeId",
+  "normalizeQuoteBasisTitle",
+  "cleanCustomerQuoteLineText",
+  "bracketedCatalogReferenceParts",
+  "leadingNumber",
+  "formatQuantityNumber",
+  "normalizeQuantityPrefixUnit",
+  "leadingQuantityPrefix",
+  "quantityUnitAliases",
+  "startsWithQuantityUnit",
+  "stripLeadingQuantityCountFromLineText",
+  "normalizedLineTextQuantityParts",
+  "normalizeBasisTag",
+  "isCustomPricingBasisLine",
+  "normalizeConfidence",
+  "normalizePossiblePricingMatches",
+  "numberOrNull",
+  "orderNumber",
+  "splitBasisDecisionText",
+  "normalizeBasisLines",
+  "normalizeQuoteBasisSections",
+  "quoteBasisFromSections",
+  "cloneQuoteBasisSections",
+  "unbracketedCatalogReferenceText",
+  "markBasisLineAsManualPricing",
+  "replaceLiteralText",
+  "simpleBasisEditFragment",
+  "replaceReferenceDimensionToken",
+  "basisChatRequestedQuantityValue",
+  "basisLineTextHasLiteralQuantityWord",
+  "buildSelectedLineFragmentReplacementProposal",
+].map(extractFunction).join("\n"));
+
+const proposal = buildSelectedLineFragmentReplacementProposal("60 qty");
+assert.ok(proposal);
+const line = proposal.quoteBasisSections[0].lines[0];
+assert.strictEqual(line.text, "[ nos. Bistro Chairs ] - Loose seating for lounge area.");
+assert.strictEqual(line.quantity, 60);
+assert.strictEqual(line.unit, "nos");
 """
         completed = subprocess.run(
             [node, "-e", script],

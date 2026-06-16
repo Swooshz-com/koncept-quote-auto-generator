@@ -147,12 +147,11 @@ class AIBasisChatStressTest(unittest.TestCase):
 
                 bodies = [json.loads(call.args[0].data.decode("utf-8")) for call in urlopen.call_args_list]
                 self.assertEqual(bodies[0]["model"], "gpt-basis-line-mini-test")
-                if len(bodies) > 1:
-                    self.assertEqual(bodies[1]["model"], "gpt-draft-pro-test")
+                self.assertNotIn("gpt-draft-pro-test", [body["model"] for body in bodies])
                 if result:
                     self.assertEqual(result["status"], "answered")
 
-    def test_re_bad_basis_line_output_retries_once_on_draft_model(self):
+    def test_re_bad_basis_line_output_does_not_retry_draft_model(self):
         payload = stress_payload()
         payload["basis_chat"] = {
             "question": "change 100mm to 150mm",
@@ -166,11 +165,11 @@ class AIBasisChatStressTest(unittest.TestCase):
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=self.openai_models):
             with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_response, openai_response(payload)]) as urlopen:
-                result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+                with self.assertRaises(webapp.OpenAIAnalysisError):
+                    webapp.request_openai_basis_chat(payload, "sk-test-redacted")
 
         models = [json.loads(call.args[0].data.decode("utf-8"))["model"] for call in urlopen.call_args_list]
-        self.assertEqual(models, ["gpt-basis-line-mini-test", "gpt-draft-pro-test"])
-        self.assertEqual(result["type"], "proposal")
+        self.assertEqual(models, ["gpt-basis-line-mini-test"])
 
     def test_ask_for_changes_chaos_prompts_use_answer_model(self):
         for prompt in ASK_FOR_CHANGES_CHAOS_PROMPTS:

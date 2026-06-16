@@ -4087,6 +4087,108 @@ def pricing_reference_rows_for_ai(headers: list[str], rows: list[dict[str, Any]]
     return bounded
 
 
+def pricing_reference_ai_source_rows(content: Any) -> list[dict[str, Any]]:
+    if not isinstance(content, dict):
+        return []
+    rows = content.get("rows")
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def pricing_reference_ai_source_cells(row: dict[str, Any]) -> dict[str, str]:
+    cells = row.get("non_empty_cells") if isinstance(row.get("non_empty_cells"), dict) else row
+    return {
+        clean_text(key): clean_text(value)
+        for key, value in cells.items()
+        if clean_text(key) and clean_text(value)
+    }
+
+
+def pricing_reference_ai_cell_key_kind(key: Any) -> str:
+    raw_key = clean_text(key).upper()
+    if raw_key in {"A", "B", "C"}:
+        return "description"
+    if raw_key in {"G", "L", "M", "N", "O"}:
+        return "remarks"
+    normalized = re.sub(r"[^a-z0-9]+", "_", clean_text(key).lower()).strip("_")
+    if not normalized:
+        return ""
+    if normalized in {"remarks", "remark", "notes", "note", "warning", "status"}:
+        return "remarks"
+    if any(part in normalized.split("_") for part in ("remarks", "remark", "notes", "note", "warning", "status")):
+        return "remarks"
+    if normalized in {"description", "item", "item_description", "scope", "particulars", "details", "product", "service"}:
+        return "description"
+    if any(part in normalized.split("_") for part in ("description", "item", "scope", "particulars", "details", "product", "service")):
+        return "description"
+    return ""
+
+
+def pricing_reference_source_contains(values: list[str], fragment: Any) -> bool:
+    needle = re.sub(r"[^a-z0-9]+", " ", clean_text(fragment).lower()).strip()
+    if not needle:
+        return False
+    return any(needle in re.sub(r"[^a-z0-9]+", " ", value.lower()).strip() for value in values)
+
+
+def pricing_reference_description_cell_note(value: Any) -> str:
+    text = clean_text(value).lstrip("•*- ").strip()
+    if not text:
+        return ""
+    if re.search(r"\bprices?\b.*\bnot\s+inclusive\b", text, flags=re.IGNORECASE):
+        return text
+    if re.search(r"\bnot\s+inclusive\s+of\b", text, flags=re.IGNORECASE):
+        return text
+    if re.search(r"\b(?:price|prices?)\b.*\b(?:exclude|excluding|excluded)\b", text, flags=re.IGNORECASE):
+        return text
+    return ""
+
+
+def repair_ai_pricing_import_source_placement(raw_items: list[Any], content: Any) -> list[Any]:
+    source_rows = pricing_reference_ai_source_rows(content)
+    if not source_rows:
+        return raw_items
+    repaired: list[Any] = []
+    for index, raw_item in enumerate(raw_items):
+        if not isinstance(raw_item, dict):
+            repaired.append(raw_item)
+            continue
+        item = dict(raw_item)
+        source_index = parse_basis_chat_line_index(
+            item.get("source_row_index") or item.get("row_index") or item.get("source_index")
+        )
+        source_row = source_rows[source_index - 1] if 1 <= source_index <= len(source_rows) else (
+            source_rows[index] if index < len(source_rows) else {}
+        )
+        source_description_values: list[str] = []
+        source_remark_values: list[str] = []
+        for key, value in pricing_reference_ai_source_cells(source_row).items():
+            kind = pricing_reference_ai_cell_key_kind(key)
+            if kind == "description":
+                source_description_values.append(value)
+            elif kind == "remarks":
+                source_remark_values.append(value)
+        if not source_description_values:
+            repaired.append(item)
+            continue
+        kept_remarks: list[str] = []
+        moved_notes: list[str] = []
+        for remark in split_pricing_reference_terms(item.get("remarks") or item.get("remark")):
+            note = pricing_reference_description_cell_note(remark)
+            if (
+                note
+                and pricing_reference_source_contains(source_description_values, note)
+                and not pricing_reference_source_contains(source_remark_values, note)
+            ):
+                moved_notes.append(note)
+            else:
+                kept_remarks.append(remark)
+        if moved_notes:
+            item["description"] = "; ".join(unique_clean_list([item.get("description"), *moved_notes]))
+            item["remarks"] = kept_remarks
+        repaired.append(item)
+    return repaired
+
+
 def sorted_pricing_reference_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(items, key=pricing_reference_sort_order)
 
@@ -4820,6 +4922,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
             }
             return result
         raw_items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
+        raw_items = repair_ai_pricing_import_source_placement(raw_items, content)
         raw_item_count = len(raw_items)
         validate_started_at = time.perf_counter()
         result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
@@ -5764,11 +5867,10 @@ def openai_basis_chat_models(payload: dict[str, Any]) -> list[str]:
         return unique_model_sequence(
             configured_openai_basis_answer_model(),
             configured_openai_basis_line_model(),
-            configured_openai_draft_model(),
         )
     if basis_chat_has_selected_line(payload):
-        return unique_model_sequence(configured_openai_basis_line_model(), configured_openai_draft_model())
-    return unique_model_sequence(configured_openai_basis_answer_model(), configured_openai_basis_line_model(), configured_openai_draft_model())
+        return unique_model_sequence(configured_openai_basis_line_model())
+    return unique_model_sequence(configured_openai_basis_answer_model(), configured_openai_basis_line_model())
 
 
 def deepseek_basis_chat_models(payload: dict[str, Any]) -> list[str]:
@@ -7594,13 +7696,20 @@ BASIS_CHAT_EDIT_STOPWORDS = {
     "for",
     "from",
     "height",
+    "count",
+    "counts",
     "include",
     "into",
     "it",
     "line",
     "make",
+    "many",
+    "number",
+    "numbers",
     "of",
     "please",
+    "qty",
+    "quantity",
     "remove",
     "replace",
     "revise",
@@ -7662,6 +7771,34 @@ def basis_chat_quantity_change_requested(question: str) -> bool:
     return False
 
 
+def basis_chat_requested_quantity_value(question: str) -> int | float | None:
+    lowered = clean_text(question).lower().replace(",", "")
+    patterns = [
+        r"\b(?:qty|quantity|count)\s*(?:to|=|:|is|as)?\s*(\d+(?:\.\d+)?)\b",
+        r"\b(\d+(?:\.\d+)?)\s*(?:qty|quantity|count)\b",
+        r"\bfrom\s+\d+(?:\.\d+)?\s+to\s+(\d+(?:\.\d+)?)\b",
+        r"\b(?:make|set|change|update|revise)\s+(?:it|this|that|qty|quantity|count)?\s*(?:to\s+)?(\d+(?:\.\d+)?)\s*(?:nos?\.?|pcs?|pieces?|units?|lots?|sets?|each|ea|sqm)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if not match:
+            continue
+        try:
+            quantity = float(match.group(1))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(quantity) and quantity > 0:
+            return format_quantity_number(quantity)
+    return None
+
+
+def basis_line_text_has_literal_quantity_word(line: dict[str, Any]) -> bool:
+    bracketed = bracketed_catalog_reference_parts(line.get("text"))
+    if not bracketed:
+        return False
+    return bool(re.search(r"\b(qty|quantity)\b", clean_text(bracketed[0]).lower()))
+
+
 def preserve_basis_chat_quantity(
     basis_chat: dict[str, Any],
     current_line: dict[str, Any],
@@ -7669,7 +7806,10 @@ def preserve_basis_chat_quantity(
 ) -> None:
     question = clean_multiline(basis_chat.get("question") or basis_chat.get("user_feedback"))
     if basis_chat_quantity_change_requested(question):
-        if replacement.get("quantity") in (None, "") and current_line.get("quantity") not in (None, ""):
+        requested_quantity = basis_chat_requested_quantity_value(question)
+        if requested_quantity is not None and not basis_line_text_has_literal_quantity_word(current_line):
+            replacement["quantity"] = requested_quantity
+        elif replacement.get("quantity") in (None, "") and current_line.get("quantity") not in (None, ""):
             replacement["quantity"] = current_line.get("quantity")
         if not clean_text(replacement.get("unit")) and clean_text(current_line.get("unit")):
             replacement["unit"] = current_line.get("unit")
