@@ -2547,6 +2547,33 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("painted walling", result["items"][0]["match_terms"])
         self.assertEqual(result["items"][0]["object_families"], ["wall_system"])
 
+    def test_messy_pricing_reference_import_keeps_selected_currency_when_ai_invents_currency(self):
+        raw = "Item,Price\nWhite painted walling per sqm,50\n".encode("utf-8")
+        parsed = {
+            "currency": "ZZZ",
+            "items": [{
+                "section": "Structures",
+                "description": "White painted walling",
+                "unit_hint": "sqm",
+                "internal_cost": 50,
+                "markup_multiplier": 1.7,
+                "remarks": ["painted wall"],
+                "aliases": ["white wall"],
+            }]
+        }
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
+                mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed):
+            result = webapp.pricing_reference_import_preview({
+                "filename": "messy.csv",
+                "data_url": "data:text/csv;base64," + base64.b64encode(raw).decode("ascii"),
+                "currency": "USD",
+            })
+
+        self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["currency"], "USD")
+        self.assertNotEqual(result["currency"], "ZZZ")
+
     def test_pricing_reference_import_logs_timing_for_messy_ai_path(self):
         raw = "Item,Price\nWhite painted walling per sqm,50\n".encode("utf-8")
         parsed = {

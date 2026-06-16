@@ -4160,7 +4160,7 @@ def ai_pricing_reference_import_preview(filename: str, content: Any, tax: dict[s
         result = validate_pricing_reference_rows([item for item in raw_items if isinstance(item, dict)], list(PRICING_REFERENCE_TEMPLATE_COLUMNS), filename)
         validate_rows_ms = elapsed_milliseconds(validate_started_at)
         result["layout"] = "ai-normalized-pricing-reference"
-        result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True)) or normalize_currency_label(parsed.get("currency"))
+        result["currency"] = detected_currency_label(json.dumps(parsed, ensure_ascii=True))
         if not raw_items:
             result["errors"] = ["AI did not detect editable pricing rows in this upload. Check that the workbook includes item descriptions, units, costs, and markups, or add rows manually in Review Rows."]
             result["warnings"] = []
@@ -4242,7 +4242,7 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
                 except (OSError, KeyError, UnicodeDecodeError, ValueError, ET.ParseError, csv.Error, zipfile.BadZipFile) as exc:
                     route = "parse_error"
                     result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
-            result["currency"] = detected_currency or clean_text(result.get("currency")) or currency
+            result["currency"] = detected_currency or (currency if route == "ai_normalization" else clean_text(result.get("currency")) or currency)
         elif extension == "md":
             route = "markdown_ai_normalization"
             try:
@@ -4256,7 +4256,7 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
                 ai_started_at = time.perf_counter()
                 result = ai_pricing_reference_import_preview(filename, {"markdown": markdown}, tax)
                 timings_ms["ai_normalization_total"] = elapsed_milliseconds(ai_started_at)
-                result["currency"] = detected_currency_label(markdown) or clean_text(result.get("currency")) or currency
+                result["currency"] = detected_currency_label(markdown) or currency
             except ValueError as exc:
                 route = "parse_error"
                 result = pricing_reference_validation_result([], [], 0, filename) | {"errors": [safe_error_messages([str(exc)])[0]]}
