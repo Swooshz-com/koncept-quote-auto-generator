@@ -6569,7 +6569,7 @@ function sidePanelBlockReason(panelName) {
 
 function setSidePanel(panelName, options = {}) {
   const panelTitles = {
-    images: ["Images", "Reference Inputs", currentGenerator().intakeSubtitle],
+    images: ["Upload", "Reference Inputs", currentGenerator().intakeSubtitle],
     customer: ["Customer", "Customer Details", "Customer, project, booth size, and customer address for this quotation."],
     quote_company: ["Quote Company", "Quotation Defaults", "Reusable quotation-company header, payment terms, notes, and signature defaults."],
     basis: ["Quote Basis", "Confirm Draft", "Review the drafted basis and revise individual lines where needed."],
