@@ -11,16 +11,19 @@ The goal is to prove that confused, vague, hostile, malformed, or over-specific 
 This playbook covers:
 
 - `Re`: per-line basis revision.
-- `Ask For Changes`: whole-basis question and edit flow.
+- `Ask For Changes`: quote-basis question flow. Quote-scope edit proposals are not supported; use `Re` on a selected line.
 - AI response parsing for OpenAI and optional DeepSeek text routes.
 - Quote basis proposal preview, apply, discard, and retry behavior.
 - User-facing error handling when AI returns malformed or unusable JSON.
 
 ## Model Routing
 
-- Without `DEEPSEEK_API_KEY`, `Re` selected-line edits use `OPENAI_BASIS_LINE_MODEL`, answer-style `Ask For Changes` uses `OPENAI_BASIS_ANSWER_MODEL`, and whole-basis proposals use `OPENAI_DRAFT_MODEL`.
-- With `DEEPSEEK_API_KEY`, text-only basis chat uses `DEEPSEEK_MODEL`, defaulting to `deepseek-v4-pro`.
-- If a DeepSeek route fails or returns malformed/unusable JSON, retry through OpenAI when `OPENAI_API_KEY` is configured.
+- Without `DEEPSEEK_API_KEY`, `Re` selected-line edits use `OPENAI_BASIS_LINE_MODEL`, and answer-style `Ask For Changes` uses `OPENAI_BASIS_ANSWER_MODEL`.
+- OpenAI basis chat does not fall back to `OPENAI_DRAFT_MODEL`; that model remains reserved for full quote-basis drafting.
+- With `DEEPSEEK_API_KEY`, text-only basis chat uses route-specific DeepSeek model defaults: `Re` selected-line edits use `DEEPSEEK_BASIS_LINE_MODEL` defaulting to `deepseek-v4-flash`, and answer-style `Ask For Changes` uses `DEEPSEEK_BASIS_ANSWER_MODEL` defaulting to `deepseek-v4-flash`.
+- `DEEPSEEK_MODEL` remains the legacy/global DeepSeek fallback model, defaulting to `deepseek-v4-pro`. A custom non-Pro value still acts as a global override, but `DEEPSEEK_MODEL=deepseek-v4-pro` does not suppress Flash route defaults.
+- Flash-routed DeepSeek basis chat must retry the Pro/global DeepSeek model before falling back to OpenAI.
+- If a DeepSeek route fails or returns malformed/unusable JSON, retry through the next configured model/provider when available, including OpenAI when `OPENAI_API_KEY` is configured.
 - Provider/network/auth failures should be sanitized in user-facing errors and logs. Do not leak raw provider responses or keys.
 
 This playbook does not cover:
@@ -35,9 +38,9 @@ This playbook does not cover:
 - Do not use real customer files, real customer names, or private business data in stress prompts.
 - Do not spend on live AI unless the local mocked suite passes.
 - Never accept raw JSON, Python tracebacks, provider error blobs, API keys, or internal prompt text in the browser UI.
-- Never silently mutate the quote basis. `Re` and `Ask For Changes` must show a proposal before applying an edit.
+- Never silently mutate the quote basis. `Re` must show a proposal before applying an edit.
 - Question-style prompts should answer the user, not produce an edit proposal.
-- Edit-style prompts should produce a proposal, not directly apply changes.
+- Edit-style prompts without a selected `Re` line should answer with guidance to select a line, not produce a quote-scope proposal.
 
 ## Required Local Checks
 
@@ -65,7 +68,6 @@ Run or add automated tests that patch the AI provider call and feed these respon
 ### Valid edit responses
 
 - A valid `proposal` that replaces one selected `Re` line.
-- A valid `proposal` that updates multiple whole-basis sections.
 - A valid `proposal` that keeps existing custom-priced lines unchanged.
 - A valid `proposal` with `line_items` that map back to basis lines.
 
@@ -272,11 +274,11 @@ Use the manual steps below when investigating a failure or checking live AI beha
 7. Click `Ask For Changes`.
 8. Submit three prompts:
    - one question prompt,
-   - one whole-basis edit prompt,
+   - one quote-scope edit prompt that should ask the operator to use `Re` on a selected line,
    - one malformed or hostile prompt.
 9. Confirm:
    - questions do not create proposals,
-   - edits create proposals but do not auto-apply,
+   - quote-scope edit prompts do not create proposals,
    - failed responses do not corrupt state,
    - Apply and Discard remain usable after a failure.
 10. Refresh the browser and confirm the latest safe state is still usable.

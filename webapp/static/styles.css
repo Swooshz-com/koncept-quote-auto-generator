@@ -889,9 +889,10 @@ h3 {
   box-shadow: var(--shadow-xs);
 }
 
+.workspace-pane-header-actions .sample-button,
 .workspace-pane-header-actions .panel-analyse-button,
 .workspace-pane-header-actions .panel-clear-button {
-  width: 132px;
+  width: 146px;
 }
 
 .secondary-button.panel-analyse-button:hover:not(:disabled):not([aria-disabled="true"]) {
@@ -912,6 +913,12 @@ h3 {
   border-color: #c4372f;
   background: #fff1ef;
   color: #7f231f;
+}
+
+.workspace-pane-header-actions .sample-button,
+.workspace-pane-header-actions .panel-analyse-button,
+.workspace-pane-header-actions .panel-clear-button {
+  min-height: 44px;
 }
 
 .secondary-button.danger-button {
@@ -1565,6 +1572,37 @@ select:focus {
   display: none;
 }
 
+.basis-visual-display {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d5e3ee;
+  border-radius: var(--radius-sm);
+  background: #f7fbff;
+  color: #183047;
+}
+
+.basis-visual-display strong {
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.basis-visual-display ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.basis-visual-display li {
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .basis-empty-state {
   display: grid;
   align-content: center;
@@ -2135,6 +2173,34 @@ select:focus {
 .basis-line-catalog-arrow {
   color: #60758d;
   font-weight: 750;
+}
+
+.basis-line-possible-matches {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.basis-line-possible-match {
+  align-self: flex-start;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  background: #f0f9ff;
+  color: #075985;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 4px 8px;
+}
+
+.basis-line-possible-match:hover,
+.basis-line-possible-match:focus-visible {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  outline: none;
 }
 
 .basis-line-actions {
@@ -3363,6 +3429,51 @@ td input {
   min-width: 138px;
 }
 
+.pricing-reference-delete-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #ffb4aa;
+  border-radius: var(--radius-sm);
+  background: #fff7f5;
+}
+
+.pricing-reference-delete-confirm[hidden] {
+  display: none;
+}
+
+.pricing-reference-delete-confirm strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #8f1f1a;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.pricing-reference-delete-confirm p {
+  margin: 0;
+  color: #6f3a35;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.pricing-reference-delete-error {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.pricing-reference-delete-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pricing-reference-delete-confirm-actions .secondary-button {
+  min-height: 38px;
+  min-width: 96px;
+}
+
 .pricing-reference-manage-status {
   display: flex;
   align-items: center;
@@ -3581,7 +3692,8 @@ body.privacy-page {
   line-height: 1.45;
 }
 
-.pricing-template-download {
+.pricing-template-download,
+.pricing-reference-export-button {
   min-width: 172px;
   min-height: 48px;
   padding: 0 20px;
@@ -3593,13 +3705,15 @@ body.privacy-page {
   white-space: nowrap;
 }
 
-.pricing-template-download:hover:not(:disabled):not([aria-disabled="true"]) {
+.pricing-template-download:hover:not(:disabled):not([aria-disabled="true"]),
+.pricing-reference-export-button:hover:not(:disabled):not([aria-disabled="true"]) {
   border-color: #2563eb;
   background: #dbeafe;
   color: #0b3b76;
 }
 
-.pricing-template-download:active:not(:disabled):not([aria-disabled="true"]) {
+.pricing-template-download:active:not(:disabled):not([aria-disabled="true"]),
+.pricing-reference-export-button:active:not(:disabled):not([aria-disabled="true"]) {
   box-shadow: var(--shadow-xs);
 }
 
@@ -3639,12 +3753,14 @@ body.privacy-page {
 }
 
 .pricing-reference-template-footer .pricing-template-download,
+.pricing-reference-template-footer .pricing-reference-export-button,
 .pricing-reference-action-buttons .secondary-button,
 .pricing-reference-action-buttons .primary-button {
   min-height: 48px;
 }
 
 .modal-overlay.is-busy .pricing-template-download,
+.modal-overlay.is-busy .pricing-reference-export-button,
 .modal-overlay.is-busy .file-picker-control {
   pointer-events: none;
   cursor: not-allowed;
@@ -4399,11 +4515,6 @@ body.privacy-page {
     justify-content: stretch;
   }
 
-  .workspace-pane-header-actions .sample-button,
-  .workspace-pane-header-actions .panel-analyse-button {
-    width: 100%;
-  }
-
   .pricing-reference-panel,
   .pricing-reference-controls,
   .pricing-reference-control-group,
@@ -4474,7 +4585,8 @@ body.privacy-page {
     min-width: 0;
   }
 
-  .pricing-template-download {
+  .pricing-template-download,
+  .pricing-reference-export-button {
     justify-self: stretch;
   }
 
@@ -4503,6 +4615,12 @@ body.privacy-page {
   .company-preset-panel .settings-note {
     justify-self: stretch;
     grid-column: auto;
+  }
+
+  .workspace-pane-header-actions .sample-button,
+  .workspace-pane-header-actions .panel-analyse-button,
+  .workspace-pane-header-actions .panel-clear-button {
+    width: 100%;
   }
 
   .pricing-reference-panel .settings-note {

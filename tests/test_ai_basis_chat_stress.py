@@ -100,34 +100,17 @@ def openai_response(payload: dict) -> mock.MagicMock:
         content = {"intent": "answer", "answer": "- **Meaning:** This line needs operator confirmation."}
     else:
         basis_chat = payload["basis_chat"]
-        if basis_chat.get("line"):
-            content = {
-                "intent": "proposal",
-                "proposal": {
-                    "message": "Apply this selected-line update?",
-                    "replacement_line": {
-                        "tag": "Confirm",
-                        "text": "150mm raised platform with needle punch carpet.",
-                        "confidence_pct": 90,
-                    },
+        content = {
+            "intent": "proposal",
+            "proposal": {
+                "message": "Apply this selected-line update?",
+                "replacement_line": {
+                    "tag": "Confirm",
+                    "text": "150mm raised platform with needle punch carpet.",
+                    "confidence_pct": 90,
                 },
-            }
-        else:
-            content = {
-                "intent": "proposal",
-                "proposal": {
-                    "message": "Apply this whole-basis update?",
-                    "quote_basis_sections": [
-                        {
-                            "id": "electrical",
-                            "title": "Electrical",
-                            "lines": [
-                                {"tag": "Include", "text": "Standard 13A sockets and LED lighting only.", "confidence_pct": 85},
-                            ],
-                        }
-                    ],
-                },
-            }
+            },
+        }
     response = mock.MagicMock()
     response.__enter__.return_value.read.return_value = json.dumps({"output_text": json.dumps(content)}).encode("utf-8")
     return response
@@ -164,12 +147,11 @@ class AIBasisChatStressTest(unittest.TestCase):
 
                 bodies = [json.loads(call.args[0].data.decode("utf-8")) for call in urlopen.call_args_list]
                 self.assertEqual(bodies[0]["model"], "gpt-basis-line-mini-test")
-                if len(bodies) > 1:
-                    self.assertEqual(bodies[1]["model"], "gpt-draft-pro-test")
+                self.assertNotIn("gpt-draft-pro-test", [body["model"] for body in bodies])
                 if result:
                     self.assertEqual(result["status"], "answered")
 
-    def test_re_bad_basis_line_output_retries_once_on_draft_model(self):
+    def test_re_bad_basis_line_output_does_not_retry_draft_model(self):
         payload = stress_payload()
         payload["basis_chat"] = {
             "question": "change 100mm to 150mm",
@@ -183,13 +165,13 @@ class AIBasisChatStressTest(unittest.TestCase):
 
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=self.openai_models):
             with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=[bad_response, openai_response(payload)]) as urlopen:
-                result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
+                with self.assertRaises(webapp.OpenAIAnalysisError):
+                    webapp.request_openai_basis_chat(payload, "sk-test-redacted")
 
         models = [json.loads(call.args[0].data.decode("utf-8"))["model"] for call in urlopen.call_args_list]
-        self.assertEqual(models, ["gpt-basis-line-mini-test", "gpt-draft-pro-test"])
-        self.assertEqual(result["type"], "proposal")
+        self.assertEqual(models, ["gpt-basis-line-mini-test"])
 
-    def test_ask_for_changes_chaos_prompts_use_answer_or_draft_model(self):
+    def test_ask_for_changes_chaos_prompts_use_answer_model(self):
         for prompt in ASK_FOR_CHANGES_CHAOS_PROMPTS:
             with self.subTest(prompt=prompt):
                 payload = stress_payload()
@@ -205,10 +187,8 @@ class AIBasisChatStressTest(unittest.TestCase):
                         result = webapp.request_openai_basis_chat(payload, "sk-test-redacted")
 
                 body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
-                if webapp.basis_chat_required_intent(payload) == "answer":
-                    self.assertEqual(body["model"], "gpt-basis-answer-nano-test")
-                else:
-                    self.assertEqual(body["model"], "gpt-draft-pro-test")
+                self.assertEqual(webapp.basis_chat_required_intent(payload), "answer")
+                self.assertEqual(body["model"], "gpt-basis-answer-nano-test")
                 self.assertEqual(result["status"], "answered")
 
     def test_wrong_shape_responses_fail_cleanly_without_mutating_payload(self):
@@ -221,8 +201,8 @@ class AIBasisChatStressTest(unittest.TestCase):
                     "line_index": -1,
                     "line": "",
                 },
-                {"intent": "answer", "answer": "Noted."},
-                "returned an answer for an edit command",
+                {"intent": "proposal", "proposal": {"quote_basis_sections": []}},
+                "selected quote-basis line",
             ),
             (
                 {
@@ -233,7 +213,7 @@ class AIBasisChatStressTest(unittest.TestCase):
                     "line": "",
                 },
                 {"intent": "proposal", "proposal": {"quote_basis_sections": []}},
-                "returned a proposal for a question",
+                "selected quote-basis line",
             ),
             (
                 {
@@ -244,7 +224,7 @@ class AIBasisChatStressTest(unittest.TestCase):
                     "line": "",
                 },
                 {"intent": "proposal", "proposal": {}},
-                "did not return a usable proposal",
+                "selected quote-basis line",
             ),
         ]
 
