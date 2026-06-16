@@ -927,6 +927,59 @@ def ai_log_human_summary(record: dict[str, Any]) -> str:
     return " | ".join(part for part in parts if part)
 
 
+AI_LOG_SUMMARY_MD_COLUMNS = (
+    "Time (SGT)",
+    "Run",
+    "Result",
+    "Task",
+    "Provider / Model",
+    "Status",
+    "Rows",
+    "Attempt",
+    "Stage",
+    "AI Run",
+    "User",
+)
+
+
+def ai_log_summary_markdown_cell(value: Any) -> str:
+    return ai_log_summary_field(value)
+
+
+def ai_log_summary_markdown_row(record: dict[str, Any]) -> str:
+    details = record.get("details") if isinstance(record.get("details"), dict) else {}
+    simple = record.get("simple") if isinstance(record.get("simple"), dict) else {}
+    run = ai_log_summary_field(simple.get("run")).upper() or ("TEST" if record.get("is_test") else "REAL")
+    result = "OK" if simple.get("ok") else "CHECK"
+    provider = ai_log_summary_field(simple.get("provider") or "unknown")
+    model = ai_log_summary_field(simple.get("model") or "not_logged")
+    row_count = ai_log_summary_int(simple.get("rows"))
+    values = [
+        record.get("timestamp_sgt"),
+        run,
+        result,
+        simple.get("task") or ai_log_simple_task(record.get("event", ""), details),
+        f"{provider}/{model}",
+        simple.get("status") or "logged",
+        str(row_count) if row_count is not None else "",
+        ai_log_summary_attempt_label(details),
+        details.get("operator_stage"),
+        details.get("ai_run_id"),
+        details.get("user_id"),
+    ]
+    return "| " + " | ".join(ai_log_summary_markdown_cell(value) for value in values) + " |"
+
+
+def write_ai_log_summary_markdown(path: Path, record: dict[str, Any]) -> None:
+    is_new_file = not path.exists() or path.stat().st_size == 0
+    with path.open("a", encoding="utf-8") as f:
+        if is_new_file:
+            header = "| " + " | ".join(AI_LOG_SUMMARY_MD_COLUMNS) + " |"
+            separator = "| " + " | ".join("---" for _column in AI_LOG_SUMMARY_MD_COLUMNS) + " |"
+            f.write(f"{header}\n{separator}\n")
+        f.write(f"{ai_log_summary_markdown_row(record)}\n")
+
+
 def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | None = None) -> bool:
     event = log_event_name(event_type)
     if not is_loggable_event(event):
@@ -956,9 +1009,8 @@ def write_local_log(event_type: str, details: dict[str, Any], log_root: Path | N
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=True) + "\n")
         if log_event_category(event) == "ai" and clean_text(record.get("summary")):
-            summary_path = root / f"{now:%Y-%m-%d}.summary.log"
-            with summary_path.open("a", encoding="utf-8") as f:
-                f.write(f"{record['timestamp_sgt']} | {record['summary']}\n")
+            summary_path = root / f"{now:%Y-%m-%d}.summary.md"
+            write_ai_log_summary_markdown(summary_path, record)
         return True
     except OSError as exc:
         safe_stderr(f"Could not write local webapp log: {exc}\n")
@@ -4115,7 +4167,8 @@ def build_pricing_catalog_import_prompt(source_name: str, content: Any, tax: dic
         "Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases, and warning/status when useful. "
         "Identify continuation rows and stitch them into the previous item; do not drop continuation description or remarks. "
         "Do not merge independent priced rows. Preserve short technical rows such as nos. rigging point for Overhead Structure or Aluminium Box Truss. "
-        "Commercial notes such as Prices are not inclusive of truss belong in remarks. Preserve all-caps remarks. "
+        "Preserve source placement: if a bullet or commercial note appears inside the item/description cell or column, keep it in description; "
+        "only put text in remarks when it comes from a remarks, notes, warning, or status column. Preserve all-caps remarks from remarks-like columns. "
         "Extract sensible unit prefixes including m run, m, sqm, nos, and lot. Neutralize formula-like text beginning with =, +, -, or @ by treating it as literal text. "
         "Clean obvious spelling, OCR, spacing, and unit wording errors only when the workbook itself makes the correction unambiguous through repeated terms, nearby rows, section headings, or standard unit notation. "
         "Do not paraphrase, market-polish, simplify, or rename technical catalog descriptions; preserve the supplier/customer catalog wording after any clearly justified cleanup. "

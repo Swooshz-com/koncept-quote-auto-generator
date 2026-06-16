@@ -3098,6 +3098,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Each item must include section, description, unit_hint, internal_cost, markup_multiplier, remarks, aliases", prompt)
         self.assertIn("Do not generate match_terms or object_families in this import step", prompt)
         self.assertIn("Do not invent a fixed taxonomy", prompt)
+        self.assertIn("Preserve source placement", prompt)
+        self.assertIn("if a bullet or commercial note appears inside the item/description cell or column, keep it in description", prompt)
+        self.assertIn("only put text in remarks when it comes from a remarks, notes, warning, or status column", prompt)
+        self.assertNotIn("Commercial notes such as Prices are not inclusive of truss belong in remarks", prompt)
         self.assertNotIn("Use normalized sections such as", prompt)
 
     def test_pricing_reference_validation_uses_first_seen_category_order(self):
@@ -6481,7 +6485,7 @@ class WebappServerTest(unittest.TestCase):
             )
             self.assertTrue(logged)
             log_path = next((Path(tmp) / "ai").glob("*.jsonl"))
-            summary_path = next((Path(tmp) / "ai").glob("*.summary.log"))
+            summary_path = next((Path(tmp) / "ai").glob("*.summary.md"))
             log_record = json.loads(log_path.read_text(encoding="utf-8"))
             summary_text = summary_path.read_text(encoding="utf-8").strip()
 
@@ -6491,7 +6495,8 @@ class WebappServerTest(unittest.TestCase):
             "run=ai_test123 | user=local-dev"
         )
         self.assertEqual(log_record["summary"], expected_summary)
-        self.assertTrue(summary_text.endswith(expected_summary))
+        self.assertIn("| Time (SGT) | Run | Result | Task | Provider / Model | Status | Rows | Attempt | Stage | AI Run | User |", summary_text)
+        self.assertIn("| TEST | OK | Pricing import cleanup | deepseek/deepseek-v4-pro | success | 14 | 1/2 | import_cleanup | ai_test123 | local-dev |", summary_text)
 
     def test_ai_logs_include_privacy_safe_user_tracking_context(self):
         session = {
