@@ -2359,7 +2359,7 @@ class WebappServerTest(unittest.TestCase):
     def test_non_coolify_deploy_examples_are_not_kept_as_stale_targets(self):
         self.assertFalse((ROOT / "render.yaml").exists())
         self.assertFalse((ROOT / "docs" / "examples" / "render.yaml").exists())
-        infra = (ROOT / "docs" / "otc-platform-infra.md").read_text(encoding="utf-8")
+        infra = (ROOT / "docs" / "mvp-implementation-plan.md").read_text(encoding="utf-8")
 
         self.assertIn("Hostinger VPS + Coolify", infra)
         self.assertIn("do not keep", infra)
