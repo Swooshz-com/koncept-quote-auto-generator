@@ -18,8 +18,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 10.50
 - **Remarks:** needle punch
 - **Search aliases:** sqm needle punch carpet in colour; needle punch carpet in colour; needle punch; Floor Design needle punch carpet in colour; needle punch carpet in colour sqm
-- **Match terms:** needle punch carpet; needled carpet; needle punched carpet; needle punch floor covering; floor design; needle punch carpet in colour; needle punch; needle punch carpet in colour sqm; carpet; colour; design; floor
-- **Object families:** needle_punch_carpet; carpet_flooring
+- **Match terms:** needle punch carpet; needlepunch carpet; punched carpet; needle felt carpet; carpet in colour; exhibition carpet; floor carpet; sqm carpet; floor design; needle punch carpet in colour; needle punch; needle punch carpet in colour sqm
+- **Object families:** carpet; needle_punch_carpet
 
 ### floor-design-needle-velour-carpet-in-colour
 
@@ -28,8 +28,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 28.50
 - **Remarks:** velour
 - **Search aliases:** sqm needle velour carpet in colour; needle velour carpet in colour; velour; Floor Design needle velour carpet in colour; needle velour carpet in colour sqm
-- **Match terms:** needle velour carpet; velour carpet; needle velour; velour floor covering; floor design; needle velour carpet in colour; needle velour carpet in colour sqm; carpet; colour; design; floor; needle
-- **Object families:** needle_velour_carpet; carpet_flooring
+- **Match terms:** needle velour carpet; needle velour; velour carpet; carpet in colour; velour floor covering; exhibition carpet; sqm carpet; floor design; needle velour carpet in colour; needle velour carpet in colour sqm; carpet; colour
+- **Object families:** carpet; needle_velour_carpet
 
 ### floor-design-100mm-raised-platform-with-aluminum-edging
 
@@ -38,8 +38,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 60.00
 - **Remarks:** Platform ONLY
 - **Search aliases:** sqm 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging; Platform ONLY; Floor Design 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging sqm
-- **Match terms:** 100mm raised platform; aluminum edging platform; raised floor platform; exhibition platform; platform only; floor design; 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging sqm; 100mm; aluminum; design; edging
-- **Object families:** raised_floor_platform; floor_platform_system
+- **Match terms:** raised platform; 100mm platform; aluminum edging; platform only; exhibition platform; raised floor; platform with edging; 100mm raised floor; sqm platform; floor design; 100mm raised platform with aluminum edging; 100mm raised platform with aluminum edging sqm
+- **Object families:** raised_platform
 
 ### floor-design-white-laminated-flooring-on-raised-platform
 
@@ -48,8 +48,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** white laminate
 - **Search aliases:** sqm white laminated flooring on raised platform; white laminated flooring on raised platform; white laminate; Floor Design white laminated flooring on raised platform; white laminated flooring on raised platform sqm
-- **Match terms:** white laminate flooring; white laminated floor; laminate floor finish; white laminate; laminated flooring; floor design; white laminated flooring on raised platform; white laminated flooring on raised platform sqm; design; floor; flooring; laminate
-- **Object families:** laminate_flooring; floor_finish
+- **Match terms:** white laminated flooring; white laminate; laminate flooring on platform; raised platform with laminate; white floor; sqm laminate; exhibition flooring; laminated floor on platform; floor design; white laminated flooring on raised platform; white laminated flooring on raised platform sqm; design
+- **Object families:** raised_platform; laminated_flooring
 
 ### floor-design-wood-grain-laminated-flooring-on-raised-platform
 
@@ -58,8 +58,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 75.00
 - **Remarks:** wood grain laminate
 - **Search aliases:** sqm wood grain laminated flooring on raised platform; wood grain laminated flooring on raised platform; wood grain laminate; Floor Design wood grain laminated flooring on raised platform; wood grain laminated flooring on raised platform sqm
-- **Match terms:** wood grain laminate flooring; wood laminate; wood effect laminate; timber laminate flooring; wood laminated floor finish; floor design; wood grain laminated flooring on raised platform; wood grain laminate; wood grain laminated flooring on raised platform sqm; design; floor; flooring
-- **Object families:** laminate_flooring; wood_laminate
+- **Match terms:** wood grain laminated flooring; wood grain laminate; laminate flooring on platform; timber look laminate; wood effect flooring; sqm wood grain; exhibition wood floor; floor design; wood grain laminated flooring on raised platform; wood grain laminated flooring on raised platform sqm; design; floor
+- **Object families:** raised_platform; laminated_flooring
 
 ### floor-design-2mm-pvc-flooring-on-raised-platform
 
@@ -68,8 +68,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 60.00
 - **Remarks:** PVC
 - **Search aliases:** sqm 2mm PVC flooring on raised platform; 2mm PVC flooring on raised platform; PVC; Floor Design 2mm PVC flooring on raised platform; 2mm PVC flooring on raised platform sqm
-- **Match terms:** 2mm pvc flooring; pvc floor; vinyl flooring; pvc sheet flooring; 2mm vinyl floor; floor design; 2mm pvc flooring on raised platform; 2mm pvc flooring on raised platform sqm; 2mm; design; floor; flooring
-- **Object families:** pvc_flooring; vinyl_flooring; resilient_flooring
+- **Match terms:** pvc flooring; 2mm pvc; vinyl flooring; pvc floor on platform; raised platform with pvc; plastic flooring; sqm pvc; exhibition pvc floor; floor design; 2mm pvc flooring on raised platform; 2mm pvc flooring on raised platform sqm; 2mm
+- **Object families:** raised_platform; pvc_flooring
 
 ## Booth Structure
 
@@ -80,8 +80,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 270.00
 - **Remarks:** Backwall or any partition; PAINTED
 - **Search aliases:** m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; single side partition wall at height 2.4m; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** single side partition wall; 2.4m partition; single sided wall; backwall; painted partition; painted wooden wall; 2.4m single sided partition; booth structure; single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; backwall or any partition; wooden construct in painted finished as per design proposal m length
-- **Object families:** booth_partition; single_sided_partition; painted_partition; wooden_partition
+- **Match terms:** partition wall; single side partition; backwall; 2.4m wall; painted wall; wooden partition; exhibition wall; partition 2.4m; booth structure; single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; backwall or any partition
+- **Object families:** partition_wall
 
 ### booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -90,8 +90,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 420.00
 - **Remarks:** Backwall or any partition; LAMINATED
 - **Search aliases:** m length single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 2.4m; Backwall or any partition; LAMINATED; Booth Structure single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** single side partition wall; 2.4m partition; single sided wall; backwall; laminated partition; laminated wooden wall; 2.4m single sided laminated partition; booth structure; single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; backwall or any partition; wooden construct in laminated finished as per design proposal m length
-- **Object families:** booth_partition; single_sided_partition; laminated_partition; wooden_partition
+- **Match terms:** partition wall; single side partition; backwall; 2.4m wall; laminated wall; wooden partition; exhibition wall; booth structure; single side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; backwall or any partition; wooden construct in laminated finished as per design proposal m length
+- **Object families:** partition_wall
 
 ### booth-structure-double-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal
 
@@ -100,8 +100,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 540.00
 - **Remarks:** Double sided partition; PAINTED
 - **Search aliases:** m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; double side partition wall at height 2.4m; Double sided partition; PAINTED; Booth Structure double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** double side partition wall; 2.4m double sided wall; double sided partition; painted partition; painted wooden wall; 2.4m double sided painted partition; booth structure; double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; booth; construct
-- **Object families:** booth_partition; double_sided_partition; painted_partition; wooden_partition
+- **Match terms:** partition wall; double side partition; double sided partition; 2.4m wall; painted wall; wooden partition; exhibition wall; booth structure; double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; booth
+- **Object families:** partition_wall
 
 ### booth-structure-double-side-partition-wall-at-height-2-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -110,8 +110,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 840.00
 - **Remarks:** Double sided partition; LAMINATE
 - **Search aliases:** m length double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.4m; Double sided partition; LAMINATE; Booth Structure double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** double side partition wall; 2.4m double sided wall; double sided partition; laminated partition; laminated wooden wall; 2.4m double sided laminated partition; booth structure; double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length; booth; construct
-- **Object families:** booth_partition; double_sided_partition; laminated_partition; wooden_partition
+- **Match terms:** partition wall; double side partition; double sided partition; 2.4m wall; laminated wall; wooden partition; exhibition wall; booth structure; double side partition wall at height 2.4m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length; booth
+- **Object families:** partition_wall
 
 ### booth-structure-single-side-partition-wall-at-height-4m-wooden-construct-in-painted-finished-as-per-design-proposal
 
@@ -120,8 +120,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 540.00
 - **Remarks:** Backwall or any partition; PAINTED
 - **Search aliases:** m length single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; Backwall or any partition; PAINTED; Booth Structure single side partition wall at height 4m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** single side partition wall; 4m partition; single sided wall; backwall; painted partition; painted wooden wall; 4m single sided painted partition; booth structure; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; backwall or any partition; wooden construct in painted finished as per design proposal m length
-- **Object families:** booth_partition; single_sided_partition; painted_partition; wooden_partition
+- **Match terms:** partition wall; single side partition; backwall; 4m wall; painted wall; wooden partition; exhibition wall; high partition; booth structure; single side partition wall at height 4m; wooden construct in painted finished as per design proposal; single side partition wall at height 4m; wooden construct in painted finished as per design proposal
+- **Object families:** partition_wall
 
 ### booth-structure-single-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -130,8 +130,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 720.00
 - **Remarks:** Backwall or any partition; LAMINATED
 - **Search aliases:** m length single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; single side partition wall at height 4m; Backwall or any partition; LAMINATED; Booth Structure single side partition wall at height 4m; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** single side partition wall; 4m partition; single sided wall; backwall; laminated partition; laminated wooden wall; 4m single sided laminated partition; booth structure; single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; backwall or any partition; wooden construct in laminated finished as per design proposal m length
-- **Object families:** booth_partition; single_sided_partition; laminated_partition; wooden_partition
+- **Match terms:** partition wall; single side partition; backwall; 4m wall; laminated wall; wooden partition; exhibition wall; high partition; booth structure; single side partition wall at height 4m; wooden construct in laminated finished as per design proposal; backwall or any partition
+- **Object families:** partition_wall
 
 ### booth-structure-double-side-partition-wall-at-height-4m-wooden-construct-in-painted-finished-as-per-design-proposal
 
@@ -140,8 +140,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 870.00
 - **Remarks:** Double sided partition; PAINTED
 - **Search aliases:** m length double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; Double sided partition; PAINTED; Booth Structure double side partition wall at height 4m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** double side partition wall; 4m double sided wall; double sided partition; painted partition; painted wooden wall; 4m double sided painted partition; booth structure; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; booth; construct
-- **Object families:** booth_partition; double_sided_partition; painted_partition; wooden_partition
+- **Match terms:** partition wall; double side partition; double sided partition; 4m wall; painted wall; wooden partition; exhibition wall; high partition; booth structure; double side partition wall at height 4m; wooden construct in painted finished as per design proposal; double side partition wall at height 4m; wooden construct in painted finished as per design proposal
+- **Object families:** partition_wall
 
 ### booth-structure-double-side-partition-wall-at-height-4m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -150,8 +150,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1275.00
 - **Remarks:** Double sided partition; LAMINATE
 - **Search aliases:** m length double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; double side partition wall at height 4m; Double sided partition; LAMINATE; Booth Structure double side partition wall at height 4m; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** double side partition wall; 4m double sided wall; double sided partition; laminated partition; laminated wooden wall; 4m double sided laminated partition; booth structure; double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length; booth; construct
-- **Object families:** booth_partition; double_sided_partition; laminated_partition; wooden_partition
+- **Match terms:** partition wall; double side partition; double sided partition; 4m wall; laminated wall; wooden partition; exhibition wall; high partition; booth structure; double side partition wall at height 4m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length
+- **Object families:** partition_wall
 
 ### booth-structure-top-fascia-structure-at-height-3-99m-wooden-construct-in-painted-finished-as-per-design-proposal
 
@@ -160,8 +160,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 375.00
 - **Remarks:** Top Booth Structure; PAINTED
 - **Search aliases:** m length top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; top fascia structure at height 3.99m; Top Booth Structure; PAINTED; Booth Structure top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal m length
-- **Match terms:** top fascia structure; 3.99m fascia; booth fascia; fascia structure; painted fascia; top booth structure; booth structure; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m length; 99m; booth
-- **Object families:** fascia_structure; booth_fascia; top_booth_structure
+- **Match terms:** fascia structure; top fascia; top booth structure; overhead fascia; wooden fascia; painted fascia; exhibition fascia; 3.99m fascia; fascia board; booth structure; top fascia structure at height 3.99m; wooden construct in painted finished as per design proposal
+- **Object families:** fascia_structure
 
 ### booth-structure-top-fascia-structure-at-height-3-99m-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -170,8 +170,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 675.00
 - **Remarks:** Top Booth Structure; LAMINATED
 - **Search aliases:** m length top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; top fascia structure at height 3.99m; Top Booth Structure; LAMINATED; Booth Structure top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** top fascia structure; 3.99m fascia; booth fascia; fascia structure; laminated fascia; top booth structure; booth structure; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m length; 99m; booth
-- **Object families:** fascia_structure; booth_fascia; top_booth_structure; laminated_fascia
+- **Match terms:** fascia structure; top fascia; top booth structure; overhead fascia; wooden fascia; laminated fascia; exhibition fascia; 3.99m fascia; fascia board; booth structure; top fascia structure at height 3.99m; wooden construct in laminated finished as per design proposal
+- **Object families:** fascia_structure
 
 ### booth-structure-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-painted-finished-as-per-design-proposal
 
@@ -180,8 +180,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 540.00
 - **Remarks:** Partition for meeting room; PAINTED
 - **Search aliases:** m length double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; double side partition wall at height 2.5m for meeting room; Partition for meeting room; PAINTED; Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal m length
-- **Match terms:** double side partition wall; 2.5m meeting room partition; meeting room wall; painted meeting room partition; 2.5m double sided painted partition; meeting room partition; booth structure; double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; partition for meeting room; wooden construct in painted finished as per design proposal m length; booth
-- **Object families:** meeting_room_partition; double_sided_partition; painted_partition; wooden_partition
+- **Match terms:** partition wall; double side partition; meeting room partition; 2.5m partition; painted partition; wooden partition; exhibition wall; meeting room wall; booth structure; double side partition wall at height 2.5m for meeting room; wooden construct in painted finished as per design proposal; partition for meeting room
+- **Object families:** partition_wall
 
 ### booth-structure-double-side-partition-wall-at-height-2-5m-for-meeting-room-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -190,8 +190,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 840.00
 - **Remarks:** Partition for meeting room; LAMINATE
 - **Search aliases:** m length double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; double side partition wall at height 2.5m for meeting room; Partition for meeting room; LAMINATE; Booth Structure double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal m length
-- **Match terms:** double side partition wall; 2.5m meeting room partition; meeting room wall; laminated meeting room partition; 2.5m double sided laminated partition; meeting room partition; booth structure; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; partition for meeting room; wooden construct in laminated finished as per design proposal m length; booth
-- **Object families:** meeting_room_partition; double_sided_partition; laminated_partition; wooden_partition
+- **Match terms:** partition wall; double side partition; meeting room partition; 2.5m partition; laminated partition; wooden partition; exhibition wall; meeting room wall; booth structure; double side partition wall at height 2.5m for meeting room; wooden construct in laminated finished as per design proposal; partition for meeting room
+- **Object families:** partition_wall
 
 ### booth-structure-wooden-construct-low-partition-ready-in-painted-finished
 
@@ -200,8 +200,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 270.00
 - **Remarks:** Low dividing Partition; PAINTED
 - **Search aliases:** nos. wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished; Low dividing Partition; PAINTED; Booth Structure wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished nos
-- **Match terms:** low partition; low dividing partition; painted low partition; low wooden wall; low booth partition; painted low divider; booth structure; wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished nos; booth; construct; dividing
-- **Object families:** low_partition; dividing_partition; painted_partition; wooden_partition
+- **Match terms:** low partition; low dividing partition; low wall; painted low partition; wooden low partition; exhibition low wall; booth structure; wooden construct low partition ready in painted finished; wooden construct low partition ready in painted finished nos; booth; construct; dividing
+- **Object families:** partition_wall; low_partition
 
 ### booth-structure-wooden-construct-low-partition-ready-in-laminated-finished
 
@@ -210,8 +210,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 420.00
 - **Remarks:** Low dividing Partition; LAMINATED
 - **Search aliases:** nos. wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished; Low dividing Partition; LAMINATED; Booth Structure wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished nos
-- **Match terms:** low partition; low dividing partition; laminated low partition; low wooden wall; low booth partition; laminated low divider; booth structure; wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished nos; booth; construct; dividing
-- **Object families:** low_partition; dividing_partition; laminated_partition; wooden_partition
+- **Match terms:** low partition; low dividing partition; low wall; laminated low partition; wooden low partition; exhibition low wall; booth structure; wooden construct low partition ready in laminated finished; wooden construct low partition ready in laminated finished nos; booth; construct; dividing
+- **Object families:** partition_wall; low_partition
 
 ### booth-structure-1mw-x-2-5mh-system-profile-partition-with-clear-acrylic-panel
 
@@ -220,8 +220,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 277.50
 - **Remarks:** Acrylic System Partition; Octanorm
 - **Search aliases:** m length 1mW x 2.5mH System Profile partition with clear acrylic panel; 1mW x 2.5mH System Profile partition with clear acrylic panel; Acrylic System Partition; Octanorm; Booth Structure 1mW x 2.5mH System Profile partition with clear acrylic panel; 1mW x 2.5mH System Profile partition with clear acrylic panel m length
-- **Match terms:** system profile partition; acrylic partition; clear acrylic panel; octanorm partition; booth partition; 1m wide partition; 2.5m high acrylic wall; booth structure; 1mw x 2.5mh system profile partition with clear acrylic panel; acrylic system partition; 1mw x 2.5mh system profile partition with clear acrylic panel m length; 1mw
-- **Object families:** system_partition; acrylic_partition; booth_wall; modular_wall_system
+- **Match terms:** acrylic system partition; octanorm partition; clear acrylic partition; system profile partition; acrylic panel partition; acrylic wall; booth structure; 1mw x 2.5mh system profile partition with clear acrylic panel; 1mw x 2.5mh system profile partition with clear acrylic panel m length; 1mw; 5mh; acrylic
+- **Object families:** booth_structure; partition; acrylic_partition
 
 ### booth-structure-vertical-support-pillars-in-painted-finished
 
@@ -230,8 +230,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 675.00
 - **Remarks:** Support pillar; PAINTED
 - **Search aliases:** nos. vertical support pillars in painted finished; vertical support pillars in painted finished; Support pillar; PAINTED; Booth Structure vertical support pillars in painted finished; vertical support pillars in painted finished nos
-- **Match terms:** vertical support pillar; painted pillar; support column; structural pillar; painted support post; booth structure; vertical support pillars in painted finished; support pillar; vertical support pillars in painted finished nos; booth; finished; nos
-- **Object families:** support_pillar; structural_column; booth_structure; painted_support
+- **Match terms:** support pillar; vertical pillar; painted pillar; painted support pillar; structural pillar; booth structure; vertical support pillars in painted finished; vertical support pillars in painted finished nos; booth; finished; nos; painted
+- **Object families:** booth_structure; support_pillar
 
 ### booth-structure-vertical-support-pillars-in-laminated-finished
 
@@ -240,8 +240,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1275.00
 - **Remarks:** Support pillar; LAMINATED
 - **Search aliases:** nos. vertical support pillars in laminated finished; vertical support pillars in laminated finished; Support pillar; LAMINATED; Booth Structure vertical support pillars in laminated finished; vertical support pillars in laminated finished nos
-- **Match terms:** vertical support pillar; laminated pillar; support column; structural pillar; laminated support post; booth structure; vertical support pillars in laminated finished; support pillar; vertical support pillars in laminated finished nos; booth; finished; laminated
-- **Object families:** support_pillar; structural_column; booth_structure; laminated_support
+- **Match terms:** support pillar; vertical pillar; laminated pillar; laminated support pillar; structural pillar; booth structure; vertical support pillars in laminated finished; vertical support pillars in laminated finished nos; booth; finished; laminated; nos
+- **Object families:** booth_structure; support_pillar
 
 ### booth-structure-planter-box-in-painted-finished
 
@@ -250,8 +250,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 525.00
 - **Remarks:** PLANT BOX; PAINTED
 - **Search aliases:** nos. planter box in painted finished; planter box in painted finished; PLANT BOX; PAINTED; Booth Structure planter box in painted finished; planter box in painted finished nos
-- **Match terms:** planter box; plant box; painted planter; flower box; decorative planter; booth structure; planter box in painted finished; planter box in painted finished nos; booth; box; finished; nos
-- **Object families:** planter_box; plant_container; booth_accessory; painted_planter
+- **Match terms:** planter box; plant box; painted planter; flower box; greenery planter; booth structure; planter box in painted finished; planter box in painted finished nos; booth; box; finished; nos
+- **Object families:** booth_structure; planter_box
 
 ### booth-structure-planter-box-in-laminated-finished
 
@@ -260,8 +260,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 825.00
 - **Remarks:** PLANT BOX; PAINTED
 - **Search aliases:** nos. planter box in laminated finished; planter box in laminated finished; PLANT BOX; PAINTED; Booth Structure planter box in laminated finished; planter box in laminated finished nos
-- **Match terms:** planter box; plant box; laminated planter; flower box; decorative planter; booth structure; planter box in laminated finished; planter box in laminated finished nos; booth; box; finished; laminated
-- **Object families:** planter_box; plant_container; booth_accessory; laminated_planter
+- **Match terms:** planter box; plant box; laminated planter; flower box; greenery planter; booth structure; planter box in laminated finished; planter box in laminated finished nos; booth; box; finished; laminated
+- **Object families:** booth_structure; planter_box
 
 ### booth-structure-x-2-5m-height-glass-partition
 
@@ -270,8 +270,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1230.00
 - **Remarks:** GLASS PARTITION
 - **Search aliases:** m length x 2.5m height glass partition; x 2.5m height glass partition; GLASS PARTITION; Booth Structure x 2.5m height glass partition; x 2.5m height glass partition m length
-- **Match terms:** glass partition; glass wall; glass divider; 2.5m high glass; booth structure; x 2.5m height glass partition; x 2.5m height glass partition m length; booth; glass; length; partition; structure
-- **Object families:** glass_partition; glass_wall; booth_partition; transparent_wall
+- **Match terms:** glass partition; glass wall; glass panel; 2.5m high glass partition; glass divider; booth structure; x 2.5m height glass partition; x 2.5m height glass partition m length; booth; glass; length; partition
+- **Object families:** booth_structure; partition; glass_partition
 
 ## COUNTERS AND CABINETS
 
@@ -282,8 +282,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1200.00
 - **Remarks:** INFORMATION COUNTER; PAINTED
 - **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; INFORMATION COUNTER; PAINTED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter
-- **Match terms:** information counter; lockable information counter; 1m information counter; wooden information counter; painted information counter; info counter with laminated top; counters and cabinets; 1m length x 1m height x 0.5m width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m width lockable information counter; cabinet; construct
-- **Object families:** information_counter; lockable_counter; wooden_counter; booth_furniture
+- **Match terms:** information counter; info counter; lockable counter; wooden counter; painted counter; reception counter; enquiry counter; 1m information counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable information counter; wooden construct in painted finished and laminated top as per design proposal; x 1m height x 0.5m width lockable information counter
+- **Object families:** counters_and_cabinets; information_counter
 
 ### counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-information-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -292,8 +292,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1800.00
 - **Remarks:** INFORMATION COUNTER; FULL LAMINATED
 - **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable information counter; wooden construct in laminated finished as per design proposal; m length x 1m height x 0.5m Width lockable information counter; x 1m height x 0.5m Width lockable information counter; INFORMATION COUNTER; FULL LAMINATED; COUNTERS AND CABINETS x 1m height x 0.5m Width lockable information counter
-- **Match terms:** information counter; lockable information counter; 1m information counter; wooden information counter; laminated information counter; full laminated info counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable information counter; wooden construct in laminated finished as per design proposal; full laminated; x 1m height x 0.5m width lockable information counter; cabinet
-- **Object families:** information_counter; lockable_counter; wooden_counter; booth_furniture
+- **Match terms:** information counter; info counter; lockable counter; wooden counter; laminated counter; reception counter; enquiry counter; 1m information counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable information counter; wooden construct in laminated finished as per design proposal; full laminated
+- **Object families:** counters_and_cabinets; information_counter
 
 ### counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
@@ -302,8 +302,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1200.00
 - **Remarks:** COUNTER; PAINTED
 - **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; COUNTER; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; wooden construct in painted finished and laminated top as per design proposal nos
-- **Match terms:** lockable counter; wooden counter; painted counter; 1m counter; counter with laminated top; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter; wooden construct in painted finished and laminated top as per design proposal; wooden construct in painted finished and laminated top as per design proposal nos; cabinet; construct; counter
-- **Object families:** counter; lockable_counter; wooden_counter; booth_furniture
+- **Match terms:** lockable counter; wooden counter; painted counter; 1m counter; exhibition counter; counter cabinet; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter; wooden construct in painted finished and laminated top as per design proposal; wooden construct in painted finished and laminated top as per design proposal nos; cabinet; construct
+- **Object families:** counters_and_cabinets; counter; lockable_counter
 
 ### counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -312,8 +312,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1800.00
 - **Remarks:** COUNTER; FULL LAMINATED
 - **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal nos
-- **Match terms:** lockable counter; wooden counter; laminated counter; 1m counter; full laminated counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter; wooden construct in laminated finished as per design proposal; full laminated; wooden construct in laminated finished as per design proposal nos; cabinet; construct
-- **Object families:** counter; lockable_counter; wooden_counter; booth_furniture
+- **Match terms:** lockable counter; wooden counter; laminated counter; 1m counter; exhibition counter; counter cabinet; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter; wooden construct in laminated finished as per design proposal; full laminated; wooden construct in laminated finished as per design proposal nos; cabinet
+- **Object families:** counters_and_cabinets; counter; lockable_counter
 
 ### counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal
 
@@ -322,8 +322,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1800.00
 - **Remarks:** COUNTER WITH GLASS TOP; PAINTED
 - **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTER WITH GLASS TOP; PAINTED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal nos
-- **Match terms:** lockable counter with glass top; glass display counter; painted counter glass top; glass top counter; display counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; counter with glass top; wooden construct in painted finished and laminated top as per design proposal nos; cabinet; construct
-- **Object families:** counter_with_glass_top; glass_display_counter; lockable_counter; booth_furniture
+- **Match terms:** counter with glass top; glass top counter; glass display counter; lockable display counter; painted display counter; showcase counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal; wooden construct in painted finished and laminated top as per design proposal nos; cabinet; construct
+- **Object families:** counters_and_cabinets; display_counter; glass_top_counter
 
 ### counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-with-glass-display-top-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -332,8 +332,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 2100.00
 - **Remarks:** COUNTER; FULL LAMINATED
 - **Search aliases:** nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; 1m length x 1m height x 0.5m Width lockable counter with glass display top; COUNTER; FULL LAMINATED; COUNTERS AND CABINETS 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in laminated finished as per design proposal nos
-- **Match terms:** lockable counter with glass top; glass display counter; laminated counter glass top; glass top counter; display counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; full laminated; wooden construct in laminated finished as per design proposal nos; cabinet; construct
-- **Object families:** counter_with_glass_top; glass_display_counter; lockable_counter; booth_furniture
+- **Match terms:** counter with glass top; glass top counter; glass display counter; lockable display counter; laminated display counter; showcase counter; counters and cabinets; 1m length x 1m height x 0.5m width lockable counter with glass display top; wooden construct in laminated finished as per design proposal; full laminated; wooden construct in laminated finished as per design proposal nos; cabinet
+- **Object families:** counters_and_cabinets; display_counter; glass_top_counter
 
 ### counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m
 
@@ -342,8 +342,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1200.00
 - **Remarks:** PE
 - **Search aliases:** Professional Engineer Endorsement for structure above 4m; PE; COUNTERS AND CABINETS Professional Engineer Endorsement for structure above 4m
-- **Match terms:** professional engineer endorsement; pe endorsement; structural endorsement; engineer certification for structure; structure above 4m; counters and cabinets; professional engineer endorsement for structure above 4m; above; cabinet; counter; endorsement; engineer
-- **Object families:** professional_engineer_endorsement; structural_certification; engineering_service
+- **Match terms:** pe endorsement; professional engineer endorsement; structural pe endorsement; structure above 4m pe endorsement; counters and cabinets; professional engineer endorsement for structure above 4m; above; cabinet; counter; endorsement; engineer; lot
+- **Object families:** professional_service; engineering_endorsement
 
 ## Hanging Structure
 
@@ -354,8 +354,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 135.00
 - **Remarks:** TRUSS
 - **Search aliases:** m rental of 300mm x 300mm Aluminium Box Truss; TRUSS; Hanging Structure m rental of 300mm x 300mm Aluminium Box Truss
-- **Match terms:** aluminium box truss; 300mm truss; box truss rental; aluminum truss; rental truss; 300x300 truss; hanging structure; 300mm x 300mm aluminium box truss; 300mm; aluminium; box; hanging
-- **Object families:** aluminium_truss; box_truss; truss_rental; hanging_structure
+- **Match terms:** aluminium box truss; 300mm truss; box truss; aluminum truss; 300x300 truss; truss rental; hanging structure; 300mm x 300mm aluminium box truss; 300mm; aluminium; box; hanging
+- **Object families:** hanging_structure; truss; box_truss; aluminium_truss
 
 ### hanging-structure-rigging-point-for-overhead-structure-or-aluminium-box-truss
 
@@ -364,8 +364,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 450.00
 - **Remarks:** RIGGING POINT; • Prices are not inclusive of truss
 - **Search aliases:** nos. rigging point for Overhead Structure or Aluminium Box Truss; rigging point for Overhead Structure or Aluminium Box Truss; RIGGING POINT; • Prices are not inclusive of truss; Hanging Structure rigging point for Overhead Structure or Aluminium Box Truss; rigging point for Overhead Structure or Aluminium Box Truss nos
-- **Match terms:** rigging point; truss rigging point; overhead rigging point; suspension point; hanging point; hanging structure; rigging point for overhead structure or aluminium box truss; • prices are not inclusive of truss; rigging point for overhead structure or aluminium box truss nos; aluminium; are; box
-- **Object families:** rigging_point; rigging_hardware; hanging_hardware
+- **Match terms:** rigging point; overhead rigging point; truss rigging point; hanging point; suspension point; motor point; hanging structure; rigging point for overhead structure or aluminium box truss; • prices are not inclusive of truss; rigging point for overhead structure or aluminium box truss nos; aluminium; are
+- **Object families:** hanging_structure; rigging; rigging_point
 
 ### hanging-structure-manual-chain-hoist
 
@@ -374,8 +374,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 750.00
 - **Remarks:** MANUAL HOIST
 - **Search aliases:** nos. of Manual Chain Hoist; Manual Chain Hoist; MANUAL HOIST; Hanging Structure Manual Chain Hoist; Manual Chain Hoist nos
-- **Match terms:** manual chain hoist; hand chain hoist; manual hoist; chain block; hand operated hoist; hanging structure; manual chain hoist nos; chain; hanging; hoist; manual; nos
-- **Object families:** manual_hoist; chain_hoist; lifting_equipment
+- **Match terms:** manual chain hoist; chain hoist; manual hoist; hand chain hoist; chain block; hanging structure; manual chain hoist nos; chain; hanging; hoist; manual; nos
+- **Object families:** hanging_structure; hoist; manual_hoist; lifting_equipment
 
 ### hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth
 
@@ -384,8 +384,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 750.00
 - **Remarks:** BOOM LIFT ONLY FOR EXPO
 - **Search aliases:** Lot. rental of Boom Lift for Rigging (Mandatory charge per booth); Boom Lift for Rigging (Mandatory charge per booth); BOOM LIFT ONLY FOR EXPO; Hanging Structure Boom Lift for Rigging (Mandatory charge per booth); Boom Lift for Rigging (Mandatory charge per booth) lot
-- **Match terms:** boom lift rental; rigging boom lift; cherry picker for rigging; aerial lift for rigging; mandatory booth lift; hanging structure; boom lift for rigging (mandatory charge per booth); boom lift only for expo; boom lift for rigging (mandatory charge per booth) lot; boom; booth; charge
-- **Object families:** boom_lift; aerial_lift; rigging_equipment; mandatory_charge
+- **Match terms:** boom lift; boom lift rental; cherry picker; aerial lift; man lift; elevating work platform; hanging structure; boom lift for rigging (mandatory charge per booth); boom lift only for expo; boom lift for rigging (mandatory charge per booth) lot; boom; booth
+- **Object families:** hanging_structure; access_equipment; boom_lift; rental_equipment
 
 ### hanging-structure-hanging-structure-x-1m-height-wooden-construct-in-painted-finished-as-per-design-proposal
 
@@ -394,8 +394,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 450.00
 - **Remarks:** Wooden hanging structure; PAINTED
 - **Search aliases:** m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; Wooden hanging structure; PAINTED; Hanging Structure hanging structure x 1m height; wooden construct in painted finished as per design proposal m run
-- **Match terms:** wooden hanging structure; painted hanging structure; hanging wall panel; 1m height hanging wooden; hanging structure; hanging structure x 1m height; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m run; construct; design; finished; hanging
-- **Object families:** hanging_structure; wooden_hanging; booth_overhead; painted_overhead
+- **Match terms:** wooden hanging structure; painted hanging structure; hanging wood panel; 1m high hanging structure; overhead wood element; wooden soffit; hanging structure; hanging structure x 1m height; wooden construct in painted finished as per design proposal; hanging structure x 1m height; wooden construct in painted finished as per design proposal; wooden construct in painted finished as per design proposal m run; construct
+- **Object families:** hanging_structure; wooden_hanging_structure; soffit; hanging_panel
 
 ### hanging-structure-hanging-structure-x-1m-height-wooden-construct-in-laminated-finished-as-per-design-proposal
 
@@ -404,8 +404,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 675.00
 - **Remarks:** Wooden hanging structure; LAMINATE
 - **Search aliases:** m run of hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; Wooden hanging structure; LAMINATE; Hanging Structure hanging structure x 1m height; wooden construct in laminated finished as per design proposal m run
-- **Match terms:** wooden hanging structure; laminated hanging structure; hanging wall panel; 1m height hanging laminated; hanging structure; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m run; construct; design; finished; hanging
-- **Object families:** hanging_structure; wooden_hanging; booth_overhead; laminated_overhead
+- **Match terms:** wooden hanging structure; laminated hanging structure; hanging wood panel; 1m high hanging structure; overhead wood element; wooden soffit; hanging structure; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; hanging structure x 1m height; wooden construct in laminated finished as per design proposal; wooden construct in laminated finished as per design proposal m run; construct
+- **Object families:** hanging_structure; wooden_hanging_structure; soffit; hanging_panel
 
 ### hanging-structure-hanging-structure-x-1m-height-aluminum-profile-construct-in-fabric-finished-as-per-design-proposal-including-fabric-print
 
@@ -414,8 +414,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 150.00
 - **Remarks:** TUBE with PRINTED FABRIC
 - **Search aliases:** m run of hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; Including fabric print; hanging structure x 1m height; TUBE with PRINTED FABRIC; Hanging Structure hanging structure x 1m height; Including fabric print m run
-- **Match terms:** aluminum hanging structure; fabric hanging; printed fabric hanging; hanging banner; tube with fabric print; hanging structure; hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; including fabric print; tube with printed fabric; including fabric print m run; aluminum
-- **Object families:** hanging_structure; fabric_hanging; aluminum_profile_hanging; printed_banner
+- **Match terms:** aluminum hanging structure; fabric hanging structure; printed fabric hanging; tube and fabric hanging; hanging fabric panel; fabric soffit; hanging structure; hanging structure x 1m height; aluminum profile construct in fabric finished as per design proposal; including fabric print; tube with printed fabric; including fabric print m run
+- **Object families:** hanging_structure; fabric_hanging_structure; aluminum_hanging_structure
 
 ### hanging-structure-professional-engineer-endorsement-for-hanging
 
@@ -424,8 +424,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 1200.00
 - **Remarks:** PE
 - **Search aliases:** Professional Engineer Endorsement for hanging; PE; Hanging Structure Professional Engineer Endorsement for hanging
-- **Match terms:** professional engineer endorsement; pe endorsement; hanging structure endorsement; structural engineer sign-off; hanging structure; professional engineer endorsement for hanging; endorsement; engineer; hanging; lot; professional; structure
-- **Object families:** engineering_certification; professional_endorsement
+- **Match terms:** professional engineer endorsement; pe endorsement; hanging structure endorsement; structural engineer certification; hanging structure; professional engineer endorsement for hanging; endorsement; engineer; hanging; lot; professional; structure
+- **Object families:** engineering_endorsement
 
 ## Electrical Fittings ( Excluding connection fees by Organiser)
 
@@ -436,8 +436,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** SPOTLIGHT
 - **Search aliases:** nos. 10W LED Spotlight; 10W LED Spotlight; SPOTLIGHT; Electrical Fittings ( Excluding connection fees by Organiser) 10W LED Spotlight; 10W LED Spotlight nos
-- **Match terms:** 10w led spotlight; led spotlight; 10 watt led spotlight; spotlight; electrical fittings ( excluding connection fees by organiser); 10w led spotlight nos; 10w; connection; electrical; excluding; fee; fitting
-- **Object families:** led_spotlight; lighting_fixture
+- **Match terms:** 10w led spotlight; led spotlight; 10 watt spotlight; spotlight fixture; electrical fittings ( excluding connection fees by organiser); 10w led spotlight nos; 10w; connection; electrical; excluding; fee; fitting
+- **Object families:** led_spotlight
 - **Visual references:** pricing-catalog-images/image3.png
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-10w-arm-led-spotlight
@@ -447,8 +447,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** ARM SPOTLIGHT
 - **Search aliases:** nos. 10W Arm LED Spotlight; 10W Arm LED Spotlight; ARM SPOTLIGHT; Electrical Fittings ( Excluding connection fees by Organiser) 10W Arm LED Spotlight; 10W Arm LED Spotlight nos
-- **Match terms:** 10w arm led spotlight; led arm spotlight; arm spotlight; electrical fittings ( excluding connection fees by organiser); 10w arm led spotlight nos; 10w; arm; connection; electrical; excluding; fee; fitting
-- **Object families:** led_arm_spotlight; lighting_fixture
+- **Match terms:** 10w arm led spotlight; arm led spotlight; arm spotlight; adjustable led spotlight; electrical fittings ( excluding connection fees by organiser); 10w arm led spotlight nos; 10w; arm; connection; electrical; excluding; fee
+- **Object families:** led_arm_spotlight
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-70w-led-arm-floodlight
 
@@ -457,8 +457,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 105.00
 - **Remarks:** ARM Flood light
 - **Search aliases:** nos. 70W LED Arm Floodlight; 70W LED Arm Floodlight; ARM Flood light; Electrical Fittings ( Excluding connection fees by Organiser) 70W LED Arm Floodlight; 70W LED Arm Floodlight nos
-- **Match terms:** 70w led arm floodlight; led floodlight; arm floodlight; electrical fittings ( excluding connection fees by organiser); arm flood light; 70w led arm floodlight nos; 70w; arm; connection; electrical; excluding; fee
-- **Object families:** led_floodlight; arm_floodlight
+- **Match terms:** 70w led arm floodlight; led arm floodlight; arm floodlight; 70 watt floodlight; led floodlight with arm; electrical fittings ( excluding connection fees by organiser); arm flood light; 70w led arm floodlight nos; 70w; arm; connection; electrical
+- **Object families:** led_arm_floodlight
 - **Visual references:** pricing-catalog-images/image1.png
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-150w-hqi-floodlight
@@ -468,8 +468,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 105.00
 - **Remarks:** HQI Floodlight
 - **Search aliases:** nos. 150W HQI Floodlight; 150W HQI Floodlight; HQI Floodlight; Electrical Fittings ( Excluding connection fees by Organiser) 150W HQI Floodlight; 150W HQI Floodlight nos
-- **Match terms:** 150w hqi floodlight; hqi floodlight; metal halide floodlight; electrical fittings ( excluding connection fees by organiser); 150w hqi floodlight nos; 150w; connection; electrical; excluding; fee; fitting; floodlight
-- **Object families:** hqi_floodlight; floodlight
+- **Match terms:** 150w hqi floodlight; hqi floodlight; metal halide floodlight; 150 watt hqi floodlight; electrical fittings ( excluding connection fees by organiser); 150w hqi floodlight nos; 150w; connection; electrical; excluding; fee; fitting
+- **Object families:** hqi_floodlight
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-3
 
@@ -478,8 +478,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** Downlight
 - **Search aliases:** nos. LED recess downlight 3"; LED recess downlight 3"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 3"; LED recess downlight 3" nos
-- **Match terms:** led recess downlight 3 inch; 3 inch led downlight; recessed downlight 3; electrical fittings ( excluding connection fees by organiser); led recess downlight 3"; led recess downlight 3" nos; connection; downlight; electrical; excluding; fee; fitting
-- **Object families:** led_recessed_downlight; downlight
+- **Match terms:** led recess downlight 3 inch; 3 inch led downlight; recessed downlight 3"; led downlight 3"; electrical fittings ( excluding connection fees by organiser); led recess downlight 3"; led recess downlight 3" nos; connection; downlight; electrical; excluding; fee
+- **Object families:** led_recess_downlight_3in
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-6
 
@@ -488,8 +488,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Downlight
 - **Search aliases:** nos. LED recess downlight 6"; LED recess downlight 6"; Downlight; Electrical Fittings ( Excluding connection fees by Organiser) LED recess downlight 6"; LED recess downlight 6" nos
-- **Match terms:** led recess downlight 6 inch; 6 inch led downlight; recessed downlight 6; electrical fittings ( excluding connection fees by organiser); led recess downlight 6"; led recess downlight 6" nos; connection; downlight; electrical; excluding; fee; fitting
-- **Object families:** led_recessed_downlight; downlight
+- **Match terms:** led recess downlight 6 inch; 6 inch led downlight; recessed downlight 6"; led downlight 6"; electrical fittings ( excluding connection fees by organiser); led recess downlight 6"; led recess downlight 6" nos; connection; downlight; electrical; excluding; fee
+- **Object families:** led_recess_downlight_6in
 - **Visual references:** pricing-catalog-images/image2.png
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-nos-13amp-230v-sp-50hz-ac-socket-max-800w-not-for-lighting-use
@@ -499,8 +499,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 142.50
 - **Remarks:** POWERPOINT
 - **Search aliases:** nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use); nos.13Amp; 230V SP 50Hz AC Socket (Max 800W) (Not for lighting use); POWERPOINT; Electrical Fittings ( Excluding connection fees by Organiser) nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use); nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use) nos
-- **Match terms:** 13 amp socket; 230v ac socket; power socket 13a; single phase socket; powerpoint; electrical fittings ( excluding connection fees by organiser); nos.13amp; 230v sp 50hz ac socket (max 800w) (not for lighting use); nos.13amp/230v sp 50hz ac socket (max 800w) (not for lighting use); 230v sp 50hz ac socket (max 800w) (not for lighting use) nos; nos.13amp/230v sp 50hz ac socket (max 800w) (not for lighting use) nos; 13amp
-- **Object families:** ac_power_socket; electrical_socket
+- **Match terms:** 13 amp socket; 230v socket; ac socket; power socket; powerpoint; 800w socket; not for lighting socket; electrical fittings ( excluding connection fees by organiser); nos.13amp; 230v sp 50hz ac socket (max 800w) (not for lighting use); nos.13amp/230v sp 50hz ac socket (max 800w) (not for lighting use); 230v sp 50hz ac socket (max 800w) (not for lighting use) nos
+- **Object families:** ac_socket_non_lighting
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-13amp-230v-sp-50hz-ac-socket-with-24hrs-supply-max-800w-not-for-lighting-use
 
@@ -509,8 +509,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 270.00
 - **Remarks:** POWERPOINT
 - **Search aliases:** nos. 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use); 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use); 13Amp; 230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use); POWERPOINT; Electrical Fittings ( Excluding connection fees by Organiser) 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use); 13Amp/230V SP 50Hz AC Socket with 24hrs Supply (Max 800W) (Not for lighting use) nos
-- **Match terms:** 13 amp socket 24hr supply; 230v socket 24 hour; power socket 24h; 24 hour power socket; electrical fittings ( excluding connection fees by organiser); 230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use); 13amp/230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use); 230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use) nos; 13amp/230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use) nos; 13amp; 230v; 24hr
-- **Object families:** ac_power_socket_24hr; uninterrupted_power_socket
+- **Match terms:** 13 amp socket 24hrs; 24 hour supply socket; continuous power socket; powerpoint 24hrs; 24hr ac socket; electrical fittings ( excluding connection fees by organiser); 230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use); 13amp/230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use); 230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use) nos; 13amp/230v sp 50hz ac socket with 24hrs supply (max 800w) (not for lighting use) nos; 13amp; 230v
+- **Object families:** ac_socket_24hr
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-led-strip-light-for-coves
 
@@ -519,8 +519,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 42.00
 - **Remarks:** LED STRIPS
 - **Search aliases:** m. run LED strip light for coves; LED strip light for coves; LED STRIPS; Electrical Fittings ( Excluding connection fees by Organiser) LED strip light for coves; LED strip light for coves m run
-- **Match terms:** led strip light; cove lighting strip; led tape light; led strip for coves; electrical fittings ( excluding connection fees by organiser); led strip light for coves; led strips; led strip light for coves m run; connection; cove; electrical; excluding
-- **Object families:** led_strip_light; cove_lighting
+- **Match terms:** led strip light; led strip for coves; cove led strip; led tape light; electrical fittings ( excluding connection fees by organiser); led strip light for coves; led strips; led strip light for coves m run; connection; cove; electrical; excluding
+- **Object families:** led_strip_light_cove
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-led-bar-for-backlit-graphics
 
@@ -529,8 +529,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 60.00
 - **Remarks:** LED BAR
 - **Search aliases:** m. run LED bar for backlit graphics; LED bar for backlit graphics; LED BAR; Electrical Fittings ( Excluding connection fees by Organiser) LED bar for backlit graphics; LED bar for backlit graphics m run
-- **Match terms:** led bar light; backlit graphics led bar; led light bar for graphics; electrical fittings ( excluding connection fees by organiser); led bar for backlit graphics; led bar; led bar for backlit graphics m run; backlit; bar; connection; electrical; excluding
-- **Object families:** led_bar_light; backlighting_bar
+- **Match terms:** led bar; led bar for backlit graphics; backlit led bar; led light bar; electrical fittings ( excluding connection fees by organiser); led bar for backlit graphics m run; backlit; bar; connection; electrical; excluding; fee
+- **Object families:** led_bar_backlit_graphics
 
 ### electrical-fittings-excluding-connection-fees-by-organiser-single-line-drawing-for-db-box
 
@@ -539,8 +539,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 600.00
 - **Remarks:** Single Line Drawing
 - **Search aliases:** no. single line drawing for DB box; single line drawing for DB box; Single Line Drawing; Electrical Fittings ( Excluding connection fees by Organiser) single line drawing for DB box; single line drawing for DB box nos
-- **Match terms:** single line diagram; db box drawing; electrical single line drawing; slb; electrical fittings ( excluding connection fees by organiser); single line drawing for db box; single line drawing; single line drawing for db box nos; box; connection; drawing; electrical
-- **Object families:** electrical_drawing; single_line_diagram
+- **Match terms:** single line drawing; db box drawing; distribution board drawing; electrical single line diagram; electrical fittings ( excluding connection fees by organiser); single line drawing for db box; single line drawing for db box nos; box; connection; drawing; electrical; excluding
+- **Object families:** electrical_single_line_drawing
 
 ## Furniture Rental
 
@@ -551,8 +551,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Bistro Chairs; Bistro Chairs; Bistro Low Chair; Furniture Rental Bistro Chairs; Bistro Chairs nos
-- **Match terms:** bistro chair; low bistro chair; bistro seating; bistro chairs; bistro low chair; bistro chairs nos; bistro; chair; furniture; low; nos
-- **Object families:** bistro_chair; chair; seating
+- **Match terms:** bistro chair; bistro low chair; cafe chair; bistro chairs; bistro chairs nos; bistro; chair; furniture; low; nos
+- **Object families:** bistro_chair
 - **Visual references:** pricing-catalog-images/image5.png
 
 ### furniture-rental-eames-replica-chair-white
@@ -562,8 +562,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Eames Replica Chair (White); Eames Replica Chair (White); Bistro Low Chair; Furniture Rental Eames Replica Chair (White); Eames Replica Chair (White) nos
-- **Match terms:** eames replica chair; eames style chair; white eames chair; eames replica chair (white); bistro low chair; eames replica chair (white) nos; bistro; chair; eame; furniture; low; nos
-- **Object families:** eames_replica_chair; replica_chair
+- **Match terms:** eames replica chair; white eames chair; eames style chair; replica eames chair; eames replica chair (white); bistro low chair; eames replica chair (white) nos; bistro; chair; eame; furniture; low
+- **Object families:** eames_replica_chair
 - **Visual references:** pricing-catalog-images/image4.png; pricing-catalog-images/image6.png
 
 ### furniture-rental-low-lidas-chair
@@ -573,8 +573,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. low Lidas Chair; low Lidas Chair; Bistro Low Chair; Furniture Rental low Lidas Chair; low Lidas Chair nos
-- **Match terms:** lidas chair; low lidas chair; bistro low chair; low lidas chair nos; bistro; chair; furniture; lida; low; nos
-- **Object families:** lidas_chair; chair
+- **Match terms:** low lidas chair; lidas chair; low chair; bistro low chair; low lidas chair nos; bistro; chair; furniture; lida; low; nos
+- **Object families:** lidas_chair
 - **Visual references:** pricing-catalog-images/image5-2.png
 
 ### furniture-rental-chair-with-cushion
@@ -584,8 +584,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Chair With Cushion; Chair With Cushion; Bistro Low Chair; Furniture Rental Chair With Cushion; Chair With Cushion nos
-- **Match terms:** chair with cushion; cushion chair; bistro low chair; chair with cushion nos; bistro; chair; cushion; furniture; low; nos
-- **Object families:** cushion_chair; seating
+- **Match terms:** chair with cushion; cushioned chair; padded chair; bistro low chair; chair with cushion nos; bistro; chair; cushion; furniture; low; nos
+- **Object families:** chair_with_cushion
 - **Visual references:** pricing-catalog-images/image7.png
 
 ### furniture-rental-eames-style-replica-arm-chair-black
@@ -595,8 +595,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 75.00
 - **Remarks:** Bistro Low Chair
 - **Search aliases:** nos. Eames-Style Replica Arm Chair (Black); Eames-Style Replica Arm Chair (Black); Bistro Low Chair; Furniture Rental Eames-Style Replica Arm Chair (Black); Eames-Style Replica Arm Chair (Black) nos
-- **Match terms:** eames arm chair; eames style armchair; black eames arm chair; eames-style replica arm chair (black); bistro low chair; eames-style replica arm chair (black) nos; arm; bistro; black; chair; eame; furniture
-- **Object families:** eames_arm_chair; armchair
+- **Match terms:** eames style arm chair; eames replica arm chair; black eames arm chair; eames armchair; eames-style replica arm chair (black); bistro low chair; eames-style replica arm chair (black) nos; arm; bistro; black; chair; eame
+- **Object families:** eames_replica_armchair
 - **Visual references:** pricing-catalog-images/image8.png
 
 ### furniture-rental-seating-chair-grey
@@ -606,8 +606,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 37.50
 - **Remarks:** Seating chair
 - **Search aliases:** nos. seating chair (grey); seating chair (grey); Seating chair; Furniture Rental seating chair (grey); seating chair (grey) nos
-- **Match terms:** seating chair grey; grey chair; seating chair; seating chair (grey); seating chair (grey) nos; chair; furniture; grey; nos; seating
-- **Object families:** seating_chair; chair
+- **Match terms:** seating chair; grey chair; general seating; seating chair (grey); seating chair (grey) nos; chair; furniture; grey; nos; seating
+- **Object families:** seating_chair
 - **Visual references:** pricing-catalog-images/image9.jpg
 
 ### furniture-rental-opel-replica-chairs-white
@@ -617,8 +617,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Seating chair
 - **Search aliases:** nos. Opel replica chairs (white); Opel replica chairs (white); Seating chair; Furniture Rental Opel replica chairs (white); Opel replica chairs (white) nos
-- **Match terms:** opel replica chair; opel chair white; replica opel chair; opel replica chairs (white); seating chair; opel replica chairs (white) nos; chair; furniture; nos; opel; replica; seating
-- **Object families:** opel_replica_chair; replica_chair
+- **Match terms:** opel replica chair; white opel chair; opel chair; opel replica chairs (white); seating chair; opel replica chairs (white) nos; chair; furniture; nos; opel; replica; seating
+- **Object families:** opel_replica_chair
 - **Visual references:** pricing-catalog-images/image10.png
 
 ### furniture-rental-white-folding-chairs
@@ -628,8 +628,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 12.00
 - **Remarks:** Folding Chair
 - **Search aliases:** nos. white folding chairs; white folding chairs; Folding Chair; Furniture Rental white folding chairs; white folding chairs nos
-- **Match terms:** white folding chair; folding chair white; white folding chairs; folding chair; white folding chairs nos; chair; folding; furniture; nos; white
-- **Object families:** folding_chair; chair
+- **Match terms:** white folding chair; folding chair; foldable chair; white folding chairs; white folding chairs nos; chair; folding; furniture; nos; white
+- **Object families:** folding_chair
 
 ### furniture-rental-eames-style-bar-stool-replica
 
@@ -638,8 +638,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Eames-Style Bar Stool (Replica); Eames-Style Bar Stool (Replica); Bar Stool; Furniture Rental Eames-Style Bar Stool (Replica); Eames-Style Bar Stool (Replica) nos
-- **Match terms:** eames; replica; bar stool; eames-style bar stool (replica); eames-style bar stool (replica) nos; bar; eame; furniture; nos; stool; style
-- **Object families:** bar_stool
+- **Match terms:** bar stool; eames style; replica bar stool; eames replica; eames-style bar stool (replica); eames-style bar stool (replica) nos; bar; eame; furniture; nos; replica; stool
+- **Object families:** bar_stool; replica_furniture
 - **Visual references:** pricing-catalog-images/image11.jpg; pricing-catalog-images/image12.jpg
 
 ### furniture-rental-max-white-bar-stool
@@ -649,7 +649,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Max White Bar Stool; Max White Bar Stool; Bar Stool; Furniture Rental Max White Bar Stool; Max White Bar Stool nos
-- **Match terms:** max; white; bar stool; max white bar stool; max white bar stool nos; bar; furniture; nos; stool
+- **Match terms:** max white bar stool; white bar stool; bar stool; max white bar stool nos; bar; furniture; max; nos; stool; white
 - **Object families:** bar_stool
 
 ### furniture-rental-jay-white-bar-stool-with-high-back-rest
@@ -659,8 +659,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Jay White Bar Stool with high back rest; Jay White Bar Stool with high back rest; Bar Stool; Furniture Rental Jay White Bar Stool with high back rest; Jay White Bar Stool with high back rest nos
-- **Match terms:** jay; white; high back; bar stool; jay white bar stool with high back rest; jay white bar stool with high back rest nos; back; bar; furniture; high; nos; rest
-- **Object families:** bar_stool
+- **Match terms:** jay bar stool; white bar stool; bar stool with backrest; high back bar stool; jay white bar stool with high back rest; bar stool; jay white bar stool with high back rest nos; back; bar; furniture; high; jay
+- **Object families:** bar_stool; high_back_bar_stool
 - **Visual references:** pricing-catalog-images/image13.jpg; pricing-catalog-images/image14.jpg
 
 ### furniture-rental-don-white-bar-stool
@@ -670,7 +670,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 45.00
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Don White Bar Stool; Don White Bar Stool; Bar Stool; Furniture Rental Don White Bar Stool; Don White Bar Stool nos
-- **Match terms:** don; white; bar stool; don white bar stool; don white bar stool nos; bar; furniture; nos; stool
+- **Match terms:** don white bar stool; white bar stool; bar stool; don white bar stool nos; bar; don; furniture; nos; stool; white
 - **Object families:** bar_stool
 - **Visual references:** pricing-catalog-images/image15.jpg
 
@@ -681,7 +681,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Saffron Bar Stool (Black); Saffron Bar Stool (Black); Bar Stool; Furniture Rental Saffron Bar Stool (Black); Saffron Bar Stool (Black) nos
-- **Match terms:** saffron; black; bar stool; saffron bar stool (black); saffron bar stool (black) nos; bar; furniture; nos; stool
+- **Match terms:** saffron bar stool; black bar stool; bar stool; saffron bar stool (black); saffron bar stool (black) nos; bar; black; furniture; nos; saffron; stool
 - **Object families:** bar_stool
 
 ### furniture-rental-roudy-bar-stool-black
@@ -691,7 +691,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Roudy Bar Stool (Black); Roudy Bar Stool (Black); Bar Stool; Furniture Rental Roudy Bar Stool (Black); Roudy Bar Stool (Black) nos
-- **Match terms:** roudy; black; bar stool; roudy bar stool (black); roudy bar stool (black) nos; bar; furniture; nos; stool
+- **Match terms:** roudy bar stool; black bar stool; bar stool; roudy bar stool (black); roudy bar stool (black) nos; bar; black; furniture; nos; roudy; stool
 - **Object families:** bar_stool
 - **Visual references:** pricing-catalog-images/image16.jpg; pricing-catalog-images/image17.png
 
@@ -702,7 +702,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Roudy Bar Stool (White); Roudy Bar Stool (White); Bar Stool; Furniture Rental Roudy Bar Stool (White); Roudy Bar Stool (White) nos
-- **Match terms:** roudy; white; bar stool; roudy bar stool (white); roudy bar stool (white) nos; bar; furniture; nos; stool
+- **Match terms:** roudy bar stool; white bar stool; bar stool; roudy bar stool (white); roudy bar stool (white) nos; bar; furniture; nos; roudy; stool; white
 - **Object families:** bar_stool
 
 ### furniture-rental-juliette-bar-stool
@@ -712,7 +712,7 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 52.50
 - **Remarks:** Bar Stool
 - **Search aliases:** nos. Juliette Bar Stool; Juliette Bar Stool; Bar Stool; Furniture Rental Juliette Bar Stool; Juliette Bar Stool nos
-- **Match terms:** juliette; bar stool; juliette bar stool; juliette bar stool nos; bar; furniture; nos; stool
+- **Match terms:** juliette bar stool; bar stool; juliette bar stool nos; bar; furniture; juliette; nos; stool
 - **Object families:** bar_stool
 - **Visual references:** pricing-catalog-images/image18.png; pricing-catalog-images/image19.png
 
@@ -723,8 +723,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 82.50
 - **Remarks:** Conference chairs
 - **Search aliases:** nos. Conference Chair; Conference Chair; Conference chairs; Furniture Rental Conference Chair; Conference Chair nos
-- **Match terms:** conference; chair; conference chair; conference chairs; conference chair nos; furniture; nos
-- **Object families:** conference_chair
+- **Match terms:** conference chair; meeting chair; conference seating; conference chairs; conference chair nos; chair; conference; furniture; nos
+- **Object families:** conference_chair; chair
 
 ### furniture-rental-faux-leather-black-chair-twin-seating
 
@@ -733,8 +733,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 187.50
 - **Remarks:** SOFA chairs
 - **Search aliases:** nos. Faux Leather Black Chair Twin Seating; Faux Leather Black Chair Twin Seating; SOFA chairs; Furniture Rental Faux Leather Black Chair Twin Seating; Faux Leather Black Chair Twin Seating nos
-- **Match terms:** faux leather; black; twin seating; sofa chair; faux leather black chair twin seating; sofa chairs; faux leather black chair twin seating nos; chair; faux; furniture; leather; nos
-- **Object families:** sofa_chair
+- **Match terms:** faux leather sofa; black twin seating; loveseat; two seater sofa; faux leather loveseat; faux leather black chair twin seating; sofa chairs; faux leather black chair twin seating nos; black; chair; faux; furniture
+- **Object families:** sofa; loveseat; two_seater
 - **Visual references:** pricing-catalog-images/image20.png
 
 ### furniture-rental-modular-faux-leather-white-sofa-per-unit
@@ -744,8 +744,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 112.50
 - **Remarks:** SOFA SEATS
 - **Search aliases:** nos. Modular Faux Leather White Sofa per unit; Modular Faux Leather White Sofa per unit; SOFA SEATS; Furniture Rental Modular Faux Leather White Sofa per unit; Modular Faux Leather White Sofa per unit nos
-- **Match terms:** modular; faux leather; white; sofa; modular faux leather white sofa per unit; sofa seats; modular faux leather white sofa per unit nos; faux; furniture; leather; nos; seat
-- **Object families:** modular_sofa
+- **Match terms:** modular sofa; white faux leather sofa; sofa module; sectional sofa; modular faux leather white sofa per unit; sofa seats; modular faux leather white sofa per unit nos; faux; furniture; leather; modular; nos
+- **Object families:** modular_sofa; sofa
 - **Visual references:** pricing-catalog-images/image21.jpg
 
 ### furniture-rental-high-top-table-white
@@ -755,8 +755,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 112.50
 - **Remarks:** BISTRO TABLE HIGH
 - **Search aliases:** nos. High Top Table White; High Top Table White; BISTRO TABLE HIGH; Furniture Rental High Top Table White; High Top Table White nos
-- **Match terms:** high top; white; table; bistro; high top table white; bistro table high; high top table white nos; furniture; high; nos; top
-- **Object families:** bistro_table
+- **Match terms:** high top table; white bistro table; tall table; pub table; high top table white; bistro table high; high top table white nos; bistro; furniture; high; nos; table
+- **Object families:** high_top_table; bistro_table
 - **Visual references:** pricing-catalog-images/image22.png
 
 ### furniture-rental-aluminum-bistro-table-round
@@ -766,10 +766,9 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 112.50
 - **Remarks:** BISTRO TABLE HIGH
 - **Search aliases:** nos. Aluminum Bistro Table (Round); Aluminum Bistro Table (Round); BISTRO TABLE HIGH; Furniture Rental Aluminum Bistro Table (Round); Aluminum Bistro Table (Round) nos
-- **Match terms:** aluminum; bistro; round; table; aluminum bistro table (round); bistro table high; aluminum bistro table (round) nos; furniture; high; nos
-- **Object families:** bistro_table
+- **Match terms:** aluminum bistro table; round bistro table; metal bistro table; round high table; aluminum bistro table (round); bistro table high; aluminum bistro table (round) nos; aluminum; bistro; furniture; high; nos
+- **Object families:** bistro_table; round_table
 - **Visual references:** pricing-catalog-images/image23.png; pricing-catalog-images/image24.png
-
 
 ### furniture-rental-aluminum-bistro-table-square
 
@@ -778,8 +777,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 112.50
 - **Remarks:** BISTRO TABLE HIGH
 - **Search aliases:** nos. Aluminum Bistro Table (Square); Aluminum Bistro Table (Square); BISTRO TABLE HIGH; Furniture Rental Aluminum Bistro Table (Square); Aluminum Bistro Table (Square) nos
-- **Match terms:** aluminum; bistro; square; table; aluminum bistro table (square); bistro table high; aluminum bistro table (square) nos; furniture; high; nos
-- **Object families:** bistro_table
+- **Match terms:** aluminum bistro table; square bistro table; metal bistro table; square high table; aluminum bistro table (square); bistro table high; aluminum bistro table (square) nos; aluminum; bistro; furniture; high; nos
+- **Object families:** bistro_table; square_table
 - **Visual references:** pricing-catalog-images/image25.jpg
 
 ### furniture-rental-white-tulip-table-60cm
@@ -789,8 +788,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 67.50
 - **Remarks:** ROUNDTABLE LOW
 - **Search aliases:** nos. White Tulip Table (60cm); White Tulip Table (60cm); ROUNDTABLE LOW; Furniture Rental White Tulip Table (60cm); White Tulip Table (60cm) nos
-- **Match terms:** tulip; white; 60cm; low table; round; white tulip table (60cm); roundtable low; white tulip table (60cm) nos; furniture; low; nos; roundtable
-- **Object families:** low_table
+- **Match terms:** white tulip table; low round table; 60cm tulip table; pedestal table; white tulip table (60cm); roundtable low; white tulip table (60cm) nos; 60cm; furniture; low; nos; roundtable
+- **Object families:** tulip_table; low_table; round_table
 - **Visual references:** pricing-catalog-images/image26.png
 
 ### furniture-rental-round-glass-low-table-90cm
@@ -800,8 +799,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 67.50
 - **Remarks:** GLASS ROUNDTABLE LOW
 - **Search aliases:** nos. Round Glass Low Table (90cm); Round Glass Low Table (90cm); GLASS ROUNDTABLE LOW; Furniture Rental Round Glass Low Table (90cm); Round Glass Low Table (90cm) nos
-- **Match terms:** round; glass; 90cm; low table; round glass low table (90cm); glass roundtable low; round glass low table (90cm) nos; furniture; low; nos; roundtable; table
-- **Object families:** low_table
+- **Match terms:** round glass low table; 90cm glass table; low glass table; glass coffee table; round glass low table (90cm); glass roundtable low; round glass low table (90cm) nos; 90cm; furniture; glass; low; nos
+- **Object families:** low_table; round_table; glass_table
 
 ## Rental Items
 
@@ -812,8 +811,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 82.50
 - **Remarks:** Brochure stand
 - **Search aliases:** nos. Aluminum Foldable Brochure Stand; Aluminum Foldable Brochure Stand; Brochure stand; Rental Items Aluminum Foldable Brochure Stand; Aluminum Foldable Brochure Stand nos
-- **Match terms:** aluminum; foldable; brochure; stand; aluminum foldable brochure stand; brochure stand; aluminum foldable brochure stand nos; item; nos
-- **Object families:** brochure_stand
+- **Match terms:** aluminum brochure stand; foldable brochure holder; portable brochure rack; aluminum foldable brochure stand; brochure stand; aluminum foldable brochure stand nos; aluminum; brochure; foldable; item; nos; stand
+- **Object families:** brochure_stand; display_stand
 - **Visual references:** pricing-catalog-images/image27.jpg; pricing-catalog-images/image28.jpg
 
 ### rental-items-aluminum-foldable-magazine-stand
@@ -823,8 +822,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 82.50
 - **Remarks:** Brochure stand
 - **Search aliases:** nos. Aluminum Foldable Magazine Stand; Aluminum Foldable Magazine Stand; Brochure stand; Rental Items Aluminum Foldable Magazine Stand; Aluminum Foldable Magazine Stand nos
-- **Match terms:** aluminum; foldable; magazine; stand; aluminum foldable magazine stand; brochure stand; aluminum foldable magazine stand nos; brochure; item; nos
-- **Object families:** magazine_stand
+- **Match terms:** aluminum magazine stand; foldable magazine holder; portable magazine rack; aluminum foldable magazine stand; brochure stand; aluminum foldable magazine stand nos; aluminum; brochure; foldable; item; magazine; nos
+- **Object families:** magazine_stand; display_stand
 
 ### rental-items-queue-pole-1m-silver
 
@@ -833,8 +832,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 27.00
 - **Remarks:** Q POLES
 - **Search aliases:** nos. Queue pole 1m (Silver); Queue pole 1m (Silver); Q POLES; Rental Items Queue pole 1m (Silver); Queue pole 1m (Silver) nos
-- **Match terms:** queue; pole; 1m; silver; q pole; queue pole 1m (silver); queue pole 1m (silver) nos; item; nos
-- **Object families:** queue_pole
+- **Match terms:** queue pole; silver stanchion; 1m retractable belt barrier; crowd control post; queue pole 1m (silver); queue pole 1m (silver) nos; item; nos; pole; queue; silver
+- **Object families:** queue_pole; stanchion
 - **Visual references:** pricing-catalog-images/image29.jpg; pricing-catalog-images/image30.png
 
 ### rental-items-queue-pole-1m-black
@@ -844,8 +843,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 27.00
 - **Remarks:** Q POLES
 - **Search aliases:** nos. Queue pole 1m (Black); Queue pole 1m (Black); Q POLES; Rental Items Queue pole 1m (Black); Queue pole 1m (Black) nos
-- **Match terms:** queue pole; q pole; stanchion; retractable belt post; crowd barrier pole; queue pole 1m (black); queue pole 1m (black) nos; black; item; nos; pole; queue
-- **Object families:** queue_poles
+- **Match terms:** queue pole; black stanchion; 1m retractable belt barrier; crowd control post; queue pole 1m (black); queue pole 1m (black) nos; black; item; nos; pole; queue
+- **Object families:** queue_pole; stanchion
 
 ### rental-items-420l-freezer-mini-fridge
 
@@ -854,8 +853,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 225.00
 - **Remarks:** MINI FRIDGE
 - **Search aliases:** nos. 420L Freezer (Mini Fridge); 420L Freezer (Mini Fridge); MINI FRIDGE; Rental Items 420L Freezer (Mini Fridge); 420L Freezer (Mini Fridge) nos
-- **Match terms:** freezer; mini fridge; chest freezer; upright freezer; 420l freezer (mini fridge); 420l freezer (mini fridge) nos; 420l; fridge; item; mini; nos
-- **Object families:** freezers
+- **Match terms:** 420l freezer; 420 liter freezer; mini fridge; compact freezer; 420l mini fridge; 420l freezer (mini fridge); 420l freezer (mini fridge) nos; 420l; freezer; fridge; item; mini
+- **Object families:** freezer; mini_fridge
 - **Visual references:** pricing-catalog-images/image31.png
 
 ### rental-items-550l-refrigerator
@@ -865,8 +864,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 225.00
 - **Remarks:** MINI FRIDGE
 - **Search aliases:** nos. 550L Refrigerator; 550L Refrigerator; MINI FRIDGE; Rental Items 550L Refrigerator; 550L Refrigerator nos
-- **Match terms:** refrigerator; fridge; mini fridge; cooler; 550l refrigerator; 550l refrigerator nos; 550l; item; mini; nos
-- **Object families:** refrigerators
+- **Match terms:** 550l refrigerator; 550 liter refrigerator; 550l fridge; large refrigerator; mini fridge; 550l refrigerator nos; 550l; fridge; item; mini; nos; refrigerator
+- **Object families:** refrigerator
 - **Visual references:** pricing-catalog-images/image32.png
 
 ### rental-items-sink-with-cabinet
@@ -876,8 +875,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 135.00
 - **Remarks:** SINK
 - **Search aliases:** nos. Sink with Cabinet; Sink with Cabinet; SINK; Rental Items Sink with Cabinet; Sink with Cabinet nos
-- **Match terms:** sink; sink cabinet; wash basin with cabinet; kitchen sink; sink with cabinet; sink with cabinet nos; cabinet; item; nos
-- **Object families:** sink_cabinets
+- **Match terms:** sink with cabinet; cabinet sink; sink unit; sink and cabinet; sink with cabinet nos; cabinet; item; nos; sink
+- **Object families:** sink_with_cabinet; sink; cabinet
 
 ## AV Equipment Rental Items
 
@@ -888,8 +887,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 450.00
 - **Remarks:** TV
 - **Search aliases:** nos. 42" LED TV Monitor (With Speaker - Full HD); 42" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 42" LED TV Monitor (With Speaker - Full HD); 42" LED TV Monitor (With Speaker - Full HD) nos
-- **Match terms:** 42 inch tv; 42 led tv; full hd tv; tv; monitor; tv with speaker; av equipment rental items; 42" led tv monitor (with speaker - full hd); 42" led tv monitor (with speaker - full hd) nos; equipment; full; item
-- **Object families:** led_televisions
+- **Match terms:** 42 inch led tv; 42" led tv monitor; 42" full hd television; 42" monitor with speaker; 42 inch display; av equipment rental items; 42" led tv monitor (with speaker - full hd); 42" led tv monitor (with speaker - full hd) nos; equipment; full; item; led
+- **Object families:** television; monitor; led_tv
 
 ### av-equipment-rental-items-55-led-tv-monitor-with-speaker-full-hd
 
@@ -898,8 +897,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 675.00
 - **Remarks:** TV
 - **Search aliases:** nos. 55" LED TV Monitor (With Speaker - Full HD); 55" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 55" LED TV Monitor (With Speaker - Full HD); 55" LED TV Monitor (With Speaker - Full HD) nos
-- **Match terms:** 55 inch tv; 55 led tv; full hd tv; tv; monitor; tv with speaker; av equipment rental items; 55" led tv monitor (with speaker - full hd); 55" led tv monitor (with speaker - full hd) nos; equipment; full; item
-- **Object families:** led_televisions
+- **Match terms:** 55 inch led tv; 55" led tv monitor; 55" full hd television; 55" monitor with speaker; 55 inch display; av equipment rental items; 55" led tv monitor (with speaker - full hd); 55" led tv monitor (with speaker - full hd) nos; equipment; full; item; led
+- **Object families:** television; monitor; led_tv
 
 ### av-equipment-rental-items-65-led-tv-monitor-with-speaker-full-hd
 
@@ -908,8 +907,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 975.00
 - **Remarks:** TV
 - **Search aliases:** nos. 65" LED TV Monitor (With Speaker - Full HD); 65" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 65" LED TV Monitor (With Speaker - Full HD); 65" LED TV Monitor (With Speaker - Full HD) nos
-- **Match terms:** 65 inch tv; 65 led tv; full hd tv; tv; monitor; tv with speaker; av equipment rental items; 65" led tv monitor (with speaker - full hd); 65" led tv monitor (with speaker - full hd) nos; equipment; full; item
-- **Object families:** led_televisions
+- **Match terms:** 65 inch led tv; 65" led tv monitor; 65" full hd television; 65" monitor with speaker; 65 inch display; av equipment rental items; 65" led tv monitor (with speaker - full hd); 65" led tv monitor (with speaker - full hd) nos; equipment; full; item; led
+- **Object families:** television; monitor; led_tv
 
 ### av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd
 
@@ -918,8 +917,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 2250.00
 - **Remarks:** TV
 - **Search aliases:** nos. 85" LED TV Monitor (With Speaker - Full HD); 85" LED TV Monitor (With Speaker - Full HD); TV; AV Equipment Rental Items 85" LED TV Monitor (With Speaker - Full HD); 85" LED TV Monitor (With Speaker - Full HD) nos
-- **Match terms:** 85 inch tv; 85 led tv; full hd tv; tv; monitor; tv with speaker; av equipment rental items; 85" led tv monitor (with speaker - full hd); 85" led tv monitor (with speaker - full hd) nos; equipment; full; item
-- **Object families:** led_televisions
+- **Match terms:** 85 inch led tv; 85" led tv monitor; 85" full hd television; 85" monitor with speaker; 85 inch display; av equipment rental items; 85" led tv monitor (with speaker - full hd); 85" led tv monitor (with speaker - full hd) nos; equipment; full; item; led
+- **Object families:** television; monitor; led_tv
 
 ## Graphics
 
@@ -930,8 +929,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 525.00
 - **Remarks:** Backlit Logo
 - **Search aliases:** nos. 3D backlit logo; 3D backlit logo; Backlit Logo; Graphics 3D backlit logo; 3D backlit logo nos
-- **Match terms:** 3d backlit logo; backlit sign; illuminated logo; 3d illuminated logo; backlit logo; 3d backlit logo nos; backlit; graphic; logo; nos
-- **Object families:** backlit_logos
+- **Match terms:** 3d backlit logo; backlit 3d logo; 3d illuminated logo; backlit logo; 3d backlit logo nos; backlit; graphic; logo; nos
+- **Object families:** backlit_logo; 3d_logo; signage
 
 ### graphics-3d-backlit-lettering
 
@@ -940,8 +939,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 600.00
 - **Remarks:** Backlit Lettering; NOTE: Per set max 2m long
 - **Search aliases:** sets of 3D backlit lettering; 3D backlit lettering; Backlit Lettering; NOTE: Per set max 2m long; Graphics 3D backlit lettering; 3D backlit lettering set
-- **Match terms:** 3d backlit lettering; backlit letters; illuminated lettering; channel letters; backlit lettering; note: per set max 2m long; 3d backlit lettering set; backlit; graphic; lettering; long; max
-- **Object families:** backlit_lettering
+- **Match terms:** 3d backlit lettering; backlit 3d lettering; illuminated lettering set; 3d lettering set; backlit lettering; note: per set max 2m long; 3d backlit lettering set; backlit; graphic; lettering; long; max
+- **Object families:** backlit_lettering; 3d_lettering; signage
 
 ### graphics-2d-backlit-logo
 
@@ -950,8 +949,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 300.00
 - **Remarks:** Backlit Lettering
 - **Search aliases:** nos. 2D backlit logo; 2D backlit logo; Backlit Lettering; Graphics 2D backlit logo; 2D backlit logo nos
-- **Match terms:** 2d backlit logo; flat backlit sign; backlit logo; illuminated logo; backlit lettering; 2d backlit logo nos; backlit; graphic; lettering; logo; nos
-- **Object families:** backlit_logos
+- **Match terms:** 2d backlit logo; backlit 2d logo; flat backlit logo; 2d illuminated logo; backlit lettering; 2d backlit logo nos; backlit; graphic; lettering; logo; nos
+- **Object families:** backlit_logo; 2d_logo; signage
 
 ### graphics-3d-vinyl-logo-on-foam
 
@@ -960,8 +959,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 225.00
 - **Remarks:** 3D cut-out logo
 - **Search aliases:** nos. 3D vinyl logo on foam; 3D vinyl logo on foam; 3D cut-out logo; Graphics 3D vinyl logo on foam; 3D vinyl logo on foam nos
-- **Match terms:** 3d vinyl logo; foam logo; cut-out logo; vinyl logo on foam; 3d vinyl logo on foam; 3d cut-out logo; 3d vinyl logo on foam nos; cut; foam; graphic; logo; nos
-- **Object families:** foam_logos
+- **Match terms:** 3d vinyl logo on foam; 3d foam logo; 3d cut-out logo; vinyl logo on foam; 3d vinyl logo on foam nos; cut; foam; graphic; logo; nos; out; vinyl
+- **Object families:** 3d_logo; foam_logo; vinyl_logo
 
 ### graphics-3d-vinyl-lettering-on-foam
 
@@ -970,8 +969,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 240.00
 - **Remarks:** 3D cut-out lettering; NOTE: Per set max 2m long
 - **Search aliases:** sets of 3D vinyl lettering on foam; 3D vinyl lettering on foam; 3D cut-out lettering; NOTE: Per set max 2m long; Graphics 3D vinyl lettering on foam; 3D vinyl lettering on foam set
-- **Match terms:** 3d vinyl lettering; foam lettering; cut-out lettering; vinyl lettering on foam; 3d vinyl lettering on foam; 3d cut-out lettering; note: per set max 2m long; 3d vinyl lettering on foam set; cut; foam; graphic; lettering
-- **Object families:** foam_lettering
+- **Match terms:** 3d vinyl lettering on foam; 3d foam lettering set; 3d cut-out lettering; vinyl lettering on foam; note: per set max 2m long; 3d vinyl lettering on foam set; cut; foam; graphic; lettering; long; max
+- **Object families:** 3d_lettering; foam_lettering; vinyl_lettering
 
 ### graphics-die-cut-vinyl-logo-including-lettering
 
@@ -980,8 +979,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 75.00
 - **Remarks:** 3D cut-out lettering; NOTE: Per set max 2m long
 - **Search aliases:** nos. die-cut vinyl logo including lettering; die-cut vinyl logo including lettering; 3D cut-out lettering; NOTE: Per set max 2m long; Graphics die-cut vinyl logo including lettering; die-cut vinyl logo including lettering nos
-- **Match terms:** die cut vinyl logo; vinyl decal; cut vinyl logo; adhesive vinyl logo; die-cut vinyl logo including lettering; 3d cut-out lettering; note: per set max 2m long; die-cut vinyl logo including lettering nos; cut; die; graphic; lettering
-- **Object families:** die_cut_vinyl
+- **Match terms:** die-cut vinyl logo; die-cut logo with lettering; vinyl cut logo; die-cut lettering logo; die-cut vinyl logo including lettering; 3d cut-out lettering; note: per set max 2m long; die-cut vinyl logo including lettering nos; cut; die; graphic; lettering
+- **Object families:** die_cut_logo; vinyl_logo; logo_with_lettering
 
 ### graphics-vinyl-printed-graphics
 
@@ -990,8 +989,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 60.00
 - **Remarks:** Printed Graphics on wall
 - **Search aliases:** sqm of vinyl printed graphics; vinyl printed graphics; Printed Graphics on wall; Graphics vinyl printed graphics; vinyl printed graphics sqm
-- **Match terms:** vinyl printed graphics; printed vinyl; vinyl wall graphics; adhesive vinyl print; printed graphics on wall; vinyl printed graphics sqm; graphic; printed; sqm; vinyl; wall
-- **Object families:** printed_vinyl
+- **Match terms:** vinyl printed graphics; vinyl wall graphics; printed vinyl mural; vinyl print; printed graphics on wall; vinyl printed graphics sqm; graphic; printed; sqm; vinyl; wall
+- **Object families:** vinyl_graphics; printed_vinyl; wall_graphics
 
 ### graphics-vinyl-printed-graphics-on-flex-foam
 
@@ -1000,8 +999,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 72.00
 - **Remarks:** Printed Graphics on foam
 - **Search aliases:** sqm of vinyl printed graphics on flex foam; vinyl printed graphics on flex foam; Printed Graphics on foam; Graphics vinyl printed graphics on flex foam; vinyl printed graphics on flex foam sqm
-- **Match terms:** vinyl printed graphics on foam; foam mounted print; flex foam print; printed foam board; vinyl printed graphics on flex foam; printed graphics on foam; vinyl printed graphics on flex foam sqm; flex; foam; graphic; printed; sqm
-- **Object families:** foam_prints
+- **Match terms:** vinyl printed graphics on flex foam; flex foam printed graphics; printed foam graphics; vinyl on flex foam; printed graphics on foam; vinyl printed graphics on flex foam sqm; flex; foam; graphic; printed; sqm; vinyl
+- **Object families:** vinyl_graphics; flex_foam_graphics; printed_foam
 
 ### graphics-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh
 
@@ -1010,8 +1009,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 150.00
 - **Remarks:** For Shell Scheme
 - **Search aliases:** nos. digital print graphic mounted directly onto system panels; (Size 950mmL x 2340mmH); digital print graphic mounted directly onto system panels; For Shell Scheme; Graphics digital print graphic mounted directly onto system panels; (Size 950mmL x 2340mmH) nos
-- **Match terms:** system panel graphic; shell scheme graphic; digital print for panels; panel mounted graphic; digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh); for shell scheme; (size 950mml x 2340mmh) nos; 2340mmh; 950mml; digital; directly
-- **Object families:** system_panel_graphics
+- **Match terms:** digital print for system panels; panel graphic 950x2340mm; shell scheme graphic; mounted digital print panel; digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh); digital print graphic mounted directly onto system panels; (size 950mml x 2340mmh); for shell scheme; (size 950mml x 2340mmh) nos; 2340mmh; 950mml; digital
+- **Object families:** panel_graphic; digital_print; shell_scheme
 
 ### graphics-nos-seamless-wall-graphic-on-flex-foam-size-3000mml-x-2500mmh
 
@@ -1020,8 +1019,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 540.00
 - **Remarks:** For Shell Scheme
 - **Search aliases:** nos.seamless wall graphic on flex foam; (Size 3000mmL x 2500mmH); For Shell Scheme; Graphics nos.seamless wall graphic on flex foam; (Size 3000mmL x 2500mmH) nos
-- **Match terms:** seamless wall graphic; flex foam wall graphic; large foam print; shell scheme wall graphic; nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh); for shell scheme; (size 3000mml x 2500mmh) nos; 2500mmh; 3000mml; flex; foam
-- **Object families:** foam_wall_graphics
+- **Match terms:** seamless wall graphic on flex foam; seamless foam graphic 3000x2500mm; shell scheme seamless graphic; large format foam graphic; nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh); nos.seamless wall graphic on flex foam; (size 3000mml x 2500mmh); for shell scheme; (size 3000mml x 2500mmh) nos; 2500mmh; 3000mml; flex
+- **Object families:** seamless_graphic; flex_foam_graphic; shell_scheme
 
 ### graphics-poster-print-on-foam-for-exhibitor-wall-at-approx-1ml-x-1-2mh
 
@@ -1030,8 +1029,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 90.00
 - **Remarks:** POSTER on foam
 - **Search aliases:** nos. poster print on foam for exhibitor wall at approx. 1mL x 1.2mH; poster print on foam for exhibitor wall at approx. 1mL x 1.2mH; POSTER on foam; Graphics poster print on foam for exhibitor wall at approx. 1mL x 1.2mH; poster print on foam for exhibitor wall at approx. 1mL x 1.2mH nos
-- **Match terms:** poster on foam; foam poster; foam mounted poster; printed foam board; poster print on foam for exhibitor wall at approx. 1ml x 1.2mh; poster print on foam for exhibitor wall at approx. 1ml x 1.2mh nos; 1ml; 2mh; approx; exhibitor; foam; graphic
-- **Object families:** foam_posters
+- **Match terms:** poster print on foam; foam poster 1m x 1.2m; exhibitor wall poster; 1m x 1.2m foam print; poster print on foam for exhibitor wall at approx. 1ml x 1.2mh; poster on foam; poster print on foam for exhibitor wall at approx. 1ml x 1.2mh nos; 1ml; 2mh; approx; exhibitor; foam
+- **Object families:** foam_poster; poster_print; exhibitor_graphics
 
 ## Water Connection
 
@@ -1042,8 +1041,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 864.00
 - **Remarks:** Water connection
 - **Search aliases:** nos. water inlet and outlet; water inlet and outlet; Water connection; Water Connection water inlet and outlet; water inlet and outlet nos
-- **Match terms:** water connection; water inlet and outlet; plumbing connection; water supply point; water inlet and outlet nos; connection; inlet; nos; outlet; water
-- **Object families:** water_connections
+- **Match terms:** water inlet and outlet; water supply connection; water feed and drain; plumbing inlet outlet; water connection; water inlet and outlet nos; connection; inlet; nos; outlet; water
+- **Object families:** water_connection; plumbing
 
 ### water-connection-sink-connection
 
@@ -1052,8 +1051,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 216.00
 - **Remarks:** Plumbing
 - **Search aliases:** nos. sink connection; sink connection; Plumbing; Water Connection sink connection; sink connection nos
-- **Match terms:** sink connection; water connection sink; plumbing connection sink; water connection; sink connection nos; connection; nos; plumbing; sink; water
-- **Object families:** sink_connection; water_connection
+- **Match terms:** sink connection; sink plumbing hookup; sink water supply; sink drain connection; water connection; sink connection nos; connection; nos; plumbing; sink; water
+- **Object families:** sink_connection; plumbing
 
 ## Coffee / Tea (Subject to approval by Venue owner and Organiser)
 
@@ -1064,8 +1063,8 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 225.00
 - **Remarks:** COFFEE PER DAY
 - **Search aliases:** Coffee / Tea and supplies for 100 people per day; Coffee; Tea and supplies for 100 people per day; COFFEE PER DAY; Coffee / Tea (Subject to approval by Venue owner and Organiser) Coffee / Tea and supplies for 100 people per day
-- **Match terms:** coffee tea supplies; coffee tea service; daily coffee tea; coffee tea for 100; tea (subject to approval by venue owner and organiser); coffee / tea (subject to approval by venue owner and organiser); tea and supplies for 100 people per day; coffee / tea and supplies for 100 people per day; coffee per day; approval; coffee; day
-- **Object families:** coffee_tea_service; catering_daily
+- **Match terms:** coffee; tea; coffee supplies; tea supplies; coffee service; tea service; tea (subject to approval by venue owner and organiser); coffee / tea (subject to approval by venue owner and organiser); tea and supplies for 100 people per day; coffee / tea and supplies for 100 people per day; coffee per day; approval
+- **Object families:** coffee_tea_service; daily_beverage_supply
 
 ### coffee-tea-subject-to-approval-by-venue-owner-and-organiser-water-cooler-and-heating-equipment-for-3-gallons
 
@@ -1074,5 +1073,5 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 - **Sale unit price:** SGD 375.00
 - **Remarks:** DRINKING WATER
 - **Search aliases:** Water cooler and heating equipment for 3 gallons; DRINKING WATER; Coffee / Tea (Subject to approval by Venue owner and Organiser) Water cooler and heating equipment for 3 gallons
-- **Match terms:** water cooler with heater; hot cold water cooler; 3 gallon water dispenser; tea (subject to approval by venue owner and organiser); coffee / tea (subject to approval by venue owner and organiser); water cooler and heating equipment for 3 gallons; drinking water; approval; coffee; cooler; drinking; equipment
-- **Object families:** water_cooler_heater; drinking_water_equipment
+- **Match terms:** water cooler; water heater; water dispenser; drinking water equipment; tea (subject to approval by venue owner and organiser); coffee / tea (subject to approval by venue owner and organiser); water cooler and heating equipment for 3 gallons; drinking water; approval; coffee; cooler; drinking
+- **Object families:** water_cooler; beverage_equipment
