@@ -2679,6 +2679,7 @@ def sanitize_pricing_reference_item(
     else:
         remarks = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("remarks") or raw.get("remark"))]
         aliases = [sanitize_formula_text(item) for item in split_pricing_reference_terms(raw.get("aliases"))][:8]
+    description, remarks = split_pricing_reference_description_notes(description, remarks)
     if not aliases:
         aliases = default_pricing_reference_aliases(section, description, unit_hint, remarks)
     elif apply_import_text_fixes and description != clean_text(raw_description):
@@ -3117,7 +3118,7 @@ def sectioned_workbook_alias_candidates(section: str, description: str, remarks:
     return aliases[:8]
 
 
-def split_sectioned_workbook_description_notes(description: Any, remarks: list[Any]) -> tuple[str, list[str]]:
+def split_pricing_reference_description_notes(description: Any, remarks: list[Any]) -> tuple[str, list[str]]:
     description_text = clean_text(description)
     kept_remarks: list[str] = []
     moved_notes: list[str] = []
@@ -3243,7 +3244,7 @@ def sectioned_workbook_row_to_pricing_reference_row(section: str, section_order:
     description = apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_DESCRIPTION))
     remarks = [apply_pricing_workbook_text_fixes(pricing_workbook_cell(row, SECTIONED_WORKBOOK_COL_REMARKS))]
     remarks = [remark for remark in remarks if remark]
-    description, remarks = split_sectioned_workbook_description_notes(description, remarks)
+    description, remarks = split_pricing_reference_description_notes(description, remarks)
     unit_hint = infer_pricing_reference_unit(description) or ("nos" if description else "")
     return {
         "_source_row": row_number,
@@ -3292,7 +3293,7 @@ def sectioned_pricing_reference_rows_from_xlsx_bytes(raw: bytes) -> list[dict[st
                 rows[-1]["description"] = "; ".join(part for part in (clean_text(rows[-1].get("description")), description) if part)
                 rows[-1]["unit_hint"] = rows[-1].get("unit_hint") or infer_unit_prefix(rows[-1]["description"])
         if remark:
-            current_description, current_remarks = split_sectioned_workbook_description_notes(
+            current_description, current_remarks = split_pricing_reference_description_notes(
                 rows[-1].get("description"),
                 [*split_pricing_reference_terms(rows[-1].get("remarks")), remark],
             )

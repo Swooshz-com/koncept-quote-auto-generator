@@ -2696,12 +2696,38 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(hanging["description"], "m run of hanging structure x 1m height; wooden construct in painted finished as per design proposal")
         self.assertEqual(hanging["remarks"], ["Wooden hanging structure", "PAINTED"])
         self.assertEqual(rigging["section"], "Rigging Point")
-        self.assertEqual(rigging["description"], "nos. rigging point for Overhead Structure or Aluminium Box Truss")
+        self.assertEqual(
+            rigging["description"],
+            "nos. rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss",
+        )
         self.assertEqual(rigging["unit_hint"], "nos")
-        self.assertEqual(rigging["remarks"], ["Prices are not inclusive of truss"])
+        self.assertEqual(rigging["remarks"], [])
         self.assertIn("RIGGING POINT", rigging["aliases"])
         self.assertIn("truss", rigging["aliases"])
         self.assertEqual(result["tax"], {"label": "GST", "rate": 0.09})
+
+    def test_template_pricing_reference_import_moves_commercial_note_terms_from_remarks_to_description(self):
+        rows = [{
+            "section": "Hanging Structure",
+            "description": "nos. rigging point for Overhead Structure or Aluminium Box Truss",
+            "unit_hint": "nos",
+            "internal_cost": 300,
+            "markup_multiplier": 1.5,
+            "remarks": "RIGGING POINT; Prices are not inclusive of truss",
+        }]
+
+        result = webapp.validate_pricing_reference_rows(
+            rows,
+            list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS),
+            "template.csv",
+        )
+
+        item = result["items"][0]
+        self.assertEqual(
+            item["description"],
+            "nos. rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss",
+        )
+        self.assertEqual(item["remarks"], ["RIGGING POINT"])
 
     def test_markdown_pricing_reference_import_without_ai_is_clear_and_not_saved(self):
         raw = b"# Messy catalog\n\n- m run of hanging structure x 1m height"
