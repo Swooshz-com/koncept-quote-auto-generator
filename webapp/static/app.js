@@ -195,6 +195,8 @@ const state = {
   pricingReferenceDeleteConfirmId: "",
   pricingReferenceDeleteError: "",
   pricingReferenceDeleteBusy: false,
+  profileDeleteConfirmId: "",
+  profileDeleteError: "",
   profileSaveBusy: false,
   profileDeleteBusy: false,
   permissions: {
@@ -298,6 +300,12 @@ const elements = {
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
   presetSourceBadge: qs(".company-preset-source-badge"),
+  profileDeleteModal: qs("#profileDeleteModal"),
+  profileDeleteTitle: qs("#profileDeleteTitle"),
+  profileDeleteText: qs("#profileDeleteText"),
+  profileDeleteError: qs("#profileDeleteError"),
+  cancelProfileDeleteButton: qs("#cancelProfileDeleteButton"),
+  confirmProfileDeleteButton: qs("#confirmProfileDeleteButton"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
@@ -2456,7 +2464,60 @@ function startNewQuote() {
   syncControlStates();
 }
 
-async function deleteSelectedPreset() {
+function profileDeleteConfirmPreset() {
+  const presetId = String(state.profileDeleteConfirmId || "").trim();
+  if (!presetId) return null;
+  return companyProfilePresets().find((preset) => preset.id === presetId) || null;
+}
+
+function hideProfileDeleteModal(options = {}) {
+  if (state.profileDeleteBusy && !options.force) return;
+  state.profileDeleteConfirmId = "";
+  state.profileDeleteError = "";
+  if (elements.profileDeleteModal) {
+    elements.profileDeleteModal.classList.remove("is-open");
+    elements.profileDeleteModal.hidden = true;
+  }
+  if (elements.profileDeleteError) {
+    elements.profileDeleteError.hidden = true;
+    elements.profileDeleteError.textContent = "";
+  }
+}
+
+function renderProfileDeleteModal() {
+  const modal = elements.profileDeleteModal;
+  if (!modal) return;
+  const preset = profileDeleteConfirmPreset();
+  if (!preset) {
+    modal.classList.remove("is-open");
+    modal.hidden = true;
+    return;
+  }
+  const label = preset.name || preset.id || "this saved profile";
+  modal.hidden = false;
+  modal.classList.add("is-open");
+  if (elements.profileDeleteTitle) {
+    elements.profileDeleteTitle.textContent = `Delete "${label}"?`;
+  }
+  if (elements.profileDeleteText) {
+    elements.profileDeleteText.textContent = "This removes the saved company profile from this local app. Quote details already filled from it are not changed.";
+  }
+  if (elements.profileDeleteError) {
+    const message = String(state.profileDeleteError || "").trim();
+    elements.profileDeleteError.hidden = !message;
+    elements.profileDeleteError.textContent = message;
+  }
+  [elements.cancelProfileDeleteButton, elements.confirmProfileDeleteButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = state.profileDeleteBusy;
+    button.setAttribute("aria-disabled", String(button.disabled));
+  });
+  if (elements.confirmProfileDeleteButton) {
+    elements.confirmProfileDeleteButton.textContent = state.profileDeleteBusy ? "Deleting..." : "Delete";
+  }
+}
+
+function requestSelectedPresetDelete() {
   const preset = selectedPreset();
   if (!canManageProfiles()) {
     renderPresetStatus(profileNoAccessReason());
@@ -2468,13 +2529,25 @@ async function deleteSelectedPreset() {
     updatePresetButtons();
     return;
   }
-  const label = preset.name || preset.id || "this saved profile";
-  if (!window.confirm(`Delete "${label}"? This removes the saved company profile from this local app.`)) {
+  state.profileDeleteConfirmId = preset.id || "";
+  state.profileDeleteError = "";
+  renderProfileDeleteModal();
+  window.setTimeout(() => elements.cancelProfileDeleteButton?.focus(), 0);
+}
+
+async function deleteSelectedPreset() {
+  const preset = profileDeleteConfirmPreset();
+  if (!preset || preset.source !== "company") {
+    hideProfileDeleteModal({ force: true });
+    updatePresetButtons();
     return;
   }
+  const label = preset.name || preset.id || "this saved profile";
   state.profileDeleteBusy = true;
+  state.profileDeleteError = "";
   renderPresetStatus(`Deleting "${label}"...`);
   updatePresetButtons();
+  renderProfileDeleteModal();
   try {
     const response = await fetch(`/api/settings/profiles/${encodeURIComponent(preset.id)}`, {
       method: "DELETE",
@@ -2482,7 +2555,9 @@ async function deleteSelectedPreset() {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      renderPresetStatus(genericFailureMessages(data).join(" "));
+      const message = genericFailureMessages(data).join(" ");
+      state.profileDeleteError = message;
+      renderPresetStatus(message);
       return;
     }
     state.companyProfiles = state.companyProfiles.filter((profile) => safeProfileId(profile.id || profile.label, "") !== preset.id);
@@ -2490,10 +2565,14 @@ async function deleteSelectedPreset() {
     elements.presetNameInput.value = "";
     renderPresetOptions();
     renderPresetStatus(response.status === 404 ? `"${label}" was not found.` : `Deleted "${label}".`);
+    hideProfileDeleteModal();
   } catch (error) {
-    renderPresetStatus(genericFailureMessages(error).join(" "));
+    const message = genericFailureMessages(error).join(" ");
+    state.profileDeleteError = message;
+    renderPresetStatus(message);
   } finally {
     state.profileDeleteBusy = false;
+    renderProfileDeleteModal();
     updatePresetButtons();
     syncControlStates();
   }
@@ -7904,6 +7983,8 @@ function wireEvents() {
         closePricingReferenceTableOverlay();
       } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
+      } else if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
+        hideProfileDeleteModal();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
         if (elements.pricingReferenceDeleteConfirm && !elements.pricingReferenceDeleteConfirm.hidden) {
           hidePricingReferenceDeleteConfirm();
@@ -8036,7 +8117,14 @@ function wireEvents() {
   elements.presetNameInput?.addEventListener("input", updatePresetButtons);
   elements.savePresetButton.addEventListener("click", saveCurrentPreset);
   elements.loadPresetButton.addEventListener("click", loadSelectedPreset);
-  elements.deletePresetButton.addEventListener("click", deleteSelectedPreset);
+  elements.deletePresetButton.addEventListener("click", requestSelectedPresetDelete);
+  elements.cancelProfileDeleteButton?.addEventListener("click", hideProfileDeleteModal);
+  elements.confirmProfileDeleteButton?.addEventListener("click", deleteSelectedPreset);
+  elements.profileDeleteModal?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-profile-delete-close]")) {
+      hideProfileDeleteModal();
+    }
+  });
   elements.importPresetButton?.addEventListener("click", requestPresetImport);
   elements.importPresetFile?.addEventListener("change", handlePresetImportFileChange);
   elements.exportPresetButton?.addEventListener("click", exportCurrentPreset);

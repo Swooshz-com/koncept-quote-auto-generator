@@ -7170,6 +7170,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "clearQuoteCompanyButton",
             "loadPresetButton",
             "deletePresetButton",
+            "profileDeleteModal",
+            "profileDeleteTitle",
+            "profileDeleteText",
+            "profileDeleteError",
+            "cancelProfileDeleteButton",
+            "confirmProfileDeleteButton",
             "presetStatus",
             "aiFailureBanner",
         ):
@@ -7279,6 +7285,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("profile-load-button", html)
         self.assertIn('id="deletePresetButton"', html)
         self.assertNotIn('id="deletePresetButton" hidden', html)
+        self.assertIn('id="profileDeleteModal"', html)
+        self.assertIn("Delete saved profile?", html)
+        self.assertIn("requestSelectedPresetDelete", js)
+        self.assertIn("function renderProfileDeleteModal", js)
+        self.assertNotIn('window.confirm(`Delete "${label}"? This removes the saved company profile', js)
         self.assertIn('id="importPresetButton"', html)
         self.assertIn('id="exportPresetButton"', html)
         self.assertIn('id="importPresetFile" type="file" accept="application/json,.json" hidden', html)
@@ -7360,6 +7371,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".pricing-reference-panel", css)
         self.assertIn(".pricing-reference-source-badge", css)
         self.assertIn(".pricing-reference-heading", css)
+        self.assertIn(".pricing-reference-heading,\n.company-preset-heading {\n  display: flex;", css)
+        self.assertIn("flex-direction: column;\n  flex-wrap: wrap;\n  align-items: flex-start;", css)
+        self.assertIn("gap: 8px;\n  width: 100%;", css)
+        self.assertNotIn("margin-left: auto;\n  min-height: 24px;", css)
         self.assertIn(".pricing-reference-controls", css)
         self.assertIn(".pricing-reference-controls .settings-button-row", css)
         self.assertIn("align-items: stretch;", css)
@@ -7384,6 +7399,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".company-preset-card .compact-control input", css)
         self.assertIn(".company-preset-panel .profile-load-button", css)
         self.assertIn(".company-preset-file-actions", css)
+        self.assertIn(".profile-delete-panel", css)
+        self.assertIn(".profile-delete-actions button", css)
         self.assertNotIn(".company-preset-select-card", css)
         self.assertNotIn(".company-preset-save-row", css)
         self.assertIn("Download Excel", html)
@@ -9090,6 +9107,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("confirmPricingReferenceDeleteButton", html)
         delete_reference_button_html = html.split('id="deletePricingReferenceButton"', 1)[1].split("</button>", 1)[0]
         self.assertIn("<span>Delete</span>", delete_reference_button_html)
+        self.assertIn('<path d="M4 7h16"></path>', delete_reference_button_html)
+        self.assertIn('<path d="M6 7l1 14h10l1-14"></path>', delete_reference_button_html)
+        self.assertNotIn('<path d="M8 8h8l-.8 12H8.8L8 8Z"></path>', delete_reference_button_html)
         self.assertNotIn("Delete Reference", delete_reference_button_html)
         self.assertNotIn("editPricingReferenceButton", html)
         self.assertNotIn("Edit Rows", html)
@@ -9187,11 +9207,14 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-delete-controls .compact-control {\n  margin: 0;\n  width: 100%;", css)
         self.assertIn(".pricing-reference-delete-confirm", css)
         self.assertIn(".pricing-reference-delete-confirm-actions", css)
+        self.assertIn(".pricing-reference-delete-confirm-actions .danger-button", css)
+        self.assertIn(".profile-delete-actions .danger-button", css)
         self.assertNotIn(".pricing-reference-edit-button", css)
         self.assertIn(".pricing-reference-delete-controls .compact-control select", css)
         self.assertIn(".secondary-button.pricing-reference-delete-button {\n  display: inline-flex;", css)
         self.assertIn("gap: 3px;\n  min-width: 124px;\n  min-height: 44px;", css)
         self.assertIn(".pricing-reference-delete-button svg", css)
+        self.assertIn("width: 15px;\n  height: 15px;\n  fill: none;\n  stroke: currentColor;", css)
         self.assertIn(".pricing-reference-delete-button span", css)
         self.assertIn(".pricing-reference-settings-tabs", css)
         self.assertIn(".pricing-reference-settings-tab.is-active", css)
@@ -9694,7 +9717,7 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".company-preset-panel .settings-note", css)
         self.assertIn(".pricing-reference-control-group", css)
         self.assertIn(".pricing-reference-card", css)
-        self.assertIn("grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);", css)
+        self.assertIn("grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);", css)
         self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
         self.assertIn(".company-preset-profile-card {\n  grid-column: 2;", css)
         self.assertIn(".company-preset-save-card {\n  grid-column: 3;", css)

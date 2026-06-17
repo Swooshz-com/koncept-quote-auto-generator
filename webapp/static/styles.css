@@ -1064,7 +1064,7 @@ h3 {
 
 .pricing-reference-panel {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
@@ -1074,7 +1074,7 @@ h3 {
 
 .company-preset-panel {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
@@ -1115,9 +1115,11 @@ h3 {
 .pricing-reference-heading,
 .company-preset-heading {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  width: 100%;
 }
 
 .pricing-reference-source-badge,
@@ -3447,9 +3449,9 @@ td input {
   min-width: 124px;
   min-height: 44px;
   padding: 0 14px;
-  border-color: #fecaca;
-  background: #fff7f7;
-  color: #c97878;
+  border-color: #efaca5;
+  background: linear-gradient(180deg, #fff7f5, #ffe9e5);
+  color: #9f2d27;
   font-size: 15px;
   font-weight: 850;
   line-height: 1;
@@ -3457,25 +3459,28 @@ td input {
 }
 
 .secondary-button.pricing-reference-delete-button:hover:not(:disabled):not([aria-disabled="true"]) {
-  border-color: #f2aaa6;
+  border-color: #c4372f;
   background: #fff1f1;
-  color: #a94848;
+  color: #7f231f;
 }
 
 .secondary-button.pricing-reference-delete-button:disabled,
 .secondary-button.pricing-reference-delete-button[aria-disabled="true"] {
   cursor: not-allowed;
-  opacity: 1;
+  border-color: #fecaca;
+  background: #fffafa;
+  color: #c97878;
+  opacity: 0.68;
 }
 
 .pricing-reference-delete-button svg {
-  width: 20px;
-  height: 20px;
-  fill: #737373;
-  stroke: #737373;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.5;
+  stroke-width: 2;
 }
 
 .pricing-reference-delete-button span {
@@ -3525,6 +3530,20 @@ td input {
 .pricing-reference-delete-confirm-actions .secondary-button {
   min-height: 38px;
   min-width: 96px;
+}
+
+.pricing-reference-delete-confirm-actions .danger-button,
+.profile-delete-actions .danger-button {
+  border-color: #efaca5;
+  background: linear-gradient(180deg, #fff7f5, #ffe9e5);
+  color: #9f2d27;
+}
+
+.pricing-reference-delete-confirm-actions .danger-button:hover:not(:disabled):not([aria-disabled="true"]),
+.profile-delete-actions .danger-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #c4372f;
+  background: #fff1f1;
+  color: #7f231f;
 }
 
 .pricing-reference-manage-status {
@@ -3876,6 +3895,29 @@ body.privacy-page {
 
 .analysis-confirm-panel {
   width: min(680px, calc(100vw - 48px));
+}
+
+.profile-delete-panel {
+  width: min(520px, calc(100vw - 48px));
+}
+
+.profile-delete-panel > p {
+  padding: 18px 20px 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.profile-delete-error {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.profile-delete-panel > .profile-delete-actions {
+  padding: 8px 20px 20px;
+}
+
+.profile-delete-actions button {
+  min-width: 96px;
 }
 
 .analysis-confirm-panel > p {
