@@ -3626,6 +3626,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn(("floor-design-100mm-raised-platform-with-aluminum-edging", "sqm 100mm raised platform with aluminum edging"), current_descriptions)
         self.assertIn(("av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
         self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
+        rigging_item = next(item for item in current["items"] if item["id"] == "hanging-structure-rigging-point-for-overhead-structure-or-aluminium-box-truss")
+        self.assertIn("Prices are not inclusive of truss", rigging_item["description"])
+        self.assertEqual(rigging_item["remarks"], ["RIGGING POINT"])
         catalog_text = json.dumps(current, ensure_ascii=False).lower()
         for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth", "plumbling"):
             self.assertNotIn(token, catalog_text)
@@ -7556,7 +7559,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="profileDescription"', html)
         self.assertIn("Client block", html)
         self.assertIn("Quote reference", html)
-        self.assertIn("Company preset", html)
+        self.assertIn("Select Profile", html)
         self.assertIn("Company header", html)
         self.assertIn("Select header logo", html)
         self.assertIn(".header-logo-preview", css)
