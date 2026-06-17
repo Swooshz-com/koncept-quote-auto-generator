@@ -5,6 +5,10 @@ architecture, app boundaries, auth, data ownership, billing, deployment, and
 quote-generator product rules here instead of splitting them across separate
 planning docs.
 
+Execution is now tracked through SKR-style phase docs under
+`docs/phases/`. Those phase docs sequence PR work, but this file remains the
+canonical architecture source of truth.
+
 ## Goal
 
 Ship the Swooshz product platform and quote generator for controlled MVP testing
