@@ -12263,6 +12263,90 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             with self.assertRaises(ValueError):
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
 
+    def test_koncept_workspace_seed_bridge_exposes_migration_shaped_identity(self):
+        seed = webapp.default_workspace_seed()
+
+        self.assertEqual(webapp.DEFAULT_COMPANY_ID, "koncept-images-pte-ltd")
+        self.assertEqual(seed["schema"], webapp.COMPANY_WORKSPACE_SEED_SCHEMA)
+        self.assertEqual(seed["company"]["id"], "koncept-images-pte-ltd")
+        self.assertEqual(seed["company"]["slug"], "koncept-images-pte-ltd")
+        self.assertEqual(seed["company"]["display_name"], "Koncept Images Pte Ltd")
+        self.assertEqual(seed["workspace"]["id"], "koncept-images-pte-ltd")
+        self.assertEqual(seed["workspace"]["storage_backend"], "local-json-bridge")
+        self.assertEqual(seed["profile_presets"]["import_schema"], webapp.COMPANY_PROFILE_EXPORT_SCHEMA)
+        self.assertEqual(seed["profile_presets"]["storage_collection"], "profiles")
+        self.assertEqual(seed["pricing_references"]["storage_collection"], "pricing-references")
+        self.assertEqual(seed["defaults"]["profile_id"], "koncept")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-exhibition-quotation")
+        self.assertTrue(seed["migration_notes"])
+
+    def test_exported_quote_company_profile_imports_to_koncept_workspace_store(self):
+        exported_profile = {
+            "schema": "swooshz.quote-company-profile.v1",
+            "exported_at": "2026-06-18T00:00:00Z",
+            "profile": {
+                "id": "koncept-images-import",
+                "label": "Koncept Images Imported",
+                "description": "Fixture export for import bridge tests.",
+                "defaults": {
+                    "company": {
+                        "name": "Koncept Images Pte Ltd",
+                        "header_details": "Fixture address only",
+                        "logo_data_url": "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==",
+                    },
+                    "quote_text": {
+                        "payment_terms": ["70% payment upon confirmation."],
+                    },
+                },
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                        request = urllib.request.Request(
+                            f"{runner.base_url}/api/settings/profiles",
+                            data=json.dumps(exported_profile).encode("utf-8"),
+                            headers={
+                                "Content-Type": "application/json",
+                                session["csrf_header"]: session["csrf_token"],
+                            },
+                            method="POST",
+                        )
+                        response = urllib.request.urlopen(request, timeout=3)
+                        body = json.loads(response.read().decode("utf-8"))
+            workspace_store = Path(tmp) / "koncept-images-pte-ltd" / "profiles.json"
+            default_store = Path(tmp) / "default" / "profiles.json"
+            workspace_store_exists = workspace_store.exists()
+            default_store_exists = default_store.exists()
+            stored_profiles = json.loads(workspace_store.read_text(encoding="utf-8"))
+
+        self.assertEqual(body["status"], "saved")
+        self.assertEqual(body["company_id"], "koncept-images-pte-ltd")
+        self.assertEqual(body["workspace"]["company"]["display_name"], "Koncept Images Pte Ltd")
+        self.assertEqual(body["profile"]["id"], "koncept-images-import")
+        self.assertEqual(body["profile"]["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
+        self.assertTrue(workspace_store_exists)
+        self.assertFalse(default_store_exists)
+        self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["name"], "Koncept Images Pte Ltd")
+        self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
+
+    def test_koncept_workspace_seed_keeps_bundled_profile_pricing_and_template_files(self):
+        seed = webapp.default_workspace_seed()
+
+        self.assertEqual(seed["defaults"]["profile_id"], "koncept")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-exhibition-quotation")
+        self.assertTrue(KONCEPT_PROFILE.is_dir())
+        self.assertTrue(KONCEPT_PRICING_REFERENCE.is_dir())
+        self.assertTrue(KONCEPT_CATALOG.is_file())
+        self.assertTrue(KONCEPT_LAYOUT.is_file())
+        self.assertTrue(KONCEPT_LAYOUT_RULES.is_file())
+        self.assertTrue((KONCEPT_PROFILE / "profile.json").is_file())
+        self.assertTrue((KONCEPT_PRICING_REFERENCE / "reference.json").is_file())
+
     def test_profile_payload_sanitizes_formula_like_defaults(self):
         profile = webapp.normalize_profile_payload({
             "id": "reusable-profile",
