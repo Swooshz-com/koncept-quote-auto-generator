@@ -12,6 +12,7 @@ const QUOTE_SESSION_STATE_VERSION = 4;
 const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];
 const ANALYSIS_MODE_STANDARD = "standard";
 const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins.";
 const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
 const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
@@ -345,8 +346,8 @@ function normalizeAnalysisMode(value) {
 
 function analysisRunningMessage(mode = ANALYSIS_MODE_STANDARD) {
   return normalizeAnalysisMode(mode) === ANALYSIS_MODE_HIGH_QUALITY
-    ? "Running high-quality analysis and preparing the quote basis. Please wait."
-    : "Reading the reference files and preparing the quote basis. Please wait.";
+    ? `Running high-quality analysis and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`
+    : `Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`;
 }
 
 function pricingReferenceSelectValue(reference = {}) {
@@ -855,7 +856,7 @@ function setAiStatusBanner(tone, title, message, options = {}) {
   `;
 }
 
-function showAiRunningBanner(message = "Reading the reference files and preparing the quote basis. Please wait.", startedAt = activeJobStartedAt()) {
+function showAiRunningBanner(message = `Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`, startedAt = activeJobStartedAt()) {
   setAiStatusBanner("running", "AI analysis running.", message, { elapsed: true });
   startAnalysisElapsedTimer(startedAt);
 }
@@ -6987,7 +6988,7 @@ async function resumeSavedJob() {
     state.isAnalysisRunning = true;
     state.isGenerating = false;
     setWorkflowStage("analyzing");
-    showAiRunningBanner("Resuming the analysis job after refresh.", activeJobStartedAt(activeJob));
+    showAiRunningBanner(`Resuming the analysis job after refresh. ${ANALYSIS_WAIT_ESTIMATE}`, activeJobStartedAt(activeJob));
     clearBasisReviewSurface();
     setSidePanel("basis", { force: true });
     syncControlStates();
@@ -6995,7 +6996,7 @@ async function resumeSavedJob() {
     const polled = await pollJob(activeJob.id, (job) => {
       if (job.created_at && !state.activeJob?.startedAt) {
         state.activeJob = { ...state.activeJob, startedAt: job.created_at };
-        showAiRunningBanner("Resuming the analysis job after refresh.", job.created_at);
+        showAiRunningBanner(`Resuming the analysis job after refresh. ${ANALYSIS_WAIT_ESTIMATE}`, job.created_at);
         saveSessionState();
       }
     });
