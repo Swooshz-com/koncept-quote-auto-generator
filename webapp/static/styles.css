@@ -3199,6 +3199,38 @@ td input {
   box-shadow: 0 22px 70px rgba(15, 23, 42, 0.22);
 }
 
+.excel-generating-modal {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.excel-generating-panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(430px, calc(100vw - 48px));
+  padding: 18px;
+  overflow: visible;
+}
+
+.excel-generating-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.excel-generating-copy h3 {
+  margin: 0;
+  color: #10223b;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.excel-generating-copy p {
+  margin: 0;
+  color: #52677e;
+  line-height: 1.35;
+}
+
 .modal-header {
   display: flex;
   align-items: flex-start;

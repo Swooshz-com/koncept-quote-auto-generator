@@ -272,6 +272,7 @@ const elements = {
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
+  excelGeneratingModal: qs("#excelGeneratingModal"),
   basisChatOverlay: qs("#basisChatOverlay"),
   basisChatTitle: qs("#basisChatTitle"),
   basisChatContext: qs("#basisChatContext"),
@@ -4407,6 +4408,18 @@ function updateDownloadButton() {
   elements.sideDownloadButton.textContent = "Download Excel";
 }
 
+function showExcelGeneratingModal() {
+  if (!elements.excelGeneratingModal) return;
+  elements.excelGeneratingModal.hidden = false;
+  elements.excelGeneratingModal.classList.add("is-open");
+}
+
+function hideExcelGeneratingModal() {
+  if (!elements.excelGeneratingModal) return;
+  elements.excelGeneratingModal.classList.remove("is-open");
+  elements.excelGeneratingModal.hidden = true;
+}
+
 function downloadCurrentExcelFile(file = state.downloadFile) {
   if (!file?.url) return false;
   try {
@@ -7454,8 +7467,13 @@ function wireEvents() {
     }
     if (!state.downloadFile?.url) {
       event.preventDefault();
-      await handleGenerate();
-      downloadCurrentExcelFile();
+      showExcelGeneratingModal();
+      try {
+        await handleGenerate();
+        downloadCurrentExcelFile();
+      } finally {
+        hideExcelGeneratingModal();
+      }
     }
   });
   document.addEventListener("keydown", (event) => {

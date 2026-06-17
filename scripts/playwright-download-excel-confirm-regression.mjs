@@ -19,6 +19,7 @@ function readArg(name, fallback = "") {
 
 const options = {
   headed: args.includes("--headed"),
+  screenshots: args.includes("--screenshots") || args.includes("--screenshot"),
   keepServer: args.includes("--keep-server"),
   host: readArg("--host", "127.0.0.1"),
   port: Number(readArg("--port", process.env.PLAYWRIGHT_PORT || "8767")),
@@ -85,6 +86,14 @@ async function stopServer(serverInfo) {
   if (serverInfo.server.killed) return;
   serverInfo.server.kill();
   await new Promise((resolve) => serverInfo.server.once("exit", resolve));
+}
+
+async function screenshot(page, name) {
+  if (!options.screenshots) return "";
+  await fs.mkdir(outputDir, { recursive: true });
+  const filePath = path.join(outputDir, name);
+  await page.screenshot({ path: filePath, fullPage: false });
+  return filePath;
 }
 
 function quoteDetails() {
@@ -317,10 +326,14 @@ async function main() {
 
     const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
     await page.getByRole("link", { name: "Download Excel" }).click();
+    await page.locator("#excelGeneratingModal").waitFor({ state: "visible", timeout: 5000 });
+    const generatingShot = await screenshot(page, "generating-excel-modal.png");
     await page.locator("#resultStatus", { hasText: "Completed" }).waitFor({ timeout: 30000 });
     const download = await downloadPromise;
     const downloadPath = path.join(outputDir, "accepted-ai-confirm-quotation.xlsx");
     await download.saveAs(downloadPath);
+    await page.locator("#excelGeneratingModal").waitFor({ state: "hidden", timeout: 5000 });
+    const completedShot = await screenshot(page, "download-complete-output.png");
 
     await assertPartitionPriced(page, "after download click");
     const downloaded = await fs.stat(downloadPath);
@@ -333,6 +346,7 @@ async function main() {
       url: page.url(),
       downloadPath,
       downloadBytes: downloaded.size,
+      screenshots: [generatingShot, completedShot].filter(Boolean),
       consoleProblems,
     }, null, 2));
   } finally {
