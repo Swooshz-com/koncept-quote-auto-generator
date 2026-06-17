@@ -3626,6 +3626,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn(("floor-design-100mm-raised-platform-with-aluminum-edging", "sqm 100mm raised platform with aluminum edging"), current_descriptions)
         self.assertIn(("av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
         self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
+        rigging_item = next(item for item in current["items"] if item["id"] == "hanging-structure-rigging-point-for-overhead-structure-or-aluminium-box-truss")
+        self.assertIn("Prices are not inclusive of truss", rigging_item["description"])
+        self.assertEqual(rigging_item["remarks"], ["RIGGING POINT"])
         catalog_text = json.dumps(current, ensure_ascii=False).lower()
         for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth", "plumbling"):
             self.assertNotIn(token, catalog_text)
@@ -7160,10 +7163,19 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "presetNameInput",
             "presetSelect",
             "savePresetButton",
+            "importPresetButton",
+            "importPresetFile",
+            "exportPresetButton",
             "clearCustomerButton",
             "clearQuoteCompanyButton",
             "loadPresetButton",
             "deletePresetButton",
+            "profileDeleteModal",
+            "profileDeleteTitle",
+            "profileDeleteText",
+            "profileDeleteError",
+            "cancelProfileDeleteButton",
+            "confirmProfileDeleteButton",
             "presetStatus",
             "aiFailureBanner",
         ):
@@ -7206,6 +7218,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Quote Pricing Reference", html)
         self.assertIn("Repo catalog", html)
         self.assertIn('class="pricing-reference-copy"', html)
+        self.assertIn('class="pricing-reference-control-group pricing-reference-card"', html)
         self.assertIn('class="pricing-reference-source-badge">Repo catalog</span>', html)
         self.assertIn('id="selectedPricingReferenceSummary">Managed in Settings.</p>', html)
         self.assertIn('? "Managed in Settings."', js)
@@ -7224,7 +7237,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"{forbidden_source_term} context", html)
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
-        self.assertIn("Database save pending.", html)
+        self.assertIn("Load a template, or save/import/export a reusable company profile.", html)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
@@ -7246,8 +7259,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('defaultPreset = builtInPresets.find((preset) => preset.id === "default")', js)
         self.assertIn("defaultOption", js)
         self.assertIn('.filter((preset) => preset.id !== "default")', js)
-        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Presets">'))
-        self.assertNotIn("Saved Company Presets", js)
+        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Templates">'))
+        self.assertIn('`<optgroup label="Saved Profiles">', js)
         self.assertNotIn("Profile Pricing References", js)
         self.assertNotIn("Company Pricing References", js)
         self.assertNotIn("Clear Customer", html)
@@ -7260,11 +7273,33 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('renderPresetStatus("Quote-company defaults reset to the selected company preset.")', js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
-        self.assertIn('id="deletePresetButton" hidden', html)
-        self.assertIn('class="company-preset-control-group company-preset-save-group" aria-disabled="true"', html)
-        self.assertIn('id="presetNameInput" type="text" placeholder="Database save pending" disabled', html)
-        self.assertIn('id="savePresetButton" disabled', html)
-        self.assertIn(">Save Profile</button>", html)
+        self.assertNotIn('id="topbarStatus"', html)
+        self.assertNotIn('id="statusDot"', html)
+        self.assertNotIn('id="healthText"', html)
+        self.assertIn("<h3>Select Profile</h3>", html)
+        self.assertNotIn("<h4>Select Profile</h4>", html)
+        self.assertNotIn("Save &amp; Manage Data", html)
+        self.assertNotIn("More Actions", html)
+        self.assertIn('class="company-preset-control-group company-preset-card company-preset-profile-card"', html)
+        self.assertIn('class="company-preset-control-group company-preset-card company-preset-save-card"', html)
+        self.assertIn("profile-load-button", html)
+        self.assertIn('id="deletePresetButton"', html)
+        self.assertNotIn('id="deletePresetButton" hidden', html)
+        self.assertIn('id="profileDeleteModal"', html)
+        self.assertIn("Delete saved profile?", html)
+        self.assertIn("requestSelectedPresetDelete", js)
+        self.assertIn("function renderProfileDeleteModal", js)
+        self.assertNotIn('window.confirm(`Delete "${label}"? This removes the saved company profile', js)
+        self.assertIn('id="importPresetButton"', html)
+        self.assertIn('id="exportPresetButton"', html)
+        self.assertIn('id="importPresetFile" type="file" accept="application/json,.json" hidden', html)
+        self.assertNotIn('class="company-preset-control-group company-preset-save-group"', html)
+        self.assertIn('id="presetNameInput" type="text" placeholder="Reusable profile name"', html)
+        self.assertIn("Reusable Profile Name", html)
+        self.assertNotIn('id="presetNameInput" type="text" placeholder="Database save pending" disabled', html)
+        self.assertNotIn('id="savePresetButton" disabled', html)
+        self.assertIn("<span>Save</span>", html)
+        self.assertNotIn("Save Profile", html)
         self.assertNotIn('class="company-preset-control-group" hidden', html)
         self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageIntake"'))
         self.assertLess(html.index('id="clearCustomerButton"'), html.index('id="customerDetailsPanel"'))
@@ -7336,9 +7371,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".pricing-reference-panel", css)
         self.assertIn(".pricing-reference-source-badge", css)
         self.assertIn(".pricing-reference-heading", css)
+        self.assertIn(".pricing-reference-heading,\n.company-preset-heading {\n  display: flex;", css)
+        self.assertIn("flex-direction: column;\n  flex-wrap: wrap;\n  align-items: flex-start;", css)
+        self.assertIn("gap: 8px;\n  width: 100%;", css)
+        self.assertNotIn("margin-left: auto;\n  min-height: 24px;", css)
         self.assertIn(".pricing-reference-controls", css)
         self.assertIn(".pricing-reference-controls .settings-button-row", css)
-        self.assertIn("align-items: start;", css)
+        self.assertIn("align-items: stretch;", css)
         self.assertIn(".company-preset-panel", css)
         self.assertIn(".company-preset-controls", css)
         self.assertNotIn(".quote-company-toolbar", css)
@@ -7348,11 +7387,22 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("function resetImagesDraft", js)
         self.assertIn("state.images = [];", js)
         self.assertIn('id="savePresetButton"', html)
-        self.assertIn('renderPresetStatus("Database save pending.")', js)
+        self.assertIn("function saveCurrentPreset", js)
+        self.assertIn("function exportCurrentPreset", js)
+        self.assertIn("function handlePresetImportFileChange", js)
+        self.assertIn("function setButtonLabel", js)
+        self.assertIn('setButtonLabel(elements.savePresetButton, state.profileSaveBusy ? "Saving..." : "Save")', js)
         self.assertIn(".company-preset-source-badge", css)
-        self.assertIn(".company-preset-save-group", css)
-        self.assertIn(".company-preset-save-group .primary-button:disabled", css)
-        self.assertIn("background: #edf3f8;", css)
+        self.assertIn(".company-preset-card", css)
+        self.assertIn(".company-preset-profile-card", css)
+        self.assertIn(".company-preset-save-card", css)
+        self.assertIn(".company-preset-card .compact-control input", css)
+        self.assertIn(".company-preset-panel .profile-load-button", css)
+        self.assertIn(".company-preset-file-actions", css)
+        self.assertIn(".profile-delete-panel", css)
+        self.assertIn(".profile-delete-actions button", css)
+        self.assertNotIn(".company-preset-select-card", css)
+        self.assertNotIn(".company-preset-save-row", css)
         self.assertIn("Download Excel", html)
         self.assertNotIn("Download Quotation", html)
         self.assertNotIn("Use Download Quotation in the Output footer.", js)
@@ -7442,7 +7492,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("grid-template-columns: repeat(3, var(--basis-legend-pill-width));", css)
         self.assertNotIn("grid-template-columns: repeat(3, var(--basis-pill-width));", css)
         self.assertIn(".topbar-controls {\n    display: grid;\n    grid-template-columns: 1fr 1fr;", css)
-        self.assertIn(".topbar-status {\n    grid-column: 1 / -1;", css)
+        self.assertNotIn(".topbar-status", css)
         self.assertIn('state.draftSource === "local"', js)
         self.assertIn("if (state.aiFailed) return false", js)
         self.assertIn(".basis-empty-state-error", css)
@@ -7530,7 +7580,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="profileDescription"', html)
         self.assertIn("Client block", html)
         self.assertIn("Quote reference", html)
-        self.assertIn("Company preset", html)
+        self.assertIn("Select Profile", html)
         self.assertIn("Company header", html)
         self.assertIn("Select header logo", html)
         self.assertIn(".header-logo-preview", css)
@@ -9055,7 +9105,12 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricingReferenceDeleteConfirm", html)
         self.assertIn("cancelPricingReferenceDeleteButton", html)
         self.assertIn("confirmPricingReferenceDeleteButton", html)
-        self.assertIn("Delete Reference", html)
+        delete_reference_button_html = html.split('id="deletePricingReferenceButton"', 1)[1].split("</button>", 1)[0]
+        self.assertIn("<span>Delete</span>", delete_reference_button_html)
+        self.assertIn('<path d="M4 7h16"></path>', delete_reference_button_html)
+        self.assertIn('<path d="M6 7l1 14h10l1-14"></path>', delete_reference_button_html)
+        self.assertNotIn('<path d="M8 8h8l-.8 12H8.8L8 8Z"></path>', delete_reference_button_html)
+        self.assertNotIn("Delete Reference", delete_reference_button_html)
         self.assertNotIn("editPricingReferenceButton", html)
         self.assertNotIn("Edit Rows", html)
         self.assertIn("Save Changes", js)
@@ -9152,9 +9207,15 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-delete-controls .compact-control {\n  margin: 0;\n  width: 100%;", css)
         self.assertIn(".pricing-reference-delete-confirm", css)
         self.assertIn(".pricing-reference-delete-confirm-actions", css)
+        self.assertIn(".pricing-reference-delete-confirm-actions .danger-button", css)
+        self.assertIn(".profile-delete-actions .danger-button", css)
         self.assertNotIn(".pricing-reference-edit-button", css)
-        self.assertIn(".pricing-reference-delete-button {\n  min-width: 118px;\n  min-height: 40px;", css)
-        self.assertIn(".pricing-reference-delete-button {\n  min-width: 138px;\n}", css)
+        self.assertIn(".pricing-reference-delete-controls .compact-control select", css)
+        self.assertIn(".secondary-button.pricing-reference-delete-button {\n  display: inline-flex;", css)
+        self.assertIn("gap: 3px;\n  min-width: 124px;\n  min-height: 44px;", css)
+        self.assertIn(".pricing-reference-delete-button svg", css)
+        self.assertIn("width: 15px;\n  height: 15px;\n  fill: none;\n  stroke: currentColor;", css)
+        self.assertIn(".pricing-reference-delete-button span", css)
         self.assertIn(".pricing-reference-settings-tabs", css)
         self.assertIn(".pricing-reference-settings-tab.is-active", css)
         self.assertIn(".pricing-reference-mode-panel[hidden]", css)
@@ -9655,10 +9716,11 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".output-edit-cell:hover", css)
         self.assertIn(".company-preset-panel .settings-note", css)
         self.assertIn(".pricing-reference-control-group", css)
-        self.assertIn("grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 320px) minmax(220px, 320px);", css)
+        self.assertIn(".pricing-reference-card", css)
+        self.assertIn("grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);", css)
         self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
-        self.assertIn(".pricing-reference-control-group,\n.company-preset-control-group {\n  grid-column: 2;", css)
-        self.assertIn(".company-preset-save-group {\n  grid-column: 3;", css)
+        self.assertIn(".company-preset-profile-card {\n  grid-column: 2;", css)
+        self.assertIn(".company-preset-save-card {\n  grid-column: 3;", css)
         self.assertIn(".pricing-reference-panel .settings-note {\n  align-self: start;\n  padding-top: 0;", css)
         self.assertIn("padding: 12px 28px 80px;", css)
         self.assertIn('/api/settings/pricing-references/import-preview', js)
@@ -12200,6 +12262,26 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             self.assertEqual(store.list_pricing_references("default")[0]["tax"]["rate"], 0.2)
             with self.assertRaises(ValueError):
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
+
+    def test_profile_payload_sanitizes_formula_like_defaults(self):
+        profile = webapp.normalize_profile_payload({
+            "id": "reusable-profile",
+            "label": "Reusable Profile",
+            "defaults": {
+                "company": {
+                    "name": "=SUM(A1:A2)",
+                    "header_details": "Safe header",
+                },
+                "quote_text": {
+                    "payment_terms": ["+danger", "70% payment upon confirmation."],
+                },
+            },
+        })
+
+        self.assertEqual(profile["id"], "reusable-profile")
+        self.assertEqual(profile["defaults"]["company"]["name"], "'=SUM(A1:A2)")
+        self.assertEqual(profile["defaults"]["quote_text"]["payment_terms"][0], "'+danger")
+        self.assertEqual(profile["defaults"]["company"]["header_details"], "Safe header")
 
     def test_public_company_pricing_reference_redacts_internal_costs(self):
         with mock_pricing_metadata_enrichment():

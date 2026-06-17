@@ -267,22 +267,6 @@ button {
   object-fit: contain;
 }
 
-/* Topbar status pill — visible health indicator */
-.topbar-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 650;
-  transition: border-color var(--duration-base) ease, background var(--duration-base) ease;
-}
-
 .topbar-action {
   display: inline-flex;
   align-items: center;
@@ -322,30 +306,6 @@ button {
 .topbar-action:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.topbar-status.is-ok {
-  border-color: #a3dbd2;
-  background: #f0faf8;
-  color: var(--green-dark);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--amber);
-  flex-shrink: 0;
-}
-
-.status-dot.is-ok {
-  background: #10b981;
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
-.health-text {
-  font-size: 13px;
-  font-weight: 650;
 }
 
 h1,
@@ -1102,14 +1062,23 @@ h3 {
   padding: 0 0 18px;
 }
 
-.pricing-reference-panel,
-.company-preset-panel {
+.pricing-reference-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 320px) minmax(220px, 320px);
-  gap: 12px 18px;
-  align-items: start;
+  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  gap: 16px 34px;
+  align-items: stretch;
   margin: 17px 17px 18px;
   padding: 14px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.company-preset-panel {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  gap: 16px 34px;
+  align-items: stretch;
+  margin: 17px 17px 18px;
+  padding: 10px 0 18px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1123,7 +1092,7 @@ h3 {
 
 .pricing-reference-panel p,
 .company-preset-panel p {
-  margin-bottom: 0;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
@@ -1138,6 +1107,7 @@ h3 {
 .pricing-reference-copy,
 .company-preset-copy {
   display: grid;
+  align-self: center;
   gap: 7px;
   min-width: 0;
 }
@@ -1145,9 +1115,11 @@ h3 {
 .pricing-reference-heading,
 .company-preset-heading {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  width: 100%;
 }
 
 .pricing-reference-source-badge,
@@ -1168,32 +1140,47 @@ h3 {
 
 .pricing-reference-control-group,
 .company-preset-control-group {
-  grid-column: 2;
   display: grid;
   gap: 8px;
   width: 100%;
   min-width: 0;
 }
 
-.company-preset-control-group + .company-preset-control-group {
-  padding-left: 0;
+.pricing-reference-control-group {
+  grid-column: 2;
 }
 
-.company-preset-save-group {
+.company-preset-profile-card {
+  grid-column: 2;
+}
+
+.company-preset-save-card {
   grid-column: 3;
 }
 
-.company-preset-save-group input:disabled {
-  background: #f8fafc;
-  color: #64748b;
+.pricing-reference-card,
+.company-preset-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #d1dae5;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+  height: 100%;
 }
 
-.company-preset-save-group .primary-button:disabled {
-  border-color: #cbd5e1;
-  background: #edf3f8;
-  color: #64748b;
-  box-shadow: none;
-  opacity: 1;
+.pricing-reference-card .compact-control,
+.company-preset-card .compact-control {
+  width: 100%;
+}
+
+.pricing-reference-card .compact-control select,
+.company-preset-card .compact-control select,
+.company-preset-card .compact-control input {
+  min-height: 40px;
 }
 
 .pricing-reference-control-group {
@@ -1207,35 +1194,51 @@ h3 {
   width: 100%;
 }
 
-.pricing-reference-controls .settings-button-row,
-.company-preset-controls .settings-button-row {
+.pricing-reference-controls .settings-button-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
-.company-preset-controls #savePresetButton {
-  display: block;
+.company-preset-controls .settings-button-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
-.company-preset-panel .preset-save-name {
-  width: 100%;
-  margin-left: 0;
+.company-preset-controls .settings-button-row > * {
+  flex: 1;
+}
+
+.company-preset-file-actions {
+  margin-top: 0;
 }
 
 .company-preset-panel .primary-button,
 .company-preset-panel .secondary-button {
+  gap: 3px;
   min-height: 36px;
-  padding: 0 12px;
+  padding: 0 16px;
   font-size: 13px;
 }
 
-.company-preset-panel #savePresetButton {
-  width: 100%;
+.company-preset-panel button svg,
+.pricing-reference-panel button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.company-preset-panel .profile-load-button {
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.24);
 }
 
 .pricing-reference-panel .settings-note,
 .company-preset-panel .settings-note {
-  margin: 0;
   text-align: left;
 }
 
@@ -3434,15 +3437,54 @@ td input {
   width: 100%;
 }
 
-.pricing-reference-delete-button {
-  min-width: 118px;
-  min-height: 40px;
-  padding: 0 14px;
-  font-size: 14px;
+.pricing-reference-delete-controls .compact-control select {
+  min-height: 44px;
 }
 
-.pricing-reference-delete-button {
-  min-width: 138px;
+.secondary-button.pricing-reference-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 124px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-color: #efaca5;
+  background: linear-gradient(180deg, #fff7f5, #ffe9e5);
+  color: #9f2d27;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1;
+  text-align: center;
+}
+
+.secondary-button.pricing-reference-delete-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #c4372f;
+  background: #fff1f1;
+  color: #7f231f;
+}
+
+.secondary-button.pricing-reference-delete-button:disabled,
+.secondary-button.pricing-reference-delete-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  border-color: #fecaca;
+  background: #fffafa;
+  color: #c97878;
+  opacity: 0.68;
+}
+
+.pricing-reference-delete-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.pricing-reference-delete-button span {
+  white-space: nowrap;
 }
 
 .pricing-reference-delete-confirm {
@@ -3488,6 +3530,20 @@ td input {
 .pricing-reference-delete-confirm-actions .secondary-button {
   min-height: 38px;
   min-width: 96px;
+}
+
+.pricing-reference-delete-confirm-actions .danger-button,
+.profile-delete-actions .danger-button {
+  border-color: #efaca5;
+  background: linear-gradient(180deg, #fff7f5, #ffe9e5);
+  color: #9f2d27;
+}
+
+.pricing-reference-delete-confirm-actions .danger-button:hover:not(:disabled):not([aria-disabled="true"]),
+.profile-delete-actions .danger-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #c4372f;
+  background: #fff1f1;
+  color: #7f231f;
 }
 
 .pricing-reference-manage-status {
@@ -3839,6 +3895,29 @@ body.privacy-page {
 
 .analysis-confirm-panel {
   width: min(680px, calc(100vw - 48px));
+}
+
+.profile-delete-panel {
+  width: min(520px, calc(100vw - 48px));
+}
+
+.profile-delete-panel > p {
+  padding: 18px 20px 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.profile-delete-error {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.profile-delete-panel > .profile-delete-actions {
+  padding: 8px 20px 20px;
+}
+
+.profile-delete-actions button {
+  min-width: 96px;
 }
 
 .analysis-confirm-panel > p {
@@ -4528,13 +4607,8 @@ body.privacy-page {
     gap: 8px;
   }
 
-  .topbar-action,
-  .topbar-status {
+  .topbar-action {
     width: 100%;
-  }
-
-  .topbar-status {
-    grid-column: 1 / -1;
   }
 
   .workspace-pane-header {
@@ -4568,9 +4642,12 @@ body.privacy-page {
   }
 
   .pricing-reference-control-group,
-  .company-preset-control-group,
-  .company-preset-save-group {
+  .company-preset-control-group {
     grid-column: auto;
+  }
+
+  .company-preset-controls .settings-button-row {
+    flex-direction: column;
   }
 
   .modal-actions.pricing-reference-modal-actions,
