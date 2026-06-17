@@ -12,6 +12,10 @@ const QUOTE_SESSION_STATE_VERSION = 4;
 const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];
 const ANALYSIS_MODE_STANDARD = "standard";
 const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const ANALYSIS_CREDIT_COSTS = {
+  [ANALYSIS_MODE_STANDARD]: 1,
+  [ANALYSIS_MODE_HIGH_QUALITY]: 3,
+};
 const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins.";
 const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
 const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
@@ -272,6 +276,7 @@ const elements = {
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
+  excelGeneratingModal: qs("#excelGeneratingModal"),
   basisChatOverlay: qs("#basisChatOverlay"),
   basisChatTitle: qs("#basisChatTitle"),
   basisChatContext: qs("#basisChatContext"),
@@ -348,6 +353,28 @@ function analysisRunningMessage(mode = ANALYSIS_MODE_STANDARD) {
   return normalizeAnalysisMode(mode) === ANALYSIS_MODE_HIGH_QUALITY
     ? `Running high-quality analysis and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`
     : `Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`;
+}
+
+function analysisCreditSuffix(mode = ANALYSIS_MODE_STANDARD) {
+  const credits = Number(ANALYSIS_CREDIT_COSTS[normalizeAnalysisMode(mode)]);
+  if (!Number.isFinite(credits) || credits <= 0) return "";
+  return ` (${credits} ${credits === 1 ? "credit" : "credits"})`;
+}
+
+function analysisActionLabel(label, mode = ANALYSIS_MODE_STANDARD) {
+  return `${label}${analysisCreditSuffix(mode)}`;
+}
+
+function syncAnalysisCreditLabels() {
+  if (elements.analysisConfirmStartButton) {
+    elements.analysisConfirmStartButton.textContent = analysisActionLabel("Run Analysis", ANALYSIS_MODE_STANDARD);
+  }
+  if (elements.analysisConfirmHighQualityButton) {
+    elements.analysisConfirmHighQualityButton.textContent = analysisActionLabel(
+      "Run High Quality",
+      ANALYSIS_MODE_HIGH_QUALITY
+    );
+  }
 }
 
 function pricingReferenceSelectValue(reference = {}) {
@@ -4407,6 +4434,18 @@ function updateDownloadButton() {
   elements.sideDownloadButton.textContent = "Download Excel";
 }
 
+function showExcelGeneratingModal() {
+  if (!elements.excelGeneratingModal) return;
+  elements.excelGeneratingModal.hidden = false;
+  elements.excelGeneratingModal.classList.add("is-open");
+}
+
+function hideExcelGeneratingModal() {
+  if (!elements.excelGeneratingModal) return;
+  elements.excelGeneratingModal.classList.remove("is-open");
+  elements.excelGeneratingModal.hidden = true;
+}
+
 function downloadCurrentExcelFile(file = state.downloadFile) {
   if (!file?.url) return false;
   try {
@@ -4938,6 +4977,20 @@ function outputRowsToLineItems(rows = state.outputRows) {
       source_basis_line_id: row.source_basis_line_id || "",
     };
     if (!next.source_basis_line_id) delete next.source_basis_line_id;
+    const catalogUnitPrice = numberOrNull(row.catalog_unit_price);
+    if (catalogUnitPrice !== null) next.catalog_unit_price = catalogUnitPrice;
+    const catalogDescription = cleanCustomerQuoteLineText(row.catalog_description || "");
+    if (catalogDescription) next.catalog_description = catalogDescription;
+    const pricingReferenceDescription = pricingReferenceLineText(row.pricing_reference_description || "");
+    if (pricingReferenceDescription) next.pricing_reference_description = pricingReferenceDescription;
+    const categoryOrder = orderNumber(row.category_order);
+    if (categoryOrder !== null) next.category_order = categoryOrder;
+    const itemOrder = orderNumber(row.item_order);
+    if (itemOrder !== null) next.item_order = itemOrder;
+    const basisOrder = orderNumber(row.basis_order);
+    if (basisOrder !== null) next.basis_order = basisOrder;
+    const status = String(row.status || "").trim();
+    if (status) next.status = status;
     if (next.price_mode === "Included") {
       next.display_price = "Included";
     } else {
@@ -7440,8 +7493,13 @@ function wireEvents() {
     }
     if (!state.downloadFile?.url) {
       event.preventDefault();
-      await handleGenerate();
-      downloadCurrentExcelFile();
+      showExcelGeneratingModal();
+      try {
+        await handleGenerate();
+        downloadCurrentExcelFile();
+      } finally {
+        hideExcelGeneratingModal();
+      }
     }
   });
   document.addEventListener("keydown", (event) => {
@@ -7640,6 +7698,7 @@ function wireEvents() {
 
 async function setInitialValues() {
   updateGeneratorCopy();
+  syncAnalysisCreditLabels();
   renderProfileOptions();
   renderPresetOptions();
   renderHeaderLogoPreview();

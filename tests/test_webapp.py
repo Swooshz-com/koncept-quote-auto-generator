@@ -7757,6 +7757,7 @@ assert.strictEqual(canStartAnalysis(), true);
 
         self.assertIn('id="assistantOutput"', html)
         self.assertIn('id="sideDownloadButton"', html)
+        self.assertIn('id="excelGeneratingModal"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
@@ -7766,9 +7767,14 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("setDownloadFiles", js)
         self.assertIn("updateDownloadButton", js)
         self.assertIn("downloadCurrentExcelFile", js)
+        self.assertIn("showExcelGeneratingModal", js)
+        self.assertIn("hideExcelGeneratingModal", js)
         self.assertIn('elements.sideDownloadButton.addEventListener("click", async (event) => {', js)
         self.assertIn("await handleGenerate();", js)
         self.assertIn("downloadCurrentExcelFile();", js)
+        self.assertIn("showExcelGeneratingModal();", js)
+        self.assertIn("hideExcelGeneratingModal();", js)
+        self.assertIn(".excel-generating-panel", css)
         self.assertNotIn('pricing: ["Pricing", "Price Review", "Catalog matches', js)
         self.assertIn('output: ["Output", "Editable Pricing", "Review quotation rows', js)
         self.assertIn("/api/jobs", js)
@@ -8062,6 +8068,10 @@ const source = fs.readFileSync("webapp/static/app.js", "utf8");
 const ANALYSIS_MODE_STANDARD = "standard";
 const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
 const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins.";
+const ANALYSIS_CREDIT_COSTS = {
+  [ANALYSIS_MODE_STANDARD]: 1,
+  [ANALYSIS_MODE_HIGH_QUALITY]: 3,
+};
 
 function extractFunction(name) {
   const marker = `function ${name}`;
@@ -8083,6 +8093,8 @@ function extractFunction(name) {
 
 eval(extractFunction("normalizeAnalysisMode"));
 eval(extractFunction("analysisRunningMessage"));
+eval(extractFunction("analysisCreditSuffix"));
+eval(extractFunction("analysisActionLabel"));
 eval(extractFunction("formatElapsedDuration"));
 assert.strictEqual(
   analysisRunningMessage("standard"),
@@ -8092,6 +8104,8 @@ assert.strictEqual(
   analysisRunningMessage("high_quality"),
   "Running high-quality analysis and preparing the quote basis. This will take about 10 to 15 mins."
 );
+assert.strictEqual(analysisActionLabel("Run Analysis", "standard"), "Run Analysis (1 credit)");
+assert.strictEqual(analysisActionLabel("Run High Quality", "high_quality"), "Run High Quality (3 credits)");
 assert.strictEqual(formatElapsedDuration(0), "0:00");
 assert.strictEqual(formatElapsedDuration(61000), "1:01");
 assert.strictEqual(formatElapsedDuration(3661000), "1:01:01");
@@ -9270,6 +9284,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".output-col-actions { width: 13%; }", css)
         self.assertIn(".output-match-table th:nth-child(3),", css)
         self.assertIn(".output-match-table th:nth-child(6),", css)
+        self.assertIn(".output-match-table th:nth-child(7),", css)
+        self.assertIn(".output-match-table td:nth-child(7) {\n  text-align: center;", css)
         self.assertIn(".output-match-table td:nth-child(6) .output-cell-input,", css)
         self.assertIn(".output-match-table .output-unit-price-editor {\n  text-align: center;\n  justify-content: center;", css)
         self.assertNotIn(".output-match-table th:nth-child(n+3),", css)
@@ -9417,6 +9433,7 @@ eval([
   "resetOutputSortModeToPricingReference",
   "refreshOutputRowsFromLineItems",
   "ensureOutputRowsFromLineItems",
+  "outputRowsToLineItems",
 ].map(extractFunction).join("\n"));
 
 const plainCounter = {
@@ -9469,6 +9486,13 @@ assert.strictEqual(state.outputRows.length, 1);
 assert.strictEqual(state.outputRows[0].catalog_unit_price, 60);
 assert.strictEqual(state.outputRows[0].amount, 2160);
 assert.strictEqual(state.outputRows[0].description, "sqm 100mm raised platform with aluminum edging");
+const selectedConfirmPayload = outputRowsToLineItems();
+assert.strictEqual(selectedConfirmPayload.length, 1);
+assert.strictEqual(selectedConfirmPayload[0].catalog_unit_price, 60);
+assert.strictEqual(selectedConfirmPayload[0].catalog_description, "sqm 100mm raised platform with aluminum edging");
+assert.strictEqual(selectedConfirmPayload[0].pricing_reference_description, "m2 100mm raised platform with aluminum edging");
+assert.strictEqual(selectedConfirmPayload[0].pricing_keyword, "floor-design-100mm-raised-platform-with-aluminum-edging");
+assert.strictEqual(selectedConfirmPayload[0].source_basis_line_id, "raised-platform");
 state.quoteBasisSections = originalBasisSections;
 
 state.quoteBasisSections = [{
@@ -9640,8 +9664,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn("Start Analysis", html)
         self.assertIn("analysisConfirmModal", html)
         self.assertIn("analysisConfirmHighQualityButton", html)
-        self.assertIn("Run High Quality", html)
-        self.assertIn("Run Analysis", html)
+        self.assertIn("Run High Quality (3 credits)", html)
+        self.assertIn("Run Analysis (1 credit)", html)
+        self.assertIn("ANALYSIS_CREDIT_COSTS", js)
+        self.assertIn("analysisActionLabel", js)
         analysis_modal = html.split('id="analysisConfirmModal"', 1)[1].split("</section>", 1)[0]
         self.assertLess(analysis_modal.index("analysisConfirmHighQualityButton"), analysis_modal.index("analysisConfirmCancelButton"))
         self.assertLess(analysis_modal.index("analysisConfirmCancelButton"), analysis_modal.index("analysisConfirmStartButton"))
@@ -12788,6 +12814,118 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(error.exception.code, 403)
         self.assertIn("You do not have permission to perform this action.", body_text)
         self.assertNotIn("10.5", body_text)
+
+    def test_line_item_normalize_endpoint_uses_selected_basis_catalog_match_on_first_confirm(self):
+        payload = {
+            "profile_id": "koncept",
+            "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
+            "quote_basis_sections": [{
+                "id": "furniture-rental",
+                "title": "Furniture Rental",
+                "lines": [{
+                    "id": "basis-high-top-table",
+                    "tag": "Include",
+                    "text": "[ nos. High Top Table White ] - Operator selected catalog match for AI suggested table quantity.",
+                    "quantity": 3,
+                    "unit": "nos",
+                    "pricing_keyword": "furniture-rental-high-top-table-white",
+                    "catalog_description": "nos. High Top Table White",
+                    "pricing_reference_description": "nos. High Top Table White",
+                }],
+            }],
+            "line_items": [{
+                "section": "Furniture Rental",
+                "quantity": 3,
+                "unit": "nos",
+                "description": "Operator selected catalog match for AI suggested table quantity.",
+                "pricing_keyword": "",
+                "source_basis_line_id": "basis-high-top-table",
+            }],
+        }
+
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=False):
+            with LocalRunnerServer() as runner:
+                session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                request = urllib.request.Request(
+                    f"{runner.base_url}/api/line-items/normalize",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        session["csrf_header"]: session["csrf_token"],
+                    },
+                    method="POST",
+                )
+                body = json.loads(urllib.request.urlopen(request, timeout=3).read().decode("utf-8"))
+
+        self.assertEqual(body["status"], "normalized")
+        self.assertEqual(len(body["line_items"]), 1)
+        item = body["line_items"][0]
+        self.assertEqual(item["pricing_keyword"], "furniture-rental-high-top-table-white")
+        self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price("furniture-rental-high-top-table-white"))
+        self.assertEqual(item["source_basis_line_id"], "basis-high-top-table")
+        self.assertEqual(item["description"], "nos. High Top Table White")
+
+    def test_line_item_normalize_endpoint_prices_accepted_ai_confirm_bracketed_catalog_line(self):
+        partition_keyword = (
+            "booth-structure-double-side-partition-wall-at-height-2-4m-"
+            "wooden-construct-in-painted-finished-as-per-design-proposal"
+        )
+        partition_description = (
+            "m length double side partition wall at height 2.4m; "
+            "wooden construct in painted finished as per design proposal"
+        )
+        payload = {
+            "profile_id": "koncept",
+            "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
+            "quote_basis_sections": [{
+                "id": "booth-structure",
+                "title": "Booth Structure",
+                "lines": [{
+                    "id": "basis-double-side-partition",
+                    "tag": "Custom",
+                    "custom_pricing": True,
+                    "custom_confirmed": True,
+                    "text": f"[ {partition_description} ]",
+                    "quantity": 1,
+                    "unit": "m length",
+                }],
+            }],
+            "line_items": [{
+                "section": "Booth Structure",
+                "quantity": 1,
+                "unit": "m length",
+                "description": f"[ {partition_description} ]",
+                "pricing_keyword": "",
+                "source_basis_line_id": "basis-double-side-partition",
+            }],
+        }
+        basis_only_items = webapp.normalize_line_items_for_quote_basis_review({**payload, "line_items": []})
+        self.assertEqual(len(basis_only_items), 1)
+        self.assertEqual(basis_only_items[0]["pricing_keyword"], partition_keyword)
+        self.assertEqual(basis_only_items[0]["catalog_unit_price"], 540.0)
+
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=False):
+            with LocalRunnerServer() as runner:
+                session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                request = urllib.request.Request(
+                    f"{runner.base_url}/api/line-items/normalize",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        session["csrf_header"]: session["csrf_token"],
+                    },
+                    method="POST",
+                )
+                body = json.loads(urllib.request.urlopen(request, timeout=3).read().decode("utf-8"))
+
+        self.assertEqual(body["status"], "normalized")
+        self.assertEqual(len(body["line_items"]), 1)
+        item = body["line_items"][0]
+        self.assertEqual(item["pricing_keyword"], partition_keyword)
+        self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price(partition_keyword))
+        self.assertEqual(item["catalog_unit_price"], 540.0)
+        self.assertEqual(item["description"], partition_description)
+        self.assertEqual(item["source_basis_line_id"], "basis-double-side-partition")
 
     def test_settings_permissions_deny_non_admin_writes(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=True):

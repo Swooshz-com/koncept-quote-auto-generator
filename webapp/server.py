@@ -1435,6 +1435,30 @@ def bracketed_catalog_reference_parts(value: Any) -> tuple[str, str] | None:
     return (reference, detail) if reference else None
 
 
+def catalog_reference_values(item: dict[str, Any]) -> list[str]:
+    return [
+        clean_text(value)
+        for value in (
+            item.get("pricing_reference_description"),
+            item.get("catalog_description"),
+            item.get("description"),
+        )
+        if clean_text(value)
+    ]
+
+
+def bracketed_reference_matches_catalog_item(value: Any, item: dict[str, Any]) -> bool:
+    bracketed = bracketed_catalog_reference_parts(value)
+    if not bracketed:
+        return False
+    reference, _detail = bracketed
+    reference_key = comparable_catalog_description_key(reference)
+    return bool(reference_key) and any(
+        comparable_catalog_description_key(candidate) == reference_key
+        for candidate in catalog_reference_values(item)
+    )
+
+
 def catalog_usage_detail(reference: str, detail: str) -> str:
     reference = clean_customer_quote_line_text(reference)
     detail = clean_customer_quote_line_text(detail)
@@ -6442,6 +6466,16 @@ def pricing_keyword_looks_like_catalog_id(value: Any) -> bool:
 
 
 def infer_catalog_item_for_line_item(raw: dict[str, Any], catalog_lookup: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    bracketed = bracketed_catalog_reference_parts(raw.get("description"))
+    if bracketed:
+        exact_matches = [
+            item
+            for item in catalog_lookup.values()
+            if bracketed_reference_matches_catalog_item(raw.get("description"), item)
+        ]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+
     query_text = " ".join(
         clean_text(value)
         for value in (raw.get("pricing_keyword"), raw.get("description"))
@@ -6688,6 +6722,8 @@ def normalize_line_items(payload: dict[str, Any], use_catalog: bool = True) -> l
             catalog_item = infer_catalog_item_for_line_item(inference_raw, catalog_lookup)
             if catalog_item:
                 pricing_keyword = clean_text(catalog_item.get("id"))
+                if bracketed_reference_matches_catalog_item(raw.get("description"), catalog_item):
+                    pricing_keyword_was_explicit = True
             else:
                 pricing_keyword = ""
         raw_unit = normalize_pricing_unit(raw.get("unit"))
@@ -6904,7 +6940,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "logo_data_url": header_logo,
         },
         "tax": quote_tax_from_payload(payload),
-        "line_items": sort_line_items_by_pricing_reference_order(payload, normalize_line_items(payload)),
+        "line_items": sort_line_items_by_pricing_reference_order(payload, normalize_line_items_for_quote_basis_review(payload)),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
         "terms_heading": clean_text(quote_text.get("terms_heading")),
         "cheque_payee": clean_text(quote_text.get("cheque_payee")),
@@ -8225,9 +8261,14 @@ def quote_basis_sections_with_catalog_exact_lines(
 
     def line_matches_catalog_description(line: dict[str, Any], description: str) -> bool:
         line_text = clean_customer_quote_line_text(line.get("text"))
+        bracketed = bracketed_catalog_reference_parts(line_text)
+        if bracketed:
+            line_text = bracketed[0]
         description = clean_customer_quote_line_text(description)
         if not line_text or not description:
             return False
+        if bracketed:
+            return comparable_catalog_description_key(line_text) == comparable_catalog_description_key(description)
         if line_text.lower() == description.lower():
             return True
         line_numbers = basis_distinguishing_numbers(line_text)
@@ -9027,6 +9068,23 @@ def line_items_aligned_to_quote_basis(
                     next_item.pop(order_key, None)
             aligned.append(next_item)
     return aligned or line_items
+
+
+def normalize_line_items_for_quote_basis_review(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    line_items = normalize_line_items(payload)
+    sections = normalize_quote_basis_sections(payload, pricing_reference_section_names_for_payload(payload))
+    if not sections:
+        return sort_line_items_by_pricing_reference_order(payload, line_items)
+
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    sections = quote_basis_sections_with_catalog_exact_lines(
+        sections,
+        line_items,
+        list(catalog_lookup.values()),
+    )
+    line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
+    line_items = line_items_aligned_to_quote_basis(line_items, sections, catalog_lookup)
+    return sort_line_items_by_pricing_reference_order(payload, line_items)
 
 
 def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) -> list[dict[str, Any]]:
@@ -10436,7 +10494,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            self.send_json({"status": "normalized", "line_items": normalize_line_items(payload)})
+            self.send_json({"status": "normalized", "line_items": normalize_line_items_for_quote_basis_review(payload)})
             return
 
         if parsed.path == "/api/draft":
