@@ -8068,6 +8068,10 @@ const source = fs.readFileSync("webapp/static/app.js", "utf8");
 const ANALYSIS_MODE_STANDARD = "standard";
 const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
 const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins.";
+const ANALYSIS_CREDIT_COSTS = {
+  [ANALYSIS_MODE_STANDARD]: 1,
+  [ANALYSIS_MODE_HIGH_QUALITY]: 3,
+};
 
 function extractFunction(name) {
   const marker = `function ${name}`;
@@ -8089,6 +8093,8 @@ function extractFunction(name) {
 
 eval(extractFunction("normalizeAnalysisMode"));
 eval(extractFunction("analysisRunningMessage"));
+eval(extractFunction("analysisCreditSuffix"));
+eval(extractFunction("analysisActionLabel"));
 eval(extractFunction("formatElapsedDuration"));
 assert.strictEqual(
   analysisRunningMessage("standard"),
@@ -8098,6 +8104,8 @@ assert.strictEqual(
   analysisRunningMessage("high_quality"),
   "Running high-quality analysis and preparing the quote basis. This will take about 10 to 15 mins."
 );
+assert.strictEqual(analysisActionLabel("Run Analysis", "standard"), "Run Analysis (1 credit)");
+assert.strictEqual(analysisActionLabel("Run High Quality", "high_quality"), "Run High Quality (3 credits)");
 assert.strictEqual(formatElapsedDuration(0), "0:00");
 assert.strictEqual(formatElapsedDuration(61000), "1:01");
 assert.strictEqual(formatElapsedDuration(3661000), "1:01:01");
@@ -9276,6 +9284,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".output-col-actions { width: 13%; }", css)
         self.assertIn(".output-match-table th:nth-child(3),", css)
         self.assertIn(".output-match-table th:nth-child(6),", css)
+        self.assertIn(".output-match-table th:nth-child(7),", css)
+        self.assertIn(".output-match-table td:nth-child(7) {\n  text-align: center;", css)
         self.assertIn(".output-match-table td:nth-child(6) .output-cell-input,", css)
         self.assertIn(".output-match-table .output-unit-price-editor {\n  text-align: center;\n  justify-content: center;", css)
         self.assertNotIn(".output-match-table th:nth-child(n+3),", css)
@@ -9654,8 +9664,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn("Start Analysis", html)
         self.assertIn("analysisConfirmModal", html)
         self.assertIn("analysisConfirmHighQualityButton", html)
-        self.assertIn("Run High Quality", html)
-        self.assertIn("Run Analysis", html)
+        self.assertIn("Run High Quality (3 credits)", html)
+        self.assertIn("Run Analysis (1 credit)", html)
+        self.assertIn("ANALYSIS_CREDIT_COSTS", js)
+        self.assertIn("analysisActionLabel", js)
         analysis_modal = html.split('id="analysisConfirmModal"', 1)[1].split("</section>", 1)[0]
         self.assertLess(analysis_modal.index("analysisConfirmHighQualityButton"), analysis_modal.index("analysisConfirmCancelButton"))
         self.assertLess(analysis_modal.index("analysisConfirmCancelButton"), analysis_modal.index("analysisConfirmStartButton"))

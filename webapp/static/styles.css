@@ -2506,10 +2506,12 @@ td input {
 .output-match-table th:nth-child(4),
 .output-match-table th:nth-child(5),
 .output-match-table th:nth-child(6),
+.output-match-table th:nth-child(7),
 .output-match-table td:nth-child(3),
 .output-match-table td:nth-child(4),
 .output-match-table td:nth-child(5),
-.output-match-table td:nth-child(6) {
+.output-match-table td:nth-child(6),
+.output-match-table td:nth-child(7) {
   text-align: center;
 }
 

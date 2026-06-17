@@ -12,6 +12,10 @@ const QUOTE_SESSION_STATE_VERSION = 4;
 const OUTPUT_SORT_MODES = ["pricing_reference", "category", "name", "category_name"];
 const ANALYSIS_MODE_STANDARD = "standard";
 const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const ANALYSIS_CREDIT_COSTS = {
+  [ANALYSIS_MODE_STANDARD]: 1,
+  [ANALYSIS_MODE_HIGH_QUALITY]: 3,
+};
 const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins.";
 const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
 const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
@@ -349,6 +353,28 @@ function analysisRunningMessage(mode = ANALYSIS_MODE_STANDARD) {
   return normalizeAnalysisMode(mode) === ANALYSIS_MODE_HIGH_QUALITY
     ? `Running high-quality analysis and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`
     : `Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`;
+}
+
+function analysisCreditSuffix(mode = ANALYSIS_MODE_STANDARD) {
+  const credits = Number(ANALYSIS_CREDIT_COSTS[normalizeAnalysisMode(mode)]);
+  if (!Number.isFinite(credits) || credits <= 0) return "";
+  return ` (${credits} ${credits === 1 ? "credit" : "credits"})`;
+}
+
+function analysisActionLabel(label, mode = ANALYSIS_MODE_STANDARD) {
+  return `${label}${analysisCreditSuffix(mode)}`;
+}
+
+function syncAnalysisCreditLabels() {
+  if (elements.analysisConfirmStartButton) {
+    elements.analysisConfirmStartButton.textContent = analysisActionLabel("Run Analysis", ANALYSIS_MODE_STANDARD);
+  }
+  if (elements.analysisConfirmHighQualityButton) {
+    elements.analysisConfirmHighQualityButton.textContent = analysisActionLabel(
+      "Run High Quality",
+      ANALYSIS_MODE_HIGH_QUALITY
+    );
+  }
 }
 
 function pricingReferenceSelectValue(reference = {}) {
@@ -7672,6 +7698,7 @@ function wireEvents() {
 
 async function setInitialValues() {
   updateGeneratorCopy();
+  syncAnalysisCreditLabels();
   renderProfileOptions();
   renderPresetOptions();
   renderHeaderLogoPreview();
