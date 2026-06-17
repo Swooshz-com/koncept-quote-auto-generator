@@ -1064,9 +1064,9 @@ h3 {
 
 .pricing-reference-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 320px) minmax(220px, 320px);
-  gap: 12px 18px;
-  align-items: start;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  gap: 16px 34px;
+  align-items: stretch;
   margin: 17px 17px 18px;
   padding: 14px 0 16px;
   border-bottom: 1px solid var(--line);
@@ -1074,9 +1074,9 @@ h3 {
 
 .company-preset-panel {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 350px) minmax(260px, 320px);
+  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
   gap: 16px 34px;
-  align-items: start;
+  align-items: stretch;
   margin: 17px 17px 18px;
   padding: 10px 0 18px;
   border-bottom: 1px solid var(--line);
@@ -1092,7 +1092,7 @@ h3 {
 
 .pricing-reference-panel p,
 .company-preset-panel p {
-  margin-bottom: 0;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
@@ -1107,6 +1107,7 @@ h3 {
 .pricing-reference-copy,
 .company-preset-copy {
   display: grid;
+  align-self: center;
   gap: 7px;
   min-width: 0;
 }
@@ -1137,73 +1138,47 @@ h3 {
 
 .pricing-reference-control-group,
 .company-preset-control-group {
-  grid-column: 2;
   display: grid;
   gap: 8px;
   width: 100%;
   min-width: 0;
 }
 
-.company-preset-control-group + .company-preset-control-group {
-  padding-left: 0;
+.pricing-reference-control-group {
+  grid-column: 2;
 }
 
-.company-preset-select-card {
-  gap: 10px;
-  padding: 14px;
+.company-preset-profile-card {
+  grid-column: 2;
+}
+
+.company-preset-save-card {
+  grid-column: 3;
+}
+
+.pricing-reference-card,
+.company-preset-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
   border: 1px solid #d1dae5;
   border-radius: var(--radius-md);
   background: #ffffff;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
+  height: 100%;
 }
 
-.company-preset-select-card h4 {
-  margin: 0;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 850;
+.pricing-reference-card .compact-control,
+.company-preset-card .compact-control {
+  width: 100%;
 }
 
-.company-preset-save-group {
-  grid-column: 3;
-  gap: 12px;
-}
-
-.company-preset-save-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(104px, auto);
-  gap: 8px;
-  align-items: end;
-}
-
-.company-preset-more-actions {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.company-preset-more-actions::after {
-  display: block;
-  height: 1px;
-  background: var(--line);
-  content: "";
-}
-
-.company-preset-save-group input:disabled {
-  background: #f8fafc;
-  color: #64748b;
-}
-
-.company-preset-save-group .primary-button:disabled {
-  border-color: #cbd5e1;
-  background: #edf3f8;
-  color: #64748b;
-  box-shadow: none;
-  opacity: 1;
+.pricing-reference-card .compact-control select,
+.company-preset-card .compact-control select,
+.company-preset-card .compact-control input {
+  min-height: 40px;
 }
 
 .pricing-reference-control-group {
@@ -1217,38 +1192,36 @@ h3 {
   width: 100%;
 }
 
-.pricing-reference-controls .settings-button-row,
-.company-preset-controls .settings-button-row {
+.pricing-reference-controls .settings-button-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.company-preset-controls .settings-button-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.company-preset-controls .settings-button-row > * {
+  flex: 1;
 }
 
 .company-preset-file-actions {
   margin-top: 0;
 }
 
-.company-preset-controls #savePresetButton {
-  display: block;
-}
-
-.company-preset-panel .preset-save-name {
-  width: 100%;
-  margin-left: 0;
-}
-
 .company-preset-panel .primary-button,
 .company-preset-panel .secondary-button {
+  gap: 3px;
   min-height: 36px;
-  padding: 0 12px;
+  padding: 0 16px;
   font-size: 13px;
 }
 
-.company-preset-panel #savePresetButton {
-  width: 100%;
-}
-
-.company-preset-panel button svg {
+.company-preset-panel button svg,
+.pricing-reference-panel button svg {
   width: 15px;
   height: 15px;
   fill: none;
@@ -1259,21 +1232,11 @@ h3 {
 }
 
 .company-preset-panel .profile-load-button {
-  border-color: #1e5fac;
-  background: linear-gradient(180deg, #2d79c9, #1f66b1);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(31, 102, 177, 0.22);
-}
-
-.company-preset-panel .profile-load-button:hover:not(:disabled):not([aria-disabled="true"]) {
-  border-color: #174f8f;
-  background: linear-gradient(180deg, #256dbb, #18589d);
-  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.24);
 }
 
 .pricing-reference-panel .settings-note,
 .company-preset-panel .settings-note {
-  margin: 0;
   text-align: left;
 }
 
@@ -3472,15 +3435,51 @@ td input {
   width: 100%;
 }
 
-.pricing-reference-delete-button {
-  min-width: 118px;
-  min-height: 40px;
-  padding: 0 14px;
-  font-size: 14px;
+.pricing-reference-delete-controls .compact-control select {
+  min-height: 44px;
 }
 
-.pricing-reference-delete-button {
-  min-width: 138px;
+.secondary-button.pricing-reference-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 124px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #c97878;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1;
+  text-align: center;
+}
+
+.secondary-button.pricing-reference-delete-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #f2aaa6;
+  background: #fff1f1;
+  color: #a94848;
+}
+
+.secondary-button.pricing-reference-delete-button:disabled,
+.secondary-button.pricing-reference-delete-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.pricing-reference-delete-button svg {
+  width: 20px;
+  height: 20px;
+  fill: #737373;
+  stroke: #737373;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.pricing-reference-delete-button span {
+  white-space: nowrap;
 }
 
 .pricing-reference-delete-confirm {
@@ -4601,14 +4600,12 @@ body.privacy-page {
   }
 
   .pricing-reference-control-group,
-  .company-preset-control-group,
-  .company-preset-save-group {
+  .company-preset-control-group {
     grid-column: auto;
   }
 
-  .company-preset-save-row,
   .company-preset-controls .settings-button-row {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .modal-actions.pricing-reference-modal-actions,

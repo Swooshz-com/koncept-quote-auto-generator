@@ -2231,6 +2231,16 @@ function updatePresetSourceBadge(preset = selectedPreset()) {
   elements.presetSourceBadge.textContent = preset?.source === "company" ? "Saved profile" : "Profile template";
 }
 
+function setButtonLabel(button, label) {
+  if (!button) return;
+  const labelElement = button.querySelector("span");
+  if (labelElement) {
+    labelElement.textContent = label;
+  } else {
+    button.textContent = label;
+  }
+}
+
 function updatePresetButtons() {
   const preset = selectedPreset();
   const busy = Boolean(state.profileSaveBusy || state.profileDeleteBusy || appIsBusy());
@@ -2252,7 +2262,7 @@ function updatePresetButtons() {
     const name = String(elements.presetNameInput?.value || "").trim();
     const disabled = !canManage || busy || !name;
     elements.savePresetButton.disabled = disabled;
-    elements.savePresetButton.textContent = state.profileSaveBusy ? "Saving..." : "Save Profile";
+    setButtonLabel(elements.savePresetButton, state.profileSaveBusy ? "Saving..." : "Save");
     elements.savePresetButton.title = !canManage
       ? profileNoAccessReason()
       : !name

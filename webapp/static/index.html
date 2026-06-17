@@ -135,7 +135,7 @@
                     <p class="settings-note" id="selectedPricingReferenceSummary">Managed in Settings.</p>
                   </div>
                   <div class="pricing-reference-controls">
-                    <div class="pricing-reference-control-group">
+                    <div class="pricing-reference-control-group pricing-reference-card">
                       <label class="compact-control">
                         Quote Pricing Reference
                         <select id="profileSelect"></select>
@@ -254,21 +254,12 @@
                     <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
                   </div>
                   <div class="company-preset-controls">
-                    <div class="company-preset-control-group company-preset-select-card">
-                      <h4>Select Profile</h4>
+                    <div class="company-preset-control-group company-preset-card company-preset-profile-card">
                       <label class="compact-control">
                         Current Profile
                         <select id="presetSelect"></select>
                       </label>
                       <div class="settings-button-row">
-                        <button class="secondary-button profile-load-button" type="button" id="loadPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M4 20h16"></path>
-                            <path d="M12 4v12"></path>
-                            <path d="m7 11 5 5 5-5"></path>
-                          </svg>
-                          <span>Load</span>
-                        </button>
                         <button class="secondary-button danger-button" type="button" id="deletePresetButton">
                           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                             <path d="M4 7h16"></path>
@@ -279,37 +270,46 @@
                           </svg>
                           <span>Delete</span>
                         </button>
+                        <button class="primary-button profile-load-button" type="button" id="loadPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M4 20h16"></path>
+                            <path d="M12 4v12"></path>
+                            <path d="m7 11 5 5 5-5"></path>
+                          </svg>
+                          <span>Load</span>
+                        </button>
                       </div>
                     </div>
-                    <div class="company-preset-control-group company-preset-save-group">
-                      <h3>Save &amp; Manage Data</h3>
-                      <div class="company-preset-save-row">
-                        <label class="compact-control preset-save-name">
-                          <span class="sr-only">Reusable profile name</span>
-                          <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
-                        </label>
-                        <button class="primary-button" type="button" id="savePresetButton">Save Profile</button>
-                      </div>
-                      <div class="company-preset-more-actions" aria-hidden="true">
-                        <span>More Actions</span>
-                      </div>
-                      <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+                    <div class="company-preset-control-group company-preset-card company-preset-save-card">
+                      <label class="compact-control preset-save-name">
+                        Reusable Profile Name
+                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
+                      </label>
                       <div class="settings-button-row company-preset-file-actions">
-                        <button class="secondary-button" type="button" id="importPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 4v11"></path>
-                            <path d="m7 10 5 5 5-5"></path>
-                            <path d="M5 20h14"></path>
-                          </svg>
-                          <span>Import Profile</span>
-                        </button>
+                        <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
                         <button class="secondary-button" type="button" id="exportPresetButton">
                           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                             <path d="M12 20V9"></path>
                             <path d="m7 14 5-5 5 5"></path>
                             <path d="M5 4h14"></path>
                           </svg>
-                          <span>Export Profile</span>
+                          <span>Export</span>
+                        </button>
+                        <button class="secondary-button" type="button" id="importPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M12 4v11"></path>
+                            <path d="m7 10 5 5 5-5"></path>
+                            <path d="M5 20h14"></path>
+                          </svg>
+                          <span>Import</span>
+                        </button>
+                        <button class="primary-button" type="button" id="savePresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                          </svg>
+                          <span>Save</span>
                         </button>
                       </div>
                     </div>
@@ -665,7 +665,14 @@
                       Pricing reference
                       <select id="deletePricingReferenceSelect"></select>
                     </label>
-                    <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>Delete Reference</button>
+                    <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>
+                      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                        <path d="M8 8h8l-.8 12H8.8L8 8Z"></path>
+                        <path d="M10 5h4l1 2H9l1-2Z"></path>
+                        <path d="M6 7h12"></path>
+                      </svg>
+                      <span>Delete</span>
+                    </button>
                   </div>
                   <div class="pricing-reference-delete-confirm" id="pricingReferenceDeleteConfirm" role="group" aria-labelledby="pricingReferenceDeleteConfirmTitle" hidden>
                     <div>
