@@ -1213,6 +1213,10 @@ h3 {
   grid-template-columns: 1fr 1fr;
 }
 
+.company-preset-file-actions {
+  margin-top: 2px;
+}
+
 .company-preset-controls #savePresetButton {
   display: block;
 }

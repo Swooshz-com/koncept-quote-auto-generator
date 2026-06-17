@@ -1757,12 +1757,11 @@
         "nos. rigging point for Overhead Structure or Aluminium Box Truss",
         "rigging point for Overhead Structure or Aluminium Box Truss",
         "RIGGING POINT",
-        "\u2022 Prices are not inclusive of truss",
         "Hanging Structure rigging point for Overhead Structure or Aluminium Box Truss",
         "rigging point for Overhead Structure or Aluminium Box Truss nos"
       ],
       "category_order": 4,
-      "description": "nos. rigging point for Overhead Structure or Aluminium Box Truss",
+      "description": "nos. rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss",
       "id": "hanging-structure-rigging-point-for-overhead-structure-or-aluminium-box-truss",
       "internal_cost": 300.0,
       "item_order": 108,
@@ -1776,7 +1775,6 @@
         "motor point",
         "hanging structure",
         "rigging point for overhead structure or aluminium box truss",
-        "\u2022 prices are not inclusive of truss",
         "rigging point for overhead structure or aluminium box truss nos",
         "aluminium",
         "are",
@@ -1790,7 +1788,9 @@
         "price",
         "rigging",
         "structure",
-        "truss"
+        "truss",
+        "prices are not inclusive of truss",
+        "rigging point for overhead structure or aluminium box truss; prices are not inclusive of truss"
       ],
       "object_families": [
         "hanging_structure",
@@ -1799,8 +1799,7 @@
       ],
       "reference_section": "Hanging Structure",
       "remarks": [
-        "RIGGING POINT",
-        "\u2022 Prices are not inclusive of truss"
+        "RIGGING POINT"
       ],
       "sale_unit_price": 450.0,
       "section": "Hanging Structure",

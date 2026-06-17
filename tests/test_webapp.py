@@ -7160,6 +7160,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "presetNameInput",
             "presetSelect",
             "savePresetButton",
+            "importPresetButton",
+            "importPresetFile",
+            "exportPresetButton",
             "clearCustomerButton",
             "clearQuoteCompanyButton",
             "loadPresetButton",
@@ -7224,7 +7227,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"{forbidden_source_term} context", html)
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
-        self.assertIn("Database save pending.", html)
+        self.assertIn("Load a template, or save/import/export a reusable company profile.", html)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
@@ -7246,8 +7249,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('defaultPreset = builtInPresets.find((preset) => preset.id === "default")', js)
         self.assertIn("defaultOption", js)
         self.assertIn('.filter((preset) => preset.id !== "default")', js)
-        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Presets">'))
-        self.assertNotIn("Saved Company Presets", js)
+        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Templates">'))
+        self.assertIn('`<optgroup label="Saved Profiles">', js)
         self.assertNotIn("Profile Pricing References", js)
         self.assertNotIn("Company Pricing References", js)
         self.assertNotIn("Clear Customer", html)
@@ -7260,10 +7263,16 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('renderPresetStatus("Quote-company defaults reset to the selected company preset.")', js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
-        self.assertIn('id="deletePresetButton" hidden', html)
-        self.assertIn('class="company-preset-control-group company-preset-save-group" aria-disabled="true"', html)
-        self.assertIn('id="presetNameInput" type="text" placeholder="Database save pending" disabled', html)
-        self.assertIn('id="savePresetButton" disabled', html)
+        self.assertIn('id="deletePresetButton"', html)
+        self.assertNotIn('id="deletePresetButton" hidden', html)
+        self.assertIn('id="importPresetButton"', html)
+        self.assertIn('id="exportPresetButton"', html)
+        self.assertIn('id="importPresetFile" type="file" accept="application/json,.json" hidden', html)
+        self.assertIn('class="company-preset-control-group company-preset-save-group"', html)
+        self.assertNotIn('class="company-preset-control-group company-preset-save-group" aria-disabled="true"', html)
+        self.assertIn('id="presetNameInput" type="text" placeholder="Reusable profile name"', html)
+        self.assertNotIn('id="presetNameInput" type="text" placeholder="Database save pending" disabled', html)
+        self.assertNotIn('id="savePresetButton" disabled', html)
         self.assertIn(">Save Profile</button>", html)
         self.assertNotIn('class="company-preset-control-group" hidden', html)
         self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageIntake"'))
@@ -7348,9 +7357,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("function resetImagesDraft", js)
         self.assertIn("state.images = [];", js)
         self.assertIn('id="savePresetButton"', html)
-        self.assertIn('renderPresetStatus("Database save pending.")', js)
+        self.assertIn("function saveCurrentPreset", js)
+        self.assertIn("function exportCurrentPreset", js)
+        self.assertIn("function handlePresetImportFileChange", js)
         self.assertIn(".company-preset-source-badge", css)
         self.assertIn(".company-preset-save-group", css)
+        self.assertIn(".company-preset-file-actions", css)
         self.assertIn(".company-preset-save-group .primary-button:disabled", css)
         self.assertIn("background: #edf3f8;", css)
         self.assertIn("Download Excel", html)
@@ -12200,6 +12212,26 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             self.assertEqual(store.list_pricing_references("default")[0]["tax"]["rate"], 0.2)
             with self.assertRaises(ValueError):
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
+
+    def test_profile_payload_sanitizes_formula_like_defaults(self):
+        profile = webapp.normalize_profile_payload({
+            "id": "reusable-profile",
+            "label": "Reusable Profile",
+            "defaults": {
+                "company": {
+                    "name": "=SUM(A1:A2)",
+                    "header_details": "Safe header",
+                },
+                "quote_text": {
+                    "payment_terms": ["+danger", "70% payment upon confirmation."],
+                },
+            },
+        })
+
+        self.assertEqual(profile["id"], "reusable-profile")
+        self.assertEqual(profile["defaults"]["company"]["name"], "'=SUM(A1:A2)")
+        self.assertEqual(profile["defaults"]["quote_text"]["payment_terms"][0], "'+danger")
+        self.assertEqual(profile["defaults"]["company"]["header_details"], "Safe header")
 
     def test_public_company_pricing_reference_redacts_internal_costs(self):
         with mock_pricing_metadata_enrichment():

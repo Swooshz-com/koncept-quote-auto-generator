@@ -3792,6 +3792,33 @@ def sanitize_formula_text(value: Any) -> str:
     return f"'{text}" if text[:1] in {"=", "+", "-", "@"} else text
 
 
+def sanitize_profile_default_value(value: Any, depth: int = 0) -> Any:
+    if depth > 8:
+        return ""
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = re.sub(r"[^A-Za-z0-9_-]+", "_", clean_text(key)).strip("_")[:80]
+            if key_text:
+                cleaned[key_text] = sanitize_profile_default_value(item, depth + 1)
+        return cleaned
+    if isinstance(value, list):
+        return [sanitize_profile_default_value(item, depth + 1) for item in value[:200]]
+    if isinstance(value, str):
+        text = value.strip()
+        return f"'{text}" if text[:1] in {"=", "+", "-", "@"} else text
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return sanitize_formula_text(value)
+
+
+def sanitize_profile_defaults(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    sanitized = sanitize_profile_default_value(value)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
 def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, Any]:
     reference_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
     if not reference_id:
@@ -4108,7 +4135,7 @@ def normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "id": profile_id,
         "label": sanitize_formula_text(payload.get("label")) or profile_id,
         "description": sanitize_formula_text(payload.get("description")),
-        "defaults": payload.get("defaults") if isinstance(payload.get("defaults"), dict) else {},
+        "defaults": sanitize_profile_defaults(payload.get("defaults")),
         "saved_at": utc_timestamp(),
     }
 

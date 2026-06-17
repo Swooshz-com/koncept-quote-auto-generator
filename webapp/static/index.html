@@ -255,7 +255,7 @@
                       <h3>Company preset</h3>
                       <span class="company-preset-source-badge">Profile template</span>
                     </div>
-                    <p class="settings-note" id="presetStatus">Database save pending.</p>
+                    <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
                   </div>
                   <div class="company-preset-controls">
                     <div class="company-preset-control-group">
@@ -265,15 +265,20 @@
                       </label>
                       <div class="settings-button-row">
                         <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                        <button class="secondary-button danger-button" type="button" id="deletePresetButton" hidden>Delete</button>
+                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
+                      </div>
+                      <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+                      <div class="settings-button-row company-preset-file-actions">
+                        <button class="secondary-button" type="button" id="importPresetButton">Import</button>
+                        <button class="secondary-button" type="button" id="exportPresetButton">Export</button>
                       </div>
                     </div>
-                    <div class="company-preset-control-group company-preset-save-group" aria-disabled="true">
+                    <div class="company-preset-control-group company-preset-save-group">
                       <label class="compact-control preset-save-name">
                         Save profile
-                        <input id="presetNameInput" type="text" placeholder="Database save pending" disabled aria-describedby="presetStatus">
+                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
                       </label>
-                      <button class="primary-button" type="button" id="savePresetButton" disabled title="Database-backed profile saving is not enabled yet.">Save Profile</button>
+                      <button class="primary-button" type="button" id="savePresetButton">Save Profile</button>
                     </div>
                   </div>
                 </div>
