@@ -7371,7 +7371,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("syncRichTextSources", js)
         self.assertIn("startAnalysisBlockReason", js)
         self.assertIn("state.isBooting", js)
-        self.assertIn("if (state.isBooting || state.isAnalysisRunning || state.isGenerating) return;", js)
+        self.assertIn("if (state.isBooting || appIsBusy()) return;", js)
+        self.assertIn("state.isPreparingOutput", js)
         self.assertIn("if (!state.profiles.length) await loadProfiles();", js)
         self.assertIn("Complete Customer details before starting analysis", js)
         self.assertIn("Complete Quote Company details before starting analysis", js)
@@ -8054,9 +8055,10 @@ assert.strictEqual(rowNeedsManualInput(manualDisplayZeroRow), false);
         self.assertIn("startAnalysisElapsedTimer", js)
         self.assertIn("formatElapsedDuration", js)
         self.assertIn('const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins."', js)
-        self.assertIn("`Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`", js)
-        self.assertIn("`Running high-quality analysis and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`", js)
-        self.assertIn("`Resuming the analysis job after refresh. ${ANALYSIS_WAIT_ESTIMATE}`", js)
+        self.assertIn("return ANALYSIS_WAIT_ESTIMATE;", js)
+        self.assertNotIn("Reading the reference files and preparing the quote basis.", js)
+        self.assertNotIn("Running high-quality analysis and preparing the quote basis.", js)
+        self.assertNotIn("Resuming the analysis job after refresh.", js)
         self.assertIn(".ai-elapsed", css)
         self.assertIn(".ai-failure-banner .ai-elapsed", css)
 
@@ -8098,11 +8100,11 @@ eval(extractFunction("analysisActionLabel"));
 eval(extractFunction("formatElapsedDuration"));
 assert.strictEqual(
   analysisRunningMessage("standard"),
-  "Reading the reference files and preparing the quote basis. This will take about 10 to 15 mins."
+  "This will take about 10 to 15 mins."
 );
 assert.strictEqual(
   analysisRunningMessage("high_quality"),
-  "Running high-quality analysis and preparing the quote basis. This will take about 10 to 15 mins."
+  "This will take about 10 to 15 mins."
 );
 assert.strictEqual(analysisActionLabel("Run Analysis", "standard"), "Run Analysis (1 credit)");
 assert.strictEqual(analysisActionLabel("Run High Quality", "high_quality"), "Run High Quality (3 credits)");
@@ -9658,7 +9660,7 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".pricing-reference-control-group,\n.company-preset-control-group {\n  grid-column: 2;", css)
         self.assertIn(".company-preset-save-group {\n  grid-column: 3;", css)
         self.assertIn(".pricing-reference-panel .settings-note {\n  align-self: start;\n  padding-top: 0;", css)
-        self.assertIn("padding: 12px 28px 28px;", css)
+        self.assertIn("padding: 12px 28px 80px;", css)
         self.assertIn('/api/settings/pricing-references/import-preview', js)
         self.assertNotIn("XLSX pricing-reference validation is not available", js)
         self.assertIn("Start Analysis", html)
@@ -11946,22 +11948,20 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn('id="outputSourceLabel"', html)
         self.assertIn('id="outputTotalLines"', html)
         self.assertIn("Source: Pricing reference", html)
+        self.assertIn("Total approved lines: 0", html)
         self.assertNotIn("Source: Koncept Pricing Catalog", html)
         self.assertIn("function updateOutputHeader", js)
         self.assertIn("function outputHeaderStatus", js)
         self.assertIn('return reference.label || "Pricing reference";', js)
-        self.assertIn(".output-page-header", css)
+        self.assertNotIn(".output-page-header {", css)
         self.assertIn(".output-status-pill.is-ok", css)
+        self.assertIn(".quote-basis-title-row .output-status-pill", css)
         self.assertIn(".side-workspace .assistant-output .message-list:empty", css)
         self.assertIn("width: min(100%, var(--workspace-content-width));", css)
         self.assertIn("width: auto;", css)
         self.assertIn(".output-col-description { width: 32%; }", css)
         self.assertIn("margin: 0 0 12px;", css)
-        output_header_css = css.split(".output-page-header .output-title-row h3", 1)[1].split(".quote-basis-title-row .output-status-pill", 1)[0]
-        self.assertIn("font-size: 18px;", output_header_css)
-        self.assertIn("font-size: 12px;", output_header_css)
-        self.assertIn("font-size: 13px;", output_header_css)
-        self.assertIn("font-size: 15px;", output_header_css)
+        self.assertIn(".quote-basis-title-row h3", css)
 
     def test_static_chat_blocks_secret_and_internal_prompt_requests(self):
         static_dir = ROOT / "webapp" / "static"
