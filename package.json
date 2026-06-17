@@ -6,6 +6,7 @@
   "description": "Local tooling for the Swooshz Quote Generator.",
   "scripts": {
     "playwright:install": "playwright install chromium",
+    "playwright:download-confirm": "node scripts/playwright-download-excel-confirm-regression.mjs",
     "playwright:smoke": "node scripts/playwright-smoke.mjs",
     "playwright:ai-stress": "node scripts/playwright-ai-basis-chat-stress.mjs",
     "playwright:screenshot": "node scripts/playwright-smoke.mjs --screenshots"
