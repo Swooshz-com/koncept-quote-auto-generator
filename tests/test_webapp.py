@@ -12789,6 +12789,56 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertIn("You do not have permission to perform this action.", body_text)
         self.assertNotIn("10.5", body_text)
 
+    def test_line_item_normalize_endpoint_uses_selected_basis_catalog_match_on_first_confirm(self):
+        payload = {
+            "profile_id": "koncept",
+            "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
+            "quote_basis_sections": [{
+                "id": "furniture-rental",
+                "title": "Furniture Rental",
+                "lines": [{
+                    "id": "basis-high-top-table",
+                    "tag": "Include",
+                    "text": "[ nos. High Top Table White ] - Operator selected catalog match for AI suggested table quantity.",
+                    "quantity": 3,
+                    "unit": "nos",
+                    "pricing_keyword": "furniture-rental-high-top-table-white",
+                    "catalog_description": "nos. High Top Table White",
+                    "pricing_reference_description": "nos. High Top Table White",
+                }],
+            }],
+            "line_items": [{
+                "section": "Furniture Rental",
+                "quantity": 3,
+                "unit": "nos",
+                "description": "Operator selected catalog match for AI suggested table quantity.",
+                "pricing_keyword": "",
+                "source_basis_line_id": "basis-high-top-table",
+            }],
+        }
+
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=False):
+            with LocalRunnerServer() as runner:
+                session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                request = urllib.request.Request(
+                    f"{runner.base_url}/api/line-items/normalize",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        session["csrf_header"]: session["csrf_token"],
+                    },
+                    method="POST",
+                )
+                body = json.loads(urllib.request.urlopen(request, timeout=3).read().decode("utf-8"))
+
+        self.assertEqual(body["status"], "normalized")
+        self.assertEqual(len(body["line_items"]), 1)
+        item = body["line_items"][0]
+        self.assertEqual(item["pricing_keyword"], "furniture-rental-high-top-table-white")
+        self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price("furniture-rental-high-top-table-white"))
+        self.assertEqual(item["source_basis_line_id"], "basis-high-top-table")
+        self.assertEqual(item["description"], "nos. High Top Table White")
+
     def test_settings_permissions_deny_non_admin_writes(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=True):
             allowed, error = webapp.require_permission("canManagePricingReferences")

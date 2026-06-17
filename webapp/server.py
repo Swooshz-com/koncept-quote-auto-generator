@@ -9029,6 +9029,18 @@ def line_items_aligned_to_quote_basis(
     return aligned or line_items
 
 
+def normalize_line_items_for_quote_basis_review(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    line_items = normalize_line_items(payload)
+    sections = normalize_quote_basis_sections(payload, pricing_reference_section_names_for_payload(payload))
+    if not sections:
+        return sort_line_items_by_pricing_reference_order(payload, line_items)
+
+    catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+    line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
+    line_items = line_items_aligned_to_quote_basis(line_items, sections, catalog_lookup)
+    return sort_line_items_by_pricing_reference_order(payload, line_items)
+
+
 def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) -> list[dict[str, Any]]:
     sections = normalize_quote_basis_sections(payload, pricing_reference_section_names_for_payload(payload))
     if not sections:
@@ -10436,7 +10448,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            self.send_json({"status": "normalized", "line_items": normalize_line_items(payload)})
+            self.send_json({"status": "normalized", "line_items": normalize_line_items_for_quote_basis_review(payload)})
             return
 
         if parsed.path == "/api/draft":
