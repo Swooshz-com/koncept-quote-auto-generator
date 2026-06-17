@@ -1074,7 +1074,7 @@ h3 {
 
 .company-preset-panel {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 344px) minmax(260px, 320px);
+  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 350px) minmax(260px, 320px);
   gap: 16px 34px;
   align-items: start;
   margin: 17px 17px 18px;
