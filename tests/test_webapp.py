@@ -12847,6 +12847,68 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(item["source_basis_line_id"], "basis-high-top-table")
         self.assertEqual(item["description"], "nos. High Top Table White")
 
+    def test_line_item_normalize_endpoint_prices_accepted_ai_confirm_bracketed_catalog_line(self):
+        partition_keyword = (
+            "booth-structure-double-side-partition-wall-at-height-2-4m-"
+            "wooden-construct-in-painted-finished-as-per-design-proposal"
+        )
+        partition_description = (
+            "m length double side partition wall at height 2.4m; "
+            "wooden construct in painted finished as per design proposal"
+        )
+        payload = {
+            "profile_id": "koncept",
+            "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
+            "quote_basis_sections": [{
+                "id": "booth-structure",
+                "title": "Booth Structure",
+                "lines": [{
+                    "id": "basis-double-side-partition",
+                    "tag": "Custom",
+                    "custom_pricing": True,
+                    "custom_confirmed": True,
+                    "text": f"[ {partition_description} ]",
+                    "quantity": 1,
+                    "unit": "m length",
+                }],
+            }],
+            "line_items": [{
+                "section": "Booth Structure",
+                "quantity": 1,
+                "unit": "m length",
+                "description": f"[ {partition_description} ]",
+                "pricing_keyword": "",
+                "source_basis_line_id": "basis-double-side-partition",
+            }],
+        }
+        basis_only_items = webapp.normalize_line_items_for_quote_basis_review({**payload, "line_items": []})
+        self.assertEqual(len(basis_only_items), 1)
+        self.assertEqual(basis_only_items[0]["pricing_keyword"], partition_keyword)
+        self.assertEqual(basis_only_items[0]["catalog_unit_price"], 540.0)
+
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=False):
+            with LocalRunnerServer() as runner:
+                session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                request = urllib.request.Request(
+                    f"{runner.base_url}/api/line-items/normalize",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        session["csrf_header"]: session["csrf_token"],
+                    },
+                    method="POST",
+                )
+                body = json.loads(urllib.request.urlopen(request, timeout=3).read().decode("utf-8"))
+
+        self.assertEqual(body["status"], "normalized")
+        self.assertEqual(len(body["line_items"]), 1)
+        item = body["line_items"][0]
+        self.assertEqual(item["pricing_keyword"], partition_keyword)
+        self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price(partition_keyword))
+        self.assertEqual(item["catalog_unit_price"], 540.0)
+        self.assertEqual(item["description"], partition_description)
+        self.assertEqual(item["source_basis_line_id"], "basis-double-side-partition")
+
     def test_settings_permissions_deny_non_admin_writes(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=True):
             allowed, error = webapp.require_permission("canManagePricingReferences")
