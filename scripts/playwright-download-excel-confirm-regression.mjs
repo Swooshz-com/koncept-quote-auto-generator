@@ -272,6 +272,20 @@ function acceptedConfirmSessionSnapshot() {
   };
 }
 
+function basisReviewSessionSnapshot() {
+  const snapshot = acceptedConfirmSessionSnapshot();
+  return {
+    ...snapshot,
+    workflowStage: "basis_review",
+    outputRows: [],
+    originalOutputRows: [],
+    outputErrors: [],
+    basisConfirmed: false,
+    activeSidePanel: "basis",
+    downloadFile: null,
+  };
+}
+
 async function outputTableText(page) {
   return (await page.locator("#pricingTableWrap").innerText()).replace(/\s+/g, " ").trim();
 }
@@ -308,9 +322,13 @@ async function main() {
   });
   await context.addInitScript(({ key, snapshot }) => {
     window.localStorage.setItem(key, JSON.stringify(snapshot));
-  }, { key: sessionStorageKey, snapshot: acceptedConfirmSessionSnapshot() });
+  }, { key: sessionStorageKey, snapshot: basisReviewSessionSnapshot() });
 
   const page = await context.newPage();
+  await page.route("**/api/line-items/normalize", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await route.continue();
+  });
   const consoleProblems = [];
   page.on("console", (message) => {
     if (["error", "warning"].includes(message.type())) consoleProblems.push(`${message.type()}: ${message.text()}`);
@@ -320,9 +338,15 @@ async function main() {
   try {
     await page.goto(baseUrl, { waitUntil: "networkidle" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
+    await page.locator("#sideDrawerTitle", { hasText: "Quote Basis" }).waitFor();
+    await page.locator("#sideNextButton", { hasText: "Confirm Quotation Basis" }).click();
+    await page.locator("#excelGeneratingModal").waitFor({ state: "visible", timeout: 5000 });
+    await page.locator("#excelGeneratingTitle", { hasText: "Preparing Output" }).waitFor({ timeout: 5000 });
+    const preparingOutputShot = await screenshot(page, "preparing-output-modal.png");
     await page.locator("#sideDrawerTitle", { hasText: "Output" }).waitFor();
+    await page.locator("#excelGeneratingModal").waitFor({ state: "hidden", timeout: 5000 });
     await page.locator("#pricingMatchesBody tr").first().waitFor({ timeout: 15000 });
-    await assertPartitionPriced(page, "before download click");
+    await assertPartitionPriced(page, "after confirm basis");
 
     const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
     await page.getByRole("link", { name: "Download Excel" }).click();
@@ -346,7 +370,7 @@ async function main() {
       url: page.url(),
       downloadPath,
       downloadBytes: downloaded.size,
-      screenshots: [generatingShot, completedShot].filter(Boolean),
+      screenshots: [preparingOutputShot, generatingShot, completedShot].filter(Boolean),
       consoleProblems,
     }, null, 2));
   } finally {

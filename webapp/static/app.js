@@ -145,6 +145,7 @@ const state = {
   basisConfirmed: false,
   isAnalysisRunning: false,
   isGenerating: false,
+  isPreparingOutput: false,
   aiFailed: false,
   draftSource: "",
   lastAnalysisMode: ANALYSIS_MODE_STANDARD,
@@ -277,6 +278,9 @@ const elements = {
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
   excelGeneratingModal: qs("#excelGeneratingModal"),
+  excelGeneratingEyebrow: qs("#excelGeneratingEyebrow"),
+  excelGeneratingTitle: qs("#excelGeneratingTitle"),
+  excelGeneratingMessage: qs("#excelGeneratingMessage"),
   basisChatOverlay: qs("#basisChatOverlay"),
   basisChatTitle: qs("#basisChatTitle"),
   basisChatContext: qs("#basisChatContext"),
@@ -350,9 +354,7 @@ function normalizeAnalysisMode(value) {
 }
 
 function analysisRunningMessage(mode = ANALYSIS_MODE_STANDARD) {
-  return normalizeAnalysisMode(mode) === ANALYSIS_MODE_HIGH_QUALITY
-    ? `Running high-quality analysis and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`
-    : `Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`;
+  return ANALYSIS_WAIT_ESTIMATE;
 }
 
 function analysisCreditSuffix(mode = ANALYSIS_MODE_STANDARD) {
@@ -883,7 +885,7 @@ function setAiStatusBanner(tone, title, message, options = {}) {
   `;
 }
 
-function showAiRunningBanner(message = `Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`, startedAt = activeJobStartedAt()) {
+function showAiRunningBanner(message = ANALYSIS_WAIT_ESTIMATE, startedAt = activeJobStartedAt()) {
   setAiStatusBanner("running", "AI analysis running.", message, { elapsed: true });
   startAnalysisElapsedTimer(startedAt);
 }
@@ -2203,7 +2205,7 @@ function clearQuoteCompanyDetails() {
 }
 
 function resetImagesDraft() {
-  if (state.isAnalysisRunning || state.isGenerating) return;
+  if (appIsBusy()) return;
   state.images = [];
   if (elements.imageInput) elements.imageInput.value = "";
   setImageUploadStatus("");
@@ -2214,7 +2216,7 @@ function resetImagesDraft() {
 }
 
 function startNewQuote() {
-  if (state.isAnalysisRunning || state.isGenerating) return;
+  if (appIsBusy()) return;
   clearSessionState();
   state.profileId = "";
   state.pricingReferenceId = "";
@@ -4274,7 +4276,7 @@ function handleProfileSelectionChange() {
 }
 
 async function setSampleDetails() {
-  if (state.isBooting || state.isAnalysisRunning || state.isGenerating) return;
+  if (state.isBooting || appIsBusy()) return;
   elements.sampleDetailsButton.disabled = true;
   try {
     const { ok, data } = await getJson(`/api/samples/${DEFAULT_SAMPLE_ID}`);
@@ -4421,11 +4423,28 @@ function setDownloadFiles(files = []) {
   updateDownloadButton();
 }
 
+function appIsBusy() {
+  return state.isAnalysisRunning || state.isGenerating || state.isPreparingOutput;
+}
+
+function appBusyTitle() {
+  if (state.isAnalysisRunning) return "Analysis is running.";
+  if (state.isPreparingOutput) return "Output is being prepared.";
+  if (state.isGenerating) return "Quotation generation is running.";
+  return "";
+}
+
+function waitForUiPaint() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+  });
+}
+
 function updateDownloadButton() {
   if (!elements.sideDownloadButton) return;
   const file = state.downloadFile;
   const validation = outputRowsValid();
-  const enabled = state.activeSidePanel === "output" && validation.valid && !state.isGenerating;
+  const enabled = state.activeSidePanel === "output" && validation.valid && !state.isGenerating && !state.isPreparingOutput;
   elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
   elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
   elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
@@ -4434,8 +4453,11 @@ function updateDownloadButton() {
   elements.sideDownloadButton.textContent = "Download Excel";
 }
 
-function showExcelGeneratingModal() {
+function showExcelGeneratingModal(options = {}) {
   if (!elements.excelGeneratingModal) return;
+  elements.excelGeneratingEyebrow.textContent = options.eyebrow || "Quotation export";
+  elements.excelGeneratingTitle.textContent = options.title || "Generating Excel";
+  elements.excelGeneratingMessage.textContent = options.message || "Preparing the quotation workbook. The download starts automatically when ready.";
   elements.excelGeneratingModal.hidden = false;
   elements.excelGeneratingModal.classList.add("is-open");
 }
@@ -5106,7 +5128,7 @@ function updateOutputHeader(rows = state.outputRows) {
     elements.outputSourceLabel.textContent = `Source: ${outputPricingSourceLabel()}`;
   }
   if (elements.outputTotalLines) {
-    elements.outputTotalLines.textContent = `Total lines: ${safeRows.length}`;
+    elements.outputTotalLines.textContent = `Total approved lines: ${safeRows.length}`;
   }
 }
 
@@ -6384,6 +6406,7 @@ function firstMissingDetailsPanel() {
 function startAnalysisBlockReason() {
   if (state.isAnalysisRunning) return "Analysis is already running.";
   if (state.isGenerating) return "Quotation generation is already running.";
+  if (state.isPreparingOutput) return "Output is being prepared.";
   if (!state.images.length) return "Add at least one reference file before starting analysis.";
   return customerDetailsBlockReason("Complete Customer details before starting analysis")
     || quoteCompanyDetailsBlockReason("Complete Quote Company details before starting analysis");
@@ -6591,7 +6614,7 @@ function resetQuoteBasisToOriginal() {
 }
 
 async function resetOutputDraft() {
-  if (state.isAnalysisRunning || state.isGenerating || !state.originalOutputRows.length) return;
+  if (appIsBusy() || !state.originalOutputRows.length) return;
   state.outputRows = snapshotOutputRows(state.originalOutputRows);
   state.lineItems = outputRowsToLineItems();
   state.outputErrors = [];
@@ -6765,11 +6788,9 @@ async function initializeSession() {
 }
 
 function syncControlStates() {
-  const busy = state.isAnalysisRunning || state.isGenerating;
+  const busy = appIsBusy();
   elements.newQuoteButton.disabled = busy;
-  elements.newQuoteButton.title = busy
-    ? (state.isAnalysisRunning ? "Analysis is running." : "Quotation generation is running.")
-    : "";
+  elements.newQuoteButton.title = busy ? appBusyTitle() : "";
   if (elements.settingsButton) {
     const canManage = canManagePricingReferences();
     elements.settingsButton.hidden = false;
@@ -6894,7 +6915,7 @@ async function handleDraftBasis(options = {}) {
 }
 
 async function confirmBasis() {
-  if (state.isAnalysisRunning || state.isGenerating) return;
+  if (appIsBusy()) return;
   const confirmBlockReason = basisConfirmBlockReason();
   if (confirmBlockReason) {
     setWorkflowStage("basis_review");
@@ -6916,18 +6937,31 @@ async function confirmBasis() {
     syncControlStates();
     return;
   }
-  const refreshed = await refreshLineItemsFromServer();
-  state.basisConfirmed = true;
-  refreshOutputRowsFromLineItems();
-  state.originalOutputRows = snapshotOutputRows(state.outputRows);
-  state.lineItems = outputRowsToLineItems();
-  setWorkflowStage("completed");
-  renderPricingMatches(state.outputRows);
-  renderMatchSummary({ pricing_matches: state.outputRows });
-  setResultStatus(refreshed ? "Ready for pricing review" : "Pricing refresh unavailable", "is-warn");
-  renderOutputValidationMessages(outputRowsValid().errors);
-  setSidePanel("output", { force: true });
+  state.isPreparingOutput = true;
+  showExcelGeneratingModal({
+    eyebrow: "Quotation output",
+    title: "Preparing Output",
+    message: "Building the pricing review rows. Excel download will be available after this finishes.",
+  });
   syncControlStates();
+  await waitForUiPaint();
+  try {
+    const refreshed = await refreshLineItemsFromServer();
+    state.basisConfirmed = true;
+    refreshOutputRowsFromLineItems();
+    state.originalOutputRows = snapshotOutputRows(state.outputRows);
+    state.lineItems = outputRowsToLineItems();
+    setWorkflowStage("completed");
+    renderPricingMatches(state.outputRows);
+    renderMatchSummary({ pricing_matches: state.outputRows });
+    setResultStatus(refreshed ? "Ready for pricing review" : "Pricing refresh unavailable", "is-warn");
+    renderOutputValidationMessages(outputRowsValid().errors);
+    setSidePanel("output", { force: true });
+  } finally {
+    state.isPreparingOutput = false;
+    hideExcelGeneratingModal();
+    syncControlStates();
+  }
 }
 
 async function handleGenerate() {
@@ -7041,7 +7075,7 @@ async function resumeSavedJob() {
     state.isAnalysisRunning = true;
     state.isGenerating = false;
     setWorkflowStage("analyzing");
-    showAiRunningBanner(`Resuming the analysis job after refresh. ${ANALYSIS_WAIT_ESTIMATE}`, activeJobStartedAt(activeJob));
+    showAiRunningBanner(ANALYSIS_WAIT_ESTIMATE, activeJobStartedAt(activeJob));
     clearBasisReviewSurface();
     setSidePanel("basis", { force: true });
     syncControlStates();
@@ -7049,7 +7083,7 @@ async function resumeSavedJob() {
     const polled = await pollJob(activeJob.id, (job) => {
       if (job.created_at && !state.activeJob?.startedAt) {
         state.activeJob = { ...state.activeJob, startedAt: job.created_at };
-        showAiRunningBanner(`Resuming the analysis job after refresh. ${ANALYSIS_WAIT_ESTIMATE}`, job.created_at);
+        showAiRunningBanner(ANALYSIS_WAIT_ESTIMATE, job.created_at);
         saveSessionState();
       }
     });
@@ -7264,7 +7298,7 @@ function updateSidePanelNav() {
   const isQuoteCompanyStep = state.activeSidePanel === "quote_company";
   const isBasisStep = state.activeSidePanel === "basis";
   const isOutputStep = state.activeSidePanel === "output";
-  const busy = state.isAnalysisRunning || state.isGenerating;
+  const busy = appIsBusy();
   elements.sampleDetailsButton.hidden = state.activeSidePanel !== "images";
   elements.sampleDetailsButton.disabled = state.isBooting || busy;
   elements.resetImagesButton.hidden = state.activeSidePanel !== "images";
@@ -7304,7 +7338,7 @@ function updateSidePanelNav() {
   const basisBlockReason = isBasisStep ? basisConfirmBlockReason() : "";
   let nextBlockReason = "";
   if (busy) {
-    nextBlockReason = state.isAnalysisRunning ? "Analysis is already running." : "Quotation generation is already running.";
+    nextBlockReason = appBusyTitle();
   } else if (isQuoteCompanyStep) {
     nextBlockReason = startAnalysisBlockReason();
   } else if (isBasisStep) {
