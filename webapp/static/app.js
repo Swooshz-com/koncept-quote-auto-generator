@@ -144,6 +144,7 @@ const state = {
   selectedPresetValue: "",
   profiles: [],
   companyProfiles: [],
+  workspace: null,
   pricingReferences: [],
   defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   images: [],
@@ -2583,6 +2584,13 @@ function exportedCompanyProfilePayload(label = "") {
   return {
     schema: COMPANY_PROFILE_EXPORT_SCHEMA,
     exported_at: new Date().toISOString(),
+    workspace: state.workspace && typeof state.workspace === "object" ? {
+      company_id: state.workspace.company?.id || "",
+      company_slug: state.workspace.company?.slug || "",
+      company_display_name: state.workspace.company?.display_name || "",
+      workspace_id: state.workspace.workspace?.id || "",
+      workspace_slug: state.workspace.workspace?.slug || "",
+    } : undefined,
     profile: {
       id: safeProfileId(resolvedLabel, `profile-${Date.now().toString(36)}`),
       label: resolvedLabel,
@@ -4650,6 +4658,7 @@ async function loadProfiles() {
   const { ok, data } = await getJson("/api/profiles");
   if (ok && Array.isArray(data.profiles)) {
     state.profiles = data.profiles;
+    state.workspace = data.workspace && typeof data.workspace === "object" ? data.workspace : null;
     state.defaultPricingReferenceId = data.default_pricing_reference_id || DEFAULT_PRICING_REFERENCE_ID;
     state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : []);
     if (state.pricingReferenceId) {
