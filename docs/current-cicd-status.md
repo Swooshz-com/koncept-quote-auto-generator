@@ -1,6 +1,6 @@
 # Current CI/CD Status
 
-Last updated: 2026-06-15
+Last updated: 2026-06-18
 
 Source of truth: `.github/workflows/ci.yml`
 
@@ -10,6 +10,7 @@ Source of truth: `.github/workflows/ci.yml`
 - Triggers: pull requests, pushes to `main`, and manual `workflow_dispatch`
 - Permissions: read-only repository contents
 - No deployment job is configured
+- This phase-planning PR adds no deployment job
 - No production environment mutation is performed by CI
 - CI does not require OpenAI, DeepSeek, Gemini, OIDC, deployment, or production secrets
 
