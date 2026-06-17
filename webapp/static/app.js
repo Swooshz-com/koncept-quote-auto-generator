@@ -4938,6 +4938,20 @@ function outputRowsToLineItems(rows = state.outputRows) {
       source_basis_line_id: row.source_basis_line_id || "",
     };
     if (!next.source_basis_line_id) delete next.source_basis_line_id;
+    const catalogUnitPrice = numberOrNull(row.catalog_unit_price);
+    if (catalogUnitPrice !== null) next.catalog_unit_price = catalogUnitPrice;
+    const catalogDescription = cleanCustomerQuoteLineText(row.catalog_description || "");
+    if (catalogDescription) next.catalog_description = catalogDescription;
+    const pricingReferenceDescription = pricingReferenceLineText(row.pricing_reference_description || "");
+    if (pricingReferenceDescription) next.pricing_reference_description = pricingReferenceDescription;
+    const categoryOrder = orderNumber(row.category_order);
+    if (categoryOrder !== null) next.category_order = categoryOrder;
+    const itemOrder = orderNumber(row.item_order);
+    if (itemOrder !== null) next.item_order = itemOrder;
+    const basisOrder = orderNumber(row.basis_order);
+    if (basisOrder !== null) next.basis_order = basisOrder;
+    const status = String(row.status || "").trim();
+    if (status) next.status = status;
     if (next.price_mode === "Included") {
       next.display_price = "Included";
     } else {

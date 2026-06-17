@@ -9417,6 +9417,7 @@ eval([
   "resetOutputSortModeToPricingReference",
   "refreshOutputRowsFromLineItems",
   "ensureOutputRowsFromLineItems",
+  "outputRowsToLineItems",
 ].map(extractFunction).join("\n"));
 
 const plainCounter = {
@@ -9469,6 +9470,13 @@ assert.strictEqual(state.outputRows.length, 1);
 assert.strictEqual(state.outputRows[0].catalog_unit_price, 60);
 assert.strictEqual(state.outputRows[0].amount, 2160);
 assert.strictEqual(state.outputRows[0].description, "sqm 100mm raised platform with aluminum edging");
+const selectedConfirmPayload = outputRowsToLineItems();
+assert.strictEqual(selectedConfirmPayload.length, 1);
+assert.strictEqual(selectedConfirmPayload[0].catalog_unit_price, 60);
+assert.strictEqual(selectedConfirmPayload[0].catalog_description, "sqm 100mm raised platform with aluminum edging");
+assert.strictEqual(selectedConfirmPayload[0].pricing_reference_description, "m2 100mm raised platform with aluminum edging");
+assert.strictEqual(selectedConfirmPayload[0].pricing_keyword, "floor-design-100mm-raised-platform-with-aluminum-edging");
+assert.strictEqual(selectedConfirmPayload[0].source_basis_line_id, "raised-platform");
 state.quoteBasisSections = originalBasisSections;
 
 state.quoteBasisSections = [{
