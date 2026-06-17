@@ -379,28 +379,6 @@ function syncAnalysisCreditLabels() {
   }
 }
 
-function analysisCreditSuffix(mode = ANALYSIS_MODE_STANDARD) {
-  const credits = Number(ANALYSIS_CREDIT_COSTS[normalizeAnalysisMode(mode)]);
-  if (!Number.isFinite(credits) || credits <= 0) return "";
-  return ` (${credits} ${credits === 1 ? "credit" : "credits"})`;
-}
-
-function analysisActionLabel(label, mode = ANALYSIS_MODE_STANDARD) {
-  return `${label}${analysisCreditSuffix(mode)}`;
-}
-
-function syncAnalysisCreditLabels() {
-  if (elements.analysisConfirmStartButton) {
-    elements.analysisConfirmStartButton.textContent = analysisActionLabel("Run Analysis", ANALYSIS_MODE_STANDARD);
-  }
-  if (elements.analysisConfirmHighQualityButton) {
-    elements.analysisConfirmHighQualityButton.textContent = analysisActionLabel(
-      "Run High Quality",
-      ANALYSIS_MODE_HIGH_QUALITY
-    );
-  }
-}
-
 function pricingReferenceSelectValue(reference = {}) {
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "";
