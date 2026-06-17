@@ -8047,6 +8047,10 @@ assert.strictEqual(rowNeedsManualInput(manualDisplayZeroRow), false);
         self.assertIn('stopElapsedTimer("analysisElapsed")', js)
         self.assertIn("startAnalysisElapsedTimer", js)
         self.assertIn("formatElapsedDuration", js)
+        self.assertIn('const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins. Please wait."', js)
+        self.assertIn("`Reading the reference files and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`", js)
+        self.assertIn("`Running high-quality analysis and preparing the quote basis. ${ANALYSIS_WAIT_ESTIMATE}`", js)
+        self.assertIn("`Resuming the analysis job after refresh. ${ANALYSIS_WAIT_ESTIMATE}`", js)
         self.assertIn(".ai-elapsed", css)
         self.assertIn(".ai-failure-banner .ai-elapsed", css)
 
@@ -8055,6 +8059,9 @@ assert.strictEqual(rowNeedsManualInput(manualDisplayZeroRow), false);
 const fs = require("fs");
 const assert = require("assert");
 const source = fs.readFileSync("webapp/static/app.js", "utf8");
+const ANALYSIS_MODE_STANDARD = "standard";
+const ANALYSIS_MODE_HIGH_QUALITY = "high_quality";
+const ANALYSIS_WAIT_ESTIMATE = "This will take about 10 to 15 mins. Please wait.";
 
 function extractFunction(name) {
   const marker = `function ${name}`;
@@ -8074,7 +8081,17 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
+eval(extractFunction("normalizeAnalysisMode"));
+eval(extractFunction("analysisRunningMessage"));
 eval(extractFunction("formatElapsedDuration"));
+assert.strictEqual(
+  analysisRunningMessage("standard"),
+  "Reading the reference files and preparing the quote basis. This will take about 10 to 15 mins. Please wait."
+);
+assert.strictEqual(
+  analysisRunningMessage("high_quality"),
+  "Running high-quality analysis and preparing the quote basis. This will take about 10 to 15 mins. Please wait."
+);
 assert.strictEqual(formatElapsedDuration(0), "0:00");
 assert.strictEqual(formatElapsedDuration(61000), "1:01");
 assert.strictEqual(formatElapsedDuration(3661000), "1:01:01");
