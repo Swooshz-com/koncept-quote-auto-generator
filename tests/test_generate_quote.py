@@ -740,6 +740,34 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             issues,
         )
 
+    def test_exact_catalog_id_one_metre_structural_row_stays_priced(self):
+        rows = quote.extract_price_rows(KONCEPT_CATALOG)
+        partition_keyword = (
+            "booth-structure-double-side-partition-wall-at-height-2-4m-"
+            "wooden-construct-in-painted-finished-as-per-design-proposal"
+        )
+        partition_description = (
+            "m length double side partition wall at height 2.4m; "
+            "wooden construct in painted finished as per design proposal"
+        )
+        brief = {
+            "line_items": [{
+                "section": "Booth Structure",
+                "quantity": 1,
+                "unit": "m length",
+                "description": partition_description,
+                "pricing_keyword": partition_keyword,
+            }]
+        }
+
+        [line] = quote.prepare_lines(brief, rows, allow_ambiguous=True)
+
+        self.assertEqual(line.match_status, "matched")
+        self.assertIsNotNone(line.matched_price)
+        self.assertEqual(line.matched_price.pricing_id, partition_keyword)
+        self.assertEqual(line.matched_price.sale_unit_price, 540.0)
+        self.assertEqual(line.amount, 540)
+
     def test_fractional_information_counter_requires_quantity_review(self):
         rows = [
             quote.PriceRow(

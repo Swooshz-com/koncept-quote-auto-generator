@@ -479,6 +479,12 @@ def suspicious_linear_catalog_quantity(quantity: float | None, unit: str, match:
     return normalize_unit(match.unit_hint).lower() in LINEAR_TAKEOFF_UNITS
 
 
+def pricing_keyword_exactly_matches_catalog_id(pricing_keyword: str, match: PriceRow | None = None) -> bool:
+    if match is None:
+        return False
+    return bool(pricing_keyword) and pricing_keyword.casefold() == clean_text(match.pricing_id).casefold()
+
+
 REQUIRED_TOP_LEVEL = ("company_identity", "quote_date", "client", "project", "line_items")
 
 
@@ -512,13 +518,15 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             price_mode = "Included" if display_price.lower() == "included" else "Priced"
         unit_price_override = item.get("unit_price_override")
         unit_price_override_num = as_float(unit_price_override, 0.0) if unit_price_override not in (None, "") else None
-        query = clean_text(item.get("pricing_keyword") or item.get("description") or "")
+        pricing_keyword = clean_text(item.get("pricing_keyword"))
+        query = pricing_keyword or clean_text(item.get("description") or "")
         status, match, candidates = find_price_match(
             query,
             price_rows,
             section=clean_text(item.get("section")),
             unit=clean_text(item.get("unit")),
         )
+        exact_catalog_id_match = pricing_keyword_exactly_matches_catalog_id(pricing_keyword, match)
         quantity = item.get("quantity")
         quantity_num = as_float(quantity, 0.0) if quantity not in (None, "") else None
         normalized_unit = normalize_unit(item.get("unit"))
@@ -538,7 +546,7 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             status = "quantity-review"
             match = None
             amount = None
-        elif suspicious_linear_catalog_quantity(quantity_num, normalized_unit, match):
+        elif suspicious_linear_catalog_quantity(quantity_num, normalized_unit, match) and not exact_catalog_id_match:
             status = "quantity-review"
             match = None
             amount = None
