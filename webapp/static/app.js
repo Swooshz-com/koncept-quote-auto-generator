@@ -7135,7 +7135,7 @@ async function initializeSession() {
     }
     return;
   }
-  elements.healthText.textContent = "Local session unavailable";
+  if (elements.healthText) elements.healthText.textContent = "Local session unavailable";
 }
 
 function syncControlStates() {
@@ -7534,11 +7534,11 @@ async function checkHealth() {
   try {
     const response = await fetch("/api/health");
     const data = await response.json();
-    elements.statusDot.classList.toggle("is-ok", response.ok);
+    if (elements.statusDot) elements.statusDot.classList.toggle("is-ok", response.ok);
     if (elements.topbarStatus) elements.topbarStatus.classList.toggle("is-ok", response.ok);
-    elements.healthText.textContent = response.ok ? "Ready" : data.error || "Unavailable";
+    if (elements.healthText) elements.healthText.textContent = response.ok ? "Ready" : data.error || "Unavailable";
   } catch {
-    elements.healthText.textContent = "Unavailable";
+    if (elements.healthText) elements.healthText.textContent = "Unavailable";
     if (elements.topbarStatus) elements.topbarStatus.classList.remove("is-ok");
   }
 }

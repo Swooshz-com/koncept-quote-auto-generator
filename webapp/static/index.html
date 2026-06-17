@@ -19,10 +19,6 @@
           </div>
         </div>
         <div class="topbar-controls">
-          <div class="topbar-status" id="topbarStatus">
-            <span class="status-dot" id="statusDot"></span>
-            <span id="healthText" class="health-text">Checking local server</span>
-          </div>
           <a class="topbar-action topbar-link-action" href="/privacy" target="_blank" rel="noopener">Privacy</a>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
@@ -252,33 +248,70 @@
                 <div class="company-preset-panel">
                   <div class="company-preset-copy">
                     <div class="company-preset-heading">
-                      <h3>Company preset</h3>
+                      <h3>Select Profile</h3>
                       <span class="company-preset-source-badge">Profile template</span>
                     </div>
                     <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
                   </div>
                   <div class="company-preset-controls">
-                    <div class="company-preset-control-group">
+                    <div class="company-preset-control-group company-preset-select-card">
+                      <h4>Select Profile</h4>
                       <label class="compact-control">
-                        Company preset
+                        Current Profile
                         <select id="presetSelect"></select>
                       </label>
                       <div class="settings-button-row">
-                        <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">Delete</button>
-                      </div>
-                      <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
-                      <div class="settings-button-row company-preset-file-actions">
-                        <button class="secondary-button" type="button" id="importPresetButton">Import</button>
-                        <button class="secondary-button" type="button" id="exportPresetButton">Export</button>
+                        <button class="secondary-button profile-load-button" type="button" id="loadPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M4 20h16"></path>
+                            <path d="M12 4v12"></path>
+                            <path d="m7 11 5 5 5-5"></path>
+                          </svg>
+                          <span>Load</span>
+                        </button>
+                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M4 7h16"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                            <path d="M6 7l1 14h10l1-14"></path>
+                            <path d="M9 7V4h6v3"></path>
+                          </svg>
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </div>
                     <div class="company-preset-control-group company-preset-save-group">
-                      <label class="compact-control preset-save-name">
-                        Save profile
-                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
-                      </label>
-                      <button class="primary-button" type="button" id="savePresetButton">Save Profile</button>
+                      <h3>Save &amp; Manage Data</h3>
+                      <div class="company-preset-save-row">
+                        <label class="compact-control preset-save-name">
+                          <span class="sr-only">Reusable profile name</span>
+                          <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
+                        </label>
+                        <button class="primary-button" type="button" id="savePresetButton">Save Profile</button>
+                      </div>
+                      <div class="company-preset-more-actions" aria-hidden="true">
+                        <span>More Actions</span>
+                      </div>
+                      <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+                      <div class="settings-button-row company-preset-file-actions">
+                        <button class="secondary-button" type="button" id="importPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M12 4v11"></path>
+                            <path d="m7 10 5 5 5-5"></path>
+                            <path d="M5 20h14"></path>
+                          </svg>
+                          <span>Import Profile</span>
+                        </button>
+                        <button class="secondary-button" type="button" id="exportPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M12 20V9"></path>
+                            <path d="m7 14 5-5 5 5"></path>
+                            <path d="M5 4h14"></path>
+                          </svg>
+                          <span>Export Profile</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

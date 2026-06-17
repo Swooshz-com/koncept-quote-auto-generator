@@ -267,22 +267,6 @@ button {
   object-fit: contain;
 }
 
-/* Topbar status pill — visible health indicator */
-.topbar-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 650;
-  transition: border-color var(--duration-base) ease, background var(--duration-base) ease;
-}
-
 .topbar-action {
   display: inline-flex;
   align-items: center;
@@ -322,30 +306,6 @@ button {
 .topbar-action:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.topbar-status.is-ok {
-  border-color: #a3dbd2;
-  background: #f0faf8;
-  color: var(--green-dark);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--amber);
-  flex-shrink: 0;
-}
-
-.status-dot.is-ok {
-  background: #10b981;
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
-.health-text {
-  font-size: 13px;
-  font-weight: 650;
 }
 
 h1,
@@ -1102,14 +1062,23 @@ h3 {
   padding: 0 0 18px;
 }
 
-.pricing-reference-panel,
-.company-preset-panel {
+.pricing-reference-panel {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 320px) minmax(220px, 320px);
   gap: 12px 18px;
   align-items: start;
   margin: 17px 17px 18px;
   padding: 14px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.company-preset-panel {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 344px) minmax(260px, 320px);
+  gap: 16px 34px;
+  align-items: start;
+  margin: 17px 17px 18px;
+  padding: 10px 0 18px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1179,8 +1148,49 @@ h3 {
   padding-left: 0;
 }
 
+.company-preset-select-card {
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #d1dae5;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+.company-preset-select-card h4 {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 850;
+}
+
 .company-preset-save-group {
   grid-column: 3;
+  gap: 12px;
+}
+
+.company-preset-save-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(104px, auto);
+  gap: 8px;
+  align-items: end;
+}
+
+.company-preset-more-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.company-preset-more-actions::after {
+  display: block;
+  height: 1px;
+  background: var(--line);
+  content: "";
 }
 
 .company-preset-save-group input:disabled {
@@ -1211,10 +1221,11 @@ h3 {
 .company-preset-controls .settings-button-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .company-preset-file-actions {
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .company-preset-controls #savePresetButton {
@@ -1235,6 +1246,29 @@ h3 {
 
 .company-preset-panel #savePresetButton {
   width: 100%;
+}
+
+.company-preset-panel button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.company-preset-panel .profile-load-button {
+  border-color: #1e5fac;
+  background: linear-gradient(180deg, #2d79c9, #1f66b1);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(31, 102, 177, 0.22);
+}
+
+.company-preset-panel .profile-load-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #174f8f;
+  background: linear-gradient(180deg, #256dbb, #18589d);
+  color: #ffffff;
 }
 
 .pricing-reference-panel .settings-note,
@@ -4532,13 +4566,8 @@ body.privacy-page {
     gap: 8px;
   }
 
-  .topbar-action,
-  .topbar-status {
+  .topbar-action {
     width: 100%;
-  }
-
-  .topbar-status {
-    grid-column: 1 / -1;
   }
 
   .workspace-pane-header {
@@ -4575,6 +4604,11 @@ body.privacy-page {
   .company-preset-control-group,
   .company-preset-save-group {
     grid-column: auto;
+  }
+
+  .company-preset-save-row,
+  .company-preset-controls .settings-button-row {
+    grid-template-columns: 1fr;
   }
 
   .modal-actions.pricing-reference-modal-actions,
