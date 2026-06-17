@@ -21,6 +21,8 @@ const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
 const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const COMPANY_PROFILE_EXPORT_SCHEMA = "swooshz.quote-company-profile.v1";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
 const REFERENCE_FILE_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf,.pdf";
 const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
@@ -94,6 +96,21 @@ const RICH_TEXT_SOURCE_IDS = [
   "stampLabel",
   "dateLabel",
 ];
+const QUOTE_COMPANY_RICH_TEXT_IDS = [
+  "headerDetails",
+  "termsHeading",
+  "paymentTerms",
+  "notesHeading",
+  "standardNotes",
+  "quoteCompanyName",
+  "acceptanceText",
+  "companySignatory",
+  "companyTitle",
+  "companyDateLabel",
+  "personLabel",
+  "stampLabel",
+  "dateLabel",
+];
 
 const EMPTY_BASIS = {
   surfaces: "",
@@ -126,6 +143,7 @@ const state = {
   pricingReferenceSource: "",
   selectedPresetValue: "",
   profiles: [],
+  companyProfiles: [],
   pricingReferences: [],
   defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   images: [],
@@ -177,6 +195,10 @@ const state = {
   pricingReferenceDeleteConfirmId: "",
   pricingReferenceDeleteError: "",
   pricingReferenceDeleteBusy: false,
+  profileDeleteConfirmId: "",
+  profileDeleteError: "",
+  profileSaveBusy: false,
+  profileDeleteBusy: false,
   permissions: {
     role: "viewer",
     canManageSettings: false,
@@ -267,6 +289,9 @@ const elements = {
   savePresetButton: qs("#savePresetButton"),
   loadPresetButton: qs("#loadPresetButton"),
   deletePresetButton: qs("#deletePresetButton"),
+  importPresetButton: qs("#importPresetButton"),
+  importPresetFile: qs("#importPresetFile"),
+  exportPresetButton: qs("#exportPresetButton"),
   resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
   clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
@@ -274,6 +299,13 @@ const elements = {
   resetQuoteBasisButton: qs("#resetQuoteBasisButton"),
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
+  presetSourceBadge: qs(".company-preset-source-badge"),
+  profileDeleteModal: qs("#profileDeleteModal"),
+  profileDeleteTitle: qs("#profileDeleteTitle"),
+  profileDeleteText: qs("#profileDeleteText"),
+  profileDeleteError: qs("#profileDeleteError"),
+  cancelProfileDeleteButton: qs("#cancelProfileDeleteButton"),
+  confirmProfileDeleteButton: qs("#confirmProfileDeleteButton"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
@@ -426,6 +458,23 @@ function safeId(value = "", fallback = "item") {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || fallback;
+}
+
+function safeProfileId(value = "", fallback = "company-profile") {
+  return safeId(value, fallback);
+}
+
+function safeProfileLabel(value = "", fallback = "Company Profile") {
+  const label = String(value || "").replace(/\s+/g, " ").trim();
+  return neutralizeFormulaText(label || fallback);
+}
+
+function profilePresetOptionValue(presetId) {
+  return `${PROFILE_PRESET_PREFIX}${presetId}`;
+}
+
+function companyProfileOptionValue(profileId) {
+  return `${COMPANY_PROFILE_PRESET_PREFIX}${profileId}`;
 }
 
 function basisDisplayTitle(value = "") {
@@ -933,6 +982,15 @@ function fileToDataUrl(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
+  });
+}
+
+function fileToText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
   });
 }
 
@@ -1674,6 +1732,20 @@ function collectQuoteDetails() {
   };
 }
 
+function collectQuoteCompanyProfileDetails() {
+  const details = collectQuoteDetails();
+  const richText = details.rich_text || {};
+  return {
+    company: details.company || {},
+    quote_text: details.quote_text || {},
+    signature: details.signature || {},
+    rich_text: QUOTE_COMPANY_RICH_TEXT_IDS.reduce((collected, id) => {
+      if (Object.prototype.hasOwnProperty.call(richText, id)) collected[id] = richText[id];
+      return collected;
+    }, {}),
+  };
+}
+
 function applyQuoteDetails(details = {}, options = {}) {
   const client = details.client || {};
   const project = details.project || {};
@@ -1996,34 +2068,60 @@ function selectedPresetId() {
   return state.selectedPresetValue || elements.presetSelect.value || "";
 }
 
-function profilePresets() {
+function templateProfilePresets() {
   return state.profiles.flatMap((profile) => {
     const presets = Array.isArray(profile.quote_detail_presets) ? profile.quote_detail_presets : [];
     return presets.map((preset) => ({
       ...preset,
       profile_id: preset.profile_id || profile.id,
       profile_label: profile.label || profile.id,
+      source: "profile",
     }));
   });
+}
+
+function normalizeCompanyProfile(profile = {}) {
+  const label = safeProfileLabel(profile.label || profile.name || profile.id, "Company Profile");
+  const id = safeProfileId(profile.id || label, `profile-${Date.now().toString(36)}`);
+  const defaults = profile.defaults && typeof profile.defaults === "object" ? profile.defaults : {};
+  return {
+    ...profile,
+    id,
+    label,
+    defaults,
+  };
+}
+
+function companyProfilePresets() {
+  return state.companyProfiles.map((profile) => {
+    const normalized = normalizeCompanyProfile(profile);
+    return {
+      id: normalized.id,
+      name: normalized.label,
+      details: normalized.defaults || {},
+      source: "company",
+      saved_at: normalized.saved_at || "",
+    };
+  });
+}
+
+function profilePresets() {
+  return [...templateProfilePresets(), ...companyProfilePresets()];
 }
 
 function defaultProfilePresetId() {
   const profile = currentProfile();
   const configured = profile.default_quote_detail_preset || "default";
-  const presets = profilePresets();
+  const presets = templateProfilePresets();
   if (presets.some((preset) => preset.id === "default")) return "default";
   if (configured && presets.some((preset) => preset.id === configured)) return configured;
   return presets[0]?.id || "";
 }
 
-function profilePresetOptionValue(presetId) {
-  return `${PROFILE_PRESET_PREFIX}${presetId}`;
-}
-
 function presetOptionValue(preset = {}) {
   const presetId = String(preset.id || "").trim();
   if (!presetId) return "";
-  return profilePresetOptionValue(presetId);
+  return preset.source === "company" ? companyProfileOptionValue(presetId) : profilePresetOptionValue(presetId);
 }
 
 function defaultPresetOptionValue() {
@@ -2035,7 +2133,7 @@ function defaultPresetOptionValue() {
 function configuredProfilePresetId() {
   const profile = currentProfile();
   const configured = profile.default_quote_detail_preset || "";
-  const presets = profilePresets();
+  const presets = templateProfilePresets();
   return configured && presets.some((preset) => preset.id === configured) ? configured : "";
 }
 
@@ -2043,8 +2141,13 @@ function selectedPreset() {
   const value = selectedPresetId();
   if (value.startsWith(PROFILE_PRESET_PREFIX)) {
     const presetId = value.slice(PROFILE_PRESET_PREFIX.length);
-    const preset = profilePresets().find((item) => item.id === presetId);
+    const preset = templateProfilePresets().find((item) => item.id === presetId);
     return preset ? { ...preset, source: "profile" } : null;
+  }
+  if (value.startsWith(COMPANY_PROFILE_PRESET_PREFIX)) {
+    const presetId = value.slice(COMPANY_PROFILE_PRESET_PREFIX.length);
+    const preset = companyProfilePresets().find((item) => item.id === presetId);
+    return preset ? { ...preset, source: "company" } : null;
   }
   return null;
 }
@@ -2071,14 +2174,16 @@ function quoteDetailsMatchPreset(savedDetails = {}, presetDetails = {}) {
 
 function presetValueFromQuoteDetails(savedDetails = {}) {
   const matchesDetails = (preset) => quoteDetailsMatchPreset(savedDetails, preset.details || {});
-  const profilePreset = profilePresets().find(matchesDetails);
+  const companyPreset = companyProfilePresets().find(matchesDetails);
+  if (companyPreset) return companyProfileOptionValue(companyPreset.id);
+  const profilePreset = templateProfilePresets().find(matchesDetails);
   if (profilePreset) return profilePresetOptionValue(profilePreset.id);
   return "";
 }
 
 function renderPresetStatus(message = "") {
   if (!elements.presetStatus) return;
-  elements.presetStatus.textContent = message || "Database save pending.";
+  elements.presetStatus.textContent = message || "Load a template, or save/import/export a reusable company profile.";
 }
 
 function renderHeaderLogoPreview() {
@@ -2093,7 +2198,8 @@ function renderHeaderLogoPreview() {
 }
 
 function renderPresetOptions() {
-  const builtInPresets = profilePresets();
+  const builtInPresets = templateProfilePresets();
+  const savedPresets = companyProfilePresets();
   const selectedValue = state.selectedPresetValue || elements.presetSelect.value || "";
   const defaultPreset = builtInPresets.find((preset) => preset.id === "default");
   const defaultOption = defaultPreset
@@ -2103,26 +2209,135 @@ function renderPresetOptions() {
     .filter((preset) => preset.id !== "default")
     .map((preset) => `<option value="${escapeHtml(profilePresetOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
     .join("");
+  const savedOptions = savedPresets
+    .map((preset) => `<option value="${escapeHtml(companyProfileOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
+    .join("");
   elements.presetSelect.innerHTML = [
     defaultOption,
-    builtInOptions ? `<optgroup label="Profile Presets">${builtInOptions}</optgroup>` : "",
+    builtInOptions ? `<optgroup label="Profile Templates">${builtInOptions}</optgroup>` : "",
+    savedOptions ? `<optgroup label="Saved Profiles">${savedOptions}</optgroup>` : "",
   ].join("");
   const availableValues = new Set([
     ...builtInPresets.map((preset) => profilePresetOptionValue(preset.id)),
+    ...savedPresets.map((preset) => companyProfileOptionValue(preset.id)),
   ]);
   state.selectedPresetValue = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
   elements.presetSelect.value = state.selectedPresetValue;
   updatePresetButtons();
 }
 
-function updatePresetButtons() {
-  const preset = selectedPreset();
-  elements.loadPresetButton.disabled = !preset;
-  elements.deletePresetButton.disabled = true;
+function canManageProfiles() {
+  return Boolean(state.permissions?.canManageProfiles);
 }
 
-function saveCurrentPreset() {
-  renderPresetStatus("Database save pending.");
+function profileNoAccessReason() {
+  return "You do not have access to save or delete company profiles.";
+}
+
+function updatePresetSourceBadge(preset = selectedPreset()) {
+  if (!elements.presetSourceBadge) return;
+  elements.presetSourceBadge.textContent = preset?.source === "company" ? "Saved profile" : "Profile template";
+}
+
+function setButtonLabel(button, label) {
+  if (!button) return;
+  const labelElement = button.querySelector("span");
+  if (labelElement) {
+    labelElement.textContent = label;
+  } else {
+    button.textContent = label;
+  }
+}
+
+function updatePresetButtons() {
+  const preset = selectedPreset();
+  const busy = Boolean(state.profileSaveBusy || state.profileDeleteBusy || appIsBusy());
+  const canManage = canManageProfiles();
+  updatePresetSourceBadge(preset);
+  if (elements.loadPresetButton) {
+    elements.loadPresetButton.disabled = !preset || busy;
+    elements.loadPresetButton.title = preset ? "" : "Choose a preset to load.";
+    elements.loadPresetButton.setAttribute("aria-disabled", String(elements.loadPresetButton.disabled));
+  }
+  if (elements.deletePresetButton) {
+    const canDelete = canManage && preset?.source === "company";
+    const reason = !canManage ? profileNoAccessReason() : preset?.source === "company" ? "" : "Profile templates are read-only.";
+    elements.deletePresetButton.disabled = !canDelete || busy;
+    elements.deletePresetButton.title = busy ? "Profile operation is still running." : reason || "Delete this saved company profile.";
+    elements.deletePresetButton.setAttribute("aria-disabled", String(elements.deletePresetButton.disabled));
+  }
+  if (elements.savePresetButton) {
+    const name = String(elements.presetNameInput?.value || "").trim();
+    const disabled = !canManage || busy || !name;
+    elements.savePresetButton.disabled = disabled;
+    setButtonLabel(elements.savePresetButton, state.profileSaveBusy ? "Saving..." : "Save");
+    elements.savePresetButton.title = !canManage
+      ? profileNoAccessReason()
+      : !name
+        ? "Enter a reusable profile name first."
+        : "";
+    elements.savePresetButton.setAttribute("aria-disabled", String(disabled));
+  }
+  if (elements.presetNameInput) {
+    elements.presetNameInput.disabled = !canManage || busy;
+    elements.presetNameInput.title = canManage ? "" : profileNoAccessReason();
+    elements.presetNameInput.setAttribute("aria-disabled", String(elements.presetNameInput.disabled));
+  }
+  if (elements.importPresetButton) {
+    elements.importPresetButton.disabled = busy;
+    elements.importPresetButton.setAttribute("aria-disabled", String(elements.importPresetButton.disabled));
+  }
+  if (elements.exportPresetButton) {
+    elements.exportPresetButton.disabled = busy;
+    elements.exportPresetButton.setAttribute("aria-disabled", String(elements.exportPresetButton.disabled));
+  }
+}
+
+async function saveCurrentPreset() {
+  if (!canManageProfiles() || state.profileSaveBusy || appIsBusy()) {
+    renderPresetStatus(profileNoAccessReason());
+    updatePresetButtons();
+    return;
+  }
+  const label = safeProfileLabel(elements.presetNameInput.value, "");
+  if (!label) {
+    renderPresetStatus("Enter a profile name before saving.");
+    elements.presetNameInput.focus();
+    updatePresetButtons();
+    return;
+  }
+  const profileId = safeProfileId(label, `profile-${Date.now().toString(36)}`);
+  const payload = {
+    id: profileId,
+    label,
+    description: "Saved from the Quote Company panel.",
+    defaults: collectQuoteCompanyProfileDetails(),
+  };
+  state.profileSaveBusy = true;
+  renderPresetStatus(`Saving "${label}"...`);
+  updatePresetButtons();
+  try {
+    const { ok, data } = await postJson("/api/settings/profiles", payload);
+    if (!ok) {
+      renderPresetStatus(genericFailureMessages(data).join(" "));
+      return;
+    }
+    const saved = normalizeCompanyProfile(data.profile || payload);
+    state.companyProfiles = [
+      ...state.companyProfiles.filter((profile) => safeProfileId(profile.id || profile.label, "") !== saved.id),
+      saved,
+    ].sort((left, right) => String(left.label || left.id || "").localeCompare(String(right.label || right.id || ""), undefined, { sensitivity: "base" }));
+    state.selectedPresetValue = companyProfileOptionValue(saved.id);
+    elements.presetNameInput.value = saved.label || label;
+    renderPresetOptions();
+    renderPresetStatus(`Saved "${saved.label || label}".`);
+  } catch (error) {
+    renderPresetStatus(genericFailureMessages(error).join(" "));
+  } finally {
+    state.profileSaveBusy = false;
+    updatePresetButtons();
+    syncControlStates();
+  }
 }
 
 function loadSelectedPreset(options = {}) {
@@ -2135,6 +2350,9 @@ function loadSelectedPreset(options = {}) {
   const details = preset.details || {};
   const clearsLogo = Boolean(details.company && typeof details.company === "object");
   applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
+  if (preset.source === "company" && elements.presetNameInput) {
+    elements.presetNameInput.value = preset.name || preset.id || "";
+  }
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   syncControlStates();
@@ -2246,8 +2464,213 @@ function startNewQuote() {
   syncControlStates();
 }
 
-function deleteSelectedPreset() {
-  renderPresetStatus("Company preset deletion will use the database later. For now, presets come from repo profile templates.");
+function profileDeleteConfirmPreset() {
+  const presetId = String(state.profileDeleteConfirmId || "").trim();
+  if (!presetId) return null;
+  return companyProfilePresets().find((preset) => preset.id === presetId) || null;
+}
+
+function hideProfileDeleteModal(options = {}) {
+  if (state.profileDeleteBusy && !options.force) return;
+  state.profileDeleteConfirmId = "";
+  state.profileDeleteError = "";
+  if (elements.profileDeleteModal) {
+    elements.profileDeleteModal.classList.remove("is-open");
+    elements.profileDeleteModal.hidden = true;
+  }
+  if (elements.profileDeleteError) {
+    elements.profileDeleteError.hidden = true;
+    elements.profileDeleteError.textContent = "";
+  }
+}
+
+function renderProfileDeleteModal() {
+  const modal = elements.profileDeleteModal;
+  if (!modal) return;
+  const preset = profileDeleteConfirmPreset();
+  if (!preset) {
+    modal.classList.remove("is-open");
+    modal.hidden = true;
+    return;
+  }
+  const label = preset.name || preset.id || "this saved profile";
+  modal.hidden = false;
+  modal.classList.add("is-open");
+  if (elements.profileDeleteTitle) {
+    elements.profileDeleteTitle.textContent = `Delete "${label}"?`;
+  }
+  if (elements.profileDeleteText) {
+    elements.profileDeleteText.textContent = "This removes the saved company profile from this local app. Quote details already filled from it are not changed.";
+  }
+  if (elements.profileDeleteError) {
+    const message = String(state.profileDeleteError || "").trim();
+    elements.profileDeleteError.hidden = !message;
+    elements.profileDeleteError.textContent = message;
+  }
+  [elements.cancelProfileDeleteButton, elements.confirmProfileDeleteButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = state.profileDeleteBusy;
+    button.setAttribute("aria-disabled", String(button.disabled));
+  });
+  if (elements.confirmProfileDeleteButton) {
+    elements.confirmProfileDeleteButton.textContent = state.profileDeleteBusy ? "Deleting..." : "Delete";
+  }
+}
+
+function requestSelectedPresetDelete() {
+  const preset = selectedPreset();
+  if (!canManageProfiles()) {
+    renderPresetStatus(profileNoAccessReason());
+    updatePresetButtons();
+    return;
+  }
+  if (!preset || preset.source !== "company") {
+    renderPresetStatus("Profile templates are read-only. Select a saved profile to delete.");
+    updatePresetButtons();
+    return;
+  }
+  state.profileDeleteConfirmId = preset.id || "";
+  state.profileDeleteError = "";
+  renderProfileDeleteModal();
+  window.setTimeout(() => elements.cancelProfileDeleteButton?.focus(), 0);
+}
+
+async function deleteSelectedPreset() {
+  const preset = profileDeleteConfirmPreset();
+  if (!preset || preset.source !== "company") {
+    hideProfileDeleteModal({ force: true });
+    updatePresetButtons();
+    return;
+  }
+  const label = preset.name || preset.id || "this saved profile";
+  state.profileDeleteBusy = true;
+  state.profileDeleteError = "";
+  renderPresetStatus(`Deleting "${label}"...`);
+  updatePresetButtons();
+  renderProfileDeleteModal();
+  try {
+    const response = await fetch(`/api/settings/profiles/${encodeURIComponent(preset.id)}`, {
+      method: "DELETE",
+      headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = genericFailureMessages(data).join(" ");
+      state.profileDeleteError = message;
+      renderPresetStatus(message);
+      return;
+    }
+    state.companyProfiles = state.companyProfiles.filter((profile) => safeProfileId(profile.id || profile.label, "") !== preset.id);
+    state.selectedPresetValue = defaultPresetOptionValue();
+    elements.presetNameInput.value = "";
+    renderPresetOptions();
+    renderPresetStatus(response.status === 404 ? `"${label}" was not found.` : `Deleted "${label}".`);
+    hideProfileDeleteModal();
+  } catch (error) {
+    const message = genericFailureMessages(error).join(" ");
+    state.profileDeleteError = message;
+    renderPresetStatus(message);
+  } finally {
+    state.profileDeleteBusy = false;
+    renderProfileDeleteModal();
+    updatePresetButtons();
+    syncControlStates();
+  }
+}
+
+function exportedCompanyProfilePayload(label = "") {
+  const resolvedLabel = safeProfileLabel(label || elements.presetNameInput?.value || elements.quoteCompanyName?.value, "Company Profile");
+  return {
+    schema: COMPANY_PROFILE_EXPORT_SCHEMA,
+    exported_at: new Date().toISOString(),
+    profile: {
+      id: safeProfileId(resolvedLabel, `profile-${Date.now().toString(36)}`),
+      label: resolvedLabel,
+      description: "Exported from the Swooshz Quote Company panel.",
+      defaults: collectQuoteCompanyProfileDetails(),
+    },
+  };
+}
+
+function downloadJsonFile(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
+
+function exportCurrentPreset(event) {
+  event?.preventDefault();
+  if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
+  const selected = selectedPreset();
+  const label = elements.presetNameInput?.value || selected?.name || elements.quoteCompanyName?.value || "Company Profile";
+  const payload = exportedCompanyProfilePayload(label);
+  const filename = `${safeProfileId(payload.profile.label, "company-profile")}.quote-company-profile.json`;
+  downloadJsonFile(filename, payload);
+  renderPresetStatus(`Exported "${payload.profile.label}".`);
+}
+
+function normalizeImportedCompanyProfile(data = {}, fallbackLabel = "Imported Company Profile") {
+  const profile = data.profile && typeof data.profile === "object" ? data.profile : data;
+  const directDetails = ["company", "quote_text", "signature", "rich_text"].some((key) => (
+    profile[key] && typeof profile[key] === "object"
+  ));
+  const defaults = profile.defaults && typeof profile.defaults === "object"
+    ? profile.defaults
+    : profile.details && typeof profile.details === "object"
+      ? profile.details
+      : data.defaults && typeof data.defaults === "object"
+        ? data.defaults
+        : data.details && typeof data.details === "object"
+          ? data.details
+          : directDetails
+            ? profile
+            : {};
+  if (!Object.keys(defaults).length) {
+    throw new Error("The selected file does not contain importable company profile defaults.");
+  }
+  const label = safeProfileLabel(profile.label || profile.name || data.label || fallbackLabel, fallbackLabel);
+  return normalizeCompanyProfile({
+    id: safeProfileId(profile.id || label, "imported-company-profile"),
+    label,
+    description: profile.description || data.description || "Imported company profile.",
+    defaults,
+  });
+}
+
+async function handlePresetImportFileChange() {
+  const file = elements.importPresetFile?.files?.[0];
+  if (!file) return;
+  try {
+    const text = await fileToText(file);
+    const data = JSON.parse(text);
+    const imported = normalizeImportedCompanyProfile(data, file.name.replace(/\.json$/i, "") || "Imported Company Profile");
+    applyQuoteDetails(imported.defaults, { includeLogo: true, clearLogo: true, partial: true });
+    if (elements.presetNameInput) elements.presetNameInput.value = imported.label;
+    renderPresetStatus(`Imported "${imported.label}". Review and save it to keep it in this app.`);
+    clearGeneratedQuoteState();
+    setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
+  } catch (error) {
+    renderPresetStatus(error?.message || "Could not import that company profile JSON.");
+  } finally {
+    if (elements.importPresetFile) elements.importPresetFile.value = "";
+    updatePresetButtons();
+    syncControlStates();
+  }
+}
+
+function requestPresetImport(event) {
+  event?.preventDefault();
+  if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
+  elements.importPresetFile?.click();
 }
 
 function renderProfileOptions() {
@@ -4233,7 +4656,24 @@ async function loadProfiles() {
       syncSelectedPricingReference();
     }
   }
+  await loadCompanyProfiles();
   renderProfileOptions();
+}
+
+async function loadCompanyProfiles() {
+  if (!canManageProfiles()) {
+    state.companyProfiles = [];
+    return;
+  }
+  const { ok, data } = await getJson("/api/settings/profiles", { logFetchFailure: false });
+  if (!ok) {
+    state.companyProfiles = [];
+    return;
+  }
+  state.companyProfiles = (Array.isArray(data.company_profiles) ? data.company_profiles : [])
+    .map(normalizeCompanyProfile)
+    .sort((left, right) => String(left.label || left.id || "").localeCompare(String(right.label || right.id || ""), undefined, { sensitivity: "base" }));
+  renderPresetOptions();
 }
 
 function clearGeneratedQuoteState() {
@@ -6784,7 +7224,7 @@ async function initializeSession() {
     }
     return;
   }
-  elements.healthText.textContent = "Local session unavailable";
+  if (elements.healthText) elements.healthText.textContent = "Local session unavailable";
 }
 
 function syncControlStates() {
@@ -6798,6 +7238,7 @@ function syncControlStates() {
     elements.settingsButton.title = canManage ? "Pricing reference settings" : pricingReferenceNoAccessReason();
     elements.settingsButton.setAttribute("aria-disabled", String(elements.settingsButton.disabled));
   }
+  updatePresetButtons();
   updateSidePanelNav();
   saveSessionState();
 }
@@ -7182,11 +7623,11 @@ async function checkHealth() {
   try {
     const response = await fetch("/api/health");
     const data = await response.json();
-    elements.statusDot.classList.toggle("is-ok", response.ok);
+    if (elements.statusDot) elements.statusDot.classList.toggle("is-ok", response.ok);
     if (elements.topbarStatus) elements.topbarStatus.classList.toggle("is-ok", response.ok);
-    elements.healthText.textContent = response.ok ? "Ready" : data.error || "Unavailable";
+    if (elements.healthText) elements.healthText.textContent = response.ok ? "Ready" : data.error || "Unavailable";
   } catch {
-    elements.healthText.textContent = "Unavailable";
+    if (elements.healthText) elements.healthText.textContent = "Unavailable";
     if (elements.topbarStatus) elements.topbarStatus.classList.remove("is-ok");
   }
 }
@@ -7542,6 +7983,8 @@ function wireEvents() {
         closePricingReferenceTableOverlay();
       } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
+      } else if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
+        hideProfileDeleteModal();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
         if (elements.pricingReferenceDeleteConfirm && !elements.pricingReferenceDeleteConfirm.hidden) {
           hidePricingReferenceDeleteConfirm();
@@ -7671,9 +8114,20 @@ function wireEvents() {
     renderPresetStatus();
     syncControlStates();
   });
+  elements.presetNameInput?.addEventListener("input", updatePresetButtons);
   elements.savePresetButton.addEventListener("click", saveCurrentPreset);
   elements.loadPresetButton.addEventListener("click", loadSelectedPreset);
-  elements.deletePresetButton.addEventListener("click", deleteSelectedPreset);
+  elements.deletePresetButton.addEventListener("click", requestSelectedPresetDelete);
+  elements.cancelProfileDeleteButton?.addEventListener("click", hideProfileDeleteModal);
+  elements.confirmProfileDeleteButton?.addEventListener("click", deleteSelectedPreset);
+  elements.profileDeleteModal?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-profile-delete-close]")) {
+      hideProfileDeleteModal();
+    }
+  });
+  elements.importPresetButton?.addEventListener("click", requestPresetImport);
+  elements.importPresetFile?.addEventListener("change", handlePresetImportFileChange);
+  elements.exportPresetButton?.addEventListener("click", exportCurrentPreset);
   elements.clearCustomerButton.addEventListener("click", clearCustomerDetails);
   elements.clearQuoteCompanyButton.addEventListener("click", clearQuoteCompanyDetails);
   [

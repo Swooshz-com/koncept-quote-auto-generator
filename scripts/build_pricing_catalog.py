@@ -125,11 +125,29 @@ def append_unique(values: list[str], value: str) -> None:
         values.append(cleaned)
 
 
+def pricing_reference_description_cell_note(value: Any) -> str:
+    text = normalized_text(value)
+    text = re.sub(r"^(?:\s|[-*]|\u2022|\u00e2\u20ac\u00a2)+", "", text).strip()
+    if not text:
+        return ""
+    if re.search(r"\bprices?\b.*\bnot\s+inclusive\b", text, flags=re.IGNORECASE):
+        return text
+    if re.search(r"\bnot\s+inclusive\s+of\b", text, flags=re.IGNORECASE):
+        return text
+    if re.search(r"\b(?:price|prices?)\b.*\b(?:exclude|excluding|excluded)\b", text, flags=re.IGNORECASE):
+        return text
+    return ""
+
+
 def append_description_part(item: dict[str, Any], value: str) -> None:
     cleaned = normalized_text(value)
     if not cleaned:
         return
     if cleaned.startswith("\u2022") or cleaned.lower().startswith(("note:", "notes:")):
+        note = pricing_reference_description_cell_note(cleaned)
+        if note:
+            append_unique(item["description_parts"], note)
+            return
         append_unique(item["remarks"], cleaned)
         return
     append_unique(item["description_parts"], cleaned)
@@ -187,6 +205,11 @@ def finalize_item(item: dict[str, Any], items: list[dict[str, Any]]) -> None:
     remarks = item["remarks"]
     section = item["section"]
     description = normalize_piece_dimension_description("; ".join(description_parts))
+    id_description_parts = [
+        part for part in description_parts
+        if not pricing_reference_description_cell_note(part)
+    ]
+    id_description = normalize_piece_dimension_description("; ".join(id_description_parts)) or description
     unit_hint = quote.infer_unit(description)
     if is_piece_dimension_description(description):
         unit_hint = "nos"
@@ -194,7 +217,7 @@ def finalize_item(item: dict[str, Any], items: list[dict[str, Any]]) -> None:
     existing_ids = {existing["id"] for existing in items}
     item.update(
         {
-            "id": catalog_id(section, description, existing_ids),
+            "id": catalog_id(section, id_description, existing_ids),
             "description": description,
             "unit_hint": unit_hint,
             "aliases": alias_candidates(section, alias_description_parts, remarks, unit_hint),
@@ -441,10 +464,11 @@ def build_catalog(source: Path, source_label: str | None = None, out: Path | Non
 
 def write_catalog(catalog: dict[str, Any], out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(catalog, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def catalog_to_ai_reference_markdown(catalog: dict[str, Any], catalog_name: str = "pricing-catalog.json") -> str:
+    currency = normalized_text(catalog.get("currency")) or "SGD"
     lines = [
         "---",
         "title: Pricing Catalog AI Reference",
@@ -476,6 +500,8 @@ def catalog_to_ai_reference_markdown(catalog: dict[str, Any], catalog_name: str 
             lines.append(f"- **Default quantity:** {item.get('default_quantity')}")
         if item.get("default_quote_amount") is not None:
             lines.append(f"- **Default quote amount:** SGD {item.get('default_quote_amount')}")
+        if item.get("sale_unit_price") is not None:
+            lines.append(f"- **Sale unit price:** {currency} {float(item.get('sale_unit_price')):.2f}")
         remarks = item.get("remarks") or []
         if remarks:
             lines.append(f"- **Remarks:** {'; '.join(str(value) for value in remarks)}")

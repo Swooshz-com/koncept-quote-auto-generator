@@ -359,12 +359,12 @@ Use this Markdown for AI readability; use the JSON catalog for pricing logic.
 
 ### hanging-structure-rigging-point-for-overhead-structure-or-aluminium-box-truss
 
-- **Item:** nos. rigging point for Overhead Structure or Aluminium Box Truss
+- **Item:** nos. rigging point for Overhead Structure or Aluminium Box Truss; Prices are not inclusive of truss
 - **Unit hint:** nos
 - **Sale unit price:** SGD 450.00
-- **Remarks:** RIGGING POINT; • Prices are not inclusive of truss
-- **Search aliases:** nos. rigging point for Overhead Structure or Aluminium Box Truss; rigging point for Overhead Structure or Aluminium Box Truss; RIGGING POINT; • Prices are not inclusive of truss; Hanging Structure rigging point for Overhead Structure or Aluminium Box Truss; rigging point for Overhead Structure or Aluminium Box Truss nos
-- **Match terms:** rigging point; overhead rigging point; truss rigging point; hanging point; suspension point; motor point; hanging structure; rigging point for overhead structure or aluminium box truss; • prices are not inclusive of truss; rigging point for overhead structure or aluminium box truss nos; aluminium; are
+- **Remarks:** RIGGING POINT
+- **Search aliases:** nos. rigging point for Overhead Structure or Aluminium Box Truss; rigging point for Overhead Structure or Aluminium Box Truss; RIGGING POINT; Hanging Structure rigging point for Overhead Structure or Aluminium Box Truss; rigging point for Overhead Structure or Aluminium Box Truss nos
+- **Match terms:** rigging point; overhead rigging point; truss rigging point; hanging point; suspension point; motor point; hanging structure; rigging point for overhead structure or aluminium box truss; rigging point for overhead structure or aluminium box truss nos; aluminium; are; box
 - **Object families:** hanging_structure; rigging; rigging_point
 
 ### hanging-structure-manual-chain-hoist

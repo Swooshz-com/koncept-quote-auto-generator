@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=47">
+    <link rel="stylesheet" href="/static/styles.css?v=48">
   </head>
   <body>
     <div class="app-shell">
@@ -19,10 +19,6 @@
           </div>
         </div>
         <div class="topbar-controls">
-          <div class="topbar-status" id="topbarStatus">
-            <span class="status-dot" id="statusDot"></span>
-            <span id="healthText" class="health-text">Checking local server</span>
-          </div>
           <a class="topbar-action topbar-link-action" href="/privacy" target="_blank" rel="noopener">Privacy</a>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
@@ -139,7 +135,7 @@
                     <p class="settings-note" id="selectedPricingReferenceSummary">Managed in Settings.</p>
                   </div>
                   <div class="pricing-reference-controls">
-                    <div class="pricing-reference-control-group">
+                    <div class="pricing-reference-control-group pricing-reference-card">
                       <label class="compact-control">
                         Quote Pricing Reference
                         <select id="profileSelect"></select>
@@ -252,28 +248,70 @@
                 <div class="company-preset-panel">
                   <div class="company-preset-copy">
                     <div class="company-preset-heading">
-                      <h3>Company preset</h3>
+                      <h3>Select Profile</h3>
                       <span class="company-preset-source-badge">Profile template</span>
                     </div>
-                    <p class="settings-note" id="presetStatus">Database save pending.</p>
+                    <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
                   </div>
                   <div class="company-preset-controls">
-                    <div class="company-preset-control-group">
+                    <div class="company-preset-control-group company-preset-card company-preset-profile-card">
                       <label class="compact-control">
-                        Company preset
+                        Current Profile
                         <select id="presetSelect"></select>
                       </label>
                       <div class="settings-button-row">
-                        <button class="secondary-button" type="button" id="loadPresetButton">Load</button>
-                        <button class="secondary-button danger-button" type="button" id="deletePresetButton" hidden>Delete</button>
+                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M4 7h16"></path>
+                            <path d="M10 11v6"></path>
+                            <path d="M14 11v6"></path>
+                            <path d="M6 7l1 14h10l1-14"></path>
+                            <path d="M9 7V4h6v3"></path>
+                          </svg>
+                          <span>Delete</span>
+                        </button>
+                        <button class="primary-button profile-load-button" type="button" id="loadPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M4 20h16"></path>
+                            <path d="M12 4v12"></path>
+                            <path d="m7 11 5 5 5-5"></path>
+                          </svg>
+                          <span>Load</span>
+                        </button>
                       </div>
                     </div>
-                    <div class="company-preset-control-group company-preset-save-group" aria-disabled="true">
+                    <div class="company-preset-control-group company-preset-card company-preset-save-card">
                       <label class="compact-control preset-save-name">
-                        Save profile
-                        <input id="presetNameInput" type="text" placeholder="Database save pending" disabled aria-describedby="presetStatus">
+                        Reusable Profile Name
+                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
                       </label>
-                      <button class="primary-button" type="button" id="savePresetButton" disabled title="Database-backed profile saving is not enabled yet.">Save Profile</button>
+                      <div class="settings-button-row company-preset-file-actions">
+                        <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+                        <button class="secondary-button" type="button" id="exportPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M12 20V9"></path>
+                            <path d="m7 14 5-5 5 5"></path>
+                            <path d="M5 4h14"></path>
+                          </svg>
+                          <span>Export</span>
+                        </button>
+                        <button class="secondary-button" type="button" id="importPresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M12 4v11"></path>
+                            <path d="m7 10 5 5 5-5"></path>
+                            <path d="M5 20h14"></path>
+                          </svg>
+                          <span>Import</span>
+                        </button>
+                        <button class="primary-button" type="button" id="savePresetButton">
+                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                          </svg>
+                          <span>Save</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -627,7 +665,16 @@
                       Pricing reference
                       <select id="deletePricingReferenceSelect"></select>
                     </label>
-                    <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>Delete Reference</button>
+                    <button class="secondary-button danger-button pricing-reference-delete-button" type="button" id="deletePricingReferenceButton" disabled>
+                      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                        <path d="M4 7h16"></path>
+                        <path d="M10 11v6"></path>
+                        <path d="M14 11v6"></path>
+                        <path d="M6 7l1 14h10l1-14"></path>
+                        <path d="M9 7V4h6v3"></path>
+                      </svg>
+                      <span>Delete</span>
+                    </button>
                   </div>
                   <div class="pricing-reference-delete-confirm" id="pricingReferenceDeleteConfirm" role="group" aria-labelledby="pricingReferenceDeleteConfirmTitle" hidden>
                     <div>
@@ -742,6 +789,23 @@
           </div>
         </section>
       </div>
+      <div class="modal-overlay profile-delete-modal" id="profileDeleteModal" role="dialog" aria-modal="true" aria-labelledby="profileDeleteTitle" hidden>
+        <div class="modal-backdrop" data-profile-delete-close></div>
+        <section class="modal-panel profile-delete-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Saved Profile</span>
+              <h3 id="profileDeleteTitle">Delete saved profile?</h3>
+            </div>
+          </header>
+          <p id="profileDeleteText">This removes the saved company profile from this local app.</p>
+          <p class="profile-delete-error" id="profileDeleteError" hidden></p>
+          <div class="modal-actions profile-delete-actions">
+            <button class="secondary-button" type="button" id="cancelProfileDeleteButton">Cancel</button>
+            <button class="secondary-button danger-button" type="button" id="confirmProfileDeleteButton">Delete</button>
+          </div>
+        </section>
+      </div>
       <div class="modal-overlay" id="analysisConfirmModal" role="dialog" aria-modal="true" aria-labelledby="analysisConfirmTitle" hidden>
         <div class="modal-backdrop" data-analysis-confirm-close></div>
         <section class="modal-panel analysis-confirm-panel">
@@ -760,6 +824,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=59"></script>
+    <script src="/static/app.js?v=60"></script>
   </body>
 </html>
