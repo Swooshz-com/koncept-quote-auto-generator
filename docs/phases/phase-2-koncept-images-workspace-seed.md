@@ -54,3 +54,39 @@ shape to migrate later into platform-owned records such as:
 - The Koncept Images Pte Ltd identity is represented as internal company/workspace
   seed data, not as sample-only fixture logic.
 - The PR states how the seed will migrate into the platform company model later.
+
+## Phase 2A Local/Staging Bridge
+
+The first internal workspace seed is represented by
+`workspace-seeds/koncept-images-pte-ltd/workspace.json`:
+
+- display name: `Koncept Images Pte Ltd`
+- stable company/workspace id: `koncept-images-pte-ltd`
+- local profile preset storage target:
+  `QUOTE_DATA_ROOT/koncept-images-pte-ltd/profiles.json`
+- local pricing-reference storage target:
+  `QUOTE_DATA_ROOT/koncept-images-pte-ltd/pricing-references.json`
+
+This is a bridge toward the later platform company model only. It does not add
+Supabase, production auth, billing, a credit ledger, deployment, or public
+onboarding. The seed manifest preserves the company id, display name, default
+profile/pricing reference ids, storage collections, created/updated metadata,
+and migration notes so imported profile presets can later become
+company-scoped platform records.
+
+## Maintainer Export/Import Notes
+
+1. In the local app, open the Quote Company panel and load the current Koncept
+   Exhibition/Koncept Images profile preset.
+2. Use the quote-company profile Export control to save a
+   `*.quote-company-profile.json` artifact.
+3. Use the quote-company profile Import control to select that artifact. Confirm
+   that the company header text and logo preview are restored.
+4. Save the imported profile. The app stores it under the active
+   `koncept-images-pte-ltd` local workspace path instead of the old placeholder
+   `default` company folder.
+
+The bridge does not require any untracked local file such as
+`docs/koncept-images-pte-ltd.quote-company-profile.json` to exist. That file can
+be used as a local maintainer export artifact for smoke testing, but it should
+not be committed if it contains real internal/customer data.

@@ -56,6 +56,11 @@ NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
 PRICING_REFERENCES_ROOT = PROJECT_ROOT / "pricing-references"
+WORKSPACE_SEEDS_ROOT = PROJECT_ROOT / "workspace-seeds"
+COMPANY_PROFILE_EXPORT_SCHEMA = "swooshz.quote-company-profile.v1"
+COMPANY_WORKSPACE_SEED_SCHEMA = "swooshz.local-company-workspace-seed.v1"
+DEFAULT_COMPANY_ID = "koncept-images-pte-ltd"
+DEFAULT_COMPANY_DISPLAY_NAME = "Koncept Images Pte Ltd"
 
 
 def discovered_default_resource_id(root: Path, marker_filename: str, fallback: str = "default") -> str:
@@ -205,7 +210,6 @@ QUOTE_LOG_ROOT_ENV_NAME = "QUOTE_LOG_ROOT"
 QUOTE_DATA_ROOT_ENV_NAME = "QUOTE_DATA_ROOT"
 USER_TYPE_ENV_NAME = "USER_TYPE"
 LOCAL_USER_ROLE_ENV_NAME = "LOCAL_USER_ROLE"
-DEFAULT_COMPANY_ID = "default"
 SESSION_COOKIE_NAME = "swooshz_quote_session"
 OIDC_STATE_COOKIE_NAME = "swooshz_quote_oidc_state"
 SESSION_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60
@@ -4127,15 +4131,22 @@ def delete_pricing_reference_pack(reference_id: str) -> bool:
     return True
 
 
+def profile_payload_from_export(payload: dict[str, Any]) -> dict[str, Any]:
+    if clean_text(payload.get("schema")) == COMPANY_PROFILE_EXPORT_SCHEMA and isinstance(payload.get("profile"), dict):
+        return payload["profile"]
+    return payload
+
+
 def normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    profile_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
+    profile_payload = profile_payload_from_export(payload)
+    profile_id = safe_resource_id(profile_payload.get("id") or profile_payload.get("label"), "")
     if not profile_id:
         raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
     return {
         "id": profile_id,
-        "label": sanitize_formula_text(payload.get("label")) or profile_id,
-        "description": sanitize_formula_text(payload.get("description")),
-        "defaults": sanitize_profile_defaults(payload.get("defaults")),
+        "label": sanitize_formula_text(profile_payload.get("label")) or profile_id,
+        "description": sanitize_formula_text(profile_payload.get("description")),
+        "defaults": sanitize_profile_defaults(profile_payload.get("defaults")),
         "saved_at": utc_timestamp(),
     }
 
@@ -5250,6 +5261,100 @@ def pricing_references_root() -> Path:
 
 def safe_company_id(value: Any, fallback: str = DEFAULT_COMPANY_ID) -> str:
     return safe_resource_id(value, fallback)
+
+
+def workspace_seeds_root() -> Path:
+    return WORKSPACE_SEEDS_ROOT
+
+
+def workspace_seed_path(workspace_id: str | None = None) -> Path:
+    safe_id = safe_company_id(workspace_id, DEFAULT_COMPANY_ID)
+    return workspace_seeds_root() / safe_id / "workspace.json"
+
+
+def normalize_workspace_seed(raw: dict[str, Any] | None) -> dict[str, Any]:
+    seed = raw if isinstance(raw, dict) else {}
+    raw_company = seed.get("company") if isinstance(seed.get("company"), dict) else {}
+    raw_workspace = seed.get("workspace") if isinstance(seed.get("workspace"), dict) else {}
+    raw_profile_presets = seed.get("profile_presets") if isinstance(seed.get("profile_presets"), dict) else {}
+    raw_pricing_references = seed.get("pricing_references") if isinstance(seed.get("pricing_references"), dict) else {}
+    raw_defaults = seed.get("defaults") if isinstance(seed.get("defaults"), dict) else {}
+
+    company_id = safe_company_id(
+        raw_company.get("id")
+        or raw_company.get("slug")
+        or raw_workspace.get("id")
+        or raw_workspace.get("slug"),
+        DEFAULT_COMPANY_ID,
+    )
+    display_name = (
+        clean_text(raw_company.get("display_name"))
+        or clean_text(raw_workspace.get("display_name"))
+        or DEFAULT_COMPANY_DISPLAY_NAME
+    )
+    profile_id = safe_resource_id(
+        raw_defaults.get("profile_id") or raw_profile_presets.get("default_profile_id"),
+        DEFAULT_PROFILE_ID,
+    )
+    pricing_reference_id = safe_resource_id(
+        raw_defaults.get("pricing_reference_id") or raw_pricing_references.get("default_pricing_reference_id"),
+        DEFAULT_PRICING_REFERENCE_ID,
+    )
+    raw_migration_notes = seed.get("migration_notes")
+    migration_notes = [
+        note
+        for note in (clean_text(item) for item in raw_migration_notes)
+        if note
+    ] if isinstance(raw_migration_notes, list) else []
+    if not migration_notes:
+        migration_notes = [
+            "Temporary local/staging workspace seed bridge.",
+            "Preserve company, profile, and pricing reference identifiers for later platform migration.",
+        ]
+    return {
+        "schema": clean_text(seed.get("schema")) or COMPANY_WORKSPACE_SEED_SCHEMA,
+        "company": {
+            "id": company_id,
+            "slug": safe_company_id(raw_company.get("slug"), company_id),
+            "display_name": display_name,
+        },
+        "workspace": {
+            "id": safe_company_id(raw_workspace.get("id"), company_id),
+            "slug": safe_company_id(raw_workspace.get("slug"), company_id),
+            "display_name": clean_text(raw_workspace.get("display_name")) or display_name,
+            "storage_backend": clean_text(raw_workspace.get("storage_backend")) or "local-json-bridge",
+            "created_at": clean_text(raw_workspace.get("created_at")),
+            "updated_at": clean_text(raw_workspace.get("updated_at")),
+        },
+        "profile_presets": {
+            "storage_collection": clean_text(raw_profile_presets.get("storage_collection")) or "profiles",
+            "storage_path_template": clean_text(raw_profile_presets.get("storage_path_template")) or "QUOTE_DATA_ROOT/{company_id}/profiles.json",
+            "import_schema": clean_text(raw_profile_presets.get("import_schema")) or COMPANY_PROFILE_EXPORT_SCHEMA,
+            "default_profile_id": profile_id,
+        },
+        "pricing_references": {
+            "storage_collection": clean_text(raw_pricing_references.get("storage_collection")) or "pricing-references",
+            "storage_path_template": clean_text(raw_pricing_references.get("storage_path_template")) or "QUOTE_DATA_ROOT/{company_id}/pricing-references.json",
+            "default_pricing_reference_id": pricing_reference_id,
+        },
+        "defaults": {
+            "profile_id": profile_id,
+            "pricing_reference_id": pricing_reference_id,
+        },
+        "migration_notes": migration_notes,
+    }
+
+
+def load_workspace_seed(workspace_id: str | None = None) -> dict[str, Any]:
+    try:
+        raw = json.loads(workspace_seed_path(workspace_id).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    return normalize_workspace_seed(raw)
+
+
+def default_workspace_seed() -> dict[str, Any]:
+    return load_workspace_seed(DEFAULT_COMPANY_ID)
 
 
 def normalized_tax_config(value: Any | None = None) -> dict[str, Any]:
@@ -10335,11 +10440,14 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             })
             return
         if path == "/api/profiles":
+            workspace = default_workspace_seed()
             self.send_json({
                 "profiles": list_profiles(),
                 "pricing_references": list_pricing_references(),
                 "default_profile_id": DEFAULT_PROFILE_ID,
                 "default_pricing_reference_id": DEFAULT_PRICING_REFERENCE_ID,
+                "company_id": workspace["company"]["id"],
+                "workspace": workspace,
             })
             return
         if path == "/api/settings":
@@ -10347,9 +10455,11 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
+            workspace = default_workspace_seed()
             self.send_json({
                 "status": "ok",
-                "company_id": DEFAULT_COMPANY_ID,
+                "company_id": workspace["company"]["id"],
+                "workspace": workspace,
                 "permissions": current_permissions(),
                 "pricing_references": list_pricing_references(),
                 "profiles": list_profiles(),
@@ -10400,7 +10510,13 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            self.send_json({"profiles": list_profiles(), "company_profiles": company_config_store().list_profiles(DEFAULT_COMPANY_ID)})
+            workspace = default_workspace_seed()
+            self.send_json({
+                "company_id": workspace["company"]["id"],
+                "workspace": workspace,
+                "profiles": list_profiles(),
+                "company_profiles": company_config_store().list_profiles(workspace["company"]["id"]),
+            })
             return
         if path == "/api/samples":
             self.send_json({"samples": list_samples()})
@@ -10499,11 +10615,17 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             try:
                 profile = normalize_profile_payload(payload)
-                saved = company_config_store().save_profile(DEFAULT_COMPANY_ID, profile)
+                workspace = default_workspace_seed()
+                saved = company_config_store().save_profile(workspace["company"]["id"], profile)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
-            self.send_json({"status": "saved", "profile": saved})
+            self.send_json({
+                "status": "saved",
+                "company_id": workspace["company"]["id"],
+                "workspace": workspace,
+                "profile": saved,
+            })
             return
 
         if parsed.path == "/api/jobs":
@@ -10613,7 +10735,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             try:
-                deleted = company_config_store().delete_profile(DEFAULT_COMPANY_ID, profile_match.group(1))
+                deleted = company_config_store().delete_profile(default_workspace_seed()["company"]["id"], profile_match.group(1))
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
