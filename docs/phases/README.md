@@ -11,6 +11,7 @@ boundaries. Use these phase docs to sequence PR-sized work against that plan.
 - [Phase 1 - Protected internal usable copy](phase-1-protected-internal-usable-copy.md)
 - [Phase 2 - Koncept Images Pte Ltd first internal workspace seed](phase-2-koncept-images-workspace-seed.md)
 - [Phase 3 - Safe export/import verification and repo cleanup](phase-3-export-import-verification-and-cleanup.md)
+- [Phase 4A - Internal team test-ready workspace UX](phase-4a-internal-team-test-ready-workspace-ux.md)
 - [Phase 4 - Hostinger/Coolify protected staging deployment](phase-4-hostinger-coolify-protected-staging.md)
 - [Phase 5 - Internal team testing and feedback loop](phase-5-internal-team-testing-feedback.md)
 - [Phase 6 - Real platform auth, company, user, role, credit ledger, and billing foundation](phase-6-platform-foundation.md)
