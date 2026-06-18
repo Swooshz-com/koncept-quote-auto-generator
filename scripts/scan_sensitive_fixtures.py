@@ -34,9 +34,10 @@ TEXT_SUFFIXES = {
 }
 MEDIA_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 DEFAULT_SCAN_ROOTS = ("profiles/", "pricing-references/", "workspace-seeds/", "fixtures/")
+GENERATED_OUTPUT_DIRS = {"_output", "output", "generated-output", "generated-outputs"}
+LOCAL_OUTPUT_ARTIFACT_DIRS = {"screenshots", "_screenshots", "playwright-screenshots", "playwright-report", "test-results"}
 PROFILE_EXPORT_RE = re.compile(r"quote-company-profile", re.IGNORECASE)
 PRIVATE_PRICING_RE = re.compile(r"(private|local|uploaded)[-_ ]?pricing", re.IGNORECASE)
-GENERATED_OUTPUT_RE = re.compile(r"(?:^|[-_])(?:quotation|quote|generated)[-_]?(?:output|draft)?", re.IGNORECASE)
 REAL_COMPANY_RE = re.compile(r"koncept(?:\s+|-)+images?(?:\s+|-)+pte", re.IGNORECASE)
 WORKSPACE_ID_RE = re.compile(r"koncept-images-pte-ltd", re.IGNORECASE)
 CUSTOMER_SAMPLE_RE = re.compile(r"kent(?:\s+|-)+group", re.IGNORECASE)
@@ -94,7 +95,15 @@ def tracked_files(root: Path) -> list[Path]:
 
 
 def in_default_scan_scope(rel_path: str) -> bool:
-    lower = rel_path.replace("\\", "/").lower()
+    lower = normalize_rel_path(rel_path)
+    if is_private_profile_export_path(lower):
+        return True
+    if is_private_pricing_upload_path(lower):
+        return True
+    if is_generated_output_rel_path(lower):
+        return True
+    if is_local_output_artifact_path(lower):
+        return True
     if lower.startswith(DEFAULT_SCAN_ROOTS):
         return True
     if not lower.startswith("docs/"):
@@ -118,16 +127,57 @@ def marker_severity(category: str, rel_path: str) -> str:
     return "review" if (category, rel_path) in KNOWN_REVIEW_MARKER_ALLOWLIST else "block"
 
 
-def is_generated_output_path(path: Path, rel_path: str) -> bool:
-    lower_name = path.name.lower()
-    parts = set(rel_path.lower().split("/"))
-    if parts & {"_output", "output", "generated-output", "generated-outputs"}:
+def normalize_rel_path(rel_path: str) -> str:
+    return rel_path.replace("\\", "/").lower().lstrip("/")
+
+
+def rel_path_name(rel_path: str) -> str:
+    return normalize_rel_path(rel_path).rsplit("/", 1)[-1]
+
+
+def rel_path_suffix(rel_path: str) -> str:
+    name = rel_path_name(rel_path)
+    dot = name.rfind(".")
+    return name[dot:] if dot != -1 else ""
+
+
+def is_private_profile_export_path(rel_path: str) -> bool:
+    return bool(PROFILE_EXPORT_RE.search(rel_path_name(rel_path)) and rel_path_suffix(rel_path) == ".json")
+
+
+def is_private_pricing_upload_path(rel_path: str) -> bool:
+    return bool(
+        PRIVATE_PRICING_RE.search(normalize_rel_path(rel_path))
+        and rel_path_suffix(rel_path) in {".xlsx", ".csv", ".json", ".md"}
+    )
+
+
+def is_generated_output_rel_path(rel_path: str) -> bool:
+    lower = normalize_rel_path(rel_path)
+    lower_name = rel_path_name(lower)
+    parts = set(lower.split("/"))
+    suffix = rel_path_suffix(lower)
+    if parts & GENERATED_OUTPUT_DIRS:
         return True
     if lower_name in {"quotation.xlsx", "quotation.pdf", "quote.pdf", "quote.xlsx"}:
         return True
     if lower_name.startswith(("generated-quote", "quote-output", "quotation-output")):
         return True
+    if lower_name.startswith("quotation-") and suffix in {".xlsx", ".pdf"}:
+        return bool(re.match(r"quotation[-_](?:\d|output|draft|generated)", lower_name))
     return False
+
+
+def is_local_output_artifact_path(rel_path: str) -> bool:
+    lower = normalize_rel_path(rel_path)
+    parts = set(lower.split("/"))
+    if parts & LOCAL_OUTPUT_ARTIFACT_DIRS:
+        return True
+    return rel_path_name(lower).endswith(".screenshot.png")
+
+
+def is_generated_output_path(path: Path, rel_path: str) -> bool:
+    return is_generated_output_rel_path(rel_path or path.name)
 
 
 def scan_text_content(path: Path, root: Path, text: str, findings: set[Finding]) -> None:
@@ -240,12 +290,14 @@ def scan_file(path: Path, root: Path) -> set[Finding]:
     lower_rel = rel_path.lower()
     suffix = path.suffix.lower()
 
-    if PROFILE_EXPORT_RE.search(path.name) and suffix == ".json":
+    if is_private_profile_export_path(rel_path):
         add_finding(findings, path, root, "private-profile-export", "block")
-    if PRIVATE_PRICING_RE.search(rel_path) and suffix in {".xlsx", ".csv", ".json", ".md"}:
+    if is_private_pricing_upload_path(rel_path):
         add_finding(findings, path, root, "private-pricing-upload", "block")
     if is_generated_output_path(path, rel_path):
         add_finding(findings, path, root, "generated-quote-output", "block")
+    if is_local_output_artifact_path(rel_path):
+        add_finding(findings, path, root, "local-output-artifact", "block")
     if suffix in MEDIA_SUFFIXES and ("pricing-catalog-images" in lower_rel or "asset-packs" in lower_rel):
         add_finding(findings, path, root, "committed-fixture-media", "review")
     if suffix == ".pdf" and "fixtures/" in lower_rel:
