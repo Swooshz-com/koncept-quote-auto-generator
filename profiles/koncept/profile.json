@@ -1,7 +1,7 @@
 {
   "id": "koncept",
-  "label": "Koncept Legacy Fallback Fixture",
-  "description": "Sanitized legacy bundled profile kept only for explicit fallback and regression coverage.",
+  "label": "Synthetic Legacy Fallback Fixture",
+  "description": "Deterministic synthetic bundled profile kept only for fallback and regression coverage.",
   "default_pricing_reference": "koncept-exhibition-quotation",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json",
@@ -39,30 +39,30 @@
     },
     {
       "id": "koncept-image-default",
-      "name": "Sanitized Fallback Quote Company",
+      "name": "Synthetic Fallback Quote Company",
       "details": {
         "tax": {
           "label": "GST",
           "rate": 0.09
         },
         "company": {
-          "name": "Sanitized Fallback Quote Company Pte Ltd",
-          "header_details": "Sanitized Fallback Quote Company Pte Ltd\n1 Fixture Road\nSingapore 000001",
+          "name": "Synthetic Fallback Quote Company Pte Ltd",
+          "header_details": "Synthetic Fallback Quote Company Pte Ltd\n1 Synthetic Way\nSingapore 000001",
           "logo_data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
-          "logo_name": "sanitized-fallback-logo.png",
+          "logo_name": "synthetic-fallback-logo.png",
           "logo_type": "image/png"
         },
         "quote_text": {
           "terms_heading": "Terms & Conditions:",
           "payment_terms": [
-            "70% payment upon confirmation.",
-            "30% balance before show starts."
+            "70% synthetic deposit upon confirmation.",
+            "30% synthetic balance before handover."
           ],
-          "cheque_payee": "Sanitized Fallback Quote Company Pte Ltd",
+          "cheque_payee": "Synthetic Fallback Quote Company Pte Ltd",
           "notes_heading": "Note:",
           "standard_notes": [
-            "This fallback fixture is for local regression tests only.",
-            "Confirm all commercial terms, production schedules, and exclusions before issuing a real quotation."
+            "This deterministic fixture is for local regression tests only.",
+            "Replace with reviewed commercial terms before issuing a real quotation."
           ],
           "acceptance_text": "We accept the quotation amount and the terms",
           "person_label": "Person in charge",
@@ -70,57 +70,49 @@
           "date_label": "Date:"
         },
         "rich_text": {
-          "quoteCompanyName": "<div>Sanitized Fallback Quote Company Pte Ltd</div>",
-          "headerDetails": "<div><strong>Sanitized Fallback Quote Company Pte Ltd</strong></div><div>1 Fixture Road</div><div>Singapore 000001</div>",
+          "quoteCompanyName": "<div>Synthetic Fallback Quote Company Pte Ltd</div>",
+          "headerDetails": "<div><strong>Synthetic Fallback Quote Company Pte Ltd</strong></div><div>1 Synthetic Way</div><div>Singapore 000001</div>",
           "termsHeading": "<div><strong>Terms &amp; Conditions:</strong></div>",
-          "paymentTerms": "<div><strong>70% payment upon confirmation.</strong></div><div><strong>30% balance before show starts.</strong></div>",
+          "paymentTerms": "<div><strong>70% synthetic deposit upon confirmation.</strong></div><div><strong>30% synthetic balance before handover.</strong></div>",
           "notesHeading": "<div><strong>Note:</strong></div>",
-          "standardNotes": "<div>This fallback fixture is for local regression tests only.</div><div>Confirm all commercial terms, production schedules, and exclusions before issuing a real quotation.</div>",
+          "standardNotes": "<div>This deterministic fixture is for local regression tests only.</div><div>Replace with reviewed commercial terms before issuing a real quotation.</div>",
           "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
-          "companySignatory": "<div>Fixture Signatory</div>",
-          "companyTitle": "<div>Fixture Title</div>",
+          "companySignatory": "<div>Synthetic Signatory</div>",
+          "companyTitle": "<div>Synthetic Title</div>",
           "companyDateLabel": "<div>Date:</div>",
           "personLabel": "<div>Person in charge</div>",
           "stampLabel": "<div>Company name &amp; stamp</div>",
           "dateLabel": "<div>Date:</div>"
         },
         "signature": {
-          "company_signatory": "Fixture Signatory",
-          "company_title": "Fixture Title",
+          "company_signatory": "Synthetic Signatory",
+          "company_title": "Synthetic Title",
           "company_date_label": "Date:"
         }
       }
     }
   ],
   "default_quote_basis": {
-    "surfaces": "Confirm: Please confirm visible walls, fascia, arches, beams, columns, and painted finishes.",
-    "counters": "Confirm: Please confirm counter, cabinet, and countertop material/finish.",
-    "platform": "Confirm: Please confirm platform height, platform coverage, and flooring finish.",
-    "graphics": "Confirm: Please confirm graphic panels, logo signage, lightboxes, and printed features.",
-    "furniture": "Confirm: Please confirm furniture, plants, green walls, AV, and rental items.",
-    "electrical": "Confirm: Please confirm lights, 13A sockets, special power, and organiser connection fees."
+    "surfaces": "Confirm: Please confirm synthetic surfaces and finishes.",
+    "structures": "Confirm: Please confirm synthetic structure lengths and heights.",
+    "graphics": "Confirm: Please confirm synthetic print coverage.",
+    "services": "Confirm: Please confirm synthetic services and rentals.",
+    "electrical": "Confirm: Please confirm synthetic lighting and power points."
   },
   "fallback_line_items": [
     {
-      "section": "Floor Design",
+      "section": "Synthetic Floors",
       "quantity_formula": "area",
       "unit": "sqm",
-      "description": "Needle punch carpet in colour",
-      "pricing_keyword": "floor-design.needle-punch-carpet-in-colour"
+      "description": "Synthetic carpet tile",
+      "pricing_keyword": "synthetic-floors-synthetic-carpet-tile"
     },
     {
-      "section": "Floor Design",
-      "quantity_formula": "area",
-      "unit": "sqm",
-      "description": "100mm raised platform with aluminium edging",
-      "pricing_keyword": "floor-design.100mm-raised-platform-with-aluminum-edging"
-    },
-    {
-      "section": "Graphics",
+      "section": "Synthetic Graphics",
       "quantity_formula": "half_area_min_1",
       "unit": "sqm",
-      "description": "Vinyl graphics for fascia, panels and backdrops",
-      "pricing_keyword": "graphics.vinyl-printed-graphics"
+      "description": "Synthetic printed wall graphic",
+      "pricing_keyword": "synthetic-graphics-synthetic-printed-wall-graphic"
     }
   ]
 }

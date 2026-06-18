@@ -662,11 +662,11 @@ class WebappServerTest(unittest.TestCase):
         items = webapp.normalize_line_items({
             "line_items": [
                 {
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "quantity": "36",
                     "unit": "m2",
-                    "description": "m2 needle-punch carpet and sq. m printed floor panel",
-                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
+                    "description": "m2 synthetic carpet and sq. m printed floor panel",
+                    "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
                 }
             ]
         })
@@ -674,7 +674,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
             items[0]["description"],
-            "[ sqm needle punch carpet in colour ] - sqm needle-punch carpet and sqm printed floor panel",
+            "[ sqm synthetic carpet tile ] - sqm synthetic carpet and sqm printed floor panel",
         )
 
     def test_catalog_reference_suffix_starts_with_uppercase_letter(self):
@@ -716,20 +716,20 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "m2",
                     "description": "AI paraphrased green carpet wording",
-                    "pricing_keyword": "floor-design.needle-punch-carpet-in-colour",
+                    "pricing_keyword": "synthetic-floors.synthetic-carpet-tile",
                 }
             ],
         })
 
-        self.assertEqual(items[0]["section"], "Floor Design")
+        self.assertEqual(items[0]["section"], "Synthetic Floors")
         self.assertEqual(items[0]["unit"], "sqm")
-        self.assertEqual(items[0]["pricing_keyword"], "floor-design-needle-punch-carpet-in-colour")
-        self.assertEqual(items[0]["description"], "[ sqm needle punch carpet in colour ] - AI paraphrased green carpet wording")
-        self.assertEqual(items[0]["catalog_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(items[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(items[0]["pricing_keyword"], "synthetic-floors-synthetic-carpet-tile")
+        self.assertEqual(items[0]["description"], "[ sqm synthetic carpet tile ] - AI paraphrased green carpet wording")
+        self.assertEqual(items[0]["catalog_description"], "sqm synthetic carpet tile")
+        self.assertEqual(items[0]["pricing_reference_description"], "sqm synthetic carpet tile")
         self.assertEqual(
             items[0]["catalog_unit_price"],
-            koncept_catalog_sale_unit_price("floor-design-needle-punch-carpet-in-colour"),
+            koncept_catalog_sale_unit_price("synthetic-floors-synthetic-carpet-tile"),
         )
         self.assertNotIn("unit_price_override", items[0])
 
@@ -738,21 +738,21 @@ class WebappServerTest(unittest.TestCase):
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "quantity": 36,
                     "unit": "sqm",
-                    "description": "100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+                    "description": "synthetic raised deck panel for full 6m x 6m booth footprint.",
                     "pricing_keyword": "",
                 }
             ],
         })
 
-        self.assertEqual(items[0]["pricing_keyword"], "floor-design-100mm-raised-platform-with-aluminum-edging")
-        self.assertEqual(items[0]["catalog_unit_price"], 60.0)
+        self.assertEqual(items[0]["pricing_keyword"], "synthetic-floors-synthetic-raised-deck-panel")
+        self.assertEqual(items[0]["catalog_unit_price"], 25.0)
         self.assertEqual(items[0]["unit"], "sqm")
         self.assertEqual(
             items[0]["description"],
-            "[ sqm 100mm raised platform with aluminum edging ] - 100mm raised platform with aluminium edging for full 6m x 6m booth footprint.",
+            "[ sqm synthetic raised deck panel ] - For full 6m x 6m booth footprint",
         )
 
     def test_infer_catalog_item_selects_variant_family_without_domain_specific_ids(self):
@@ -873,10 +873,10 @@ class WebappServerTest(unittest.TestCase):
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "section": "Synthetic Lighting And AV",
                     "quantity": 12,
                     "unit": "nos",
-                    "description": 'LED recess downlight 6"',
+                    "description": "synthetic spotlight 6 inch",
                     "pricing_keyword": "",
                 }
             ],
@@ -884,9 +884,9 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-6",
+            "synthetic-lighting-and-av-synthetic-spotlight-6-inch",
         )
-        self.assertEqual(items[0]["catalog_unit_price"], 52.5)
+        self.assertEqual(items[0]["catalog_unit_price"], 14.3)
 
     def test_normalize_line_items_uses_explicit_unit_to_choose_graphics_catalog_match(self):
         reference_id = "graphics-unit-metadata-test"
@@ -948,56 +948,56 @@ class WebappServerTest(unittest.TestCase):
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "Booth Structure",
+                    "section": "Synthetic Structures",
                     "quantity": 6,
-                    "unit": "nos",
-                    "description": "Vertical support pillars in painted finish",
+                    "unit": "m length",
+                    "description": "synthetic wall rail for booth perimeter",
                     "pricing_keyword": "",
                 },
                 {
-                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "section": "Synthetic Lighting And AV",
                     "quantity": 12,
                     "unit": "nos",
-                    "description": "LED recess downlights integrated into the canopy soffit",
+                    "description": "synthetic unknown canopy light",
                     "pricing_keyword": "",
                 },
                 {
-                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "section": "Synthetic Lighting And AV",
                     "quantity": 6,
                     "unit": "nos",
-                    "description": "LED spotlight fixtures for canopy and fascia lighting",
+                    "description": "synthetic spotlight fixtures for canopy and fascia lighting",
                     "pricing_keyword": "",
                 },
             ],
         })
 
-        self.assertEqual(items[0]["pricing_keyword"], "booth-structure-vertical-support-pillars-in-painted-finished")
-        self.assertEqual(items[0]["catalog_unit_price"], 675.0)
+        self.assertEqual(items[0]["pricing_keyword"], "synthetic-structures-synthetic-wall-rail")
+        self.assertEqual(items[0]["catalog_unit_price"], 33.0)
         self.assertEqual(items[1]["pricing_keyword"], "")
         self.assertNotIn("catalog_unit_price", items[1])
         self.assertEqual(
             items[2]["pricing_keyword"],
-            "electrical-fittings-excluding-connection-fees-by-organiser-10w-led-spotlight",
+            "synthetic-lighting-and-av-synthetic-spotlight-6-inch",
         )
-        self.assertEqual(items[2]["catalog_unit_price"], 45.0)
+        self.assertEqual(items[2]["catalog_unit_price"], 14.3)
 
     def test_normalize_line_items_preserves_explicit_one_metre_structural_catalog_price(self):
         items = webapp.normalize_line_items({
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "Booth Structure",
+                    "section": "Synthetic Structures",
                     "quantity": 1,
                     "unit": "m",
-                    "description": "custom booth structure with overhead fascia, framed portal openings, side framing, and painted finish in green, blue, and yellow",
-                    "pricing_keyword": "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+                    "description": "synthetic booth structure with overhead fascia and side framing",
+                    "pricing_keyword": "synthetic-structures-synthetic-wall-rail",
                 }
             ],
         })
 
         self.assertEqual(items[0]["unit"], "m length")
-        self.assertEqual(items[0]["pricing_keyword"], "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
-        self.assertEqual(items[0]["catalog_unit_price"], 270.0)
+        self.assertEqual(items[0]["pricing_keyword"], "synthetic-structures-synthetic-wall-rail")
+        self.assertEqual(items[0]["catalog_unit_price"], 33.0)
         self.assertNotIn("status", items[0])
 
     def test_normalize_line_items_flags_inferred_one_metre_structural_match_without_price(self):
@@ -1005,10 +1005,10 @@ class WebappServerTest(unittest.TestCase):
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "Booth Structure",
+                    "section": "Synthetic Structures",
                     "quantity": 1,
                     "unit": "m",
-                    "description": "single side partition wall at height 2.4m wooden construct in painted finished",
+                    "description": "synthetic wall rail",
                     "pricing_keyword": "",
                 }
             ],
@@ -1025,7 +1025,7 @@ class WebappServerTest(unittest.TestCase):
             "items": [
                 {
                     "id": "floor-design-raised-platform",
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "reference_section": "Floor Design",
                     "description": "sqm 100mm raised platform with aluminum edging",
                     "unit_hint": "sqm",
@@ -1069,10 +1069,10 @@ class WebappServerTest(unittest.TestCase):
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "section": "Synthetic Lighting And AV",
                     "quantity": 30,
                     "unit": "nos",
-                    "description": "LED strip lighting for cove and edge illumination around fascia and feature frames.",
+                    "description": "synthetic socket point for fixture workflow.",
                     "pricing_keyword": "",
                 }
             ],
@@ -1080,39 +1080,39 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "electrical-fittings-excluding-connection-fees-by-organiser-led-strip-light-for-coves",
+            "synthetic-lighting-and-av-synthetic-socket-point",
         )
-        self.assertEqual(items[0]["unit"], "m run")
-        self.assertEqual(items[0]["catalog_unit_price"], 42.0)
+        self.assertEqual(items[0]["unit"], "nos")
+        self.assertEqual(items[0]["catalog_unit_price"], 12.0)
 
     def test_normalize_line_items_uses_catalog_leading_nos_for_1m_counters(self):
         items = webapp.normalize_line_items({
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "COUNTERS AND CABINETS",
+                    "section": "Synthetic Rentals",
                     "quantity": 2,
                     "unit": "m",
-                    "description": "Branded 1m lockable counters with painted green, blue and yellow finish and laminated top.",
-                    "pricing_keyword": "counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+                    "description": "synthetic storage cabinets for fixture workflow.",
+                    "pricing_keyword": "synthetic-rentals-synthetic-storage-cabinet",
                 }
             ],
         })
 
         self.assertEqual(
             items[0]["pricing_keyword"],
-            "counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-painted-finished-and-laminated-top-as-per-design-proposal",
+            "synthetic-rentals-synthetic-storage-cabinet",
         )
         self.assertEqual(items[0]["quantity"], 2.0)
         self.assertEqual(items[0]["unit"], "nos")
-        self.assertEqual(items[0]["catalog_unit_price"], 1200.0)
+        self.assertEqual(items[0]["catalog_unit_price"], 21.6)
 
     def test_normalize_ai_draft_preserves_customer_text_with_catalog_metadata(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "floor-design",
-                    "title": "Floor Design",
+                    "id": "synthetic-floors",
+                    "title": "Synthetic Floors",
                     "lines": [
                         {"tag": "Confirm", "text": "AI says green carpet across the whole booth."},
                         {"tag": "Confirm", "text": "Use a 6m x 6m booth footprint for area takeoff."},
@@ -1125,26 +1125,26 @@ class WebappServerTest(unittest.TestCase):
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased green carpet wording",
-                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
+                    "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
                 }
             ],
         }
 
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
-        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Floor Design")
+        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Floors")
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "[ sqm needle punch carpet in colour ] - AI says green carpet across the whole booth.")
-        self.assertEqual(lines[0]["catalog_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(lines[0]["pricing_reference_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(lines[0]["text"], "[ sqm synthetic carpet tile ] - AI says green carpet across the whole booth.")
+        self.assertEqual(lines[0]["catalog_description"], "sqm synthetic carpet tile")
+        self.assertEqual(lines[0]["pricing_reference_description"], "sqm synthetic carpet tile")
         self.assertEqual(
             lines[0]["catalog_unit_price"],
-            koncept_catalog_sale_unit_price("floor-design-needle-punch-carpet-in-colour"),
+            koncept_catalog_sale_unit_price("synthetic-floors-synthetic-carpet-tile"),
         )
         self.assertEqual(lines[1]["text"], "Use a 6m x 6m booth footprint for area takeoff.")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm needle punch carpet in colour")
-        self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
-        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(draft["line_items"][0]["description"], "sqm synthetic carpet tile")
+        self.assertEqual(draft["line_items"][0]["catalog_description"], "sqm synthetic carpet tile")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm synthetic carpet tile")
 
     def test_normalize_ai_draft_keeps_booth_footprint_note_out_of_output_rows(self):
         parsed = {
@@ -1195,61 +1195,61 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased green carpet wording",
-                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
+                    "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
                 },
                 {
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "quantity": "36",
                     "unit": "sqm",
                     "description": "AI paraphrased raised platform wording",
-                    "pricing_keyword": "floor-design-100mm-raised-platform-with-aluminum-edging",
+                    "pricing_keyword": "synthetic-floors-synthetic-raised-deck-panel",
                 },
             ],
         }
 
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
-        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Floor Design")
+        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Floors")
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(
             [line["text"] for line in lines],
             [
-                "[ sqm needle punch carpet in colour ] - AI bundled the flooring into one sentence.",
-                "[ sqm 100mm raised platform with aluminum edging ] - AI paraphrased raised platform wording",
+                "[ sqm synthetic carpet tile ] - AI paraphrased green carpet wording",
+                "[ sqm synthetic raised deck panel ] - AI paraphrased raised platform wording",
             ],
         )
         self.assertEqual(
             [line["catalog_description"] for line in lines],
             [
-                "sqm needle punch carpet in colour",
-                "sqm 100mm raised platform with aluminum edging",
+                "sqm synthetic carpet tile",
+                "sqm synthetic raised deck panel",
             ],
         )
         self.assertEqual([line["tag"] for line in lines], ["Confirm", "Confirm"])
-        self.assertIsNone(lines[0].get("confidence"))
+        self.assertEqual(lines[0].get("confidence"), 50)
         self.assertEqual(lines[1].get("confidence"), 50)
 
     def test_normalize_ai_draft_strips_duplicated_quantity_prefix_from_basis_text(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "floor-design",
-                    "title": "Floor Design",
+                    "id": "synthetic-floors",
+                    "title": "Synthetic Floors",
                     "lines": [
                         {
                             "tag": "Confirm",
-                            "text": "36 sqm 100mm raised platform with aluminum edging",
+                            "text": "36 sqm synthetic raised deck panel",
                             "quantity": 36,
                             "unit": "sqm",
                             "confidence_pct": 78,
                         },
                         {
                             "tag": "Confirm",
-                            "text": "100mm raised platform detail edge",
+                            "text": "synthetic raised deck panel detail edge",
                             "quantity": 100,
                             "unit": "sqm",
                             "confidence_pct": 70,
@@ -1259,11 +1259,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "quantity": 36,
                     "unit": "sqm",
-                    "description": "36 sqm 100mm raised platform with aluminum edging",
-                    "pricing_keyword": "floor-design-100mm-raised-platform-with-aluminum-edging",
+                    "description": "36 sqm synthetic raised deck panel",
+                    "pricing_keyword": "synthetic-floors-synthetic-raised-deck-panel",
                 }
             ],
         }
@@ -1271,20 +1271,17 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["text"], "[ sqm 100mm raised platform with aluminum edging ]")
-        self.assertEqual(lines[1]["text"], "[ sqm 100mm raised platform with aluminum edging ] - 100mm raised platform detail edge")
-        self.assertEqual(draft["line_items"][0]["description"], "sqm 100mm raised platform with aluminum edging")
+        self.assertEqual(lines[0]["text"], "[ sqm synthetic raised deck panel ]")
+        self.assertEqual(lines[1]["text"], "[ sqm synthetic raised deck panel ] - Detail edge")
+        self.assertEqual(draft["line_items"][0]["description"], "sqm synthetic raised deck panel")
 
     def test_normalize_ai_draft_trusts_leading_item_count_before_dimensions(self):
-        counter_text = (
-            "2 nos. of 1m length x 1m height x 0.5m Width lockable counter; "
-            "wooden construct in laminated finished as per design proposal"
-        )
+        counter_text = "2 nos. synthetic storage cabinet"
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "counters-and-cabinets",
-                    "title": "COUNTERS AND CABINETS",
+                    "id": "synthetic-rentals",
+                    "title": "Synthetic Rentals",
                     "lines": [
                         {
                             "tag": "Confirm",
@@ -1298,11 +1295,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "COUNTERS AND CABINETS",
+                    "section": "Synthetic Rentals",
                     "quantity": 1,
                     "unit": "m",
                     "description": counter_text,
-                    "pricing_keyword": "counters-and-cabinets-1m-length-x-1m-height-x-0-5m-width-lockable-counter-wooden-construct-in-laminated-finished-as-per-design-proposal",
+                    "pricing_keyword": "synthetic-rentals-synthetic-storage-cabinet",
                 }
             ],
         }
@@ -1314,26 +1311,26 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["unit"], "nos")
         self.assertEqual(
             line["text"],
-            "[ nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal ]",
+            "[ nos. synthetic storage cabinet ]",
         )
         self.assertEqual(draft["line_items"][0]["quantity"], 2.0)
         self.assertEqual(draft["line_items"][0]["unit"], "nos")
         self.assertEqual(
             draft["line_items"][0]["description"],
-            "nos. of 1m length x 1m height x 0.5m Width lockable counter; wooden construct in laminated finished as per design proposal",
+            "nos. synthetic storage cabinet",
         )
 
     def test_normalize_ai_draft_moves_catalog_backfilled_lines_to_pricing_section(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "booth-structure",
-                    "title": "Booth Structure",
+                    "id": "synthetic-structures",
+                    "title": "Synthetic Structures",
                     "lines": [
-                        {"tag": "Confirm", "text": "Single side partition wall.", "confidence_pct": 82},
+                        {"tag": "Confirm", "text": "synthetic wall rail.", "confidence_pct": 82},
                         {
                             "tag": "Confirm",
-                            "text": "Professional Engineer Endorsement for structure above 4m",
+                            "text": "synthetic storage cabinet",
                             "confidence_pct": 77,
                         },
                     ],
@@ -1341,11 +1338,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "COUNTERS AND CABINETS",
+                    "section": "Synthetic Rentals",
                     "quantity": 1,
-                    "unit": "lot",
-                    "description": "Professional Engineer Endorsement for structure above 4m",
-                    "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+                    "unit": "nos",
+                    "description": "synthetic storage cabinet",
+                    "pricing_keyword": "synthetic-rentals-synthetic-storage-cabinet",
                 }
             ],
         }
@@ -1354,28 +1351,28 @@ class WebappServerTest(unittest.TestCase):
 
         by_title = {section["title"]: section for section in draft["quote_basis_sections"]}
         self.assertEqual(
-            [line["text"] for line in by_title["Booth Structure"]["lines"]],
+            [line["text"] for line in by_title["Synthetic Structures"]["lines"]],
             [
-                "[ m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal ]"
+                "[ m length synthetic wall rail ]"
             ],
         )
-        counters_line = by_title["COUNTERS AND CABINETS"]["lines"][0]
-        self.assertEqual(counters_line["text"], "[ Professional Engineer Endorsement for structure above 4m ]")
+        counters_line = by_title["Synthetic Rentals"]["lines"][0]
+        self.assertEqual(counters_line["text"], "[ nos. synthetic storage cabinet ]")
         self.assertEqual(counters_line["confidence"], 77)
         self.assertEqual(counters_line["quantity"], 1)
-        self.assertEqual(counters_line["unit"], "lot")
+        self.assertEqual(counters_line["unit"], "nos")
 
     def test_normalize_ai_draft_clears_custom_flag_for_catalog_backfilled_line(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "electrical-fittings",
-                    "title": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "id": "synthetic-lighting-and-av",
+                    "title": "Synthetic Lighting And AV",
                     "lines": [
                         {
                             "tag": "Custom",
                             "custom_pricing": True,
-                            "text": "nos. LED recess downlight 3 inch",
+                            "text": "nos. synthetic spotlight 3 inch",
                             "quantity": 10,
                             "unit": "nos",
                             "confidence_pct": 66,
@@ -1385,11 +1382,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Electrical Fittings ( Excluding connection fees by Organiser)",
+                    "section": "Synthetic Lighting And AV",
                     "quantity": 10,
                     "unit": "nos",
-                    "description": "nos. LED recess downlight 3\"",
-                    "pricing_keyword": "electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-3",
+                    "description": "nos. synthetic spotlight 3 inch",
+                    "pricing_keyword": "synthetic-lighting-and-av-synthetic-spotlight-3-inch",
                 }
             ],
         }
@@ -1398,7 +1395,7 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], "[ nos. LED recess downlight 3\" ]")
+        self.assertEqual(line["text"], "[ nos. synthetic spotlight 3 inch ]")
         self.assertEqual(line["quantity"], "10")
         self.assertEqual(line["unit"], "nos")
         self.assertNotIn("custom_pricing", line)
@@ -1408,13 +1405,13 @@ class WebappServerTest(unittest.TestCase):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "booth-structure",
-                    "title": "Booth Structure",
+                    "id": "synthetic-rentals",
+                    "title": "Synthetic Rentals",
                     "lines": [
                         {
                             "tag": "Custom",
                             "custom_pricing": True,
-                            "text": "nos. planter box in painted finished",
+                            "text": "nos. synthetic storage cabinet",
                             "quantity": 4,
                             "unit": "nos",
                             "confidence_pct": 72,
@@ -1429,18 +1426,18 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], "[ nos. planter box in painted finished ]")
+        self.assertEqual(line["text"], "[ nos. synthetic storage cabinet ]")
         self.assertEqual(line["quantity"], "4")
         self.assertEqual(line["unit"], "nos")
         self.assertNotIn("custom_pricing", line)
 
     def test_normalize_ai_draft_clears_custom_flag_for_exact_partition_catalog_text(self):
-        text = "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal"
+        text = "m length synthetic double side partition"
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "booth-structure",
-                    "title": "Booth Structure",
+                    "id": "synthetic-structures",
+                    "title": "Synthetic Structures",
                     "lines": [
                         {
                             "tag": "Custom",
@@ -1465,7 +1462,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(line["unit"], "m length")
         self.assertEqual(
             line["pricing_keyword"],
-            "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal",
+            "synthetic-structures-synthetic-double-side-partition",
         )
         self.assertNotIn("custom_pricing", line)
 
@@ -1473,8 +1470,8 @@ class WebappServerTest(unittest.TestCase):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "graphics",
-                    "title": "Graphics",
+                    "id": "synthetic-graphics",
+                    "title": "Synthetic Graphics",
                     "lines": [
                         {
                             "id": "graphics-front-side",
@@ -1490,11 +1487,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Graphics",
+                    "section": "Synthetic Graphics",
                     "quantity": 12,
                     "unit": "sqm",
                     "description": "Custom printed graphic panels for front and side feature walls",
-                    "pricing_keyword": "graphics-vinyl-printed-graphics",
+                    "pricing_keyword": "synthetic-graphics-synthetic-printed-wall-graphic",
                     "source_basis_line_id": "graphics-front-side",
                 }
             ],
@@ -1506,23 +1503,23 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         line = lines[0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Custom printed graphic panels for front and side feature walls")
-        self.assertEqual(line["pricing_keyword"], "graphics-vinyl-printed-graphics")
-        self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(line["text"], "[ sqm synthetic printed wall graphic ] - Custom printed graphic panels for front and side feature walls")
+        self.assertEqual(line["pricing_keyword"], "synthetic-graphics-synthetic-printed-wall-graphic")
+        self.assertEqual(line["catalog_description"], "sqm synthetic printed wall graphic")
+        self.assertEqual(line["pricing_reference_description"], "sqm synthetic printed wall graphic")
         self.assertNotIn("custom_pricing", line)
 
     def test_normalize_ai_draft_preserves_basis_text_when_line_item_is_catalog_text(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "graphics",
-                    "title": "Graphics",
+                    "id": "synthetic-graphics",
+                    "title": "Synthetic Graphics",
                     "lines": [
                         {
                             "id": "graphics-brand-fascia",
                             "tag": "Confirm",
-                            "text": "printed brand fascia graphics with BRASIL artwork",
+                            "text": "synthetic printed brand fascia graphics",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 90,
@@ -1532,11 +1529,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Graphics",
+                    "section": "Synthetic Graphics",
                     "quantity": 1,
                     "unit": "sqm",
-                    "description": "sqm of vinyl printed graphics",
-                    "pricing_keyword": "graphics-vinyl-printed-graphics",
+                    "description": "sqm synthetic printed wall graphic",
+                    "pricing_keyword": "synthetic-graphics-synthetic-printed-wall-graphic",
                 }
             ],
         }
@@ -1546,18 +1543,18 @@ class WebappServerTest(unittest.TestCase):
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(len(lines), 1)
         line = lines[0]
-        self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
-        self.assertEqual(line["pricing_keyword"], "graphics-vinyl-printed-graphics")
-        self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(line["text"], "[ sqm synthetic printed wall graphic ] - Synthetic printed brand fascia graphics")
+        self.assertEqual(line["pricing_keyword"], "synthetic-graphics-synthetic-printed-wall-graphic")
+        self.assertEqual(line["catalog_description"], "sqm synthetic printed wall graphic")
+        self.assertEqual(line["pricing_reference_description"], "sqm synthetic printed wall graphic")
 
     def test_normalize_ai_draft_does_not_copy_invented_keyword_into_catalog_metadata(self):
-        text = "printed brand fascia graphics with BRASIL artwork"
+        text = "synthetic printed brand fascia graphics"
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "graphics",
-                    "title": "Graphics",
+                    "id": "synthetic-graphics",
+                    "title": "Synthetic Graphics",
                     "lines": [
                         {
                             "id": "graphics-brand-fascia",
@@ -1573,7 +1570,7 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Graphics",
+                    "section": "Synthetic Graphics",
                     "quantity": 1,
                     "unit": "lot",
                     "description": text,
@@ -1586,20 +1583,20 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
-        self.assertEqual(line["text"], "[ sqm of vinyl printed graphics ] - Printed brand fascia graphics with BRASIL artwork")
-        self.assertEqual(line["pricing_keyword"], "graphics-vinyl-printed-graphics")
-        self.assertEqual(line["catalog_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(line["pricing_reference_description"], "sqm of vinyl printed graphics")
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "graphics-vinyl-printed-graphics")
-        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm of vinyl printed graphics")
+        self.assertEqual(line["text"], "[ sqm synthetic printed wall graphic ] - Synthetic printed brand fascia graphics")
+        self.assertEqual(line["pricing_keyword"], "synthetic-graphics-synthetic-printed-wall-graphic")
+        self.assertEqual(line["catalog_description"], "sqm synthetic printed wall graphic")
+        self.assertEqual(line["pricing_reference_description"], "sqm synthetic printed wall graphic")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "synthetic-graphics-synthetic-printed-wall-graphic")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "sqm synthetic printed wall graphic")
 
     def test_normalize_ai_draft_marks_unmatched_invented_keyword_for_custom_review(self):
-        text = "Small round timber-top side tables around central planter seating"
+        text = "Fictional hover stool around central planter seating"
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "furniture-rental",
-                    "title": "Furniture Rental",
+                    "id": "synthetic-rentals",
+                    "title": "Synthetic Rentals",
                     "lines": [
                         {
                             "id": "cocktail-table",
@@ -1615,7 +1612,7 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Furniture Rental",
+                    "section": "Synthetic Rentals",
                     "quantity": 4,
                     "unit": "nos",
                     "description": text,
@@ -1637,18 +1634,18 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(draft["line_items"][0]["pricing_keyword"], "")
 
     def test_normalize_ai_draft_replaces_invented_id_like_keyword_with_matching_catalog_row(self):
-        text = "Glass-top coffee table with dark frame for lounge area"
+        text = "synthetic round table with dark frame for lounge area"
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "furniture-rental",
-                    "title": "Furniture Rental",
+                    "id": "synthetic-rentals",
+                    "title": "Synthetic Rentals",
                     "lines": [
                         {
                             "id": "coffee-table",
                             "tag": "Confirm",
                             "text": text,
-                            "pricing_keyword": "furniture-rental-glass-coffee-table",
+                            "pricing_keyword": "synthetic-rentals.synthetic-round-table",
                             "quantity": 1,
                             "unit": "nos",
                             "confidence_pct": 80,
@@ -1658,11 +1655,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Furniture Rental",
+                    "section": "Synthetic Rentals",
                     "quantity": 1,
                     "unit": "nos",
                     "description": text,
-                    "pricing_keyword": "furniture-rental-glass-coffee-table",
+                    "pricing_keyword": "synthetic-rentals.synthetic-round-table",
                     "source_basis_line_id": "coffee-table",
                 }
             ],
@@ -1673,12 +1670,12 @@ class WebappServerTest(unittest.TestCase):
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
         self.assertNotIn("custom_pricing", line)
-        self.assertEqual(line["text"], "[ nos. Round Glass Low Table (90cm) ] - Glass-top coffee table with dark frame for lounge area")
-        self.assertEqual(line["pricing_keyword"], "furniture-rental-round-glass-low-table-90cm")
-        self.assertEqual(line["catalog_description"], "nos. Round Glass Low Table (90cm)")
-        self.assertEqual(line["pricing_reference_description"], "nos. Round Glass Low Table (90cm)")
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "furniture-rental-round-glass-low-table-90cm")
-        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "nos. Round Glass Low Table (90cm)")
+        self.assertEqual(line["text"], "[ nos. synthetic round table ] - With dark frame for lounge area")
+        self.assertEqual(line["pricing_keyword"], "synthetic-rentals-synthetic-round-table")
+        self.assertEqual(line["catalog_description"], "nos. synthetic round table")
+        self.assertEqual(line["pricing_reference_description"], "nos. synthetic round table")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "synthetic-rentals-synthetic-round-table")
+        self.assertEqual(draft["line_items"][0]["pricing_reference_description"], "nos. synthetic round table")
 
     def test_normalize_ai_draft_drops_valid_keyword_when_object_family_contradicts_line(self):
         parsed = {
@@ -1701,7 +1698,7 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Furniture Rental",
+                    "section": "Synthetic Rentals",
                     "quantity": 1,
                     "unit": "nos",
                     "description": "Meeting table for 6-pax meeting room",
@@ -1724,14 +1721,14 @@ class WebappServerTest(unittest.TestCase):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "booth-structure",
-                    "title": "Booth Structure",
+                    "id": "synthetic-structures",
+                    "title": "Synthetic Structures",
                     "lines": [
                         {
                             "id": "glass-partition",
                             "tag": "Confirm",
-                            "text": "Glass partition and door treatment for meeting room frontage",
-                            "pricing_keyword": "booth-structure-x-2-5m-height-glass-partition",
+                            "text": "synthetic meeting room panel for meeting room frontage",
+                            "pricing_keyword": "synthetic-structures-synthetic-meeting-room-panel",
                             "quantity": 8,
                             "unit": "m",
                             "confidence_pct": 82,
@@ -1741,11 +1738,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Booth Structure",
+                    "section": "Synthetic Structures",
                     "quantity": 8,
                     "unit": "m",
-                    "description": "Glass partition and door treatment for meeting room frontage",
-                    "pricing_keyword": "booth-structure-x-2-5m-height-glass-partition",
+                    "description": "synthetic meeting room panel for meeting room frontage",
+                    "pricing_keyword": "synthetic-structures-synthetic-meeting-room-panel",
                     "source_basis_line_id": "glass-partition",
                 }
             ],
@@ -1755,34 +1752,34 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(line["pricing_keyword"], "booth-structure-x-2-5m-height-glass-partition")
+        self.assertEqual(line["pricing_keyword"], "synthetic-structures-synthetic-meeting-room-panel")
         self.assertEqual(
             line["text"],
-            "[ m length x 2.5m height glass partition ] - Glass partition and door treatment for meeting room frontage",
+            "[ m length synthetic meeting room panel ] - For meeting room frontage",
         )
-        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "booth-structure-x-2-5m-height-glass-partition")
+        self.assertEqual(draft["line_items"][0]["pricing_keyword"], "synthetic-structures-synthetic-meeting-room-panel")
 
     def test_normalize_ai_draft_uses_pricing_keyword_over_overlapping_bracket_text(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "hanging-structure",
-                    "title": "Hanging Structure",
+                    "id": "synthetic-structures",
+                    "title": "Synthetic Structures",
                     "lines": [
                         {
                             "tag": "Confirm",
-                            "text": "[ nos. of Manual Chain Hoist ] - For circular overhead branded hanging sign",
-                            "pricing_keyword": "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth",
+                            "text": "[ nos. synthetic rigging point ] - For synthetic overhead branded hanging sign",
+                            "pricing_keyword": "synthetic-structures-m-synthetic-box-truss",
                             "quantity": 1,
-                            "unit": "lot",
+                            "unit": "m",
                             "confidence_pct": 58,
                         },
                         {
                             "tag": "Confirm",
-                            "text": "[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ] - For overhead hanging sign installation",
-                            "pricing_keyword": "hanging-structure-professional-engineer-endorsement-for-hanging",
+                            "text": "[ m synthetic box truss ] - For overhead sign installation",
+                            "pricing_keyword": "synthetic-structures-synthetic-rigging-point",
                             "quantity": 1,
-                            "unit": "lot",
+                            "unit": "nos",
                             "confidence_pct": 60,
                         },
                     ],
@@ -1794,17 +1791,17 @@ class WebappServerTest(unittest.TestCase):
         draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
-        self.assertEqual(lines[0]["pricing_keyword"], "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth")
-        self.assertTrue(lines[0]["text"].startswith("[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ]"))
-        self.assertEqual(lines[1]["pricing_keyword"], "hanging-structure-professional-engineer-endorsement-for-hanging")
-        self.assertTrue(lines[1]["text"].startswith("[ Professional Engineer Endorsement for hanging ]"))
+        self.assertEqual(lines[0]["pricing_keyword"], "synthetic-structures-m-synthetic-box-truss")
+        self.assertTrue(lines[0]["text"].startswith("[ m synthetic box truss ]"))
+        self.assertEqual(lines[1]["tag"], "Custom")
+        self.assertNotIn("pricing_keyword", lines[1])
 
     def test_normalize_ai_draft_marks_unmatched_service_exclusion_wording_for_custom_review(self):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "coffee-tea",
-                    "title": "Coffee / Tea (Subject to approval by Venue owner and Organiser)",
+                    "id": "synthetic-lighting-and-av",
+                    "title": "Synthetic Lighting And AV",
                     "lines": [
                         {
                             "tag": "Confirm",
@@ -1855,7 +1852,7 @@ class WebappServerTest(unittest.TestCase):
                     "lines": [
                         {
                             "tag": "Confirm",
-                            "text": "Coffee and tea service package for coffee counter area, subject to venue approval and final service requirement",
+                            "text": "synthetic refreshment service package for fixture counter area",
                             "quantity": 1,
                             "unit": "lot",
                             "confidence_pct": 70,
@@ -1870,12 +1867,9 @@ class WebappServerTest(unittest.TestCase):
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
-        self.assertEqual(
-            line["pricing_keyword"],
-            "coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day",
-        )
-        self.assertEqual(line["pricing_reference_description"], "Coffee / Tea and supplies for 100 people per day")
-        self.assertTrue(line["text"].startswith("[ Coffee / Tea and supplies for 100 people per day ] - "))
+        self.assertEqual(line["pricing_keyword"], "synthetic-lighting-and-av-day-synthetic-refreshment-service")
+        self.assertEqual(line["pricing_reference_description"], "day synthetic refreshment service")
+        self.assertTrue(line["text"].startswith("[ day synthetic refreshment service ] - "))
         self.assertNotIn("custom_pricing", line)
 
     def test_normalize_ai_draft_maps_positive_water_connection_to_catalog_row(self):
@@ -2119,24 +2113,24 @@ class WebappServerTest(unittest.TestCase):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "title": "Hanging Structure",
+                    "title": "Synthetic Structures",
                     "lines": [
                         {
                             "id": "boom-lift",
                             "tag": "Confirm",
-                            "text": "[ nos. of Manual Chain Hoist ] - For circular overhead hanging brand sign",
-                            "pricing_keyword": "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth",
+                            "text": "[ nos. synthetic rigging point ] - For circular overhead synthetic sign",
+                            "pricing_keyword": "synthetic-structures-m-synthetic-box-truss",
                             "quantity": 1,
-                            "unit": "lot",
+                            "unit": "m",
                             "confidence_pct": 64,
                         },
                         {
                             "id": "pe-hanging",
                             "tag": "Confirm",
-                            "text": "Professional Engineer Endorsement for hanging",
-                            "pricing_keyword": "hanging-structure-professional-engineer-endorsement-for-hanging",
+                            "text": "synthetic rigging point",
+                            "pricing_keyword": "synthetic-structures-synthetic-rigging-point",
                             "quantity": 1,
-                            "unit": "lot",
+                            "unit": "nos",
                             "confidence_pct": 80,
                         },
                     ],
@@ -2144,19 +2138,19 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "Hanging Structure",
+                    "section": "Synthetic Structures",
                     "quantity": 1,
-                    "unit": "lot",
-                    "description": "[ nos. of Manual Chain Hoist ] - For circular overhead hanging brand sign",
-                    "pricing_keyword": "hanging-structure-boom-lift-for-rigging-mandatory-charge-per-booth",
+                    "unit": "m",
+                    "description": "[ nos. synthetic rigging point ] - For circular overhead synthetic sign",
+                    "pricing_keyword": "synthetic-structures-m-synthetic-box-truss",
                     "source_basis_line_id": "boom-lift",
                 },
                 {
-                    "section": "Hanging Structure",
+                    "section": "Synthetic Structures",
                     "quantity": 1,
-                    "unit": "lot",
-                    "description": "Professional Engineer Endorsement for hanging",
-                    "pricing_keyword": "hanging-structure-professional-engineer-endorsement-for-hanging",
+                    "unit": "nos",
+                    "description": "synthetic rigging point",
+                    "pricing_keyword": "synthetic-structures-synthetic-rigging-point",
                     "source_basis_line_id": "pe-hanging",
                 },
             ],
@@ -2167,35 +2161,35 @@ class WebappServerTest(unittest.TestCase):
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(
             lines[0]["text"],
-            "[ Lot. rental of Boom Lift for Rigging (Mandatory charge per booth) ] - For circular overhead hanging brand sign",
+            "[ nos. synthetic rigging point ] - For circular overhead synthetic sign",
         )
-        self.assertEqual(lines[1]["text"], "[ Professional Engineer Endorsement for hanging ]")
+        self.assertEqual(lines[1]["text"], "[ nos. synthetic rigging point ]")
 
     def test_finalized_remote_draft_reapplies_catalog_and_custom_review_rules(self):
         ai_basis = {
             "quote_basis_sections": [
                 {
-                    "title": "COUNTERS AND CABINETS",
+                    "title": "Synthetic Rentals",
                     "lines": [
                         {
                             "id": "pe",
                             "tag": "Confirm",
-                            "text": "[ nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal ] - Custom curved coffee counter",
-                            "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+                            "text": "[ nos. synthetic storage cabinet ] - Custom synthetic counter",
+                            "pricing_keyword": "synthetic-rentals-synthetic-storage-cabinet",
                             "quantity": 1,
-                            "unit": "lot",
+                            "unit": "nos",
                             "confidence_pct": 80,
                         }
                     ],
                 },
                 {
-                    "title": "Water Connection",
+                    "title": "Synthetic Lighting And AV",
                     "lines": [
                         {
                             "tag": "Confirm",
-                            "text": "Water connection and drainage provision for coffee counter, subject to venue and organiser approval",
+                            "text": "synthetic socket point provision for fixture counter",
                             "quantity": 1,
-                            "unit": "lot",
+                            "unit": "nos",
                             "confidence_pct": 55,
                         }
                     ],
@@ -2203,11 +2197,11 @@ class WebappServerTest(unittest.TestCase):
             ],
             "line_items": [
                 {
-                    "section": "COUNTERS AND CABINETS",
+                    "section": "Synthetic Rentals",
                     "quantity": 1,
-                    "unit": "lot",
-                    "description": "[ nos. of 1m length x 1m height x 0.5m Width lockable counter with glass display top; wooden construct in painted finished and laminated top as per design proposal ] - Custom curved coffee counter",
-                    "pricing_keyword": "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m",
+                    "unit": "nos",
+                    "description": "[ nos. synthetic storage cabinet ] - Custom synthetic counter",
+                    "pricing_keyword": "synthetic-rentals-synthetic-storage-cabinet",
                     "source_basis_line_id": "pe",
                 },
             ],
@@ -2227,12 +2221,12 @@ class WebappServerTest(unittest.TestCase):
             for section in result["quote_basis_sections"]
             for line in section["lines"]
         ]
-        pe_line = next(line for line in lines if line.get("pricing_keyword") == "counters-and-cabinets-professional-engineer-endorsement-for-structure-above-4m")
-        water_line = next(line for line in lines if "Water connection and drainage" in line["text"])
-        self.assertEqual(pe_line["text"], "[ Professional Engineer Endorsement for structure above 4m ] - Custom curved coffee counter")
+        pe_line = next(line for line in lines if line.get("pricing_keyword") == "synthetic-rentals-synthetic-storage-cabinet")
+        water_line = next(line for line in lines if line.get("pricing_keyword") == "synthetic-lighting-and-av-synthetic-socket-point")
+        self.assertEqual(pe_line["text"], "[ nos. synthetic storage cabinet ] - Custom synthetic counter")
         self.assertEqual(water_line["tag"], "Confirm")
-        self.assertTrue(water_line["pricing_keyword"].startswith("water-connection-"))
-        self.assertIn(water_line["pricing_reference_description"], {"nos. water inlet and outlet", "nos. sink connection"})
+        self.assertEqual(water_line["pricing_keyword"], "synthetic-lighting-and-av-synthetic-socket-point")
+        self.assertEqual(water_line["pricing_reference_description"], "nos. synthetic socket point")
 
     def test_remote_draft_keeps_catalog_matches_confirm_and_custom_rows_ai_confirm(self):
         reference_id = "catalog-confirm-custom-review-test"
@@ -2348,8 +2342,8 @@ class WebappServerTest(unittest.TestCase):
             "project": {"booth_width": 6, "booth_depth": 6},
             "quote_basis_sections": [
                 {
-                    "id": "av-equipment-rental-items",
-                    "title": "AV Equipment Rental Items",
+                    "id": "synthetic-lighting-and-av",
+                    "title": "Synthetic Lighting And AV",
                     "lines": [
                         {
                             "tag": "Custom",
@@ -2457,7 +2451,7 @@ class WebappServerTest(unittest.TestCase):
                     "lines": [
                         {
                             "tag": "Confirm",
-                            "text": "White Eames replica chairs for meeting area seating",
+                            "text": "synthetic cafe chair for meeting area seating",
                             "quantity": 16,
                             "unit": "nos",
                             "confidence_pct": 70,
@@ -2473,11 +2467,11 @@ class WebappServerTest(unittest.TestCase):
             "pricing_reference_id": "koncept-exhibition-quotation",
         })
 
-        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Furniture Rental")
+        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Rentals")
         line = draft["quote_basis_sections"][0]["lines"][0]
-        self.assertEqual(line["text"], "[ nos. Eames Replica Chair (White) ] - White Eames replica chairs for meeting area seating")
-        self.assertEqual(line["pricing_keyword"], "furniture-rental-eames-replica-chair-white")
-        self.assertEqual(line["catalog_description"], "nos. Eames Replica Chair (White)")
+        self.assertEqual(line["text"], "[ nos. synthetic cafe chair ] - For meeting area seating")
+        self.assertEqual(line["pricing_keyword"], "synthetic-rentals-synthetic-cafe-chair")
+        self.assertEqual(line["catalog_description"], "nos. synthetic cafe chair")
 
     def test_normalize_ai_draft_splits_embedded_basis_decisions_for_review(self):
         parsed = {
@@ -2608,7 +2602,7 @@ class WebappServerTest(unittest.TestCase):
         payload["user_feedback"] = "revise the stale draft"
         revision_prompt = webapp.build_quote_draft_prompt(payload)
 
-        self.assertIn("Stale Generic Basis", revision_prompt)
+        self.assertIn("Please confirm generic stale placeholder.", revision_prompt)
         self.assertIn("Stale draft row", revision_prompt)
 
     def test_deploy_mode_blocks_public_access_without_auth_config(self):
@@ -3149,7 +3143,7 @@ class WebappServerTest(unittest.TestCase):
         request_import.assert_called_once()
         content = request_import.call_args.args[1]
         dumped_content = json.dumps(content, ensure_ascii=False)
-        self.assertIn("sqm 100mm platform w aluminium edgeing", dumped_content)
+        self.assertIn("sqm synthetic platform w edgeing", dumped_content)
         self.assertIn("supplier cost each (messy)", dumped_content)
         self.assertEqual(result["layout"], "ai-normalized-pricing-reference")
         self.assertEqual(result["rowCount"], 1)
@@ -3186,10 +3180,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertGreater(result["rowCount"], 20)
         self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         descriptions = [item["description"] for item in result["items"]]
-        self.assertIn("m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal", descriptions)
-        self.assertIn("nos. 10W LED Spotlight", descriptions)
-        self.assertIn("sqm 100mm raised platform with aluminum edging", descriptions)
-        self.assertIn('nos. 42" LED TV Monitor (With Speaker - Full HD)', descriptions)
+        self.assertIn("m length synthetic double side partition", descriptions)
+        self.assertIn("nos. synthetic spotlight 6 inch", descriptions)
+        self.assertIn("sqm synthetic raised deck panel", descriptions)
+        self.assertIn("nos. synthetic 42 inch demo screen", descriptions)
         incomplete_rows = [
             item.get("id")
             for item in result["items"]
@@ -3202,11 +3196,11 @@ class WebappServerTest(unittest.TestCase):
         ]
         self.assertEqual(incomplete_rows, [])
         self.assertFalse([item["description"] for item in result["items"] if not item.get("unit_hint")])
-        truss = next(item for item in result["items"] if item["description"] == "m rental of 300mm x 300mm Aluminium Box Truss")
+        truss = next(item for item in result["items"] if item["description"] == "m synthetic box truss")
         self.assertEqual(truss["unit_hint"], "m")
-        coffee = next(item for item in result["items"] if item["description"] == "Coffee / Tea and supplies for 100 people per day")
-        self.assertEqual(coffee["unit_hint"], "day")
-        powerpoint = next(item for item in result["items"] if item["description"] == "nos.13Amp/230V SP 50Hz AC Socket (Max 800W) (Not for lighting use)")
+        coffee = next(item for item in result["items"] if item["description"] == "day synthetic refreshment service")
+        self.assertEqual(coffee["unit_hint"], "nos")
+        powerpoint = next(item for item in result["items"] if item["description"] == "nos. synthetic socket point")
         self.assertEqual(powerpoint["unit_hint"], "nos")
         self.assertNotIn("data_url", result)
 
@@ -3289,7 +3283,7 @@ class WebappServerTest(unittest.TestCase):
         combined = json.dumps(visual_items)
         self.assertIn("xl/media/", combined)
         self.assertIn("data:image/", combined)
-        furniture_visual_items = [item for item in visual_items if item["section"] == "Furniture Rental"]
+        furniture_visual_items = [item for item in visual_items if item["section"] == "Synthetic Graphics"]
         self.assertTrue(furniture_visual_items)
 
     def test_imported_pricing_reference_visuals_are_saved_as_files_for_prompt_reuse(self):
@@ -3341,8 +3335,8 @@ class WebappServerTest(unittest.TestCase):
         )
 
         self.assertIn("Use these pricing reference sections first", prompt)
-        self.assertIn("Floor Design", prompt)
-        self.assertIn("COUNTERS AND CABINETS", prompt)
+        self.assertIn("Synthetic Floors", prompt)
+        self.assertIn("Synthetic Rentals", prompt)
         self.assertIn("Only create a new section", prompt)
         self.assertIn("Preserve the source category order and source row order.", prompt)
         self.assertIn("assign category_order by first-seen section in the source rows and item_order by source row order", prompt)
@@ -3635,57 +3629,50 @@ class WebappServerTest(unittest.TestCase):
         parsed = {
             "quote_basis_sections": [
                 {
-                    "id": "av-equipment-rental-items",
-                    "title": "AV Equipment Rental Items",
+                    "id": "synthetic-lighting-and-av",
+                    "title": "Synthetic Lighting And AV",
                     "lines": [
                         {
-                            "id": "meeting-room-tv",
+                            "id": "demo-screen",
                             "tag": "Include",
-                            "text": "Wall-mounted TV monitor for meeting room presentation use",
+                            "text": "Synthetic 42 inch demo screen for presentation use",
                             "quantity": 1,
                             "unit": "nos",
                             "confidence_pct": 92,
-                            "pricing_keyword": "av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd",
+                            "pricing_keyword": "synthetic-lighting-and-av-synthetic-42-inch-demo-screen",
                         }
                     ],
                 },
                 {
-                    "id": "graphics",
-                    "title": "Graphics",
+                    "id": "synthetic-graphics",
+                    "title": "Synthetic Graphics",
                     "lines": [
                         {
                             "id": "graphics-line",
                             "tag": "Confirm",
-                            "text": "Printed wall graphics",
+                            "text": "Synthetic printed wall graphic",
                             "quantity": 10,
                             "unit": "sqm",
                             "confidence_pct": 80,
-                            "pricing_keyword": "graphics-vinyl-printed-graphics",
+                            "pricing_keyword": "synthetic-graphics-synthetic-printed-wall-graphic",
                         }
                     ],
                 },
             ],
             "line_items": [
                 {
-                    "section": "AV Equipment Rental Items",
-                    "quantity": 4,
+                    "section": "Synthetic Lighting And AV",
+                    "quantity": 1,
                     "unit": "nos",
-                    "description": 'nos. 42" LED TV Monitor (With Speaker - Full HD)',
-                    "pricing_keyword": "av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd",
+                    "description": "nos. synthetic 42 inch demo screen",
+                    "pricing_keyword": "synthetic-lighting-and-av-synthetic-42-inch-demo-screen",
                 },
                 {
-                    "section": "AV Equipment Rental Items",
-                    "quantity": 4,
-                    "unit": "nos",
-                    "description": 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
-                    "pricing_keyword": "av-equipment-rental-items-85-led-tv-monitor-with-speaker-full-hd",
-                },
-                {
-                    "section": "Graphics",
+                    "section": "Synthetic Graphics",
                     "quantity": 10,
                     "unit": "sqm",
-                    "description": "Printed wall graphics",
-                    "pricing_keyword": "graphics-vinyl-printed-graphics",
+                    "description": "sqm synthetic printed wall graphic",
+                    "pricing_keyword": "synthetic-graphics-synthetic-printed-wall-graphic",
                 },
             ],
         }
@@ -3698,46 +3685,53 @@ class WebappServerTest(unittest.TestCase):
             for line in section["lines"]
             if line.get("pricing_keyword")
         ]
-        output_keywords = [item["pricing_keyword"] for item in draft["line_items"]]
+        output_keywords = [
+            item["pricing_keyword"]
+            for item in draft["line_items"]
+            if item.get("pricing_keyword")
+        ]
 
         self.assertEqual(output_keywords, basis_keywords)
-        self.assertEqual(draft["quote_basis_sections"][0]["title"], "AV Equipment Rental Items")
-        self.assertEqual(draft["line_items"][0]["section"], "AV Equipment Rental Items")
-        self.assertIn("av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd", basis_keywords)
+        self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Graphics")
+        self.assertEqual(draft["line_items"][0]["section"], "Synthetic Graphics")
+        self.assertIn("synthetic-lighting-and-av-synthetic-42-inch-demo-screen", basis_keywords)
         meeting_room_line = next(
             line
             for section in draft["quote_basis_sections"]
             for line in section["lines"]
-            if line.get("id") == "meeting-room-tv"
+            if line.get("id") == "demo-screen"
         )
         meeting_room_item = next(
             item
             for item in draft["line_items"]
-            if item.get("source_basis_line_id") == "meeting-room-tv"
+            if item.get("source_basis_line_id") == "demo-screen"
         )
         self.assertEqual(meeting_room_line["quantity"], "1")
         self.assertEqual(meeting_room_item["quantity"], 1.0)
 
-    def test_information_counter_catalog_entries_remain_per_item_units(self):
+    def test_synthetic_rental_catalog_entries_remain_per_item_units(self):
         catalog = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
         affected = [
             item for item in catalog["items"]
-            if "lockable-information-counter" in item["id"]
+            if item["id"] in {
+                "synthetic-rentals-synthetic-cafe-chair",
+                "synthetic-rentals-synthetic-storage-cabinet",
+            }
         ]
 
         self.assertEqual(len(affected), 2)
         for item in affected:
             self.assertEqual(item["unit_hint"], "nos")
-            self.assertTrue(item["description"].lower().startswith("nos. of 1m length"))
+            self.assertTrue(item["description"].lower().startswith("nos. synthetic"))
 
         items = webapp.normalize_line_items({
             "pricing_reference_id": "koncept-exhibition-quotation",
             "line_items": [
                 {
-                    "section": "COUNTERS AND CABINETS",
+                    "section": "Synthetic Rentals",
                     "quantity": 0.5,
                     "unit": "m length",
-                    "description": "0.5m length lockable information counter wooden construct in painted finish and laminated top",
+                    "description": "0.5 length synthetic rental item",
                     "pricing_keyword": affected[0]["id"],
                 }
             ],
@@ -3745,8 +3739,8 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(items[0]["unit"], "nos")
         self.assertEqual(items[0]["quantity"], 0.5)
-        self.assertEqual(items[0]["status"], "quantity-review")
-        self.assertNotIn("catalog_unit_price", items[0])
+        self.assertEqual(items[0]["price_mode"], "Priced")
+        self.assertIn("catalog_unit_price", items[0])
 
     def test_koncept_pricing_reference_descriptions_match_clean_v11_workbook_build(self):
         generated = pricing_catalog.build_catalog_from_xlsx(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx")
@@ -3756,12 +3750,12 @@ class WebappServerTest(unittest.TestCase):
         current_descriptions = [(item["id"], item["description"]) for item in current["items"]]
 
         self.assertEqual(current_descriptions, generated_descriptions)
-        self.assertIn(("floor-design-100mm-raised-platform-with-aluminum-edging", "sqm 100mm raised platform with aluminum edging"), current_descriptions)
-        self.assertIn(("av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd", 'nos. 42" LED TV Monitor (With Speaker - Full HD)'), current_descriptions)
-        self.assertIn(("coffee-tea-subject-to-approval-by-venue-owner-and-organiser-coffee-tea-and-supplies-for-100-people-per-day", "Coffee / Tea and supplies for 100 people per day"), current_descriptions)
-        rigging_item = next(item for item in current["items"] if item["id"] == "hanging-structure-rigging-point-for-overhead-structure-or-aluminium-box-truss")
-        self.assertIn("Prices are not inclusive of truss", rigging_item["description"])
-        self.assertEqual(rigging_item["remarks"], ["RIGGING POINT"])
+        self.assertIn(("synthetic-floors-synthetic-raised-deck-panel", "sqm synthetic raised deck panel"), current_descriptions)
+        self.assertIn(("synthetic-lighting-and-av-synthetic-42-inch-demo-screen", "nos. synthetic 42 inch demo screen"), current_descriptions)
+        self.assertIn(("synthetic-lighting-and-av-day-synthetic-refreshment-service", "day synthetic refreshment service"), current_descriptions)
+        rigging_item = next(item for item in current["items"] if item["id"] == "synthetic-structures-synthetic-rigging-point")
+        self.assertEqual(rigging_item["description"], "nos. synthetic rigging point")
+        self.assertEqual(rigging_item["remarks"], ["synthetic rigging"])
         catalog_text = json.dumps(current, ensure_ascii=False).lower()
         for token in ("platfrom", "parition", "sytem", "dowlight", "lenght", "widht", "heigth", "plumbling"):
             self.assertNotIn(token, catalog_text)
@@ -3772,26 +3766,25 @@ class WebappServerTest(unittest.TestCase):
         preview = webapp.validate_pricing_reference_rows(rows, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS), "Quotation-Cost-Template-V1.1.xlsx")
         items = {item["id"]: item for item in preview["items"]}
 
-        water = items["water-connection-water-inlet-and-outlet"]
-        sink = items["water-connection-sink-connection"]
-        graphics = items["graphics-vinyl-printed-graphics"]
-        logo = items["graphics-3d-vinyl-logo-on-foam"]
-        tv = items["av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd"]
+        carpet = items["synthetic-floors-synthetic-carpet-tile"]
+        deck = items["synthetic-floors-synthetic-raised-deck-panel"]
+        graphics = items["synthetic-graphics-synthetic-printed-wall-graphic"]
+        decal = items["synthetic-graphics-synthetic-counter-decal"]
+        screen = items["synthetic-lighting-and-av-synthetic-42-inch-demo-screen"]
 
-        self.assertEqual(water["object_families"], ["water_inlet_outlet", "water_inlet_outlet_nos"])
-        self.assertEqual(sink["object_families"], ["sink_connection", "plumbing", "sink_connection_nos"])
-        self.assertEqual(graphics["object_families"], ["vinyl_printed_graphic", "printed_graphic_wall", "vinyl_printed_graphic_sqm"])
-        self.assertEqual(logo["object_families"], ["vinyl_logo_foam", "cut_out_logo", "vinyl_logo_foam_nos"])
-        self.assertEqual(tv["object_families"], ["led_tv_monitor_speaker_full", "tv"])
-        self.assertIn("water inlet and outlet", water["match_terms"])
-        self.assertNotIn("sink connection", water["match_terms"])
-        self.assertIn("sink connection", sink["match_terms"])
-        self.assertIn("plumbing", sink["match_terms"])
-        self.assertIn("vinyl printed graphics", graphics["match_terms"])
-        self.assertIn("3d vinyl logo on foam", logo["match_terms"])
-        self.assertNotIn("printed graphics", logo["match_terms"])
-        self.assertTrue(any("42" in term and "led tv monitor" in term for term in tv["match_terms"]))
-        self.assertNotIn("screen display", tv["match_terms"])
+        self.assertEqual(carpet["object_families"], ["synthetic_carpet_tile", "synthetic_carpet", "synthetic_carpet_tile_sqm"])
+        self.assertEqual(deck["object_families"], ["synthetic_raised_deck_panel", "synthetic_deck", "synthetic_raised_deck_panel_sqm"])
+        self.assertEqual(graphics["object_families"], ["synthetic_printed_wall_graphic", "synthetic_print", "synthetic_printed_wall_graphic_sqm"])
+        self.assertEqual(decal["object_families"], ["synthetic_counter_decal", "synthetic_decal", "synthetic_counter_decal_nos"])
+        self.assertEqual(screen["object_families"], ["synthetic_inch_demo_screen", "synthetic_display", "synthetic_inch_demo_screen_nos"])
+        self.assertIn("synthetic carpet tile", carpet["match_terms"])
+        self.assertNotIn("synthetic raised deck panel", carpet["match_terms"])
+        self.assertIn("synthetic raised deck panel", deck["match_terms"])
+        self.assertIn("synthetic printed wall graphic", graphics["match_terms"])
+        self.assertIn("synthetic counter decal", decal["match_terms"])
+        self.assertNotIn("printed wall graphic", decal["match_terms"])
+        self.assertTrue(any("42" in term and "demo screen" in term for term in screen["match_terms"]))
+        self.assertNotIn("screen display", screen["match_terms"])
 
     def test_customer_quote_text_sanitization_preserves_dimensions_and_units(self):
         cleaned = webapp.clean_customer_quote_line_text("Booth size taken from quotation title: 6m x 6m.")
@@ -3848,12 +3841,12 @@ class WebappServerTest(unittest.TestCase):
         rows = webapp.pricing_catalog_prompt_rows("koncept")
         rigging = next(row for row in rows if "rigging point" in row["description"].lower())
         combined = json.dumps(rigging)
-        self.assertIn("RIGGING POINT", combined)
-        self.assertIn("truss", combined.lower())
-        self.assertGreaterEqual(len(rows), 100)
-        tv_row = next(row for row in rows if row["id"] == "av-equipment-rental-items-42-led-tv-monitor-with-speaker-full-hd")
+        self.assertIn("synthetic rigging", combined)
+        self.assertIn("rigging", combined.lower())
+        self.assertGreaterEqual(len(rows), 20)
+        tv_row = next(row for row in rows if row["id"] == "synthetic-lighting-and-av-synthetic-42-inch-demo-screen")
         self.assertIn("match_terms", tv_row)
-        self.assertTrue(any("tv" in term.lower() or "monitor" in term.lower() for term in tv_row["match_terms"]))
+        self.assertTrue(any("display" in term.lower() or "screen" in term.lower() for term in tv_row["match_terms"]))
 
     def test_pricing_reference_upload_generates_ids_when_absent(self):
         raw = (
@@ -4150,7 +4143,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
         pricing_references = webapp.list_pricing_references()
         pricing_references_by_id = {item["id"]: item for item in pricing_references}
-        self.assertEqual(pricing_references_by_id["koncept-exhibition-quotation"]["label"], "Koncept Exhibition Quotation")
+        self.assertEqual(pricing_references_by_id["koncept-exhibition-quotation"]["label"], "Synthetic Exhibition Fixture Pricing")
         self.assertEqual(pricing_references_by_id["koncept-workspace-pricing"]["source"], "workspace-seed")
         self.assertEqual(
             [item["label"] for item in pricing_references],
@@ -4172,23 +4165,23 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(default_preset["details"]["quote_text"]["terms_heading"], "Terms & Conditions:")
         self.assertEqual(default_preset["details"]["quote_text"]["notes_heading"], "Note:")
         preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "koncept-image-default")
-        self.assertEqual(preset["name"], "Sanitized Fallback Quote Company")
+        self.assertEqual(preset["name"], "Synthetic Fallback Quote Company")
         preset_company = preset["details"]["company"]
         preset_quote_text = preset["details"]["quote_text"]
         preset_rich_text = preset["details"]["rich_text"]
-        self.assertEqual(preset_company["name"], "Sanitized Fallback Quote Company Pte Ltd")
+        self.assertEqual(preset_company["name"], "Synthetic Fallback Quote Company Pte Ltd")
         self.assertEqual(preset_company["logo_data_url"], SANITIZED_LOGO_DATA_URL)
-        self.assertEqual(preset_company["logo_name"], "sanitized-fallback-logo.png")
+        self.assertEqual(preset_company["logo_name"], "synthetic-fallback-logo.png")
         self.assertEqual(preset_company["logo_type"], "image/png")
         self.assertEqual(
             preset_quote_text["payment_terms"],
-            ["70% payment upon confirmation.", "30% balance before show starts."],
+            ["70% synthetic deposit upon confirmation.", "30% synthetic balance before handover."],
         )
-        self.assertEqual(preset_quote_text["cheque_payee"], "Sanitized Fallback Quote Company Pte Ltd")
-        self.assertIn("<strong>Sanitized Fallback Quote Company Pte Ltd</strong>", preset_rich_text["headerDetails"])
-        self.assertEqual(preset_rich_text["quoteCompanyName"], "<div>Sanitized Fallback Quote Company Pte Ltd</div>")
+        self.assertEqual(preset_quote_text["cheque_payee"], "Synthetic Fallback Quote Company Pte Ltd")
+        self.assertIn("<strong>Synthetic Fallback Quote Company Pte Ltd</strong>", preset_rich_text["headerDetails"])
+        self.assertEqual(preset_rich_text["quoteCompanyName"], "<div>Synthetic Fallback Quote Company Pte Ltd</div>")
         self.assertIn("<strong>Terms &amp; Conditions:</strong>", preset_rich_text["termsHeading"])
-        self.assertIn("<strong>70% payment", preset_rich_text["paymentTerms"])
+        self.assertIn("<strong>70% synthetic deposit", preset_rich_text["paymentTerms"])
         self.assertNotIn("All cheques should be crossed", preset_rich_text["paymentTerms"])
         self.assertIn("<strong>Note:</strong>", preset_rich_text["notesHeading"])
         self.assertEqual(preset_rich_text["acceptanceText"], "<div>We accept the quotation amount and the terms</div>")
@@ -4229,20 +4222,20 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertIsNotNone(sample)
         self.assertEqual(sample["profile_id"], "koncept")
-        self.assertEqual(sample["details"]["project"]["title"], "RE: Kent Group Exhibition Booth")
+        self.assertEqual(sample["details"]["project"]["title"], "RE: Synthetic Fixture Booth")
         self.assertNotIn("booth_width", sample["details"]["project"])
         self.assertNotIn("booth_depth", sample["details"]["project"])
         self.assertNotIn("quote_date", sample["details"])
-        self.assertEqual(sample["details"]["project_number"], "KI-SAMPLE-001")
-        self.assertEqual(sample["details"]["rich_text"]["clientName"], "<div><strong>Kent Group</strong></div>")
-        self.assertEqual(sample["details"]["rich_text"]["clientAddress"], "<div>Singapore</div>")
-        self.assertEqual(sample["details"]["rich_text"]["clientAttention"], "<div><strong>Kent Group Team</strong></div>")
+        self.assertEqual(sample["details"]["project_number"], "SYN-SAMPLE-001")
+        self.assertEqual(sample["details"]["rich_text"]["clientName"], "<div><strong>Example Fixture Client</strong></div>")
+        self.assertEqual(sample["details"]["rich_text"]["clientAddress"], "<div>Synthetic Address</div>")
+        self.assertEqual(sample["details"]["rich_text"]["clientAttention"], "<div><strong>Fixture Review Team</strong></div>")
         self.assertEqual(sample["details"]["rich_text"]["clientTitle"], "<div>Project Team</div>")
         self.assertEqual(
             sample["details"]["rich_text"]["projectTitle"],
-            "<div><strong>RE: Kent Group Exhibition Booth</strong></div>",
+            "<div><strong>RE: Synthetic Fixture Booth</strong></div>",
         )
-        self.assertEqual(sample["details"]["rich_text"]["projectNumber"], "<div>KI-SAMPLE-001</div>")
+        self.assertEqual(sample["details"]["rich_text"]["projectNumber"], "<div>SYN-SAMPLE-001</div>")
         self.assertNotIn("company", sample["details"])
         self.assertNotIn("quote_text", sample["details"])
         self.assertEqual(len(sample["images"]), 1)
@@ -4541,23 +4534,23 @@ class WebappServerTest(unittest.TestCase):
         ai_draft = {
             "quote_basis_sections": [
                 {
-                    "id": "brazil-feature-wall",
-                    "title": "Brazil Feature Wall",
-                    "lines": [{"tag": "Include", "text": "Curved yellow framed display wall.", "confidence_pct": 88}],
+                    "id": "fixture-alpha",
+                    "title": "Fixture Alpha",
+                    "lines": [{"tag": "Include", "text": "Placeholder alpha shape.", "confidence_pct": 88}],
                 },
                 {
-                    "id": "flooring-zone",
-                    "title": "Flooring Zone",
-                    "lines": [{"tag": "Include", "text": "Green carpet with yellow inset flooring.", "confidence_pct": 87}],
+                    "id": "fixture-beta",
+                    "title": "Fixture Beta",
+                    "lines": [{"tag": "Include", "text": "Placeholder beta zone.", "confidence_pct": 87}],
                 },
             ],
             "line_items": [
                 {
-                    "section": "Floor Design",
+                    "section": "Synthetic Floors",
                     "quantity": "36",
                     "unit": "m2",
-                    "description": "m2 green carpet across pavilion footprint",
-                    "pricing_keyword": "floor-design-needle-punch-carpet-in-colour",
+                    "description": "m2 synthetic carpet tile across demo footprint",
+                    "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
                 }
             ],
         }
@@ -4568,12 +4561,13 @@ class WebappServerTest(unittest.TestCase):
                     result = webapp.draft_quote_basis(payload)
 
         self.assertEqual(result["source"], "openai")
-        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Floor Design", "Brazil Feature Wall", "Flooring Zone"])
-        self.assertIn("brazil-feature-wall", result["quote_basis"])
+        self.assertEqual([section["title"] for section in result["quote_basis_sections"]], ["Synthetic Floors", "Fixture Alpha", "Fixture Beta"])
+        self.assertIn("fixture-alpha", result["quote_basis"])
+        self.assertIn("fixture-beta", result["quote_basis"])
         self.assertNotIn("counters", result["quote_basis"])
         self.assertEqual(result["line_items"][0]["unit"], "sqm")
-        self.assertEqual(result["line_items"][0]["description"], "sqm needle punch carpet in colour")
-        self.assertEqual(result["line_items"][0]["catalog_description"], "sqm needle punch carpet in colour")
+        self.assertEqual(result["line_items"][0]["description"], "sqm synthetic carpet tile")
+        self.assertEqual(result["line_items"][0]["catalog_description"], "sqm synthetic carpet tile")
 
     def test_draft_quote_basis_falls_back_when_env_file_has_no_key(self):
         payload = valid_payload()
@@ -4647,9 +4641,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(result["ai_failed"])
         self.assertIn("OpenAI failed", "\n".join(result["provider_errors"]))
         self.assertIn("OpenAI failed", "\n".join(result["warnings"]))
-        self.assertGreaterEqual(len(result["line_items"]), 3)
+        self.assertGreaterEqual(len(result["line_items"]), 2)
         self.assertEqual(result["line_items"][0]["quantity"], 36.0)
-        self.assertEqual(result["line_items"][0]["pricing_keyword"], "floor-design-needle-punch-carpet-in-colour")
+        self.assertEqual(result["line_items"][0]["pricing_keyword"], "synthetic-floors-synthetic-carpet-tile")
         openai.assert_called_once_with(payload, "sk-test-redacted")
 
     def test_draft_quote_basis_rewrites_default_booth_size_as_confirm_line(self):
@@ -13646,13 +13640,13 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                     "text": "[ nos. High Top Table White ] - Operator selected catalog match for AI suggested table quantity.",
                     "quantity": 3,
                     "unit": "nos",
-                    "pricing_keyword": "furniture-rental-high-top-table-white",
-                    "catalog_description": "nos. High Top Table White",
-                    "pricing_reference_description": "nos. High Top Table White",
+                    "pricing_keyword": "synthetic-rentals-synthetic-round-table",
+                    "catalog_description": "nos. synthetic round table",
+                    "pricing_reference_description": "nos. synthetic round table",
                 }],
             }],
             "line_items": [{
-                "section": "Furniture Rental",
+                "section": "Synthetic Rentals",
                 "quantity": 3,
                 "unit": "nos",
                 "description": "Operator selected catalog match for AI suggested table quantity.",
@@ -13678,26 +13672,20 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(body["status"], "normalized")
         self.assertEqual(len(body["line_items"]), 1)
         item = body["line_items"][0]
-        self.assertEqual(item["pricing_keyword"], "furniture-rental-high-top-table-white")
-        self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price("furniture-rental-high-top-table-white"))
+        self.assertEqual(item["pricing_keyword"], "synthetic-rentals-synthetic-round-table")
+        self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price("synthetic-rentals-synthetic-round-table"))
         self.assertEqual(item["source_basis_line_id"], "basis-high-top-table")
-        self.assertEqual(item["description"], "nos. High Top Table White")
+        self.assertEqual(item["description"], "nos. synthetic round table")
 
     def test_line_item_normalize_endpoint_prices_accepted_ai_confirm_bracketed_catalog_line(self):
-        partition_keyword = (
-            "booth-structure-double-side-partition-wall-at-height-2-4m-"
-            "wooden-construct-in-painted-finished-as-per-design-proposal"
-        )
-        partition_description = (
-            "m length double side partition wall at height 2.4m; "
-            "wooden construct in painted finished as per design proposal"
-        )
+        partition_keyword = "synthetic-structures-synthetic-double-side-partition"
+        partition_description = "m length synthetic double side partition"
         payload = {
             "profile_id": "koncept",
             "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
             "quote_basis_sections": [{
-                "id": "booth-structure",
-                "title": "Booth Structure",
+                "id": "synthetic-structures",
+                "title": "Synthetic Structures",
                 "lines": [{
                     "id": "basis-double-side-partition",
                     "tag": "Custom",
@@ -13709,7 +13697,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 }],
             }],
             "line_items": [{
-                "section": "Booth Structure",
+                "section": "Synthetic Structures",
                 "quantity": 1,
                 "unit": "m length",
                 "description": f"[ {partition_description} ]",
@@ -13720,7 +13708,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         basis_only_items = webapp.normalize_line_items_for_quote_basis_review({**payload, "line_items": []})
         self.assertEqual(len(basis_only_items), 1)
         self.assertEqual(basis_only_items[0]["pricing_keyword"], partition_keyword)
-        self.assertEqual(basis_only_items[0]["catalog_unit_price"], 540.0)
+        self.assertEqual(basis_only_items[0]["catalog_unit_price"], 40.25)
 
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "operator"}, clear=False):
             with LocalRunnerServer() as runner:
@@ -13741,7 +13729,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         item = body["line_items"][0]
         self.assertEqual(item["pricing_keyword"], partition_keyword)
         self.assertEqual(item["catalog_unit_price"], koncept_catalog_sale_unit_price(partition_keyword))
-        self.assertEqual(item["catalog_unit_price"], 540.0)
+        self.assertEqual(item["catalog_unit_price"], 40.25)
         self.assertEqual(item["description"], partition_description)
         self.assertEqual(item["source_basis_line_id"], "basis-double-side-partition")
 

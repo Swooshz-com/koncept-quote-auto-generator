@@ -57,7 +57,7 @@
       "fallback_fixture": {
         "source": "bundled-profile",
         "profile_id": "koncept",
-        "reason": "Kept as rollback/test fixture while workspace-owned layout pack is verified."
+        "reason": "Kept as a synthetic rollback/test fixture while workspace-owned layout pack is verified."
       }
     },
     "layout_rules": {
@@ -67,7 +67,7 @@
       "fallback_fixture": {
         "source": "bundled-profile",
         "profile_id": "koncept",
-        "reason": "Kept as rollback/test fixture while workspace-owned layout rules are verified."
+        "reason": "Kept as a synthetic rollback/test fixture while workspace-owned layout rules are verified."
       }
     },
     "pricing_reference": {
@@ -77,21 +77,21 @@
       "fallback_fixture": {
         "source": "bundled",
         "id": "koncept-exhibition-quotation",
-        "reason": "Kept as rollback/test fixture while workspace-owned pricing pack is verified."
+        "reason": "Kept as a synthetic rollback/test fixture while workspace-owned pricing pack is verified."
       }
     },
     "fallback_test_fixtures": [
       {
         "path": "profiles/koncept",
-        "reason": "Sanitized bundled quote profile plus layout and layout-rules fallback/test fixture; the old logo asset was removed in Phase 3D."
+        "reason": "Synthetic bundled quote profile, layout, and layout-rules fallback/test fixture."
       },
       {
         "path": "pricing-references/koncept-exhibition-quotation",
-        "reason": "Bundled pricing reference fallback/test fixture."
+        "reason": "Synthetic bundled pricing reference fallback/test fixture."
       },
       {
         "path": "fixtures/samples/kent-group",
-        "reason": "Sanitized sample/PDF smoke fixture; not an active workspace runtime dependency."
+        "reason": "Synthetic sample/PDF smoke fixture; not an active workspace runtime dependency."
       }
     ]
   },
@@ -141,10 +141,8 @@
     }
   },
   "migration_notes": [
-    "Temporary local/staging bridge for the first internal Koncept Images Pte Ltd workspace.",
-    "Imported quote-company profile exports are stored under the workspace company id and can later become platform quote_presets.",
-    "Workspace-owned quotation layout and pricing-reference seed packs are stored under this workspace seed so Phase 6 can migrate them into company-scoped platform records.",
-    "Bundled Koncept profile/pricing/sample files are fallback/test fixtures only until the next deletion gate proves they can be removed.",
-    "Phase 3D removed the old bundled logo JPEG and keeps only a tiny sanitized fallback logo data URL in the legacy profile fixture."
+    "Temporary local/staging bridge identity retained for storage-path compatibility.",
+    "Asset-pack contents in this repo are deterministic synthetic fixtures only.",
+    "Private extracted profile, pricing, template, and customer data must remain outside the repo."
   ]
 }
