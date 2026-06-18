@@ -1,7 +1,7 @@
 {
   "id": "koncept-workspace-template",
-  "label": "Koncept Images Workspace Quotation Layout",
-  "description": "Sanitized workspace-owned quotation layout pack for the Koncept Images local/staging workspace.",
+  "label": "Synthetic Workspace Quotation Layout",
+  "description": "Deterministic synthetic workspace-owned quotation layout pack.",
   "default_pricing_reference": "koncept-workspace-pricing",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json"

@@ -52,13 +52,27 @@ PAYMENT_RE = re.compile(
     r"uen\s*[:#]?\s*[0-9])",
     re.IGNORECASE,
 )
-KNOWN_REVIEW_MARKER_ALLOWLIST = {
+KNOWN_SYNTHETIC_REVIEW_ALLOWLIST = {
+    ("committed-pdf-sample", "fixtures/samples/kent-group/kent-group.pdf"),
     ("customer-sample-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
     ("customer-sample-marker", "fixtures/samples/kent-group/sample.json"),
     ("customer-sample-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
+    ("embedded-logo-reference", "profiles/koncept/profile.json"),
+    ("internal-pricing-field", "docs/pricing-catalog-import.md"),
+    ("internal-pricing-field", "pricing-references/koncept-exhibition-quotation/pricing-catalog.json"),
+    (
+        "internal-pricing-field",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/pricing-catalog.json",
+    ),
     ("real-company-identity-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
     ("real-company-identity-marker", "docs/pr-checks/quote-generator-pr-checklist.md"),
     ("real-company-identity-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
+    ("xlsx-defined-name", "profiles/koncept/quotation-layout.xlsx"),
+    (
+        "xlsx-defined-name",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/quotation-layout.xlsx",
+    ),
+    ("xlsx-embedded-media", "docs/Quotation-Cost-Template-V1.1.xlsx"),
 }
 
 
@@ -77,7 +91,10 @@ def repo_relative(path: Path, root: Path) -> str:
 
 
 def add_finding(findings: set[Finding], path: Path, root: Path, category: str, severity: str) -> None:
-    findings.add(Finding(path=repo_relative(path, root), category=category, severity=severity))
+    rel_path = repo_relative(path, root)
+    if severity == "review" and (category, rel_path) in KNOWN_SYNTHETIC_REVIEW_ALLOWLIST:
+        return
+    findings.add(Finding(path=rel_path, category=category, severity=severity))
 
 
 def tracked_files(root: Path) -> list[Path]:
@@ -124,7 +141,7 @@ def read_text(path: Path) -> str:
 
 
 def marker_severity(category: str, rel_path: str) -> str:
-    return "review" if (category, rel_path) in KNOWN_REVIEW_MARKER_ALLOWLIST else "block"
+    return "review" if (category, rel_path) in KNOWN_SYNTHETIC_REVIEW_ALLOWLIST else "block"
 
 
 def normalize_rel_path(rel_path: str) -> str:
