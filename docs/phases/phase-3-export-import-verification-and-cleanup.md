@@ -237,3 +237,73 @@ Before deleting the old bundled packs, a later PR must prove:
 Phase 3C does not add hosting, deployment, auth, Supabase, Stripe, billing,
 OIDC completion, production exposure, a credit ledger, secrets, or real customer
 data.
+
+## Phase 3D Bundled Fallback Deletion Gate - 2026-06-18
+
+Phase 3D removes the large legacy bundled logo asset and sanitizes the old
+bundled quote-company fallback preset. Workspace-owned seed packs remain the
+primary local/staging runtime dependencies.
+
+### Reference Map
+
+| Path | Phase 3D classification | Phase 3D decision |
+| --- | --- | --- |
+| `profiles/koncept/profile.json` | Explicit fallback/test fixture | Shrunk and sanitized. It no longer contains real header details, bank details, signatory names, or `logo_path`; the legacy preset id remains only so explicit fallback and smoke flows keep working. |
+| `profiles/koncept/quotation-layout.xlsx` | Explicit fallback/test layout fixture | Kept. Generator layout tests and explicit legacy fallback coverage still depend on it. Normal workspace generation uses `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/quotation-layout.xlsx`. |
+| `profiles/koncept/layout-rules.json` | Explicit fallback/test formatting fixture | Kept. It still covers legacy layout-rules formatting behavior and rollback tests. Normal workspace generation uses the workspace-owned layout-rules file. |
+| `profiles/koncept/assets/koncept-header-logo.jpeg` | Removed legacy fallback asset | Removed. Imported workspace profile `logo_data_url` output coverage and the sanitized fallback preset data URL replace it. |
+| `pricing-references/koncept-exhibition-quotation/reference.json` | Explicit fallback/test pricing metadata fixture | Kept. Active tests still cover bundled pricing-reference listing, export, import comparison, catalog matching, and fallback behavior. |
+| `pricing-references/koncept-exhibition-quotation/pricing-catalog.json` | Explicit fallback/test catalog fixture | Kept. Pricing parser, matching, repair, quote basis, pricing review, and generator tests still depend on the catalog rows. |
+| `pricing-references/koncept-exhibition-quotation/pricing-catalog.ai-reference.md` | Explicit fallback/test AI catalog fixture | Kept. Prompt and catalog-reference tests still cover the generated AI-facing view. |
+| `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/*` | Explicit fallback/test visual-reference fixture | Kept. Pricing-reference image import/export coverage still needs these visual assets. |
+| `fixtures/samples/kent-group/sample.json` | Smoke/sample fixture | Kept. `/api/samples`, refresh persistence, and Playwright smoke coverage still load this sanitized sample. |
+| `fixtures/samples/kent-group/kent-group.pdf` | Smoke/sample PDF fixture | Kept. PDF intake/rendering and local smoke coverage still depend on this sample PDF. |
+| `pricing-references/import-cleanup-rules.json` | Import cleanup guardrail | Kept. It is not bundled business default data. |
+| `scripts/build_pricing_catalog.py` | Generated-reference builder | Kept. It is required for catalog import/build behavior. |
+| `scripts/validate_dynamic_pricing_reference_rules.py` | Pricing hardcoding guardrail | Kept. It continues to prevent fixture-specific matching logic. |
+
+### Removed In Phase 3D
+
+- `profiles/koncept/assets/koncept-header-logo.jpeg`
+
+### Shrunk Or Sanitized In Phase 3D
+
+- `profiles/koncept/profile.json`: replaced the real bundled company fallback
+  details with `Sanitized Fallback Quote Company Pte Ltd`, generic terms, a
+  fixture signatory, and a tiny PNG `logo_data_url`.
+- `workspace-seeds/koncept-images-pte-ltd/workspace.json`: records the old logo
+  path as a removed fallback asset and points to the sanitized fallback data URL
+  as replacement coverage.
+- `tests/test_generate_quote.py`: generator logo-output tests now use an inline
+  sanitized PNG instead of reading the deleted bundled JPEG.
+
+### Runtime And Test Evidence
+
+- Normal generation with omitted `profile_id` and `pricing_reference_id` is
+  covered with empty legacy bundled profile/pricing roots; it resolves the
+  workspace-owned template and pricing pack.
+- Imported quote-company profile `logo_data_url` output coverage remains in the
+  generated XLSX regression test.
+- The old bundled pricing reference and Kent sample remain explicit fixtures,
+  not hidden runtime defaults.
+
+### Next Deletion Gate
+
+Before deleting more legacy bundled material, a later PR should migrate or
+replace the remaining active fixture dependencies:
+
+1. Move generator layout tests to a smaller sanitized layout fixture or the
+   workspace-owned layout pack.
+2. Move pricing parser, matching, quote-basis, and pricing-review tests away
+   from `pricing-references/koncept-exhibition-quotation` or create a smaller
+   sanitized catalog fixture with equivalent guardrail coverage.
+3. Replace `fixtures/samples/kent-group/kent-group.pdf` with a smaller
+   deterministic sanitized PDF fixture or remove the smoke paths that require
+   it.
+4. Re-run the deletion gate with hidden-reference checks, focused webapp tests,
+   generator tests, pricing validation, and CI before removing the kept fallback
+   files.
+
+Phase 3D does not add hosting, deployment, auth, Supabase, Stripe, billing,
+OIDC completion, production exposure, a credit ledger, secrets, or real customer
+data.
