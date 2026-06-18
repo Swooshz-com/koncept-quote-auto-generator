@@ -1,5 +1,7 @@
 import base64
 import csv
+import html
+import io
 import json
 import re
 import sys
@@ -30,9 +32,18 @@ NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawi
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 NS_PACKAGE_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+NS_CONTENT_TYPES = "{http://schemas.openxmlformats.org/package/2006/content-types}"
 NS_CP = "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}"
 NS_DC = "{http://purl.org/dc/elements/1.1/}"
 NS_MC_IGNORABLE = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable"
+COL_SECTION_NO = 0
+COL_DEFAULT_QUANTITY = 1
+COL_DESCRIPTION = 2
+COL_DEFAULT_ESTIMATE = 5
+COL_COST = 7
+COL_GST = 8
+COL_MARKUP = 9
+COL_REMARKS = 11
 
 
 def cell_value(root, ref):
@@ -177,6 +188,13 @@ def empty_content_types_xml():
     )
 
 
+def content_type_overrides(root):
+    return {
+        child.attrib.get("PartName"): child.attrib.get("ContentType")
+        for child in root.findall(f"{NS_CONTENT_TYPES}Override")
+    }
+
+
 def cell_style(root, ref):
     for cell in root.iter(f"{NS_MAIN}c"):
         if cell.attrib.get("r") == ref:
@@ -249,6 +267,72 @@ def row_break_ids(sheet):
     return [int(brk.attrib["id"]) for brk in row_breaks.findall(f"{NS_MAIN}brk")]
 
 
+def payload_row_numbers(sheet):
+    rows = set()
+    for cell in sheet.iter(f"{NS_MAIN}c"):
+        has_payload = cell.find(f"{NS_MAIN}f") is not None
+        value = cell.find(f"{NS_MAIN}v")
+        if value is not None and (value.text or "").strip():
+            has_payload = True
+        inline = cell.find(f"{NS_MAIN}is")
+        if inline is not None and any((text.text or "").strip() for text in inline.iter(f"{NS_MAIN}t")):
+            has_payload = True
+        if has_payload:
+            rows.add(quote.parse_cell_ref(cell.attrib.get("r", "A1"))[0])
+    return rows
+
+
+def no_trailing_blank_print_page(sheet, workbook):
+    payload_rows = payload_row_numbers(sheet)
+    if not payload_rows:
+        return True
+    breaks = row_break_ids(sheet)
+    last_print = int(defined_name_text(workbook, "_xlnm.Print_Area").rsplit("$", 1)[-1])
+    page_starts = [1] + [break_id + 1 for break_id in breaks]
+    page_ends = breaks + [last_print]
+    last_start, last_end = list(zip(page_starts, page_ends))[-1]
+    return any(last_start <= row <= last_end for row in payload_rows)
+
+
+def column_widths(sheet):
+    widths = {}
+    cols = sheet.find(f"{NS_MAIN}cols")
+    if cols is None:
+        return widths
+    for col in cols.findall(f"{NS_MAIN}col"):
+        min_col = int(col.attrib["min"])
+        max_col = int(col.attrib["max"])
+        for col_number in range(min_col, max_col + 1):
+            widths[col_number] = col.attrib.get("width")
+    return widths
+
+
+def merge_refs(sheet):
+    merge_cells = sheet.find(f"{NS_MAIN}mergeCells")
+    if merge_cells is None:
+        return []
+    return [merge_cell.attrib.get("ref") for merge_cell in merge_cells.findall(f"{NS_MAIN}mergeCell")]
+
+
+def dimension_last_row(sheet):
+    dimension = sheet.find(f"{NS_MAIN}dimension")
+    ref = dimension.attrib.get("ref", "") if dimension is not None else ""
+    match = re.search(r"([0-9]+)$", ref)
+    return int(match.group(1)) if match else 0
+
+
+def style_counts(styles_root):
+    counts = {}
+    for name in ("cellXfs", "fonts", "fills", "borders", "numFmts"):
+        node = styles_root.find(f"{NS_MAIN}{name}")
+        counts[name] = int(node.attrib.get("count", len(node))) if node is not None else 0
+    return counts
+
+
+def xml_local_name(node):
+    return node.tag.rsplit("}", 1)[-1]
+
+
 def empty_addressed_cell_refs(path):
     refs = []
     with zipfile.ZipFile(path) as zf:
@@ -263,6 +347,114 @@ def empty_addressed_cell_refs(path):
                 if cell_node.attrib.get("r") and not has_content:
                     refs.append(f"{name}!{cell_node.attrib['r']}")
     return refs
+
+
+def excel_col(index):
+    result = ""
+    index += 1
+    while index:
+        index, rem = divmod(index - 1, 26)
+        result = chr(65 + rem) + result
+    return result
+
+
+def synthetic_sectioned_pricing_workbook_bytes(include_visuals=True):
+    catalog = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
+    rows = []
+    price_row_numbers = []
+    current_section = ""
+
+    for item in catalog["items"]:
+        section = item["section"]
+        if section != current_section:
+            rows.append([item.get("category_order"), None, section])
+            current_section = section
+        row = [None] * 12
+        row[COL_DEFAULT_QUANTITY] = item.get("default_quantity")
+        row[COL_DESCRIPTION] = item["description"]
+        row[COL_DEFAULT_ESTIMATE] = item.get("default_quote_amount")
+        row[COL_COST] = item["internal_cost"]
+        row[COL_GST] = item.get("gst_multiplier")
+        row[COL_MARKUP] = item["markup_multiplier"]
+        row[COL_REMARKS] = "; ".join(item.get("remarks") or [])
+        rows.append(row)
+        price_row_numbers.append(len(rows))
+
+    def cell_xml(row_number, col_number, value):
+        if value in (None, ""):
+            return ""
+        ref = f"{excel_col(col_number)}{row_number}"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return f'<c r="{ref}"><v>{value}</v></c>'
+        return f'<c r="{ref}" t="inlineStr"><is><t>{html.escape(str(value))}</t></is></c>'
+
+    sheet_rows = []
+    for row_number, row in enumerate(rows, start=1):
+        cells = "".join(cell_xml(row_number, col_number, value) for col_number, value in enumerate(row))
+        sheet_rows.append(f'<row r="{row_number}">{cells}</row>')
+    drawing = '<drawing r:id="rId1"/>' if include_visuals else ""
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        "<sheetData>"
+        + "".join(sheet_rows)
+        + f"</sheetData>{drawing}</worksheet>"
+    )
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="png" ContentType="image/png"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
+</Types>""")
+        zf.writestr("_rels/.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""")
+        zf.writestr("xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Pricing" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""")
+        zf.writestr("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""")
+        zf.writestr("xl/worksheets/sheet1.xml", worksheet)
+        if include_visuals:
+            zf.writestr("xl/worksheets/_rels/sheet1.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>""")
+            anchors = []
+            rels = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">']
+            for index, row_number in enumerate(price_row_numbers[:6], start=1):
+                rel_id = f"rId{index}"
+                zero_based_row = row_number - 1
+                anchors.append(f"""
+<xdr:twoCellAnchor>
+  <xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{zero_based_row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+  <xdr:to><xdr:col>4</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{zero_based_row + 1}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+  <xdr:pic><xdr:nvPicPr><xdr:cNvPr id="{index}" name="Synthetic visual {index}"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="{rel_id}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr/></xdr:pic>
+  <xdr:clientData/>
+</xdr:twoCellAnchor>""")
+                rels.append(
+                    f'<Relationship Id="{rel_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image{index}.png"/>'
+                )
+                zf.writestr(f"xl/media/image{index}.png", SANITIZED_LOGO_PNG_BYTES)
+            rels.append("</Relationships>")
+            zf.writestr("xl/drawings/drawing1.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"""
+                + "".join(anchors)
+                + "</xdr:wsDr>")
+            zf.writestr("xl/drawings/_rels/drawing1.xml.rels", "\n".join(rels))
+    return buffer.getvalue()
 
 
 def manual_print_page_for_row(row_number):
@@ -397,11 +589,13 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
     def test_xlsx_catalog_builder_stores_visual_references_next_to_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "synthetic-sectioned-pricing.xlsx"
             out = Path(tmp) / "pricing-catalog.json"
+            source.write_bytes(synthetic_sectioned_pricing_workbook_bytes())
 
             catalog = pricing_catalog.build_catalog(
-                ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx",
-                source_label="Quotation-Cost-Template-V1.1.xlsx",
+                source,
+                source_label="synthetic-sectioned-pricing.xlsx",
                 out=out,
             )
 
@@ -427,7 +621,11 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             self.assertIn("Visual references:", ai_reference_markdown)
 
     def test_v11_pricing_workbook_has_no_empty_addressed_cells(self):
-        self.assertEqual(empty_addressed_cell_refs(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx"), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "synthetic-sectioned-pricing.xlsx"
+            source.write_bytes(synthetic_sectioned_pricing_workbook_bytes())
+
+            self.assertEqual(empty_addressed_cell_refs(source), [])
 
     def test_extract_price_rows_reads_json_catalog(self):
         catalog_path = KONCEPT_CATALOG
@@ -517,6 +715,105 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertTrue(ignorable)
         self.assertEqual([prefix for prefix in ignorable if prefix not in declared], [])
 
+    def test_generated_worksheet_parts_are_schema_ordered_for_excel(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        order = {name: index for index, name in enumerate(quote.WORKSHEET_CHILD_ORDER)}
+        child_names = [xml_local_name(child) for child in list(sheet)]
+        child_order = [order[name] for name in child_names if name in order]
+
+        self.assertEqual(child_order, sorted(child_order))
+        self.assertLess(child_names.index("dimension"), child_names.index("cols"))
+        self.assertLess(child_names.index("cols"), child_names.index("sheetData"))
+        if "rowBreaks" in child_names and "drawing" in child_names:
+            self.assertLess(child_names.index("rowBreaks"), child_names.index("drawing"))
+
+    def test_workspace_seed_layout_template_keeps_quote_formatting_shell(self):
+        with zipfile.ZipFile(KONCEPT_LAYOUT) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+            names = set(zf.namelist())
+
+        widths = column_widths(sheet)
+        rows = sheet.findall(f"{NS_MAIN}sheetData/{NS_MAIN}row")
+        counts = style_counts(styles)
+
+        self.assertGreaterEqual(len(rows), 100)
+        self.assertEqual(
+            sum(1 for row in rows if row.attrib.get("customHeight") == "1"),
+            99,
+        )
+        self.assertEqual(sum(len(row.findall(f"{NS_MAIN}c")) for row in rows), 0)
+        self.assertEqual(widths[1], "6.125")
+        self.assertEqual(widths[2], "10.5")
+        self.assertEqual(widths[3], "49.375")
+        self.assertEqual(widths[4], "14")
+        self.assertEqual(widths[5], "15.5")
+        self.assertIn("A16:C16", merge_refs(sheet))
+        self.assertIsNotNone(sheet.find(f"{NS_MAIN}pageMargins"))
+        self.assertIsNotNone(sheet.find(f"{NS_MAIN}pageSetup"))
+        self.assertIsNone(sheet.find(f"{NS_MAIN}headerFooter"))
+        self.assertEqual(counts["cellXfs"], 99)
+        self.assertEqual(counts["fonts"], 22)
+        self.assertEqual(counts["numFmts"], 8)
+        self.assertFalse(any(name.startswith("docProps/") for name in names))
+        self.assertNotIn("xl/sharedStrings.xml", names)
+        self.assertNotIn("xl/calcChain.xml", names)
+
+    def test_generated_layout_completes_sparse_template_formatting(self):
+        tmp, path = generate_layout_workbook()
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        widths = column_widths(sheet)
+        rows_by_number = {
+            int(row.attrib["r"]): row
+            for row in sheet.findall(f"{NS_MAIN}sheetData/{NS_MAIN}row")
+        }
+        last_row = dimension_last_row(sheet)
+        page_setup = sheet.find(f"{NS_MAIN}pageSetup")
+        page_margins = sheet.find(f"{NS_MAIN}pageMargins")
+        header_footer = sheet.find(f"{NS_MAIN}headerFooter")
+        counts = style_counts(styles)
+
+        self.assertIsNotNone(sheet.find(f"{NS_MAIN}sheetPr"))
+        self.assertEqual(sheet.find(f"{NS_MAIN}sheetFormatPr").attrib.get("defaultRowHeight"), "17")
+        self.assertEqual(widths[1], "6.125")
+        self.assertEqual(widths[2], "14.25")
+        self.assertEqual(widths[3], "45.5")
+        self.assertEqual(widths[4], "22.0")
+        self.assertEqual(widths[5], "15.5")
+        self.assertEqual(widths[6], "7.625")
+        self.assertEqual(widths[7], "15.0")
+        self.assertEqual(widths[8], "16.375")
+        self.assertEqual(widths[9], "26.875")
+        self.assertIn("A16:C16", merge_refs(sheet))
+        self.assertEqual(page_setup.attrib.get("scale"), "70")
+        self.assertEqual(page_setup.attrib.get("orientation"), "portrait")
+        self.assertEqual(page_margins.attrib.get("top"), "0.74803149606299213")
+        self.assertEqual(header_footer.attrib.get("alignWithMargins"), "0")
+        self.assertEqual(counts["cellXfs"], 123)
+        self.assertEqual(counts["fonts"], 37)
+        self.assertEqual(counts["numFmts"], 8)
+        self.assertGreaterEqual(last_row, 40)
+        self.assertEqual(
+            [
+                row_number
+                for row_number in range(1, last_row + 1)
+                if rows_by_number.get(row_number) is None
+                or rows_by_number[row_number].attrib.get("ht") != quote.QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT
+                or rows_by_number[row_number].attrib.get("customHeight") != "1"
+            ],
+            [],
+        )
+
     def test_generated_workbook_normalizes_arial_style_fonts(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
@@ -541,16 +838,33 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         with zipfile.ZipFile(path) as zf:
             core_xml = zf.read("docProps/core.xml").decode("utf-8")
             core = ET.fromstring(core_xml)
+            root_rels = ET.fromstring(zf.read("_rels/.rels"))
+            content_types = ET.fromstring(zf.read("[Content_Types].xml"))
             workbook_xml = zf.read("xl/workbook.xml").decode("utf-8")
 
         creator = core.find(f"{NS_DC}creator")
         last_modified_by = core.find(f"{NS_CP}lastModifiedBy")
+        root_relationships = [
+            (rel.attrib.get("Type"), rel.attrib.get("Target"))
+            for rel in root_rels.findall(f"{NS_PACKAGE_REL}Relationship")
+        ]
         workbook = ET.fromstring(workbook_xml)
         declared = declared_xml_prefixes(workbook_xml, "workbook")
         ignorable = workbook.attrib.get(NS_MC_IGNORABLE, "").split()
 
         self.assertEqual(creator.text, "Swooshz Quote Generator")
         self.assertEqual(last_modified_by.text, "Swooshz Quote Generator")
+        self.assertIn(
+            (
+                "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                "docProps/core.xml",
+            ),
+            root_relationships,
+        )
+        self.assertEqual(
+            content_type_overrides(content_types).get("/docProps/core.xml"),
+            "application/vnd.openxmlformats-package.core-properties+xml",
+        )
         self.assertNotIn("absPath", workbook_xml)
         self.assertNotIn("/Users/", workbook_xml)
         self.assertNotIn("Dropbox", workbook_xml)
@@ -1013,6 +1327,15 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             if quote.parse_cell_ref(item.attrib.get("r", "A1"))[0] > 40 and quote.parse_cell_ref(item.attrib.get("r", "A1"))[1] <= 9
         ])
 
+    def test_layout_print_area_trims_trailing_blank_manual_page(self):
+        root = ET.Element(f"{NS_MAIN}worksheet")
+        ET.SubElement(root, f"{NS_MAIN}sheetData")
+        quote.set_ooxml_cell(root, 183, 1, "payload")
+
+        self.assertEqual(quote.manual_page_break_ids(184), [61, 122, 183])
+        self.assertEqual(quote.printable_last_row(root, 184, True), 183)
+        self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, 184, True)), [61, 122])
+
     def test_layout_extends_quote_table_past_preserved_second_page(self):
         brief = {
             "company_identity": "Koncept Image",
@@ -1065,6 +1388,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
         self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 13}")
         self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_layout_uses_manual_continuation_pages_with_table_headers_only(self):
         brief = {
@@ -1107,6 +1431,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
                 styles = ET.fromstring(zf.read("xl/styles.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
 
         header_refs = find_cell_refs(sheet, "Pos.")
         title_refs = find_cell_refs(sheet, "RE: Large Generated Booth")
@@ -1114,6 +1439,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(header_refs[:3], ["A20", "A64", "A125"])
         self.assertEqual(title_refs, ["A18"])
         self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
         for ref in ("E20", "E21", "E64", "E65"):
             self.assertEqual(alignment_for_style(styles, cell_style(sheet, ref)).attrib.get("horizontal"), "right")
 

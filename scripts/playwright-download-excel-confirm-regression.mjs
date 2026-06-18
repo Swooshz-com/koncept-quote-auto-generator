@@ -31,8 +31,12 @@ const sessionStorageKey = "swooshz_quote_session_v1";
 const tinyPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
-const partitionKeyword = "booth-structure-double-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal";
-const partitionDescription = "m length double side partition wall at height 2.4m; wooden construct in painted finished as per design proposal";
+const partitionKeyword = "synthetic-structures-synthetic-double-side-partition";
+const partitionDescription = "m length synthetic double side partition";
+const demoScreenKeyword = "synthetic-lighting-and-av-synthetic-42-inch-demo-screen";
+const demoScreenDescription = "nos. synthetic 42 inch demo screen";
+const socketKeyword = "synthetic-lighting-and-av-synthetic-socket-point";
+const socketDescription = "nos. synthetic socket point";
 
 function pythonCommand() {
   if (process.env.PYTHON) return process.env.PYTHON;
@@ -150,38 +154,38 @@ function acceptedConfirmSessionSnapshot() {
       unit: "m length",
       price_mode: "Priced",
       unit_price_override: "",
-      catalog_unit_price: 540,
-      amount: 540,
+      catalog_unit_price: 40.25,
+      amount: 40.25,
       pricing_keyword: partitionKeyword,
       catalog_description: partitionDescription,
       pricing_reference_description: partitionDescription,
       source_basis_line_id: basisLineId,
     },
     {
-      section: "AV Equipment Rental Items",
-      description: 'nos. 55" LED TV Monitor (With Speaker - Full HD)',
+      section: "Synthetic Lighting And AV",
+      description: demoScreenDescription,
       quantity: 1,
       unit: "nos",
       price_mode: "Priced",
       unit_price_override: "",
-      catalog_unit_price: 675,
-      amount: 675,
-      pricing_keyword: "av-equipment-rental-items-nos-55-led-tv-monitor-with-speaker-full-hd",
-      catalog_description: 'nos. 55" LED TV Monitor (With Speaker - Full HD)',
-      pricing_reference_description: 'nos. 55" LED TV Monitor (With Speaker - Full HD)',
+      catalog_unit_price: 72,
+      amount: 72,
+      pricing_keyword: demoScreenKeyword,
+      catalog_description: demoScreenDescription,
+      pricing_reference_description: demoScreenDescription,
     },
     {
-      section: "AV Equipment Rental Items",
-      description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+      section: "Synthetic Lighting And AV",
+      description: socketDescription,
       quantity: 1,
       unit: "nos",
       price_mode: "Priced",
       unit_price_override: "",
-      catalog_unit_price: 2250,
-      amount: 2250,
-      pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
-      catalog_description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
-      pricing_reference_description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+      catalog_unit_price: 12,
+      amount: 12,
+      pricing_keyword: socketKeyword,
+      catalog_description: socketDescription,
+      pricing_reference_description: socketDescription,
     },
   ];
   return {
@@ -213,26 +217,26 @@ function acceptedConfirmSessionSnapshot() {
         unit: "m length",
       }],
     }, {
-      id: "av-equipment-rental-items",
-      title: "AV Equipment Rental Items",
+      id: "synthetic-lighting-and-av",
+      title: "Synthetic Lighting And AV",
       lines: [{
-        id: "basis-55-tv",
+        id: "basis-demo-screen",
         tag: "Include",
-        text: '[ nos. 55" LED TV Monitor (With Speaker - Full HD) ]',
+        text: `[ ${demoScreenDescription} ]`,
         quantity: 1,
         unit: "nos",
-        pricing_keyword: "av-equipment-rental-items-nos-55-led-tv-monitor-with-speaker-full-hd",
-        catalog_description: 'nos. 55" LED TV Monitor (With Speaker - Full HD)',
-        pricing_reference_description: 'nos. 55" LED TV Monitor (With Speaker - Full HD)',
+        pricing_keyword: demoScreenKeyword,
+        catalog_description: demoScreenDescription,
+        pricing_reference_description: demoScreenDescription,
       }, {
-        id: "basis-85-tv",
+        id: "basis-socket",
         tag: "Include",
-        text: '[ nos. 85" LED TV Monitor (With Speaker - Full HD) ]',
+        text: `[ ${socketDescription} ]`,
         quantity: 1,
         unit: "nos",
-        pricing_keyword: "av-equipment-rental-items-nos-85-led-tv-monitor-with-speaker-full-hd",
-        catalog_description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
-        pricing_reference_description: 'nos. 85" LED TV Monitor (With Speaker - Full HD)',
+        pricing_keyword: socketKeyword,
+        catalog_description: socketDescription,
+        pricing_reference_description: socketDescription,
       }],
     }],
     lineItems: rows.map((row) => ({
@@ -295,8 +299,8 @@ async function assertPartitionPriced(page, label) {
   if (!tableText.includes(partitionDescription)) {
     throw new Error(`${label}: partition row was not rendered. Table: ${tableText}`);
   }
-  if (!tableText.includes("540.00")) {
-    throw new Error(`${label}: partition price was not visible as 540.00. Table: ${tableText}`);
+  if (!tableText.includes("40.25")) {
+    throw new Error(`${label}: partition price was not visible as 40.25. Table: ${tableText}`);
   }
   if (tableText.includes("???")) {
     throw new Error(`${label}: output table still contains ???. Table: ${tableText}`);

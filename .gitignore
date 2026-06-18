@@ -37,6 +37,8 @@ local-pricing-uploads/
 pricing-uploads/
 *.private-pricing.xlsx
 *.private-pricing.csv
+_pricing-references/
+pricing-references/*
 quotation.xlsx
 quotation.pdf
 quotation-*.xlsx

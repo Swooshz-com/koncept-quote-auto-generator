@@ -25,11 +25,9 @@ Pricing catalog import lets Settings create a reviewed company pricing reference
 
 Normalized `.xlsx` and `.csv` templates can be parsed deterministically for row data, but every user-facing import preview must complete AI metadata enrichment before Save Reference is enabled. Messy workbook, CSV, and Markdown layouts use AI normalization first, then the same mandatory metadata enrichment step.
 
-## Messy import test fixture
+## Messy import regression coverage
 
-`docs/examples/super-messy-pricing-reference.xlsx` is a deliberately badly formatted workbook for manual import testing. It includes merged title rows, non-standard headers, inconsistent unit wording, continuation rows, typo-heavy descriptions, formula-like text, random notes, and an extra sheet that should be ignored. Use it to verify the AI normalization path before relying on a new import change.
-
-This fixture is not a pricing-reference source of truth and should not be saved as a bundled default reference. If it is saved through Settings during manual testing, delete the generated pricing-reference pack after the test.
+Messy workbook import coverage uses synthetic generated workbooks in automated tests. Do not commit ad hoc pricing-reference workbooks under `docs/` for manual import testing; keep raw pricing uploads in ignored local/runtime storage and delete generated pricing-reference packs after any manual test.
 
 Imported repo pricing-reference packs must not become the app-level default merely because their folder name sorts first. The protected default should come from the active profile's `default_pricing_reference`; imported test packs should remain deletable unless a profile explicitly uses them as its default.
 
@@ -51,7 +49,7 @@ For recognized section-numbered pricing workbooks, bullet or note-style continua
 
 Import cleanup has two layers:
 
-- Deterministic local rules in `pricing-references/import-cleanup-rules.json` handle safe known cleanup such as typography, word-slash spacing, customer-facing `m2` to `sqm`, and audited typo replacements.
+- Optional ignored local rules may be placed at `_pricing-references/import-cleanup-rules.json` for safe known cleanup such as typography, word-slash spacing, customer-facing `m2` to `sqm`, and audited typo replacements. The repo does not track pricing-reference cleanup data by default.
 - AI normalization for messy/unrecognized workbooks should infer additional obvious spelling, OCR, spacing, and unit cleanup from that workbook's own repeated terms, nearby rows, section headings, and standard unit notation. AI must not paraphrase, market-polish, simplify, or rename technical catalog descriptions.
 
 After save, the pricing reference text is authoritative. Later quote-basis and output logic must use the saved customer-facing description word for word.

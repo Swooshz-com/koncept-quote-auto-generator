@@ -182,6 +182,7 @@ const state = {
   activeJob: null,
   pendingPricingReference: null,
   editingPricingReferenceId: "",
+  editingPricingReferenceSource: "",
   pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_MANAGE,
   pricingReferenceImportFileSelected: false,
   pricingReferenceImportBusy: false,
@@ -195,12 +196,14 @@ const state = {
   pricingReferenceAutoLoadToken: "",
   pricingReferenceSavedNotice: "",
   pricingReferenceDeleteConfirmId: "",
+  pricingReferenceDeleteConfirmSource: "",
   pricingReferenceDeleteError: "",
   pricingReferenceDeleteBusy: false,
   profileDeleteConfirmId: "",
   profileDeleteError: "",
   profileSaveBusy: false,
   profileDeleteBusy: false,
+  outputDeleteRowIndex: -1,
   permissions: {
     role: "viewer",
     canManageSettings: false,
@@ -308,6 +311,11 @@ const elements = {
   profileDeleteError: qs("#profileDeleteError"),
   cancelProfileDeleteButton: qs("#cancelProfileDeleteButton"),
   confirmProfileDeleteButton: qs("#confirmProfileDeleteButton"),
+  outputDeleteModal: qs("#outputDeleteModal"),
+  outputDeleteTitle: qs("#outputDeleteTitle"),
+  outputDeleteText: qs("#outputDeleteText"),
+  cancelOutputDeleteButton: qs("#cancelOutputDeleteButton"),
+  confirmOutputDeleteButton: qs("#confirmOutputDeleteButton"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
@@ -441,7 +449,7 @@ function mergePricingReferences(bundled = []) {
   const seen = new Set();
   return [...bundled].filter((reference) => {
     const source = String(reference?.source || "bundled").trim() || "bundled";
-    if (!["workspace-seed", "bundled", "company"].includes(source)) return false;
+    if (!["workspace-seed", "bundled", "company", "local"].includes(source)) return false;
     const key = pricingReferenceSelectValue(reference);
     if (!key || seen.has(key)) return false;
     seen.add(key);
@@ -2719,7 +2727,8 @@ function protectedPricingReferenceReason(reference = currentPricingReference()) 
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
   if (String(reference.source || "bundled") === "workspace-seed") return "Workspace seed pricing references cannot be deleted here.";
-  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be deleted here.";
+  if (String(reference.source || "bundled") === "bundled") return "Bundled pricing reference packs are read-only.";
+  if (String(reference.source || "bundled") !== "local") return "Only local pricing reference packs can be deleted here.";
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "Select a pricing reference first.";
   const profileDefault = String(currentProfile()?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID).trim();
@@ -2744,7 +2753,7 @@ function canDeleteSelectedPricingReference() {
 function pricingReferenceExportBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be exported here.";
+  if (String(reference.source || "bundled") !== "local") return "Only local pricing reference packs can be exported here.";
   if (!String(reference.id || "").trim()) return "Select a pricing reference first.";
   return "";
 }
@@ -2765,7 +2774,7 @@ function updatePricingReferenceExportButton() {
 function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (!["workspace-seed", "bundled"].includes(String(reference.source || "bundled"))) return "Only repo pricing reference packs can be edited here.";
+  if (!["workspace-seed", "local"].includes(String(reference.source || "bundled"))) return "Only local or workspace seed pricing reference packs can be edited here.";
   const knownItemCount = Array.isArray(reference.items) ? reference.items.length : Number(reference.item_count);
   if (Number.isFinite(knownItemCount) && knownItemCount <= 0) return "This pricing reference has no editable rows.";
   return "";
@@ -2805,9 +2814,23 @@ function pricingReferenceSaveProgressMarkup() {
 function renderPricingReferenceManageStatus(result = state.pendingPricingReference) {
   const status = elements.pricingReferenceManageStatus;
   if (!status) return;
-  if (!state.editingPricingReferenceId || !result) {
+  const resultErrors = Array.isArray(result?.errors) ? result.errors.filter(Boolean) : [];
+  if (!result || (!state.editingPricingReferenceId && !resultErrors.length)) {
     status.hidden = true;
     status.innerHTML = "";
+    return;
+  }
+  const label = elements.pricingReferenceName?.value || result.sourceName || state.editingPricingReferenceId || "Pricing reference";
+  if (String(result.layout || "") === "loading-pricing-reference") {
+    status.hidden = false;
+    status.className = "pricing-reference-manage-status is-warn";
+    status.innerHTML = `
+      <div>
+        <span>Loading reference</span>
+        <strong>${escapeHtml(label)}</strong>
+        <p>Loading editable pricing rows...</p>
+      </div>
+    `;
     return;
   }
   if (state.pricingReferenceSaveBusy) {
@@ -2817,12 +2840,10 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
     return;
   }
   const canSave = Boolean(result.canSave) && !pricingReferenceSaveBlockReason(result);
-  const label = elements.pricingReferenceName?.value || result.sourceName || state.editingPricingReferenceId;
   const hasChanges = pricingReferenceHasPendingChanges(result);
   const savedNotice = String(state.pricingReferenceSavedNotice || "").trim();
   const editNotice = String(state.pricingReferenceEditNotice || "").trim();
   const rowIssues = pricingReferenceRowIssues(result.items || []);
-  const resultErrors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
   const noUnsavedChanges = !savedNotice && !editNotice && !hasChanges;
   const rowCount = Array.isArray(result.items) ? result.items.length : Number(result.rowCount || 0);
   const blockingStatusText = rowIssues.length
@@ -2832,9 +2853,11 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
       : rowCount <= 0
         ? "Add at least one valid pricing row before saving."
         : "";
-  const statusText = !savedNotice && editNotice && blockingStatusText
-    ? `${editNotice} ${blockingStatusText}`
-    : savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
+  const statusText = !state.editingPricingReferenceId && blockingStatusText
+    ? blockingStatusText
+    : !savedNotice && editNotice && blockingStatusText
+      ? `${editNotice} ${blockingStatusText}`
+      : savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
   const hasBlockingIssues = rowIssues.length > 0
     || resultErrors.length > 0
     || rowCount <= 0;
@@ -2849,11 +2872,11 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
   status.classList.toggle("is-saved", Boolean(savedNotice));
   status.innerHTML = `
     <div>
-      <span>${savedNotice ? "Saved reference" : "Editing reference"}</span>
+      <span>${savedNotice ? "Saved reference" : state.editingPricingReferenceId ? "Editing reference" : "Reference unavailable"}</span>
       <strong>${escapeHtml(label)}</strong>
       <p>${escapeHtml(sentenceLineBreakText(statusText))}</p>
     </div>
-    <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review</button>
+    ${rowCount > 0 ? '<button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review</button>' : ""}
   `;
 }
 
@@ -2941,6 +2964,7 @@ function clearPricingReferenceDraft(options = {}) {
   stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
+  state.editingPricingReferenceSource = "";
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceSaveBusy = false;
@@ -2969,7 +2993,7 @@ function renderPricingReferenceDeleteOptions() {
   if (!select) return;
   const previousValue = select.value;
   const references = sortedPricingReferencesForDisplay(
-    state.pricingReferences.filter((reference) => ["workspace-seed", "bundled"].includes(String(reference?.source || "bundled")))
+    state.pricingReferences.filter((reference) => ["workspace-seed", "local", "bundled"].includes(String(reference?.source || "bundled")))
   );
   select.innerHTML = references.map((reference) => `
     <option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || reference.id || "Pricing reference")}</option>
@@ -2992,19 +3016,21 @@ function updatePricingReferenceDeleteButton() {
   const reason = protectedPricingReferenceReason(reference);
   const busy = pricingReferenceOperationBusy();
   button.disabled = Boolean(reason) || busy;
-  button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this repo pricing reference.";
+  button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this local pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
   if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
 }
 
 function pricingReferenceDeleteConfirmReference() {
   const referenceId = String(state.pricingReferenceDeleteConfirmId || "").trim();
+  const source = String(state.pricingReferenceDeleteConfirmSource || "local").trim() || "local";
   if (!referenceId) return null;
-  return state.pricingReferences.find((reference) => reference.id === referenceId && String(reference.source || "bundled") === "bundled") || null;
+  return state.pricingReferences.find((reference) => reference.id === referenceId && String(reference.source || "bundled") === source) || null;
 }
 
 function hidePricingReferenceDeleteConfirm() {
   state.pricingReferenceDeleteConfirmId = "";
+  state.pricingReferenceDeleteConfirmSource = "";
   state.pricingReferenceDeleteError = "";
   if (elements.pricingReferenceDeleteConfirm) elements.pricingReferenceDeleteConfirm.hidden = true;
   if (elements.pricingReferenceDeleteError) {
@@ -3027,7 +3053,7 @@ function renderPricingReferenceDeleteConfirm() {
     elements.pricingReferenceDeleteConfirmTitle.textContent = `Delete ${label}?`;
   }
   if (elements.pricingReferenceDeleteConfirmText) {
-    elements.pricingReferenceDeleteConfirmText.textContent = "This removes the saved repo pricing reference pack from this local app. Existing quotes already generated from it are not changed.";
+    elements.pricingReferenceDeleteConfirmText.textContent = "This removes the saved local pricing reference pack from this app. Existing quotes already generated from it are not changed.";
   }
   if (elements.pricingReferenceDeleteError) {
     const message = String(state.pricingReferenceDeleteError || "").trim();
@@ -3047,6 +3073,7 @@ function renderPricingReferenceDeleteConfirm() {
 function showPricingReferenceDeleteConfirm(reference) {
   if (!reference) return;
   state.pricingReferenceDeleteConfirmId = reference.id || "";
+  state.pricingReferenceDeleteConfirmSource = reference.source || "local";
   state.pricingReferenceDeleteError = "";
   renderPricingReferenceDeleteConfirm();
   window.setTimeout(() => elements.cancelPricingReferenceDeleteButton?.focus(), 0);
@@ -3302,7 +3329,9 @@ function pricingReferencePreviewFromReference(reference = {}) {
 async function fetchPricingReferenceDetail(reference = {}) {
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return null;
-  const { ok, data } = await getJson(`/api/settings/pricing-references/${encodeURIComponent(referenceId)}`);
+  const source = String(reference.source || "").trim();
+  const query = source ? `?source=${encodeURIComponent(source)}` : "";
+  const { ok, data } = await getJson(`/api/settings/pricing-references/${encodeURIComponent(referenceId)}${query}`);
   if (!ok || !data || typeof data.pricing_reference !== "object") {
     return null;
   }
@@ -4328,7 +4357,11 @@ function exportSelectedPricingReference(event) {
     return;
   }
   const referenceId = String(reference.id || "").trim();
-  const exportUrl = `/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx?t=${Date.now()}`;
+  const query = new URLSearchParams({
+    source: String(reference.source || "local"),
+    t: String(Date.now()),
+  });
+  const exportUrl = `/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx?${query.toString()}`;
   try {
     const link = document.createElement("a");
     link.href = exportUrl;
@@ -4384,6 +4417,7 @@ function closePricingReferenceModal() {
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
+  state.editingPricingReferenceSource = "";
   state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
@@ -4407,6 +4441,16 @@ async function editSelectedPricingReference(options = {}) {
   const loadToken = `${summaryReference.id || ""}-${Date.now()}`;
   state.pricingReferenceAutoLoadToken = loadToken;
   state.editingPricingReferenceId = summaryReference.id || "";
+  state.editingPricingReferenceSource = summaryReference.source || "";
+  state.pendingPricingReference = {
+    sourceName: summaryReference.label || summaryReference.id || "Pricing reference",
+    items: [],
+    rowCount: 0,
+    errors: [],
+    warnings: [],
+    canSave: false,
+    layout: "loading-pricing-reference",
+  };
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceSaveBusy = false;
@@ -4414,13 +4458,17 @@ async function editSelectedPricingReference(options = {}) {
   stopElapsedTimer("pricingReferenceImportElapsed");
   stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pricingReferenceEditNotice = "";
+  renderPricingReferenceManageStatus(state.pendingPricingReference);
   const reference = await fetchPricingReferenceDetail(summaryReference).catch(() => null);
   if (state.pricingReferenceAutoLoadToken !== loadToken) return;
   if (!reference || !Array.isArray(reference.items) || !reference.items.length) {
     state.editingPricingReferenceId = "";
-    renderPricingReferencePreview({
+    state.pendingPricingReference = {
       ...pricingReferenceValidationResult([], [], 0, summaryReference?.label || "Pricing reference"),
       errors: ["Could not load editable pricing reference rows."],
+    };
+    renderPricingReferencePreview({
+      ...state.pendingPricingReference,
     }, { scrollIntoView: true });
     syncControlStates();
     return;
@@ -4498,6 +4546,7 @@ async function savePricingReferenceFromModal(event) {
   try {
     const { ok, data } = await postJson("/api/settings/pricing-references", {
       id: state.editingPricingReferenceId || safeId(name, `pricing-ref-${Date.now().toString(36)}`),
+      source: state.editingPricingReferenceSource || "",
       label: name,
       description: result.description || `Imported from ${result.sourceName || "settings upload"}`,
       tax,
@@ -4536,6 +4585,7 @@ async function savePricingReferenceFromModal(event) {
       }
     }
     state.editingPricingReferenceId = savedReference.id || state.editingPricingReferenceId || safeId(name, "pricing-reference");
+    state.editingPricingReferenceSource = savedReference.source || state.editingPricingReferenceSource || "local";
     state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
     state.pricingReferenceImportFileSelected = false;
     state.pendingPricingReference = {
@@ -4594,8 +4644,8 @@ async function savePricingReferenceFromModal(event) {
   }
 }
 
-async function deleteRepoPricingReference(referenceId) {
-  const reference = state.pricingReferences.find((item) => item.id === referenceId && String(item.source || "bundled") === "bundled");
+async function deleteRepoPricingReference(referenceId, source = "local") {
+  const reference = state.pricingReferences.find((item) => item.id === referenceId && String(item.source || "bundled") === source);
   if (!reference) return;
   const reason = protectedPricingReferenceReason(reference);
   if (reason) {
@@ -4608,7 +4658,8 @@ async function deleteRepoPricingReference(referenceId) {
   setPricingReferenceModalBusyState(true, "Deleting pricing reference...");
   updatePricingReferenceDeleteButton();
   try {
-    const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
+    const query = source ? `?source=${encodeURIComponent(source)}` : "";
+    const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}${query}`, {
       method: "DELETE",
       headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
     }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
@@ -4659,7 +4710,7 @@ async function deleteSelectedPricingReference() {
     updatePricingReferenceDeleteButton();
     return;
   }
-  await deleteRepoPricingReference(selected.id);
+  await deleteRepoPricingReference(selected.id, selected.source || "local");
 }
 
 async function loadProfiles() {
@@ -4981,8 +5032,10 @@ function unitPriceEditKind(value) {
 }
 
 function effectiveOutputUnitPrice(row = {}) {
-  const manual = numberOrNull(row.unit_price_override);
+  const overrideText = String(row.unit_price_override ?? "").trim();
+  const manual = numberOrNull(overrideText);
   if (manual !== null) return manual;
+  if (overrideText && overrideText.toLowerCase() !== "included") return null;
   return numberOrNull(row.catalog_unit_price);
 }
 
@@ -5366,6 +5419,7 @@ function outputCellDisplayValue(row = {}, field = "") {
   if (field === "price_mode") return row.price_mode === "Included" ? "Included" : "Priced";
   if (field === "unit_price_override") {
     if (row.price_mode === "Included") return "Included";
+    if (unitPriceEditKind(row.unit_price_override) === "invalid") return "???";
     if (numberOrNull(row.unit_price_override) !== null) return formatAmount(row.unit_price_override);
     if (numberOrNull(row.catalog_unit_price) !== null) return formatAmount(row.catalog_unit_price);
     return "???";
@@ -5507,19 +5561,65 @@ function outputRowsValid(rows = state.outputRows) {
   return { valid: errors.length === 0 && rows.length > 0, errors };
 }
 
-function deleteOutputRow(index) {
+function outputDeleteRowLabel(index) {
   if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) return;
   const row = state.outputRows[index];
-  const confirmed = window.confirm(`Delete output row "${row.description || `Row ${index + 1}`}"?`);
-  if (!confirmed) return;
+  const description = String(row.description || "").trim();
+  return description || `Row ${index + 1}`;
+}
+
+function hideOutputDeleteModal() {
+  state.outputDeleteRowIndex = -1;
+  if (elements.outputDeleteModal) {
+    elements.outputDeleteModal.classList.remove("is-open");
+    elements.outputDeleteModal.hidden = true;
+  }
+}
+
+function renderOutputDeleteModal() {
+  const modal = elements.outputDeleteModal;
+  if (!modal) return;
+  const label = outputDeleteRowLabel(state.outputDeleteRowIndex);
+  if (!label) {
+    hideOutputDeleteModal();
+    return;
+  }
+  if (elements.outputDeleteTitle) elements.outputDeleteTitle.textContent = "Delete output row?";
+  if (elements.outputDeleteText) {
+    elements.outputDeleteText.textContent = `Delete output row "${label}"?`;
+  }
+  modal.hidden = false;
+  modal.classList.add("is-open");
+  window.setTimeout(() => elements.confirmOutputDeleteButton?.focus(), 0);
+}
+
+function requestOutputRowDelete(index) {
+  if (appIsBusy()) return;
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) return;
+  state.outputDeleteRowIndex = index;
+  renderOutputDeleteModal();
+}
+
+function confirmOutputRowDelete() {
+  const index = state.outputDeleteRowIndex;
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) {
+    hideOutputDeleteModal();
+    return;
+  }
   state.outputRows.splice(index, 1);
   state.lineItems = outputRowsToLineItems();
   state.downloadFile = null;
+  setDownloadFiles([]);
+  hideOutputDeleteModal();
   const validation = outputRowsValid();
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   syncControlStates();
+}
+
+function deleteOutputRow(index) {
+  requestOutputRowDelete(index);
 }
 
 function renderOutputValidationMessages(errors = state.outputErrors) {
@@ -7085,45 +7185,80 @@ async function resetOutputDraft() {
   syncControlStates();
 }
 
-async function postJson(url, payload) {
-  let response;
+function postJsonFetchFailure(url, error) {
+  if (!state.isPageUnloading) {
+    logClientEvent("client_error", { url, message: error.message || String(error) });
+  }
+  return {
+    ok: false,
+    data: {
+      status: "failed",
+      fetch_failed: true,
+      page_unloading: state.isPageUnloading,
+      message: error.message || String(error),
+      errors: genericFailureMessages(),
+    },
+    status: 0,
+  };
+}
+
+async function fetchPostJsonResponse(url, payload) {
   const headers = { "Content-Type": "application/json" };
   if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    if (!state.isPageUnloading) {
-      logClientEvent("client_error", { url, message: error.message || String(error) });
-    }
-    return {
-      ok: false,
-      data: {
-        status: "failed",
-        fetch_failed: true,
-        page_unloading: state.isPageUnloading,
-        message: error.message || String(error),
-        errors: genericFailureMessages(),
-      },
-    };
-  }
+  return fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
 
-  let data;
+async function jsonFromResponse(response) {
   try {
-    data = await response.json();
+    return await response.json();
   } catch {
-    data = {
+    return {
       status: "failed",
       errors: genericFailureMessages(),
     };
   }
+}
+
+function applySessionData(data = {}) {
+  if (!data.csrf_token) return false;
+  state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
+  state.csrfToken = data.csrf_token;
+  if (data.permissions && typeof data.permissions === "object") {
+    state.permissions = { ...state.permissions, ...data.permissions };
+  }
+  return true;
+}
+
+async function refreshSessionToken() {
+  const { ok, data } = await getJson("/api/session", { logFetchFailure: false });
+  return ok && applySessionData(data);
+}
+
+async function postJson(url, payload) {
+  let response;
+  try {
+    response = await fetchPostJsonResponse(url, payload);
+  } catch (error) {
+    return postJsonFetchFailure(url, error);
+  }
+
+  let data = await jsonFromResponse(response);
+  if (response.status === 403 && await refreshSessionToken()) {
+    try {
+      response = await fetchPostJsonResponse(url, payload);
+      data = await jsonFromResponse(response);
+    } catch (error) {
+      return postJsonFetchFailure(url, error);
+    }
+  }
   if (!response.ok) {
     logClientEvent("server_error", { url, status: response.status, errors: data.errors || [] });
   }
-  return { ok: response.ok, data };
+  return { ok: response.ok, data, status: response.status };
 }
 
 async function getJson(url, options = {}) {
@@ -7234,12 +7369,7 @@ function logClientEvent(event, details = {}) {
 
 async function initializeSession() {
   const { ok, data } = await getJson("/api/session");
-  if (ok && data.csrf_token) {
-    state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
-    state.csrfToken = data.csrf_token;
-    if (data.permissions && typeof data.permissions === "object") {
-      state.permissions = { ...state.permissions, ...data.permissions };
-    }
+  if (ok && applySessionData(data)) {
     return;
   }
   if (elements.healthText) elements.healthText.textContent = "Local session unavailable";
@@ -7978,21 +8108,32 @@ function wireEvents() {
   elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);
   elements.sideNextButton.addEventListener("click", goToNextSidePanel);
   elements.sideDownloadButton.addEventListener("click", async (event) => {
+    event.preventDefault();
     if (elements.sideDownloadButton.getAttribute("aria-disabled") === "true") {
-      event.preventDefault();
       const validation = outputRowsValid();
       if (!validation.valid) renderOutputValidationMessages(validation.errors);
       return;
     }
+    const existingFile = state.downloadFile;
+    showExcelGeneratingModal(existingFile?.url ? {
+      eyebrow: "Quotation export",
+      title: "Downloading Excel",
+      message: "Preparing the workbook download.",
+    } : undefined);
+    await waitForUiPaint();
     if (!state.downloadFile?.url) {
-      event.preventDefault();
-      showExcelGeneratingModal();
       try {
         await handleGenerate();
         downloadCurrentExcelFile();
       } finally {
         hideExcelGeneratingModal();
       }
+      return;
+    }
+    try {
+      downloadCurrentExcelFile(existingFile);
+    } finally {
+      window.setTimeout(hideExcelGeneratingModal, 350);
     }
   });
   document.addEventListener("keydown", (event) => {
@@ -8001,6 +8142,8 @@ function wireEvents() {
         closePricingReferenceTableOverlay();
       } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
+      } else if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) {
+        hideOutputDeleteModal();
       } else if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
         hideProfileDeleteModal();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
@@ -8141,6 +8284,13 @@ function wireEvents() {
   elements.profileDeleteModal?.addEventListener("click", (event) => {
     if (event.target.closest("[data-profile-delete-close]")) {
       hideProfileDeleteModal();
+    }
+  });
+  elements.cancelOutputDeleteButton?.addEventListener("click", hideOutputDeleteModal);
+  elements.confirmOutputDeleteButton?.addEventListener("click", confirmOutputRowDelete);
+  elements.outputDeleteModal?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-output-delete-close]")) {
+      hideOutputDeleteModal();
     }
   });
   elements.importPresetButton?.addEventListener("click", requestPresetImport);

@@ -106,6 +106,46 @@ XMLNS_XR = "http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
 XMLNS_XR2 = "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"
 XMLNS_XR3 = "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3"
 EXPORT_STATUS_CUSTOMER_READY = {"libreoffice_exported", "excel_exported"}
+WORKSHEET_CHILD_ORDER = (
+    "sheetPr",
+    "dimension",
+    "sheetViews",
+    "sheetFormatPr",
+    "cols",
+    "sheetData",
+    "sheetCalcPr",
+    "sheetProtection",
+    "protectedRanges",
+    "scenarios",
+    "autoFilter",
+    "sortState",
+    "dataConsolidate",
+    "customSheetViews",
+    "mergeCells",
+    "phoneticPr",
+    "conditionalFormatting",
+    "dataValidations",
+    "hyperlinks",
+    "printOptions",
+    "pageMargins",
+    "pageSetup",
+    "headerFooter",
+    "rowBreaks",
+    "colBreaks",
+    "customProperties",
+    "cellWatches",
+    "ignoredErrors",
+    "smartTags",
+    "drawing",
+    "legacyDrawing",
+    "legacyDrawingHF",
+    "picture",
+    "oleObjects",
+    "controls",
+    "webPublishItems",
+    "tableParts",
+    "extLst",
+)
 FIRST_PRINT_PAGE_END_ROW = 61
 CONTINUATION_PAGE_START_ROW = 62
 CONTINUATION_PAGE_HEIGHT = 61
@@ -113,6 +153,19 @@ CONTINUATION_TABLE_HEADER_OFFSET = 2
 CONTINUATION_CURRENCY_OFFSET = 3
 CONTINUATION_BODY_OFFSET = 5
 TOTAL_BLOCK_HEIGHT = 3
+QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT = "18.7"
+QUOTE_LAYOUT_COLUMN_WIDTHS = {
+    1: 6.125,
+    2: 14.25,
+    3: 45.5,
+    4: 22.0,
+    5: 15.5,
+    6: 7.625,
+    7: 15.0,
+    8: 16.375,
+    9: 26.875,
+}
+QUOTE_DATE_MERGE_REF = "A16:C16"
 ET.register_namespace("cp", XMLNS_CP)
 ET.register_namespace("dc", XMLNS_DC)
 ET.register_namespace("", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
@@ -1231,6 +1284,91 @@ def set_ooxml_column_width(root: ET.Element, col_number: int, width: float) -> N
     )
 
 
+def ensure_worksheet_child(root: ET.Element, local_name: str) -> ET.Element:
+    tag = f"{NS_MAIN}{local_name}"
+    child = root.find(tag)
+    if child is None:
+        child = ET.Element(tag)
+        root.append(child)
+    return child
+
+
+def ensure_merge_ref(root: ET.Element, ref: str) -> None:
+    merge_cells = root.find(f"{NS_MAIN}mergeCells")
+    if merge_cells is None:
+        merge_cells = ET.Element(f"{NS_MAIN}mergeCells")
+        root.append(merge_cells)
+
+    for merge_cell in merge_cells.findall(f"{NS_MAIN}mergeCell"):
+        if merge_cell.attrib.get("ref") == ref:
+            merge_cells.attrib["count"] = str(len(merge_cells))
+            return
+
+    ET.SubElement(merge_cells, f"{NS_MAIN}mergeCell", {"ref": ref})
+    merge_cells.attrib["count"] = str(len(merge_cells))
+
+
+def ensure_quote_layout_page_settings(root: ET.Element) -> None:
+    ensure_worksheet_child(root, "sheetPr")
+
+    sheet_format = ensure_worksheet_child(root, "sheetFormatPr")
+    sheet_format.attrib.setdefault("defaultColWidth", "9.125")
+    if sheet_format.attrib.get("defaultRowHeight") in {None, "", "15"}:
+        sheet_format.attrib["defaultRowHeight"] = "17"
+    sheet_format.attrib.setdefault(f"{{{XMLNS_X14AC}}}dyDescent", "0.2")
+
+    if root.find(f"{NS_MAIN}pageMargins") is None:
+        page_margins = ET.Element(
+            f"{NS_MAIN}pageMargins",
+            {
+                "left": "0.82677165354330717",
+                "right": "0.39370078740157483",
+                "top": "0.74803149606299213",
+                "bottom": "0.74803149606299213",
+                "header": "0.31496062992125984",
+                "footer": "0.31496062992125984",
+            },
+        )
+        root.append(page_margins)
+
+    if root.find(f"{NS_MAIN}pageSetup") is None:
+        page_setup = ET.Element(
+            f"{NS_MAIN}pageSetup",
+            {
+                "paperSize": "9",
+                "scale": "70",
+                "firstPageNumber": "0",
+                "fitToHeight": "0",
+                "orientation": "portrait",
+                "horizontalDpi": "300",
+                "verticalDpi": "300",
+            },
+        )
+        root.append(page_setup)
+
+    if root.find(f"{NS_MAIN}headerFooter") is None:
+        root.append(ET.Element(f"{NS_MAIN}headerFooter", {"alignWithMargins": "0"}))
+
+
+def ensure_quote_layout_row_heights(root: ET.Element, last_row: int) -> None:
+    sheet_data = root.find(f"{NS_MAIN}sheetData")
+    if sheet_data is None:
+        return
+    for row_number in range(1, last_row + 1):
+        row = get_or_create_row(sheet_data, row_number)
+        if row.attrib.get("ht") in {None, "", "15"}:
+            row.attrib["ht"] = QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT
+        row.attrib.setdefault("customHeight", "1")
+
+
+def complete_quote_layout_worksheet(root: ET.Element, last_row: int) -> None:
+    ensure_quote_layout_page_settings(root)
+    for col_number, width in QUOTE_LAYOUT_COLUMN_WIDTHS.items():
+        set_ooxml_column_width(root, col_number, width)
+    ensure_quote_layout_row_heights(root, last_row)
+    ensure_merge_ref(root, QUOTE_DATE_MERGE_REF)
+
+
 def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int, max_col: int) -> None:
     sheet_data = root.find(f"{NS_MAIN}sheetData")
     if sheet_data is None:
@@ -1245,12 +1383,59 @@ def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int
                 row.remove(cell)
 
 
+def ensure_content_type_override(parts: dict[str, bytes], part_name: str, content_type: str) -> None:
+    content_types_name = "[Content_Types].xml"
+    part_name = "/" + part_name.lstrip("/")
+    if content_types_name in parts:
+        root = ET.fromstring(parts[content_types_name])
+    else:
+        root = ET.Element(f"{NS_CONTENT_TYPES}Types")
+    for child in root.findall(f"{NS_CONTENT_TYPES}Override"):
+        if child.attrib.get("PartName") == part_name:
+            child.attrib["ContentType"] = content_type
+            break
+    else:
+        ET.SubElement(
+            root,
+            f"{NS_CONTENT_TYPES}Override",
+            {"PartName": part_name, "ContentType": content_type},
+        )
+    parts[content_types_name] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
 def sanitize_core_properties(parts: dict[str, bytes]) -> None:
     core = ET.Element(f"{{{XMLNS_CP}}}coreProperties")
     tool_name = "Swooshz Quote Generator"
     ET.SubElement(core, f"{{{XMLNS_DC}}}creator").text = tool_name
     ET.SubElement(core, f"{{{XMLNS_CP}}}lastModifiedBy").text = tool_name
     parts["docProps/core.xml"] = ET.tostring(core, encoding="utf-8", xml_declaration=True)
+    ensure_content_type_override(
+        parts,
+        "/docProps/core.xml",
+        "application/vnd.openxmlformats-package.core-properties+xml",
+    )
+    rels_name = "_rels/.rels"
+    rels_root = ET.fromstring(parts[rels_name]) if rels_name in parts else empty_relationships_root()
+    has_core_rel = False
+    for rel in rels_root.findall(f"{NS_PACKAGE_REL}Relationship"):
+        rel_type = rel.attrib.get("Type", "")
+        target = rel.attrib.get("Target", "")
+        if rel_type.endswith("/metadata/core-properties") or target == "docProps/core.xml":
+            rel.attrib["Type"] = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+            rel.attrib["Target"] = "docProps/core.xml"
+            has_core_rel = True
+            break
+    if not has_core_rel:
+        ET.SubElement(
+            rels_root,
+            f"{NS_PACKAGE_REL}Relationship",
+            {
+                "Id": next_relationship_id(rels_root),
+                "Type": "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                "Target": "docProps/core.xml",
+            },
+        )
+    parts[rels_name] = ET.tostring(rels_root, encoding="utf-8", xml_declaration=True)
 
 
 def remove_workbook_absolute_paths(parts: dict[str, bytes]) -> None:
@@ -2075,6 +2260,41 @@ def manual_page_break_ids(last_row: int) -> list[int]:
     return break_ids
 
 
+def ooxml_cell_has_payload(cell: ET.Element) -> bool:
+    if cell.find(f"{NS_MAIN}f") is not None:
+        return True
+    value = cell.find(f"{NS_MAIN}v")
+    if value is not None and (value.text or "").strip():
+        return True
+    inline = cell.find(f"{NS_MAIN}is")
+    if inline is None:
+        return False
+    return any((text.text or "").strip() for text in inline.iter(f"{NS_MAIN}t"))
+
+
+def last_payload_row(root: ET.Element, max_row: int) -> int:
+    result = 0
+    for cell in root.iter(f"{NS_MAIN}c"):
+        if not ooxml_cell_has_payload(cell):
+            continue
+        row_number, _ = parse_cell_ref(cell.attrib.get("r", "A1"))
+        if row_number <= max_row:
+            result = max(result, row_number)
+    return result
+
+
+def printable_last_row(root: ET.Element, last_row: int, manual_pagination_enabled: bool) -> int:
+    if not manual_pagination_enabled:
+        return last_row
+    payload_row = last_payload_row(root, last_row)
+    if not payload_row:
+        return last_row
+    break_ids = manual_page_break_ids(last_row)
+    if break_ids and break_ids[-1] >= payload_row:
+        return payload_row
+    return last_row
+
+
 def set_manual_page_breaks(root: ET.Element, last_row: int, enabled: bool) -> None:
     row_breaks = root.find(f"{NS_MAIN}rowBreaks")
     if row_breaks is not None:
@@ -2212,7 +2432,22 @@ def serialize_excel_styles(root: ET.Element) -> bytes:
     return ensure_root_namespace_declarations(xml, "styleSheet", required_declarations).encode("utf-8")
 
 
+def normalize_worksheet_child_order(root: ET.Element) -> None:
+    child_order = {name: index for index, name in enumerate(WORKSHEET_CHILD_ORDER)}
+
+    def order_key(indexed_child: tuple[int, ET.Element]) -> tuple[int, int]:
+        index, child = indexed_child
+        local_name = child.tag.rsplit("}", 1)[-1]
+        return child_order.get(local_name, len(child_order)), index
+
+    root[:] = [
+        child
+        for _, child in sorted(enumerate(list(root)), key=order_key)
+    ]
+
+
 def serialize_excel_worksheet(root: ET.Element) -> bytes:
+    normalize_worksheet_child_order(root)
     xml = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
     required_declarations = {
         "xmlns:mc": XMLNS_MC,
@@ -2423,8 +2658,9 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "companyDateLabel", clean_text(signature.get("company_date_label"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
-    last_print_row = acceptance_row + 8
+    last_print_row = printable_last_row(root, acceptance_row + 8, manual_pagination_enabled)
     trim_layout_worksheet(root, last_print_row)
+    complete_quote_layout_worksheet(root, last_print_row)
     set_manual_page_breaks(root, last_print_row, manual_pagination_enabled)
     parts["xl/worksheets/sheet1.xml"] = serialize_excel_worksheet(root)
     if "xl/drawings/drawing1.xml" in parts:

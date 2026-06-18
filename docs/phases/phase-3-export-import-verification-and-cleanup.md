@@ -4,6 +4,15 @@
 
 Verify export/import paths before removing obsolete bundled/demo material.
 
+## Current Status Update - 2026-06-18
+
+Later cleanup supersedes the earlier "keep" decisions for tracked pricing
+references. The repo no longer stores the legacy
+`pricing-references/koncept-exhibition-quotation` pack, and local/private
+pricing-reference staging belongs under ignored `_pricing-references/` or
+runtime/company workspace storage. Repo-safe coverage now uses the synthetic
+workspace seed pricing-reference pack.
+
 ## Required Order
 
 1. Verify export from the current app.
@@ -62,7 +71,7 @@ repo-bundled data before deleting anything.
 | `pricing-references/koncept-exhibition-quotation/pricing-catalog.json` | Active bundled pricing catalog | Keep. Catalog matching, quote basis repair, pricing review, and generation tests still depend on it. |
 | `pricing-references/koncept-exhibition-quotation/pricing-catalog.ai-reference.md` | Active AI/catalog prompt reference | Keep. Prompt and matching behavior still use it. |
 | `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/*` | Active pricing-reference visual assets | Keep. They are part of the bundled pricing reference pack and import/export visual-reference coverage. |
-| `pricing-references/import-cleanup-rules.json` | Import cleanup rules/guardrail | Keep. Not business seed/demo data. |
+| `_pricing-references/import-cleanup-rules.json` | Optional ignored local import cleanup aid | Runtime/import-specific spelling cleanup belongs under ignored local pricing-reference storage when needed. |
 | `scripts/build_pricing_catalog.py` | Generated-reference builder | Keep. Not business seed/demo data. |
 | `scripts/validate_dynamic_pricing_reference_rules.py` | Pricing matching guardrail | Keep. Required to prevent fixture-specific runtime matching patches. |
 | `fixtures/samples/kent-group/sample.json` | Active sanitized sample fixture | Keep. `/api/samples`, PDF intake tests, and Playwright smoke flows still use it. |
@@ -130,7 +139,6 @@ fixtures or active workspace-declared dependencies:
 - `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/*`
 - `fixtures/samples/kent-group/sample.json`
 - `fixtures/samples/kent-group/kent-group.pdf`
-- `pricing-references/import-cleanup-rules.json`
 - `scripts/build_pricing_catalog.py`
 - `scripts/validate_dynamic_pricing_reference_rules.py`
 
@@ -209,10 +217,10 @@ profile store, with tests using tiny sanitized logo data.
 - `fixtures/samples/kent-group/sample.json`
 - `fixtures/samples/kent-group/kent-group.pdf`
 
-`pricing-references/import-cleanup-rules.json`,
-`scripts/build_pricing_catalog.py`, and
+`scripts/build_pricing_catalog.py` and
 `scripts/validate_dynamic_pricing_reference_rules.py` remain guardrails/builders,
-not deletion candidates.
+not deletion candidates. `_pricing-references/import-cleanup-rules.json` is an
+optional ignored local import aid and is not tracked.
 
 ### Removed In Phase 3C
 
@@ -258,7 +266,7 @@ primary local/staging runtime dependencies.
 | `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/*` | Explicit fallback/test visual-reference fixture | Kept. Pricing-reference image import/export coverage still needs these visual assets. |
 | `fixtures/samples/kent-group/sample.json` | Smoke/sample fixture | Kept. `/api/samples`, refresh persistence, and Playwright smoke coverage still load this sanitized sample. |
 | `fixtures/samples/kent-group/kent-group.pdf` | Smoke/sample PDF fixture | Kept. PDF intake/rendering and local smoke coverage still depend on this sample PDF. |
-| `pricing-references/import-cleanup-rules.json` | Import cleanup guardrail | Kept. It is not bundled business default data. |
+| `_pricing-references/import-cleanup-rules.json` | Optional ignored local import cleanup aid | Runtime/import-specific spelling cleanup belongs under ignored local pricing-reference storage when needed. |
 | `scripts/build_pricing_catalog.py` | Generated-reference builder | Kept. It is required for catalog import/build behavior. |
 | `scripts/validate_dynamic_pricing_reference_rules.py` | Pricing hardcoding guardrail | Kept. It continues to prevent fixture-specific matching logic. |
 
@@ -284,8 +292,8 @@ primary local/staging runtime dependencies.
   workspace-owned template and pricing pack.
 - Imported quote-company profile `logo_data_url` output coverage remains in the
   generated XLSX regression test.
-- The old bundled pricing reference and Kent sample remain explicit fixtures,
-  not hidden runtime defaults.
+- The old bundled pricing reference has been removed from tracked source.
+  The Kent sample remains an explicit fixture, not a hidden runtime default.
 
 ### Next Deletion Gate
 
@@ -294,13 +302,10 @@ replace the remaining active fixture dependencies:
 
 1. Move generator layout tests to a smaller sanitized layout fixture or the
    workspace-owned layout pack.
-2. Move pricing parser, matching, quote-basis, and pricing-review tests away
-   from `pricing-references/koncept-exhibition-quotation` or create a smaller
-   sanitized catalog fixture with equivalent guardrail coverage.
-3. Replace `fixtures/samples/kent-group/kent-group.pdf` with a smaller
+2. Replace `fixtures/samples/kent-group/kent-group.pdf` with a smaller
    deterministic sanitized PDF fixture or remove the smoke paths that require
    it.
-4. Re-run the deletion gate with hidden-reference checks, focused webapp tests,
+3. Re-run the deletion gate with hidden-reference checks, focused webapp tests,
    generator tests, pricing validation, and CI before removing the kept fallback
    files.
 

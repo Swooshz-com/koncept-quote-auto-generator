@@ -3,6 +3,7 @@ import threading
 import unittest
 import base64
 import hashlib
+import html
 import io
 import json
 import os
@@ -170,6 +171,41 @@ def xlsx_with_single_cell(cell_ref: str, value: str = "section", *, shared_strin
     return buffer.getvalue()
 
 
+def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
+    def cell_xml(row_number: int, col_number: int, value: object | None) -> str:
+        if value in (None, ""):
+            return ""
+        ref = f"{excel_col(col_number)}{row_number}"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return f'<c r="{ref}"><v>{value}</v></c>'
+        return f'<c r="{ref}" t="inlineStr"><is><t>{html.escape(str(value))}</t></is></c>'
+
+    sheet_rows = []
+    for row_number, row in enumerate(rows, start=1):
+        cells = "".join(cell_xml(row_number, col_number, value) for col_number, value in enumerate(row))
+        sheet_rows.append(f'<row r="{row_number}">{cells}</row>')
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{''.join(sheet_rows)}</sheetData>"
+        "</worksheet>"
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("xl/worksheets/sheet1.xml", worksheet)
+    return buffer.getvalue()
+
+
+def messy_pricing_reference_xlsx_bytes() -> bytes:
+    return xlsx_with_rows([
+        ["Synthetic Messy Pricing Reference", None, None, None, None],
+        ["section-ish", "item-ish", "supplier cost each (messy)", "markup-ish", "notes"],
+        ["Floor Design", "sqm synthetic platform w edgeing", 40, 1.5, "manual cleanup expected"],
+        [None, "continuation text from same line", None, None, "extra note"],
+        ["Ignore Sheet-Like Footer", None, None, None, None],
+    ])
+
+
 def empty_addressed_cell_refs_from_xlsx(raw: bytes) -> list[str]:
     refs: list[str] = []
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
@@ -184,6 +220,114 @@ def empty_addressed_cell_refs_from_xlsx(raw: bytes) -> list[str]:
                 if cell_node.attrib.get("r") and not has_content:
                     refs.append(f"{name}!{cell_node.attrib['r']}")
     return refs
+
+
+def excel_col(index: int) -> str:
+    result = ""
+    index += 1
+    while index:
+        index, rem = divmod(index - 1, 26)
+        result = chr(65 + rem) + result
+    return result
+
+
+def synthetic_sectioned_pricing_workbook_bytes(include_visuals: bool = True) -> bytes:
+    catalog = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
+    rows: list[list[object | None]] = []
+    price_row_numbers: list[int] = []
+    current_section = ""
+
+    for item in catalog["items"]:
+        section = item["section"]
+        if section != current_section:
+            rows.append([item.get("category_order"), None, section])
+            current_section = section
+        row: list[object | None] = [None] * 12
+        row[webapp.SECTIONED_WORKBOOK_COL_DEFAULT_QUANTITY] = item.get("default_quantity")
+        row[webapp.SECTIONED_WORKBOOK_COL_DESCRIPTION] = item["description"]
+        row[webapp.SECTIONED_WORKBOOK_COL_DEFAULT_ESTIMATE] = item.get("default_quote_amount")
+        row[webapp.SECTIONED_WORKBOOK_COL_COST] = item["internal_cost"]
+        row[webapp.SECTIONED_WORKBOOK_COL_GST] = item.get("gst_multiplier")
+        row[webapp.SECTIONED_WORKBOOK_COL_MARKUP] = item["markup_multiplier"]
+        row[webapp.SECTIONED_WORKBOOK_COL_REMARKS] = "; ".join(item.get("remarks") or [])
+        rows.append(row)
+        price_row_numbers.append(len(rows))
+
+    def cell_xml(row_number: int, col_number: int, value: object | None) -> str:
+        if value in (None, ""):
+            return ""
+        ref = f"{excel_col(col_number)}{row_number}"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return f'<c r="{ref}"><v>{value}</v></c>'
+        return f'<c r="{ref}" t="inlineStr"><is><t>{html.escape(str(value))}</t></is></c>'
+
+    sheet_rows = []
+    for row_number, row in enumerate(rows, start=1):
+        cells = "".join(cell_xml(row_number, col_number, value) for col_number, value in enumerate(row))
+        sheet_rows.append(f'<row r="{row_number}">{cells}</row>')
+    drawing = '<drawing r:id="rId1"/>' if include_visuals else ""
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        "<sheetData>"
+        + "".join(sheet_rows)
+        + f"</sheetData>{drawing}</worksheet>"
+    )
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="png" ContentType="image/png"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
+</Types>""")
+        zf.writestr("_rels/.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""")
+        zf.writestr("xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Pricing" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""")
+        zf.writestr("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""")
+        zf.writestr("xl/worksheets/sheet1.xml", worksheet)
+        if include_visuals:
+            zf.writestr("xl/worksheets/_rels/sheet1.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>""")
+            anchors = []
+            rels = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">']
+            for index, row_number in enumerate(price_row_numbers[:6], start=1):
+                rel_id = f"rId{index}"
+                zero_based_row = row_number - 1
+                anchors.append(f"""
+<xdr:twoCellAnchor>
+  <xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{zero_based_row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+  <xdr:to><xdr:col>4</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{zero_based_row + 1}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+  <xdr:pic><xdr:nvPicPr><xdr:cNvPr id="{index}" name="Synthetic visual {index}"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="{rel_id}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr/></xdr:pic>
+  <xdr:clientData/>
+</xdr:twoCellAnchor>""")
+                rels.append(
+                    f'<Relationship Id="{rel_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image{index}.png"/>'
+                )
+                zf.writestr(f"xl/media/image{index}.png", SANITIZED_LOGO_PNG_BYTES)
+            rels.append("</Relationships>")
+            zf.writestr("xl/drawings/drawing1.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"""
+                + "".join(anchors)
+                + "</xdr:wsDr>")
+            zf.writestr("xl/drawings/_rels/drawing1.xml.rels", "\n".join(rels))
+    return buffer.getvalue()
 
 
 def minimal_pricing_reference_xlsx(headers: list[str] | None = None) -> bytes:
@@ -3121,7 +3265,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["items"][0]["id"], "structures-white-painted-walling")
 
     def test_messy_xlsx_import_sends_all_cells_to_ai_context(self):
-        raw = (ROOT / "docs" / "examples" / "super-messy-pricing-reference.xlsx").read_bytes()
+        raw = messy_pricing_reference_xlsx_bytes()
         parsed = {
             "items": [{
                 "section": "Floor Design",
@@ -3137,7 +3281,7 @@ class WebappServerTest(unittest.TestCase):
         with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: "sk-test-redacted" if name == webapp.OPENAI_API_KEY_ENV_NAME else ""), \
                 mock.patch.object(webapp, "request_openai_pricing_catalog_import", return_value=parsed) as request_import:
             result = webapp.pricing_reference_import_preview({
-                "filename": "super-messy-pricing-reference.xlsx",
+                "filename": "synthetic-messy-pricing-reference.xlsx",
                 "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
                 + base64.b64encode(raw).decode("ascii"),
             })
@@ -3165,11 +3309,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("AI did not detect editable pricing rows", result["errors"][0])
 
     def test_v11_pricing_workbook_import_is_deterministic_and_defers_ai_metadata_until_save(self):
-        raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
+        raw = synthetic_sectioned_pricing_workbook_bytes()
         with mock.patch.object(webapp, "request_openai_pricing_catalog_import") as openai_import, \
                 mock.patch.object(webapp, "ai_pricing_reference_metadata_enrichment") as metadata_enrichment:
             result = webapp.pricing_reference_import_preview({
-                "filename": "Quotation-Cost-Template-V1.1.xlsx",
+                "filename": "synthetic-sectioned-pricing.xlsx",
                 "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
                 + base64.b64encode(raw).decode("ascii"),
                 "tax": {"label": "GST", "rate": 0.09},
@@ -3222,9 +3366,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(item["remarks"], ["RIGGING POINT"])
 
     def test_v11_pricing_workbook_import_keeps_selected_currency_when_workbook_has_no_currency(self):
-        raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
+        raw = synthetic_sectioned_pricing_workbook_bytes()
         result = webapp.pricing_reference_import_preview({
-            "filename": "Quotation-Cost-Template-V1.1.xlsx",
+            "filename": "synthetic-sectioned-pricing.xlsx",
             "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
             + base64.b64encode(raw).decode("ascii"),
             "currency": "USD",
@@ -3258,14 +3402,14 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(reference["items"][0]["unit_hint"], "sqm")
 
     def test_v11_pricing_workbook_import_maps_internal_visual_references(self):
-        raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
+        raw = synthetic_sectioned_pricing_workbook_bytes()
         with mock.patch.object(
             webapp,
             "ai_pricing_reference_metadata_enrichment",
             side_effect=lambda filename, items: (fake_ai_metadata_enriched_items(items), []),
         ):
             result = webapp.pricing_reference_import_preview({
-                "filename": "Quotation-Cost-Template-V1.1.xlsx",
+                "filename": "synthetic-sectioned-pricing.xlsx",
                 "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
                 + base64.b64encode(raw).decode("ascii"),
             })
@@ -3285,8 +3429,8 @@ class WebappServerTest(unittest.TestCase):
         combined = json.dumps(visual_items)
         self.assertIn("xl/media/", combined)
         self.assertIn("data:image/", combined)
-        furniture_visual_items = [item for item in visual_items if item["section"] == "Synthetic Graphics"]
-        self.assertTrue(furniture_visual_items)
+        floor_visual_items = [item for item in visual_items if item["section"] == "Synthetic Floors"]
+        self.assertTrue(floor_visual_items)
 
     def test_imported_pricing_reference_visuals_are_saved_as_files_for_prompt_reuse(self):
         reference = {
@@ -3746,8 +3890,11 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("catalog_unit_price", items[0])
 
     def test_koncept_pricing_reference_descriptions_match_clean_v11_workbook_build(self):
-        generated = pricing_catalog.build_catalog_from_xlsx(ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx")
         current = json.loads(KONCEPT_CATALOG.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            workbook = Path(tmp) / "synthetic-sectioned-pricing.xlsx"
+            workbook.write_bytes(synthetic_sectioned_pricing_workbook_bytes(include_visuals=False))
+            generated = pricing_catalog.build_catalog_from_xlsx(workbook)
 
         generated_descriptions = [(item["id"], item["description"]) for item in generated["items"]]
         current_descriptions = [(item["id"], item["description"]) for item in current["items"]]
@@ -3764,9 +3911,9 @@ class WebappServerTest(unittest.TestCase):
             self.assertNotIn(token, catalog_text)
 
     def test_v11_deterministic_rows_use_literal_matching_metadata_before_ai(self):
-        raw = (ROOT / "docs" / "Quotation-Cost-Template-V1.1.xlsx").read_bytes()
+        raw = synthetic_sectioned_pricing_workbook_bytes()
         rows = webapp.sectioned_pricing_reference_rows_from_xlsx_bytes(raw)
-        preview = webapp.validate_pricing_reference_rows(rows, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS), "Quotation-Cost-Template-V1.1.xlsx")
+        preview = webapp.validate_pricing_reference_rows(rows, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS), "synthetic-sectioned-pricing.xlsx")
         items = {item["id"]: item for item in preview["items"]}
 
         carpet = items["synthetic-floors-synthetic-carpet-tile"]
@@ -4637,6 +4784,43 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(result["ai_failed"])
         self.assertIn("OpenAI returned no usable quote basis", "\n".join(result["provider_errors"]))
 
+    def test_draft_quote_basis_treats_remote_clarifications_as_ai_failure(self):
+        payload = valid_payload()
+        payload["line_items"] = []
+        clarification_only_draft = {
+            "analysis_findings": [],
+            "blocking_clarification_questions": [
+                {
+                    "id": "upload-scope",
+                    "question": "Please upload the booth render, plan, elevation, fixture schedule, or itemized scope.",
+                    "answer_type": "text",
+                },
+                {
+                    "id": "confirm-size",
+                    "question": "Please confirm whether the booth size should be 6m x 6m.",
+                    "answer_type": "text",
+                },
+            ],
+            "quote_basis_sections": [],
+            "line_items": [],
+        }
+        keys = {
+            webapp.OPENAI_API_KEY_ENV_NAME: "sk-test-redacted",
+        }
+
+        with mock.patch.object(webapp, "read_dotenv_value", side_effect=lambda name: keys.get(name, "")):
+            with mock.patch.object(webapp, "write_local_log") as write_log:
+                with mock.patch.object(webapp, "request_openai_quote_basis", return_value=clarification_only_draft):
+                    result = webapp.draft_quote_basis(payload)
+
+        logged_events = [call.args[0] for call in write_log.call_args_list]
+        self.assertIn("openai_draft_failed", logged_events)
+        self.assertIn("ai_draft_fallback_used", logged_events)
+        self.assertEqual(result["source"], "local")
+        self.assertTrue(result["ai_failed"])
+        self.assertNotIn("blocking_clarification_questions", result)
+        self.assertIn("clarification questions instead of a usable quote basis", "\n".join(result["provider_errors"]))
+
     def test_draft_quote_basis_uses_local_fallback_when_remote_ai_fails(self):
         payload = valid_payload()
         payload["line_items"] = []
@@ -4890,6 +5074,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("Do not turn visible items", prompt)
         self.assertIn("generic 'please confirm' placeholders", prompt)
         self.assertIn("Every basis line must name the observed", prompt)
+        self.assertIn("do not include blocking_clarification_questions in first-pass analysis", prompt)
+        self.assertIn("so the app can show an analysis failure", prompt)
         self.assertIn("user_feedback", prompt)
         self.assertIn("change the quoted green carpet line to red", prompt)
         self.assertIn("Apply the revision directly", prompt)
@@ -5158,7 +5344,7 @@ class WebappServerTest(unittest.TestCase):
 
         content = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))["input"][0]["content"]
         serialized = json.dumps(content)
-        self.assertIn("Internal catalog reference images follow", serialized)
+        self.assertNotIn("Internal catalog reference images follow", serialized)
         self.assertNotIn("data:image/png;base64,ZmFrZS1jaGFpcg==", serialized)
 
     def test_openai_request_resolves_bundled_catalog_visual_paths(self):
@@ -7343,6 +7529,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "profileDeleteError",
             "cancelProfileDeleteButton",
             "confirmProfileDeleteButton",
+            "outputDeleteModal",
+            "outputDeleteTitle",
+            "outputDeleteText",
+            "cancelOutputDeleteButton",
+            "confirmOutputDeleteButton",
             "presetStatus",
             "aiFailureBanner",
         ):
@@ -7457,6 +7648,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("requestSelectedPresetDelete", js)
         self.assertIn("function renderProfileDeleteModal", js)
         self.assertNotIn('window.confirm(`Delete "${label}"? This removes the saved company profile', js)
+        self.assertIn("Delete output row?", html)
+        self.assertIn("requestOutputRowDelete", js)
+        self.assertIn("function renderOutputDeleteModal", js)
+        self.assertIn("function confirmOutputRowDelete", js)
+        self.assertNotIn("window.confirm(`Delete output row", js)
         self.assertIn('id="importPresetButton"', html)
         self.assertIn('id="exportPresetButton"', html)
         self.assertIn('id="importPresetFile" type="file" accept="application/json,.json" hidden', html)
@@ -7637,6 +7833,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("CSRF_HEADER_NAME", js)
         self.assertIn("/api/session", js)
         self.assertIn("initializeSession", js)
+        self.assertIn("function refreshSessionToken", js)
+        self.assertIn("response.status === 403 && await refreshSessionToken()", js)
+        self.assertIn("return { ok: response.ok, data, status: response.status };", js)
         self.assertIn("state.permissions = { ...state.permissions, ...data.permissions };", js)
         self.assertIn("canManagePricingReferences", js)
         self.assertIn("You do not have access to manage pricing references.", js)
@@ -7654,7 +7853,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("renderBasisFailureState(message)", js)
         self.assertIn(".basis-line-meta", css)
         self.assertIn("grid-template-columns: 26px max-content minmax(0, 1fr) var(--basis-action-width);", css)
-        self.assertIn(".basis-line-possible-matches {\n  display: inline-flex;\n  flex-direction: column;", css)
+        self.assertIn(".basis-line-possible-matches {\n  display: flex;\n  flex-direction: column;", css)
+        self.assertIn("width: fit-content;", css)
         self.assertIn(".basis-line-possible-match {\n  align-self: flex-start;", css)
         self.assertNotIn("grid-template-columns: repeat(3, var(--basis-legend-pill-width));", css)
         self.assertNotIn("grid-template-columns: repeat(3, var(--basis-pill-width));", css)
@@ -8037,10 +8237,15 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("showExcelGeneratingModal", js)
         self.assertIn("hideExcelGeneratingModal", js)
         self.assertIn('elements.sideDownloadButton.addEventListener("click", async (event) => {', js)
+        download_handler = js.split('elements.sideDownloadButton.addEventListener("click", async (event) => {', 1)[1].split("  });", 1)[0]
+        self.assertIn("event.preventDefault();", download_handler)
         self.assertIn("await handleGenerate();", js)
         self.assertIn("downloadCurrentExcelFile();", js)
-        self.assertIn("showExcelGeneratingModal();", js)
-        self.assertIn("hideExcelGeneratingModal();", js)
+        self.assertIn("await waitForUiPaint();", download_handler)
+        self.assertIn("title: \"Downloading Excel\"", download_handler)
+        self.assertIn("downloadCurrentExcelFile(existingFile);", download_handler)
+        self.assertIn("window.setTimeout(hideExcelGeneratingModal, 350);", download_handler)
+        self.assertIn("hideExcelGeneratingModal();", download_handler)
         self.assertIn(".excel-generating-panel", css)
         self.assertNotIn('pricing: ["Pricing", "Price Review", "Catalog matches', js)
         self.assertIn('output: ["Output", "Editable Pricing", "Review quotation rows', js)
@@ -8151,6 +8356,8 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         self.assertIn("Priced rows", summary_body)
         self.assertIn("Needs manual input", summary_body)
         self.assertIn("Subtotal", summary_body)
+        css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".output-stat-card-row .stat-card-value {\n  font-size: 18px;\n  letter-spacing: 0;", css)
         self.assertIn("formatSubtotalValue", js)
         self.assertIn("+ ???", js)
         self.assertNotIn('? "???"', summary_body)
@@ -8526,7 +8733,7 @@ eval([
 ].map(extractFunction).join("\n"));
 
 state.pricingReferences = mergePricingReferences(rawPricingReferences);
-assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Bundled Synthetic", "Company Synthetic"]);
+assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Local One", "Bundled Synthetic", "Company Synthetic"]);
 assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[2]), "workspace-seed::workspace");
 
 assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[3]), "local::local-one");
@@ -8535,8 +8742,8 @@ state.pricingReferenceId = selection.pricingReferenceId;
 state.pricingReferenceSource = selection.source;
 syncSelectedPricingReference();
 assert.strictEqual(state.profileId, "other");
-assert.strictEqual(state.pricingReferenceId, "unique");
-assert.strictEqual(currentPricingReference().label, "Unique");
+assert.strictEqual(state.pricingReferenceId, "local-one");
+assert.strictEqual(currentPricingReference().label, "Local One");
 assert.strictEqual(currentProfile().id, "other");
 assert.strictEqual(resolvedProfileIdForPayload(), "other");
 
@@ -8702,12 +8909,12 @@ const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
 const state = {
   profileId: DEFAULT_PROFILE_ID,
   pricingReferenceId: "new-ref",
-  pricingReferenceSource: "bundled",
+  pricingReferenceSource: "local",
   defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   profiles: [{ id: DEFAULT_PROFILE_ID, default_pricing_reference: DEFAULT_PRICING_REFERENCE_ID }],
   pricingReferences: [
-    { id: "new-ref", label: "New Ref", source: "bundled" },
-    { id: "default-ref", label: "Default Ref", source: "bundled" },
+    { id: "new-ref", label: "New Ref", source: "local" },
+    { id: "default-ref", label: "Default Ref", source: "local" },
   ],
   quoteBasis: { graphics: "Include: retained graphic wall" },
   quoteBasisSections: [{
@@ -8745,7 +8952,7 @@ global.fetch = async (url) => {
   return {
     ok: true,
     json: async () => ({
-      pricing_references: [{ id: "default-ref", label: "Default Ref", source: "bundled" }],
+      pricing_references: [{ id: "default-ref", label: "Default Ref", source: "local" }],
     }),
   };
 };
@@ -8762,7 +8969,7 @@ eval([
 
 (async () => {
   await deleteRepoPricingReference("new-ref");
-  assert.strictEqual(deleteUrl, "/api/settings/pricing-references/new-ref");
+  assert.strictEqual(deleteUrl, "/api/settings/pricing-references/new-ref?source=local");
   assert.strictEqual(state.pricingReferenceId, "default-ref");
   assert.strictEqual(clearGeneratedCount, 0);
   assert.strictEqual(state.quoteBasis.graphics, "Include: retained graphic wall");
@@ -9480,7 +9687,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("Optional starter file for clean manual entry.", html)
         pricing_reference_modal = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
         self.assertLess(pricing_reference_modal.index("Manage"), pricing_reference_modal.index("Import"))
-        self.assertLess(pricing_reference_modal.index("Existing repo references"), pricing_reference_modal.index("Pricing catalog upload"))
+        self.assertLess(pricing_reference_modal.index("Existing local references"), pricing_reference_modal.index("Pricing catalog upload"))
         self.assertLess(pricing_reference_modal.index("Pricing catalog upload"), pricing_reference_modal.index("Pricing reference name"))
         self.assertLess(pricing_reference_modal.index('id="pricingReferencePreview"'), pricing_reference_modal.index("Pricing reference name"))
         self.assertLess(pricing_reference_modal.index("Pricing reference name"), pricing_reference_modal.index("Tax label"))
@@ -10130,6 +10337,7 @@ function escapeHtml(value = "") {
 
 eval([
   "numberOrNull",
+  "unitPriceEditKind",
   "effectiveOutputUnitPrice",
   "formatAmount",
   "recalculateOutputRow",
@@ -10741,8 +10949,9 @@ assert.ok(editStart >= 0);
 assert.ok(saveStart > editStart);
 const editBody = normalizedSource.slice(editStart, saveStart);
 assert.ok(editBody.includes("status.classList.remove(\"is-saving\");") || normalizedSource.includes("status.classList.remove(\"is-saving\");"));
-assert.ok(editBody.indexOf("renderPricingReferencePreview(state.pendingPricingReference);") < editBody.indexOf("capturePricingReferenceEditSnapshot(state.pendingPricingReference);"));
-assert.ok(editBody.indexOf("capturePricingReferenceEditSnapshot(state.pendingPricingReference);") < editBody.indexOf("renderPricingReferenceManageStatus(state.pendingPricingReference);"));
+assert.ok(editBody.includes('layout: "loading-pricing-reference"'));
+assert.ok(editBody.lastIndexOf("renderPricingReferencePreview(state.pendingPricingReference);") < editBody.indexOf("capturePricingReferenceEditSnapshot(state.pendingPricingReference);"));
+assert.ok(editBody.indexOf("capturePricingReferenceEditSnapshot(state.pendingPricingReference);") < editBody.lastIndexOf("renderPricingReferenceManageStatus(state.pendingPricingReference);"));
 assert.ok(normalizedSource.includes("openPricingReferenceTableOverlay();"));
 assert.ok(normalizedSource.includes("event.target === elements.pricingReferenceTableOverlay"));
 """
@@ -11272,6 +11481,21 @@ assert.ok(status.innerHTML.includes("2 pricing rows amended in Review Rows.\n2 p
 assert.ok(status.innerHTML.includes("2 pricing rows still need edit before saving."));
 assert.ok(status.innerHTML.includes(">Review</button>"));
 assert.ok(!status.innerHTML.includes(">Review Rows</button>"));
+
+state.editingPricingReferenceId = "";
+state.pricingReferenceEditNotice = "";
+renderPricingReferenceManageStatus({
+  sourceName: "Koncept Exhibition Quotation",
+  canSave: false,
+  items: [],
+  errors: ["Could not load editable pricing reference rows."],
+});
+
+assert.strictEqual(status.hidden, false);
+assert.strictEqual(status.classList.contains("is-blocked"), true);
+assert.ok(status.innerHTML.includes("Reference unavailable"));
+assert.ok(status.innerHTML.includes("Could not load editable pricing reference rows."));
+assert.ok(!status.innerHTML.includes(">Review</button>"));
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -12495,6 +12719,28 @@ const stats = matchSummaryStats([row]);
 assert.strictEqual(stats.needsManualInput, 1);
 assert.strictEqual(stats.pricedRows, 0);
 assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
+
+const invalidOverrideRow = normalizeOutputRow({
+  section: "Furniture",
+  description: "Round table",
+  quantity: 1,
+  unit: "nos",
+  catalog_unit_price: 60,
+  unit_price_override: "abc",
+  price_mode: "Priced",
+  pricing_keyword: "round-table",
+});
+assert.strictEqual(invalidOverrideRow.amount, "");
+assert.strictEqual(outputCellDisplayValue(invalidOverrideRow, "unit_price_override"), "???");
+assert.strictEqual(outputCellDisplayValue(invalidOverrideRow, "amount"), "???");
+assert.deepStrictEqual(outputRowsValid([invalidOverrideRow]), {
+  valid: false,
+  errors: ["Row 1: Unit price must be a number or Included."],
+});
+const invalidOverrideStats = matchSummaryStats([invalidOverrideRow]);
+assert.strictEqual(invalidOverrideStats.needsManualInput, 1);
+assert.strictEqual(invalidOverrideStats.pricedRows, 0);
+assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -12709,7 +12955,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         build_payload_body = js.split("function buildPayload(options = {})", 1)[1].split("function buildLineItemNormalizePayload()", 1)[0]
 
         self.assertNotIn('filter((reference) => String(reference?.source || "bundled") === "bundled")', render_options_body)
-        self.assertIn('["workspace-seed", "bundled", "company"].includes(source)', merge_references_body)
+        self.assertIn('["workspace-seed", "bundled", "company", "local"].includes(source)', merge_references_body)
         self.assertIn('source: pricingReference.source || "bundled"', build_payload_body)
         self.assertNotIn('source: "bundled",', build_payload_body.split("pricing_reference: pricingReference ? {", 1)[1].split("} :", 1)[0])
 
@@ -13340,7 +13586,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertTrue(quotation_exists)
         self.assertEqual(result["pricing_matches"][0]["keyword"], "synthetic-internal-graphics-row")
 
-    def test_save_pricing_reference_pack_writes_repo_reference_files_and_images(self):
+    def test_save_pricing_reference_pack_writes_local_reference_files_and_images(self):
         data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
         with mock_pricing_metadata_enrichment():
             reference = webapp.normalize_pricing_reference_payload({
@@ -13366,15 +13612,15 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 metadata = json.loads((reference_dir / "reference.json").read_text(encoding="utf-8"))
                 catalog = json.loads((reference_dir / "pricing-catalog.json").read_text(encoding="utf-8"))
                 ai_reference = (reference_dir / "pricing-catalog.ai-reference.md").read_text(encoding="utf-8")
-                pack = webapp.load_pricing_reference_pack("repo-ref")
+                pack = webapp.load_pricing_reference_pack("repo-ref", source="local")
                 rows = webapp.pricing_catalog_prompt_rows_for_payload({
                     "pricing_reference_id": "repo-ref",
-                    "pricing_reference": {"id": "repo-ref", "source": "bundled"},
+                    "pricing_reference": {"id": "repo-ref", "source": "local"},
                 })
                 visual_path = catalog["items"][0]["visual_references"][0]["path"]
                 visual_exists = (reference_dir / visual_path).exists()
 
-        self.assertEqual(saved["source"], "bundled")
+        self.assertEqual(saved["source"], "local")
         self.assertEqual(saved["label"], "Repo Ref")
         self.assertEqual(metadata["label"], "Repo Ref")
         self.assertEqual(metadata["pricing_catalog"], "pricing-catalog.json")
@@ -13389,7 +13635,41 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(pack.public_summary()["label"], "Repo Ref")
         self.assertEqual(rows[0]["description"], "nos. Eames Replica Chair (White)")
 
-    def test_pricing_reference_save_endpoint_writes_repo_pack(self):
+    def test_local_pricing_reference_source_wins_over_workspace_seed_id_collision(self):
+        reference_id = "synthetic-exhibition-fixture-pricing"
+        with mock_pricing_metadata_enrichment():
+            reference = webapp.normalize_pricing_reference_payload({
+                "id": reference_id,
+                "label": "Local Collision Ref",
+                "tax": {"label": "GST", "rate": 0.09},
+                "items": [with_required_pricing_metadata({
+                    "id": "local-collision-row",
+                    "section": "Graphics",
+                    "description": "Local collision graphics",
+                    "unit_hint": "sqm",
+                    "internal_cost": 12,
+                    "markup_multiplier": 2,
+                })],
+            })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(webapp, "pricing_references_root", return_value=Path(tmp)):
+                webapp.save_pricing_reference_pack(reference)
+                payload = {
+                    "pricing_reference_id": reference_id,
+                    "pricing_reference": {"id": reference_id, "source": "local"},
+                }
+                pack = webapp.pricing_reference_pack_for_payload(payload)
+                prompt_rows = webapp.pricing_catalog_prompt_rows_for_payload(payload)
+                lookup = webapp.pricing_catalog_runtime_lookup_for_payload(payload)
+
+        self.assertEqual(pack.source, "local")
+        self.assertEqual(pack.directory, Path(tmp) / reference_id)
+        self.assertEqual(prompt_rows[0]["id"], "local-collision-row")
+        self.assertEqual(prompt_rows[0]["description"], "Local collision graphics")
+        self.assertIn("local-collision-row", lookup)
+
+    def test_pricing_reference_save_endpoint_writes_local_pack(self):
         payload = {
             "id": "endpoint-ref",
             "label": "Endpoint Ref",
@@ -13430,7 +13710,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
         self.assertEqual(body["status"], "saved")
         self.assertEqual(body["metadata_enrichment_status"], "completed")
-        self.assertEqual(body["pricing_reference"]["source"], "bundled")
+        self.assertEqual(body["pricing_reference"]["source"], "local")
         self.assertEqual(metadata["label"], "Endpoint Ref")
         self.assertIn("ai metadata row-1", catalog["items"][0]["match_terms"])
         self.assertIn("ai_family", catalog["items"][0]["object_families"])
@@ -13673,7 +13953,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(catalog_after_blocked["items"][0]["description"], "Printed graphics")
         self.assertEqual(allowed_body["status"], "saved")
 
-    def test_pricing_reference_detail_endpoint_returns_editable_repo_pack(self):
+    def test_pricing_reference_detail_endpoint_returns_editable_local_pack(self):
         with mock_pricing_metadata_enrichment():
             reference = webapp.normalize_pricing_reference_payload({
                 "id": "detail-ref",
@@ -13695,12 +13975,12 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 webapp.save_pricing_reference_pack(reference)
                 with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
                     with LocalRunnerServer() as runner:
-                        response = urllib.request.urlopen(f"{runner.base_url}/api/settings/pricing-references/detail-ref", timeout=3)
+                        response = urllib.request.urlopen(f"{runner.base_url}/api/settings/pricing-references/detail-ref?source=local", timeout=3)
                         body = json.loads(response.read().decode("utf-8"))
 
         detail = body["pricing_reference"]
         self.assertEqual(detail["id"], "detail-ref")
-        self.assertEqual(detail["source"], "bundled")
+        self.assertEqual(detail["source"], "local")
         self.assertEqual(detail["currency"], "USD")
         self.assertEqual(detail["tax"], {"label": "VAT", "rate": 0.2})
         self.assertEqual(detail["item_count"], 1)
@@ -13723,7 +14003,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertTrue(all(item.get("section") for item in detail["items"]))
         self.assertTrue(all(item.get("description") for item in detail["items"]))
 
-    def test_pricing_reference_delete_endpoint_removes_repo_pack(self):
+    def test_pricing_reference_delete_endpoint_removes_local_pack(self):
         with mock_pricing_metadata_enrichment():
             reference = webapp.normalize_pricing_reference_payload({
                 "id": "delete-me-ref",
@@ -13746,7 +14026,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                     with LocalRunnerServer() as runner:
                         session = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
                         request = urllib.request.Request(
-                            f"{runner.base_url}/api/settings/pricing-references/delete-me-ref",
+                            f"{runner.base_url}/api/settings/pricing-references/delete-me-ref?source=local",
                             headers={session["csrf_header"]: session["csrf_token"]},
                             method="DELETE",
                         )
@@ -14062,14 +14342,14 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "items": [company_item],
             })
             with mock.patch.object(webapp, "company_config_store", return_value=store):
-                bundled_payload = {
+                workspace_payload = {
                     "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
-                    "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "bundled"},
+                    "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "workspace-seed"},
                 }
-                bundled_rows = webapp.pricing_catalog_prompt_rows_for_payload(bundled_payload)
-                self.assertTrue(bundled_rows)
-                self.assertNotIn("company-collision-row", {row["id"] for row in bundled_rows})
-                self.assertNotIn("Company-only collision catalogue item", {row["description"] for row in bundled_rows})
+                workspace_rows = webapp.pricing_catalog_prompt_rows_for_payload(workspace_payload)
+                self.assertTrue(workspace_rows)
+                self.assertNotIn("company-collision-row", {row["id"] for row in workspace_rows})
+                self.assertNotIn("Company-only collision catalogue item", {row["description"] for row in workspace_rows})
 
                 company_payload = {
                     "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
@@ -14078,7 +14358,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 company_rows = webapp.pricing_catalog_prompt_rows_for_payload(company_payload)
                 self.assertIn("company-collision-row", {row["id"] for row in company_rows})
                 self.assertIn("Company-only collision catalogue item", {row["description"] for row in company_rows})
-                self.assertNotEqual(company_rows, bundled_rows)
+                self.assertNotEqual(company_rows, workspace_rows)
 
     def test_deploy_generate_response_omits_local_paths_and_raw_process_output(self):
         payload = valid_payload()
