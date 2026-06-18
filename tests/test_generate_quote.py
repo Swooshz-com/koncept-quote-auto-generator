@@ -286,6 +286,14 @@ def dimension_last_row(sheet):
     return int(match.group(1)) if match else 0
 
 
+def style_counts(styles_root):
+    counts = {}
+    for name in ("cellXfs", "fonts", "fills", "borders", "numFmts"):
+        node = styles_root.find(f"{NS_MAIN}{name}")
+        counts[name] = int(node.attrib.get("count", len(node))) if node is not None else 0
+    return counts
+
+
 def xml_local_name(node):
     return node.tag.rsplit("}", 1)[-1]
 
@@ -689,12 +697,45 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         if "rowBreaks" in child_names and "drawing" in child_names:
             self.assertLess(child_names.index("rowBreaks"), child_names.index("drawing"))
 
+    def test_workspace_seed_layout_template_keeps_quote_formatting_shell(self):
+        with zipfile.ZipFile(KONCEPT_LAYOUT) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+            names = set(zf.namelist())
+
+        widths = column_widths(sheet)
+        rows = sheet.findall(f"{NS_MAIN}sheetData/{NS_MAIN}row")
+        counts = style_counts(styles)
+
+        self.assertGreaterEqual(len(rows), 100)
+        self.assertEqual(
+            sum(1 for row in rows if row.attrib.get("customHeight") == "1"),
+            99,
+        )
+        self.assertEqual(sum(len(row.findall(f"{NS_MAIN}c")) for row in rows), 0)
+        self.assertEqual(widths[1], "6.125")
+        self.assertEqual(widths[2], "10.5")
+        self.assertEqual(widths[3], "49.375")
+        self.assertEqual(widths[4], "14")
+        self.assertEqual(widths[5], "15.5")
+        self.assertIn("A16:C16", merge_refs(sheet))
+        self.assertIsNotNone(sheet.find(f"{NS_MAIN}pageMargins"))
+        self.assertIsNotNone(sheet.find(f"{NS_MAIN}pageSetup"))
+        self.assertIsNone(sheet.find(f"{NS_MAIN}headerFooter"))
+        self.assertEqual(counts["cellXfs"], 99)
+        self.assertEqual(counts["fonts"], 22)
+        self.assertEqual(counts["numFmts"], 8)
+        self.assertFalse(any(name.startswith("docProps/") for name in names))
+        self.assertNotIn("xl/sharedStrings.xml", names)
+        self.assertNotIn("xl/calcChain.xml", names)
+
     def test_generated_layout_completes_sparse_template_formatting(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
 
         with zipfile.ZipFile(path) as zf:
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
 
         widths = column_widths(sheet)
         rows_by_number = {
@@ -705,6 +746,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         page_setup = sheet.find(f"{NS_MAIN}pageSetup")
         page_margins = sheet.find(f"{NS_MAIN}pageMargins")
         header_footer = sheet.find(f"{NS_MAIN}headerFooter")
+        counts = style_counts(styles)
 
         self.assertIsNotNone(sheet.find(f"{NS_MAIN}sheetPr"))
         self.assertEqual(sheet.find(f"{NS_MAIN}sheetFormatPr").attrib.get("defaultRowHeight"), "17")
@@ -722,6 +764,9 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(page_setup.attrib.get("orientation"), "portrait")
         self.assertEqual(page_margins.attrib.get("top"), "0.74803149606299213")
         self.assertEqual(header_footer.attrib.get("alignWithMargins"), "0")
+        self.assertEqual(counts["cellXfs"], 123)
+        self.assertEqual(counts["fonts"], 37)
+        self.assertEqual(counts["numFmts"], 8)
         self.assertGreaterEqual(last_row, 40)
         self.assertEqual(
             [

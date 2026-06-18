@@ -8026,21 +8026,32 @@ function wireEvents() {
   elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);
   elements.sideNextButton.addEventListener("click", goToNextSidePanel);
   elements.sideDownloadButton.addEventListener("click", async (event) => {
+    event.preventDefault();
     if (elements.sideDownloadButton.getAttribute("aria-disabled") === "true") {
-      event.preventDefault();
       const validation = outputRowsValid();
       if (!validation.valid) renderOutputValidationMessages(validation.errors);
       return;
     }
+    const existingFile = state.downloadFile;
+    showExcelGeneratingModal(existingFile?.url ? {
+      eyebrow: "Quotation export",
+      title: "Downloading Excel",
+      message: "Preparing the workbook download.",
+    } : undefined);
+    await waitForUiPaint();
     if (!state.downloadFile?.url) {
-      event.preventDefault();
-      showExcelGeneratingModal();
       try {
         await handleGenerate();
         downloadCurrentExcelFile();
       } finally {
         hideExcelGeneratingModal();
       }
+      return;
+    }
+    try {
+      downloadCurrentExcelFile(existingFile);
+    } finally {
+      window.setTimeout(hideExcelGeneratingModal, 350);
     }
   });
   document.addEventListener("keydown", (event) => {
