@@ -588,32 +588,6 @@ h3 {
   line-height: 1.45;
 }
 
-.active-workspace-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  width: min(100%, var(--workspace-content-width));
-  margin: 0 auto 12px;
-  padding: 0 17px;
-  color: #52677e;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.active-workspace-summary span {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.active-workspace-summary strong {
-  min-width: 0;
-  color: #10223b;
-  font-size: 13px;
-  font-weight: 750;
-  overflow-wrap: anywhere;
-}
-
 .workspace-pane-header-actions {
   display: flex;
   align-items: center;
@@ -1100,7 +1074,7 @@ h3 {
 
 .company-preset-panel {
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px);
+  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
@@ -1176,11 +1150,11 @@ h3 {
   grid-column: 2;
 }
 
-.company-preset-panel .company-preset-profile-card {
+.company-preset-profile-card {
   grid-column: 2;
 }
 
-.company-preset-panel .company-preset-save-card {
+.company-preset-save-card {
   grid-column: 3;
 }
 
@@ -1238,13 +1212,6 @@ h3 {
 
 .company-preset-file-actions {
   margin-top: 0;
-}
-
-.profile-management-controls.company-preset-save-card {
-  display: grid;
-  grid-column: auto;
-  gap: 12px;
-  height: auto;
 }
 
 .company-preset-panel .primary-button,
@@ -2406,63 +2373,6 @@ select:focus {
   min-height: 38px;
   padding: 0 10px;
   font-size: 13px;
-}
-
-.settings-status-section,
-.profile-management-section {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #d1dae5;
-  border-radius: var(--radius-md);
-  background: #ffffff;
-}
-
-.settings-status-heading {
-  display: grid;
-  gap: 4px;
-}
-
-.settings-status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.settings-status-grid > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius-sm);
-  background: #f8fbff;
-}
-
-.settings-status-grid span {
-  color: #52677e;
-  font-size: 11px;
-  font-weight: 760;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.settings-status-grid strong {
-  min-width: 0;
-  color: #10223b;
-  font-size: 13px;
-  font-weight: 750;
-  overflow-wrap: anywhere;
-}
-
-.profile-management-section .profile-management-controls {
-  box-shadow: none;
-}
-
-.profile-management-section .company-preset-file-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
 }
 
 .danger-button {
@@ -4715,9 +4625,6 @@ body.privacy-page {
   .pricing-reference-control-group,
   .company-preset-panel,
   .company-preset-controls,
-  .active-workspace-summary,
-  .settings-status-grid,
-  .profile-management-section .company-preset-file-actions,
   .pricing-reference-panel .settings-note,
   .company-preset-panel .settings-note {
     justify-items: stretch;
@@ -4730,10 +4637,7 @@ body.privacy-page {
   .pricing-reference-controls,
   .pricing-reference-control-group,
   .company-preset-panel,
-  .company-preset-controls,
-  .active-workspace-summary,
-  .settings-status-grid,
-  .profile-management-section .company-preset-file-actions {
+  .company-preset-controls {
     grid-template-columns: 1fr;
   }
 

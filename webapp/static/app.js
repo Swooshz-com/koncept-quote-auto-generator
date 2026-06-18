@@ -247,9 +247,6 @@ const elements = {
   sideDrawerTitle: qs("#sideDrawerTitle"),
   sideDrawerEyebrow: qs("#sideDrawerEyebrow"),
   sideDrawerSubtitle: qs("#sideDrawerSubtitle"),
-  activeCompanyName: qs("#activeCompanyName"),
-  activeProfileSummary: qs("#activeProfileSummary"),
-  activePricingSummary: qs("#activePricingSummary"),
   sampleDetailsButton: qs("#sampleDetailsButton"),
   clientName: qs("#clientName"),
   clientAttention: qs("#clientAttention"),
@@ -304,7 +301,6 @@ const elements = {
   resetQuoteBasisButton: qs("#resetQuoteBasisButton"),
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
-  presetFlowStatus: qs("#presetFlowStatus"),
   presetSourceBadge: qs(".company-preset-source-badge"),
   profileDeleteModal: qs("#profileDeleteModal"),
   profileDeleteTitle: qs("#profileDeleteTitle"),
@@ -365,19 +361,11 @@ const elements = {
   pricingReferenceAddRowButton: qs("#pricingReferenceAddRowButton"),
   pricingReferenceUndoButton: qs("#pricingReferenceUndoButton"),
   settingsButton: qs("#settingsButton"),
-  settingsActiveCompany: qs("#settingsActiveCompany"),
-  settingsWorkspaceId: qs("#settingsWorkspaceId"),
-  settingsActiveProfile: qs("#settingsActiveProfile"),
-  settingsActiveProfileSource: qs("#settingsActiveProfileSource"),
-  settingsActivePricingReference: qs("#settingsActivePricingReference"),
-  settingsPricingSource: qs("#settingsPricingSource"),
-  settingsTemplateSource: qs("#settingsTemplateSource"),
   pricingReferenceTaxLabel: qs("#pricingReferenceTaxLabel"),
   pricingReferenceTaxRate: qs("#pricingReferenceTaxRate"),
   pricingReferenceCurrency: qs("#pricingReferenceCurrency"),
   pricingReferenceCurrencyCustom: qs("#pricingReferenceCurrencyCustom"),
   selectedPricingReferenceSummary: qs("#selectedPricingReferenceSummary"),
-  selectedPricingReferenceSourceBadge: qs(".pricing-reference-source-badge"),
   selectedPricingReferenceCurrency: qs("#selectedPricingReferenceCurrency"),
   selectedPricingReferenceTax: qs("#selectedPricingReferenceTax"),
   outputSortMode: qs("#outputSortMode"),
@@ -425,26 +413,14 @@ function syncAnalysisCreditLabels() {
   }
 }
 
-const PRICING_REFERENCE_SOURCE_LABELS = {
-  "workspace-seed": "Workspace seed",
-  bundled: "Repo catalog",
-  company: "Saved company",
-  local: "Local",
-};
-
-function pricingReferenceSourceValue(reference = {}) {
-  const source = String(reference?.source || "bundled").trim() || "bundled";
-  return ["workspace-seed", "bundled", "company", "local"].includes(source) ? source : "bundled";
-}
-
-function pricingReferenceSourceLabel(reference = {}) {
-  return PRICING_REFERENCE_SOURCE_LABELS[pricingReferenceSourceValue(reference)] || "Repo catalog";
-}
-
 function pricingReferenceSelectValue(reference = {}) {
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "";
-  const source = pricingReferenceSourceValue(reference);
+  const source = reference.source === "workspace-seed"
+    ? "workspace-seed"
+    : reference.source === "company"
+      ? "company"
+      : reference.source === "local" ? "local" : "bundled";
   return `${source}::${referenceId}`;
 }
 
@@ -463,10 +439,9 @@ function pricingReferenceSelectionFromValue(value = "") {
 
 function mergePricingReferences(bundled = []) {
   const seen = new Set();
-  const allowedQuoteSources = new Set(["workspace-seed", "bundled"]);
   return [...bundled].filter((reference) => {
-    const source = pricingReferenceSourceValue(reference);
-    if (!allowedQuoteSources.has(source)) return false;
+    const source = String(reference?.source || "bundled").trim() || "bundled";
+    if (!["workspace-seed", "bundled"].includes(source)) return false;
     const key = pricingReferenceSelectValue(reference);
     if (!key || seen.has(key)) return false;
     seen.add(key);
@@ -1428,11 +1403,8 @@ function renderSelectedPricingReferenceSummary() {
   const taxText = `${tax.label} ${taxRatePercentText(tax.rate)}%`;
   if (elements.selectedPricingReferenceSummary) {
     elements.selectedPricingReferenceSummary.textContent = reference
-      ? `${pricingReferenceSourceLabel(reference)} pricing pack. Manage references in Settings.`
+      ? "Managed in Settings."
       : "Select a pricing reference.";
-  }
-  if (elements.selectedPricingReferenceSourceBadge) {
-    elements.selectedPricingReferenceSourceBadge.textContent = reference ? pricingReferenceSourceLabel(reference) : "Pricing reference";
   }
   if (elements.selectedPricingReferenceCurrency) elements.selectedPricingReferenceCurrency.textContent = currency;
   if (elements.selectedPricingReferenceTax) elements.selectedPricingReferenceTax.textContent = taxText;
@@ -1440,97 +1412,6 @@ function renderSelectedPricingReferenceSummary() {
   if (elements.taxRate) elements.taxRate.value = taxRatePercentText(tax.rate);
   updatePricingReferenceDeleteButton();
   updateOutputHeader();
-  renderWorkspaceStatus();
-}
-
-function workspaceCompanyDisplayName() {
-  const company = state.workspace?.company || {};
-  return String(company.display_name || company.name || company.slug || company.id || "Koncept Images Pte Ltd").trim();
-}
-
-function workspaceIdDisplayName() {
-  const workspace = state.workspace?.workspace || {};
-  const company = state.workspace?.company || {};
-  return String(workspace.slug || workspace.id || company.slug || company.id || "koncept-images-pte-ltd").trim();
-}
-
-function workspaceRuntimeDependency(name = "") {
-  const dependencies = state.workspace?.runtime_dependencies || {};
-  const dependency = dependencies[name];
-  return dependency && typeof dependency === "object" ? dependency : {};
-}
-
-function dependencySourceLabel(source = "") {
-  const value = String(source || "").trim();
-  const labels = {
-    "workspace-store": "Workspace saved profile",
-    "company-store": "Workspace saved profile",
-    "quote-company-profile": "Quote-company profile",
-    "workspace-seed-profile-pack": "Workspace seed profile pack",
-    "workspace-profile-pack": "Workspace profile pack",
-    "workspace-seed-pricing-reference": "Workspace seed pricing reference",
-    "workspace-pricing-reference-pack": "Workspace pricing reference pack",
-    "bundled-profile": "Repo profile fixture",
-    "bundled-profile-preset": "Repo profile preset",
-    bundled: "Repo catalog fixture",
-  };
-  if (labels[value]) return labels[value];
-  return value ? value.replace(/[-_]+/g, " ") : "Workspace setting";
-}
-
-function resourceDetailLabel(label = "", id = "") {
-  const cleanLabel = String(label || "").trim();
-  const cleanId = String(id || "").trim();
-  if (!cleanId) return cleanLabel || "Not selected";
-  if (!cleanLabel || cleanLabel === cleanId) return cleanId;
-  return `${cleanLabel} (${cleanId})`;
-}
-
-function selectedPresetSourceLabel(preset = selectedPreset()) {
-  if (preset?.source === "company") return "Saved/imported workspace profile";
-  if (preset?.source === "profile") return "Profile template";
-  return "No quote-company profile selected";
-}
-
-function activeProfileDisplayLabel() {
-  const preset = selectedPreset();
-  if (preset) return resourceDetailLabel(preset.name, preset.id);
-  const profile = currentProfile();
-  return resourceDetailLabel(profile.label, profile.id);
-}
-
-function renderWorkspaceStatus() {
-  const companyName = workspaceCompanyDisplayName();
-  const workspaceId = workspaceIdDisplayName();
-  const preset = selectedPreset();
-  const profileLabel = preset ? preset.name || preset.id : currentProfile()?.label || currentProfile()?.id || "Profile template";
-  const profileSource = selectedPresetSourceLabel(preset);
-  const pricingReference = currentPricingReference();
-  const pricingLabel = pricingReference ? pricingReference.label || pricingReference.id : "Pricing reference";
-  const pricingSource = pricingReference ? pricingReferenceSourceLabel(pricingReference) : "Pricing reference";
-  const layoutDependency = workspaceRuntimeDependency("quotation_layout");
-  const layoutProfileId = layoutDependency.profile_id || layoutDependency.id || state.defaultProfileId || currentProfile()?.id || "";
-  const templateSource = `${dependencySourceLabel(layoutDependency.source)}${layoutProfileId ? ` (${layoutProfileId})` : ""}`;
-
-  if (elements.activeCompanyName) elements.activeCompanyName.textContent = companyName;
-  if (elements.activeProfileSummary) elements.activeProfileSummary.textContent = `${profileLabel} - ${profileSource}`;
-  if (elements.activePricingSummary) elements.activePricingSummary.textContent = `${pricingLabel} - ${pricingSource}`;
-  if (elements.sideDrawerEyebrow) elements.sideDrawerEyebrow.textContent = companyName;
-  if (elements.settingsActiveCompany) elements.settingsActiveCompany.textContent = companyName;
-  if (elements.settingsWorkspaceId) elements.settingsWorkspaceId.textContent = workspaceId;
-  if (elements.settingsActiveProfile) elements.settingsActiveProfile.textContent = activeProfileDisplayLabel();
-  if (elements.settingsActiveProfileSource) elements.settingsActiveProfileSource.textContent = profileSource;
-  if (elements.settingsActivePricingReference) {
-    elements.settingsActivePricingReference.textContent = pricingReference
-      ? resourceDetailLabel(pricingReference.label, pricingReference.id)
-      : "Not selected";
-  }
-  if (elements.settingsPricingSource) {
-    elements.settingsPricingSource.textContent = pricingReference
-      ? `${pricingSource}${pricingReference.source === "workspace-seed" ? " (workspace-owned pack)" : ""}`
-      : "Not selected";
-  }
-  if (elements.settingsTemplateSource) elements.settingsTemplateSource.textContent = templateSource;
 }
 
 function todayDateInputValue(date = new Date()) {
@@ -2308,10 +2189,8 @@ function presetValueFromQuoteDetails(savedDetails = {}) {
 }
 
 function renderPresetStatus(message = "") {
-  const flowMessage = message || "Use the selected profile for this quote. Manage saved/imported profiles in Settings.";
-  const settingsMessage = message || "Import, export, save, or delete saved quote-company profiles for this local workspace.";
-  if (elements.presetFlowStatus) elements.presetFlowStatus.textContent = flowMessage;
-  if (elements.presetStatus) elements.presetStatus.textContent = settingsMessage;
+  if (!elements.presetStatus) return;
+  elements.presetStatus.textContent = message || "Load a template, or save/import/export a reusable company profile.";
 }
 
 function renderHeaderLogoPreview() {
@@ -2352,15 +2231,10 @@ function renderPresetOptions() {
   state.selectedPresetValue = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
   elements.presetSelect.value = state.selectedPresetValue;
   updatePresetButtons();
-  renderWorkspaceStatus();
 }
 
 function canManageProfiles() {
   return Boolean(state.permissions?.canManageProfiles);
-}
-
-function canManageSettings() {
-  return Boolean(state.permissions?.canManageSettings || state.permissions?.canManageProfiles || state.permissions?.canManagePricingReferences);
 }
 
 function profileNoAccessReason() {
@@ -2387,7 +2261,6 @@ function updatePresetButtons() {
   const busy = Boolean(state.profileSaveBusy || state.profileDeleteBusy || appIsBusy());
   const canManage = canManageProfiles();
   updatePresetSourceBadge(preset);
-  renderWorkspaceStatus();
   if (elements.loadPresetButton) {
     elements.loadPresetButton.disabled = !preset || busy;
     elements.loadPresetButton.title = preset ? "" : "Choose a preset to load.";
@@ -2444,7 +2317,7 @@ async function saveCurrentPreset() {
   const payload = {
     id: profileId,
     label,
-    description: "Saved from Workspace Settings.",
+    description: "Saved from the Quote Company panel.",
     defaults: collectQuoteCompanyProfileDetails(),
   };
   state.profileSaveBusy = true;
@@ -2727,7 +2600,7 @@ function exportedCompanyProfilePayload(label = "") {
     profile: {
       id: safeProfileId(resolvedLabel, `profile-${Date.now().toString(36)}`),
       label: resolvedLabel,
-      description: "Exported from Swooshz Workspace Settings.",
+      description: "Exported from the Swooshz Quote Company panel.",
       defaults: collectQuoteCompanyProfileDetails(),
     },
   };
@@ -3179,8 +3052,7 @@ function showPricingReferenceDeleteConfirm(reference) {
 }
 
 function openSettingsModal() {
-  if (!canManageSettings()) return;
-  renderWorkspaceStatus();
+  if (!canManagePricingReferences()) return;
   openPricingReferenceModal();
 }
 
@@ -3890,12 +3762,11 @@ function setPricingReferenceSaveButtonState(options = {}) {
 }
 
 function setPricingReferenceModalAccessState() {
-  const canViewSettings = canManageSettings();
-  const canManagePricing = canManagePricingReferences();
-  if (elements.pricingReferenceNoAccess) elements.pricingReferenceNoAccess.hidden = canViewSettings;
-  if (elements.pricingReferenceEditorBody) elements.pricingReferenceEditorBody.hidden = !canViewSettings;
-  if (elements.pricingReferenceCancelButton) elements.pricingReferenceCancelButton.textContent = canViewSettings ? "Cancel" : "Back";
-  if (!canManagePricing) {
+  const canManage = canManagePricingReferences();
+  if (elements.pricingReferenceNoAccess) elements.pricingReferenceNoAccess.hidden = canManage;
+  if (elements.pricingReferenceEditorBody) elements.pricingReferenceEditorBody.hidden = !canManage;
+  if (elements.pricingReferenceCancelButton) elements.pricingReferenceCancelButton.textContent = canManage ? "Cancel" : "Back";
+  if (!canManage) {
     state.pendingPricingReference = null;
     state.pricingReferenceImportBusy = false;
     state.pricingReferenceSaveBusy = false;
@@ -3903,9 +3774,9 @@ function setPricingReferenceModalAccessState() {
   }
   setPricingReferenceSaveButtonState({
     canSave: false,
-    reason: canManagePricing ? pricingReferenceSaveBlockReason(state.pendingPricingReference) : pricingReferenceNoAccessReason(),
+    reason: canManage ? pricingReferenceSaveBlockReason(state.pendingPricingReference) : pricingReferenceNoAccessReason(),
   });
-  return canManagePricing;
+  return canManage;
 }
 
 function blockPricingReferenceBusyInteraction(event) {
@@ -4467,7 +4338,6 @@ function exportSelectedPricingReference(event) {
 }
 
 function openPricingReferenceModal() {
-  renderWorkspaceStatus();
   stopElapsedTimer("pricingReferenceImportElapsed");
   stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
@@ -4973,7 +4843,7 @@ function buildLineItemNormalizePayload() {
       currency: selectedPricingReferenceCurrency(),
     } : {
       id: state.pricingReferenceId || "",
-      source: state.pricingReferenceSource || "bundled",
+      source: "bundled",
       tax: selectedPricingReferenceTax(),
       currency: selectedPricingReferenceCurrency(),
     },
@@ -7376,10 +7246,10 @@ function syncControlStates() {
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
   if (elements.settingsButton) {
-    const canManage = canManageSettings();
+    const canManage = canManagePricingReferences();
     elements.settingsButton.hidden = false;
     elements.settingsButton.disabled = busy || !canManage;
-    elements.settingsButton.title = canManage ? "Workspace settings" : "You do not have access to workspace settings.";
+    elements.settingsButton.title = canManage ? "Pricing reference settings" : pricingReferenceNoAccessReason();
     elements.settingsButton.setAttribute("aria-disabled", String(elements.settingsButton.disabled));
   }
   updatePresetButtons();
