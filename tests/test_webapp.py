@@ -12776,8 +12776,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 workspace_profile = webapp.workspace_quote_company_profile()
                 resolved_payload = webapp.payload_with_workspace_quote_profile_defaults(payload)
 
-        self.assertEqual(workspace_profile["source"], "bundled-profile-preset")
-        self.assertEqual(workspace_profile["id"], "synthetic-fixture-default")
+        self.assertIsNone(workspace_profile)
         self.assertEqual(resolved_payload["company"]["name"], "")
         self.assertNotIn("logo_data_url", resolved_payload["company"])
 
@@ -12911,8 +12910,8 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(result["status"], "completed")
         self.assertIn(str(KONCEPT_WORKSPACE_CATALOG), command)
         self.assertIn(str(KONCEPT_WORKSPACE_LAYOUT), command)
-        self.assertNotIn(str(KONCEPT_CATALOG), command)
-        self.assertNotIn(str(KONCEPT_LAYOUT), command)
+        self.assertNotIn(str(LEGACY_BUNDLED_PRICING_REFERENCE / "pricing-catalog.json"), command)
+        self.assertNotIn(str(LEGACY_BUNDLED_PROFILE / "quotation-layout.xlsx"), command)
 
     def test_exported_quote_company_profile_imports_to_koncept_workspace_store(self):
         exported_profile = {
