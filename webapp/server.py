@@ -109,7 +109,7 @@ def discovered_default_pricing_reference_id(
 
 def workspace_seed_default_resource_ids(seed_path: Path) -> tuple[str, str]:
     try:
-        seed = json.loads(seed_path.read_text(encoding="utf-8"))
+        seed = json.loads(seed_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         seed = {}
     profile_presets = seed.get("profile_presets") if isinstance(seed.get("profile_presets"), dict) else {}
@@ -5501,7 +5501,7 @@ def normalize_workspace_seed(raw: dict[str, Any] | None) -> dict[str, Any]:
 
 def load_workspace_seed(workspace_id: str | None = None) -> dict[str, Any]:
     try:
-        raw = json.loads(workspace_seed_path(workspace_id).read_text(encoding="utf-8"))
+        raw = json.loads(workspace_seed_path(workspace_id).read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         raw = {}
     return normalize_workspace_seed(raw)
@@ -5831,7 +5831,7 @@ def pricing_reference_id_from_payload(payload: dict[str, Any]) -> str:
 
 def load_json_file(path: Path) -> dict[str, Any]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -6159,8 +6159,8 @@ def list_bundled_pricing_references() -> list[dict[str, Any]]:
                 clean_text(item.get("id")).casefold(),
             ),
         )
-    reference = load_pricing_reference_pack(DEFAULT_PRICING_REFERENCE_ID)
-    return [reference.public_summary()]
+    reference = load_pricing_reference_pack(BUNDLED_DEFAULT_PRICING_REFERENCE_ID)
+    return [reference.public_summary()] if reference.config and reference.source == "bundled" else []
 
 
 def list_workspace_pricing_references(workspace: dict[str, Any] | None = None) -> list[dict[str, Any]]:
