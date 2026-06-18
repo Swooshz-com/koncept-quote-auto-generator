@@ -32,6 +32,7 @@ NS_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawi
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 NS_PACKAGE_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+NS_CONTENT_TYPES = "{http://schemas.openxmlformats.org/package/2006/content-types}"
 NS_CP = "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}"
 NS_DC = "{http://purl.org/dc/elements/1.1/}"
 NS_MC_IGNORABLE = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable"
@@ -185,6 +186,13 @@ def empty_content_types_xml():
         b'<?xml version="1.0" encoding="UTF-8"?>'
         b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types" />'
     )
+
+
+def content_type_overrides(root):
+    return {
+        child.attrib.get("PartName"): child.attrib.get("ContentType")
+        for child in root.findall(f"{NS_CONTENT_TYPES}Override")
+    }
 
 
 def cell_style(root, ref):
@@ -804,6 +812,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             core_xml = zf.read("docProps/core.xml").decode("utf-8")
             core = ET.fromstring(core_xml)
             root_rels = ET.fromstring(zf.read("_rels/.rels"))
+            content_types = ET.fromstring(zf.read("[Content_Types].xml"))
             workbook_xml = zf.read("xl/workbook.xml").decode("utf-8")
 
         creator = core.find(f"{NS_DC}creator")
@@ -824,6 +833,10 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 "docProps/core.xml",
             ),
             root_relationships,
+        )
+        self.assertEqual(
+            content_type_overrides(content_types).get("/docProps/core.xml"),
+            "application/vnd.openxmlformats-package.core-properties+xml",
         )
         self.assertNotIn("absPath", workbook_xml)
         self.assertNotIn("/Users/", workbook_xml)

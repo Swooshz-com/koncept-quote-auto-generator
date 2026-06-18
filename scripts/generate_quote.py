@@ -1383,12 +1383,37 @@ def clear_ooxml_range(root: ET.Element, min_row: int, max_row: int, min_col: int
                 row.remove(cell)
 
 
+def ensure_content_type_override(parts: dict[str, bytes], part_name: str, content_type: str) -> None:
+    content_types_name = "[Content_Types].xml"
+    part_name = "/" + part_name.lstrip("/")
+    if content_types_name in parts:
+        root = ET.fromstring(parts[content_types_name])
+    else:
+        root = ET.Element(f"{NS_CONTENT_TYPES}Types")
+    for child in root.findall(f"{NS_CONTENT_TYPES}Override"):
+        if child.attrib.get("PartName") == part_name:
+            child.attrib["ContentType"] = content_type
+            break
+    else:
+        ET.SubElement(
+            root,
+            f"{NS_CONTENT_TYPES}Override",
+            {"PartName": part_name, "ContentType": content_type},
+        )
+    parts[content_types_name] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
 def sanitize_core_properties(parts: dict[str, bytes]) -> None:
     core = ET.Element(f"{{{XMLNS_CP}}}coreProperties")
     tool_name = "Swooshz Quote Generator"
     ET.SubElement(core, f"{{{XMLNS_DC}}}creator").text = tool_name
     ET.SubElement(core, f"{{{XMLNS_CP}}}lastModifiedBy").text = tool_name
     parts["docProps/core.xml"] = ET.tostring(core, encoding="utf-8", xml_declaration=True)
+    ensure_content_type_override(
+        parts,
+        "/docProps/core.xml",
+        "application/vnd.openxmlformats-package.core-properties+xml",
+    )
     rels_name = "_rels/.rels"
     rels_root = ET.fromstring(parts[rels_name]) if rels_name in parts else empty_relationships_root()
     has_core_rel = False
