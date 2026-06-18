@@ -107,7 +107,7 @@ function firstNonSpaceChar(text) {
 
 function safeReferenceId(value) {
   const text = String(value || "").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return text || "koncept-exhibition-quotation";
+  return text || "synthetic-exhibition-fixture-pricing";
 }
 
 function catalogDescriptionForDisplay(value) {

@@ -1,12 +1,12 @@
-# Sensitive Fixture Audit And Cleanup Preparation
+# Sensitive Fixture Current-Tree Cleanup
 
-This is a non-UI cleanup preparation note for KQAG committed fixtures and repo
-packs. It does not authorize production deployment, auth, billing, public
-exposure, or history rewrite work.
+This is a non-UI current-tree cleanup note for KQAG committed fixtures and repo
+packs after PR #38. It does not authorize production deployment, auth, billing,
+public exposure, or history rewrite work.
 
 ## Scope
 
-Audited committed fixture/export-like surfaces:
+Audited committed fixture/export-like surfaces and cleanup targets:
 
 - `profiles/koncept/**`
 - `pricing-references/koncept-exhibition-quotation/**`
@@ -22,17 +22,19 @@ fixture replacements.
 ## Audit Summary
 
 The scanner reports path and category only. It does not print matched values.
-The current committed tree has no blocking scanner findings and has review
-findings in these categories:
+The cleaned committed tree is expected to have no blocking scanner findings.
+Current-tree cleanup handled the review categories below by removal,
+replacement, or documented sample-only retention:
 
 | Category | Paths |
 | --- | --- |
-| Company/workspace identity markers | `workspace-seeds/koncept-images-pte-ltd/workspace.json`, selected planning/checklist docs |
-| Customer/sample markers | `fixtures/samples/kent-group/sample.json`, `fixtures/samples/kent-group/kent-group.pdf`, selected planning docs |
-| Internal pricing fields | `pricing-references/koncept-exhibition-quotation/pricing-catalog.json`, `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/pricing-catalog.json`, pricing import docs |
-| Committed fixture media | `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/**`, `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/pricing-catalog-images/**` |
-| Embedded logo/reference fields | `profiles/koncept/profile.json` |
-| XLSX package internals requiring review | `profiles/koncept/quotation-layout.xlsx`, `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/quotation-layout.xlsx`, `docs/Quotation-Cost-Template-V1.1.xlsx`, `docs/examples/super-messy-pricing-reference.xlsx` |
+| Removed legacy bundled profile pack | `profiles/koncept/**` |
+| Removed legacy bundled pricing pack | `pricing-references/koncept-exhibition-quotation/**` |
+| Renamed synthetic workspace profile/template pack | `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/**` |
+| Renamed synthetic workspace pricing pack | `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/**` |
+| Restored sample-only Kent upload fixture | `fixtures/samples/kent-group/**` |
+| Workspace bridge identity retained | `workspace-seeds/koncept-images-pte-ltd/workspace.json` |
+| XLSX package internals requiring review | `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/quotation-layout.xlsx`, `docs/Quotation-Cost-Template-V1.1.xlsx`, `docs/examples/super-messy-pricing-reference.xlsx` |
 | XLSX formulas/header-footer/shared strings/defined names/document properties | Same XLSX paths above, depending on package part |
 
 XLSX inspection covered visible and hidden workbook metadata surfaces available
@@ -40,47 +42,36 @@ from the OOXML package: workbook sheet state, shared strings, defined names,
 comments/notes, headers/footers, document properties, embedded media,
 external-link package parts, formulas, and worksheet/sample row XML.
 
-## Current-Tree Cleanup Recommendation
+## Current-Tree Cleanup Result
 
-Remove, sanitise, or replace these committed packs in a later cleanup PR:
+Removed committed legacy bundle paths:
 
-- `profiles/koncept/profile.json`
-  - Replace with a deterministic synthetic quote-company profile.
-  - Keep only schema/formatting coverage needed by tests.
-  - Do not include real logo data, real signatory names, payment text, or
-    private exported profile content.
-- `profiles/koncept/quotation-layout.xlsx`
-  - Replace with a deterministic generated XLSX layout fixture.
-  - Ensure workbook properties, headers/footers, defined names, formulas,
-    shared strings, and media are synthetic.
-- `profiles/koncept/layout-rules.json`
-  - Keep only generic layout behavior needed by generator tests.
-  - Remove real-company-specific wording from rule names or comments if any are
-    added later.
+- `profiles/koncept/**`
 - `pricing-references/koncept-exhibition-quotation/**`
-  - Replace with a deterministic synthetic pricing reference pack.
-  - Remove committed catalog images unless a synthetic image fixture is required
-    by an import/parser test.
-  - Keep pricing fields only as synthetic test data.
-- `workspace-seeds/koncept-images-pte-ltd/asset-packs/**`
-  - Replace asset-pack contents with deterministic synthetic profile, template,
-    and pricing fixtures.
-  - Keep the workspace bridge behavior, but make fixture contents clearly fake.
-- `fixtures/samples/kent-group/**`
-  - Replace with a synthetic sample PDF/JSON pair or migrate tests to a
-    deterministic generated sample.
-  - Keep only the minimum sample needed for upload/PDF/browser smoke coverage.
-- Docs XLSX examples under `docs/`
-  - Keep only if they are clearly synthetic templates/examples.
-  - Rebuild if package properties, comments, hidden sheets, formulas, media, or
-    shared strings cannot be proven synthetic.
 
-Files that are safe to keep after review:
+Kept the `koncept-images-pte-ltd` workspace bridge identity, but renamed the
+active synthetic workspace asset-pack folders and ids:
+
+- `koncept-workspace-template` to `synthetic-exhibition-fixture-template`
+- `koncept-workspace-pricing` to `synthetic-exhibition-fixture-pricing`
+
+The active committed runtime fixture packs are now:
+
+- `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/**`
+- `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/**`
+
+The Kent sample was restored to its pre-PR #38 sample fixture state and remains
+sample-only:
+
+- `fixtures/samples/kent-group/sample.json`
+- `fixtures/samples/kent-group/kent-group.pdf`
+
+Files that remain safe to keep after review:
 
 - `pricing-references/import-cleanup-rules.json`
 - scanner/test code that contains only synthetic trigger strings
-- deterministic synthetic fixtures created from scratch for parser/generator
-  tests
+- deterministic synthetic workspace seed fixtures created from scratch for
+  parser, generator, import/export, logo-data-url, and smoke tests
 
 ## Guardrails Added
 
@@ -89,9 +80,9 @@ Files that are safe to keep after review:
   runtime data.
 - `scripts/scan_sensitive_fixtures.py` scans committed fixture/export-like
   paths and returns non-zero for blocking categories.
-- Known current-tree company/customer markers are allowlisted as review findings
-  so this preparation PR can inventory them without silently accepting new
-  ones. New unreviewed company/customer markers become blocking findings.
+- Known safe synthetic fixture paths are reviewed in the scanner without
+  printing matched values. New unreviewed company/customer/private/export-like
+  markers become blocking findings.
 - `tests/test_sensitive_fixture_scan.py` verifies:
   - current committed fixture scan has no blocking findings
   - temporary private profile/payment markers fail with path/category-only
@@ -104,27 +95,25 @@ Run manually:
 python scripts\scan_sensitive_fixtures.py
 ```
 
-Use review mode before a fixture replacement PR:
+Use review mode before fixture changes:
 
 ```powershell
 python scripts\scan_sensitive_fixtures.py --fail-on-review
 ```
 
-## Safe Fixture Plan
+## Safe Fixture Policy
 
-If removing committed packs breaks tests, replace them with deterministic
-fixtures built from scratch:
+Future fixture additions should stay deterministic and synthetic:
 
-1. Create a synthetic company identity that is not Koncept or a real customer.
-2. Generate a small synthetic logo/media asset or use no media where the test
-   does not require media.
-3. Generate an XLSX layout fixture from deterministic code or a manually
-   reviewed workbook with synthetic document properties and no hidden/private
-   content.
-4. Build a tiny pricing catalog with clearly fake sections, descriptions,
-   costs, markups, aliases, and image fixtures.
-5. Build a synthetic sample upload fixture and PDF if browser/PDF tests still
-   require one.
+1. Use synthetic company identities that are not real customers.
+2. Generate synthetic logo/media assets or omit media when tests do not require
+   it.
+3. Keep XLSX layout fixtures reviewed for synthetic document properties,
+   headers/footers, defined names, formulas, shared strings, and media.
+4. Keep pricing catalogs tiny and clearly fake, including sections,
+   descriptions, costs, markups, aliases, and image fixtures.
+5. Keep upload/PDF samples sample-only and detached from active runtime
+   defaults.
 6. Update tests to depend on generic behavior and schema contracts, not real
    company names, real customer names, real pricing, or real artwork.
 7. Run the fixture scanner and generator/browser validation before merging.

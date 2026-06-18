@@ -122,8 +122,8 @@ async function main() {
     await page.locator('.rail-button[data-side-panel="quote_company"]').click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const samplePresetValue = await page.locator("#presetSelect").inputValue();
-    if (samplePresetValue !== "profile:koncept-image-default") {
-      throw new Error(`Expected sample to select Koncept Images preset, found ${samplePresetValue}.`);
+    if (samplePresetValue !== "profile:synthetic-fixture-default") {
+      throw new Error(`Expected sample to select the synthetic fixture preset, found ${samplePresetValue}.`);
     }
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
@@ -141,7 +141,7 @@ async function main() {
       throw new Error(`Expected refresh to preserve the sample PDF reference, found ${JSON.stringify(restoredFiles)}.`);
     }
     const restoredPresetValue = await page.locator("#presetSelect").inputValue();
-    if (restoredPresetValue !== "profile:koncept-image-default") {
+    if (restoredPresetValue !== "profile:synthetic-fixture-default") {
       throw new Error(`Expected refresh to preserve company preset, found ${restoredPresetValue}.`);
     }
     const presetSelectBox = await page.locator("#presetSelect").boundingBox();

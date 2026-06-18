@@ -1,7 +1,7 @@
 {
   "id": "kent-group",
-  "label": "Synthetic Booth Demo",
-  "description": "Synthetic customer, project, and PDF reference deck for quick local testing.",
+  "label": "Kent Group Demo",
+  "description": "Sample customer, project, and PDF reference deck for quick testing.",
   "profile_id": "koncept",
   "pricing_reference_id": "koncept-exhibition-quotation",
   "images": [
@@ -9,22 +9,22 @@
   ],
   "details": {
     "client": {
-      "name": "Example Fixture Client",
-      "attention": "Fixture Review Team",
+      "name": "Kent Group",
+      "attention": "Kent Group Team",
       "title": "Project Team",
-      "address": "Synthetic Address"
+      "address": "Singapore"
     },
     "project": {
-      "title": "RE: Synthetic Fixture Booth"
+      "title": "RE: Kent Group Exhibition Booth"
     },
-    "project_number": "SYN-SAMPLE-001",
+    "project_number": "KI-SAMPLE-001",
     "rich_text": {
-      "clientName": "<div><strong>Example Fixture Client</strong></div>",
-      "clientAttention": "<div><strong>Fixture Review Team</strong></div>",
+      "clientName": "<div><strong>Kent Group</strong></div>",
+      "clientAttention": "<div><strong>Kent Group Team</strong></div>",
       "clientTitle": "<div>Project Team</div>",
-      "clientAddress": "<div>Synthetic Address</div>",
-      "projectTitle": "<div><strong>RE: Synthetic Fixture Booth</strong></div>",
-      "projectNumber": "<div>SYN-SAMPLE-001</div>"
+      "clientAddress": "<div>Singapore</div>",
+      "projectTitle": "<div><strong>RE: Kent Group Exhibition Booth</strong></div>",
+      "projectNumber": "<div>KI-SAMPLE-001</div>"
     }
   }
 }

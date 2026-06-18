@@ -21,15 +21,17 @@ from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
-KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
-KONCEPT_PRICING_REFERENCE = ROOT / "pricing-references" / "koncept-exhibition-quotation"
+KONCEPT_PROFILE = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "quotation-layouts" / "synthetic-exhibition-fixture-template"
+KONCEPT_PRICING_REFERENCE = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "pricing-references" / "synthetic-exhibition-fixture-pricing"
+LEGACY_BUNDLED_PROFILE = ROOT / "profiles" / "koncept"
+LEGACY_BUNDLED_PRICING_REFERENCE = ROOT / "pricing-references" / "koncept-exhibition-quotation"
 KONCEPT_CATALOG = KONCEPT_PRICING_REFERENCE / "pricing-catalog.json"
 KONCEPT_AI_REFERENCE = KONCEPT_PRICING_REFERENCE / "pricing-catalog.ai-reference.md"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
 KONCEPT_WORKSPACE_SEED = ROOT / "workspace-seeds" / "koncept-images-pte-ltd"
-KONCEPT_WORKSPACE_LAYOUT_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "quotation-layouts" / "koncept-workspace-template"
-KONCEPT_WORKSPACE_PRICING_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "pricing-references" / "koncept-workspace-pricing"
+KONCEPT_WORKSPACE_LAYOUT_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "quotation-layouts" / "synthetic-exhibition-fixture-template"
+KONCEPT_WORKSPACE_PRICING_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "pricing-references" / "synthetic-exhibition-fixture-pricing"
 KONCEPT_WORKSPACE_CATALOG = KONCEPT_WORKSPACE_PRICING_PACK / "pricing-catalog.json"
 KONCEPT_WORKSPACE_LAYOUT = KONCEPT_WORKSPACE_LAYOUT_PACK / "quotation-layout.xlsx"
 KONCEPT_WORKSPACE_LAYOUT_RULES = KONCEPT_WORKSPACE_LAYOUT_PACK / "layout-rules.json"
@@ -74,8 +76,8 @@ def valid_payload():
                 "data_url": "data:image/jpeg;base64,ZmFrZS1pbWFnZQ==",
             }
         ],
-        "profile_id": "koncept",
-        "pricing_reference_id": "koncept-exhibition-quotation",
+        "profile_id": "synthetic-exhibition-fixture-template",
+        "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
         "confirmed": True,
         "quote_date": "2026-06-06",
         "project_number": "KI-WEB-001",
@@ -295,8 +297,8 @@ def write_workspace_seed(root: Path, dependencies: dict, defaults: dict | None =
     seed_dir.mkdir(parents=True, exist_ok=True)
     seed_path = seed_dir / "workspace.json"
     seed_defaults = defaults or {
-        "profile_id": "koncept",
-        "pricing_reference_id": "koncept-exhibition-quotation",
+        "profile_id": "synthetic-exhibition-fixture-template",
+        "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
     }
     seed_path.write_text(
         json.dumps(
@@ -709,7 +711,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_preserves_customer_text_and_price_metadata(self):
         items = webapp.normalize_line_items({
-            "profile_id": "koncept",
+            "profile_id": "synthetic-exhibition-fixture-template",
             "line_items": [
                 {
                     "section": "Wrong Section",
@@ -735,7 +737,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_infers_catalog_match_from_high_analysis_description(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Floors",
@@ -870,7 +872,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_uses_numeric_size_tokens_for_catalog_inference(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Lighting And AV",
@@ -945,7 +947,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_prices_generic_render_descriptions_with_section_context(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Structures",
@@ -983,7 +985,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_preserves_explicit_one_metre_structural_catalog_price(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Structures",
@@ -1002,7 +1004,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_flags_inferred_one_metre_structural_match_without_price(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Structures",
@@ -1066,7 +1068,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_uses_catalog_description_unit_when_unit_hint_is_missing(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Lighting And AV",
@@ -1087,7 +1089,7 @@ class WebappServerTest(unittest.TestCase):
 
     def test_normalize_line_items_uses_catalog_leading_nos_for_1m_counters(self):
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Rentals",
@@ -1130,7 +1132,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Floors")
         lines = draft["quote_basis_sections"][0]["lines"]
@@ -1174,7 +1176,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(lines[0]["text"], "Booth footprint 9mW x 10.5mD; floor area 94.5 sqm")
@@ -1211,7 +1213,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Floors")
         lines = draft["quote_basis_sections"][0]["lines"]
@@ -1268,7 +1270,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(lines[0]["text"], "[ sqm synthetic raised deck panel ]")
@@ -1304,7 +1306,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["quantity"], 2.0)
@@ -1347,7 +1349,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         by_title = {section["title"]: section for section in draft["quote_basis_sections"]}
         self.assertEqual(
@@ -1391,7 +1393,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
@@ -1422,7 +1424,7 @@ class WebappServerTest(unittest.TestCase):
             "line_items": [],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
@@ -1453,7 +1455,7 @@ class WebappServerTest(unittest.TestCase):
             "line_items": [],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
@@ -1497,7 +1499,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(len(lines), 1)
@@ -1538,7 +1540,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(len(lines), 1)
@@ -1580,7 +1582,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["text"], "[ sqm synthetic printed wall graphic ] - Synthetic printed brand fascia graphics")
@@ -1622,7 +1624,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Custom")
@@ -1665,7 +1667,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
@@ -1708,7 +1710,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Custom")
@@ -1748,7 +1750,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
@@ -1788,7 +1790,7 @@ class WebappServerTest(unittest.TestCase):
             "line_items": [],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(lines[0]["pricing_keyword"], "synthetic-structures-m-synthetic-box-truss")
@@ -1829,7 +1831,7 @@ class WebappServerTest(unittest.TestCase):
             "line_items": [],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "koncept"})
+        draft = webapp.normalize_ai_draft(parsed, {"profile_id": "synthetic-exhibition-fixture-template"})
 
         lines = [
             line
@@ -1863,7 +1865,7 @@ class WebappServerTest(unittest.TestCase):
             "line_items": [],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         line = draft["quote_basis_sections"][0]["lines"][0]
         self.assertEqual(line["tag"], "Confirm")
@@ -2156,7 +2158,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         lines = draft["quote_basis_sections"][0]["lines"]
         self.assertEqual(
@@ -2208,7 +2210,7 @@ class WebappServerTest(unittest.TestCase):
         }
 
         result = webapp.finalized_remote_draft_result(
-            {"pricing_reference_id": "koncept-exhibition-quotation", "project": {"booth_width": "9", "booth_depth": "10.5"}},
+            {"pricing_reference_id": "synthetic-exhibition-fixture-pricing", "project": {"booth_width": "9", "booth_depth": "10.5"}},
             ai_basis,
             "openai",
             "OpenAI",
@@ -2463,8 +2465,8 @@ class WebappServerTest(unittest.TestCase):
         }
 
         draft = webapp.normalize_ai_draft(parsed, {
-            "profile_id": "koncept",
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "profile_id": "synthetic-exhibition-fixture-template",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
         })
 
         self.assertEqual(draft["quote_basis_sections"][0]["title"], "Synthetic Rentals")
@@ -2905,7 +2907,7 @@ class WebappServerTest(unittest.TestCase):
         raw = (
             "Item,Cost,Markup\n"
             "\"nos. rigging point for Overhead Structure or Aluminium Box Truss\n"
-            "• Prices are not inclusive of truss\",300,1.5\n"
+            "â€¢ Prices are not inclusive of truss\",300,1.5\n"
         ).encode("utf-8")
         parsed = {
             "items": [{
@@ -2963,7 +2965,7 @@ class WebappServerTest(unittest.TestCase):
                         "row_index": 12,
                         "non_empty_cells": {
                             "A": "Hanging Structure",
-                            "B": "nos. RIGGING POINT for Overhead Structure or Aluminium Box Truss\n• Prices are not inclusive of truss",
+                            "B": "nos. RIGGING POINT for Overhead Structure or Aluminium Box Truss\nâ€¢ Prices are not inclusive of truss",
                             "C": "nos",
                             "D": "300",
                             "E": "1.5",
@@ -3677,7 +3679,7 @@ class WebappServerTest(unittest.TestCase):
             ],
         }
 
-        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "koncept-exhibition-quotation"})
+        draft = webapp.normalize_ai_draft(parsed, {"pricing_reference_id": "synthetic-exhibition-fixture-pricing"})
 
         basis_keywords = [
             line["pricing_keyword"]
@@ -3725,7 +3727,7 @@ class WebappServerTest(unittest.TestCase):
             self.assertTrue(item["description"].lower().startswith("nos. synthetic"))
 
         items = webapp.normalize_line_items({
-            "pricing_reference_id": "koncept-exhibition-quotation",
+            "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
             "line_items": [
                 {
                     "section": "Synthetic Rentals",
@@ -3838,7 +3840,7 @@ class WebappServerTest(unittest.TestCase):
         )
 
     def test_pricing_catalog_prompt_rows_include_rigging_aliases_and_remarks(self):
-        rows = webapp.pricing_catalog_prompt_rows("koncept")
+        rows = webapp.pricing_catalog_prompt_rows("synthetic-exhibition-fixture-template")
         rigging = next(row for row in rows if "rigging point" in row["description"].lower())
         combined = json.dumps(rigging)
         self.assertIn("synthetic rigging", combined)
@@ -3886,7 +3888,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(rows[0]["id"].startswith("example-"))
         template_text = json.dumps(rows, ensure_ascii=False).lower()
         for customer_specific in (
-            "koncept",
+            "synthetic-exhibition-fixture-template",
             "booth structure",
             "floor design",
             "vinyl printed graphics",
@@ -4117,40 +4119,35 @@ class WebappServerTest(unittest.TestCase):
         profile = webapp.load_profile()
         profile_pack = webapp.load_profile_pack()
 
-        self.assertEqual(profile["id"], "koncept")
-        self.assertEqual(profile_pack.id, "koncept")
-        self.assertIn("koncept", [item["id"] for item in webapp.list_profiles()])
-        self.assertIn("koncept-workspace-template", [item["id"] for item in webapp.list_profiles()])
+        self.assertEqual(profile["id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(profile_pack.id, "synthetic-exhibition-fixture-template")
+        self.assertEqual([item["id"] for item in webapp.list_profiles()].count("synthetic-exhibition-fixture-template"), 1)
         self.assertEqual(webapp.profile_pricing_catalog_path(), KONCEPT_WORKSPACE_CATALOG)
         self.assertEqual(webapp.profile_quotation_layout_path(), KONCEPT_WORKSPACE_LAYOUT)
         self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_WORKSPACE_LAYOUT_RULES)
-        self.assertEqual(webapp.profile_pricing_catalog_path("koncept"), KONCEPT_CATALOG)
-        self.assertEqual(webapp.profile_quotation_layout_path("koncept"), KONCEPT_LAYOUT)
-        self.assertEqual(webapp.profile_layout_rules_path("koncept"), KONCEPT_LAYOUT_RULES)
+        self.assertEqual(webapp.profile_pricing_catalog_path("synthetic-exhibition-fixture-template"), KONCEPT_CATALOG)
+        self.assertEqual(webapp.profile_quotation_layout_path("synthetic-exhibition-fixture-template"), KONCEPT_LAYOUT)
+        self.assertEqual(webapp.profile_layout_rules_path("synthetic-exhibition-fixture-template"), KONCEPT_LAYOUT_RULES)
         self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
         self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
-        workspace_profile_pack = webapp.load_profile_pack("koncept-workspace-template")
+        workspace_profile_pack = webapp.load_profile_pack("synthetic-exhibition-fixture-template")
         self.assertEqual(workspace_profile_pack.source, "workspace-seed")
         self.assertEqual(workspace_profile_pack.quotation_layout_path, KONCEPT_WORKSPACE_LAYOUT)
         self.assertEqual(workspace_profile_pack.layout_rules_path, KONCEPT_WORKSPACE_LAYOUT_RULES)
-        pricing_pack = webapp.load_pricing_reference_pack("koncept-exhibition-quotation")
-        self.assertEqual(pricing_pack.pricing_catalog_path, KONCEPT_CATALOG)
-        self.assertEqual(pricing_pack.pricing_reference_path, KONCEPT_AI_REFERENCE)
-        workspace_pricing_pack = webapp.load_pricing_reference_pack("koncept-workspace-pricing")
+        workspace_pricing_pack = webapp.load_pricing_reference_pack("synthetic-exhibition-fixture-pricing")
         self.assertEqual(workspace_pricing_pack.source, "workspace-seed")
         self.assertEqual(workspace_pricing_pack.pricing_catalog_path, KONCEPT_WORKSPACE_CATALOG)
-        self.assertFalse((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
+        self.assertFalse((LEGACY_BUNDLED_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
         pricing_references = webapp.list_pricing_references()
         pricing_references_by_id = {item["id"]: item for item in pricing_references}
-        self.assertEqual(pricing_references_by_id["koncept-exhibition-quotation"]["label"], "Synthetic Exhibition Fixture Pricing")
-        self.assertEqual(pricing_references_by_id["koncept-workspace-pricing"]["source"], "workspace-seed")
+        self.assertEqual(pricing_references_by_id["synthetic-exhibition-fixture-pricing"]["label"], "Synthetic Exhibition Fixture Pricing")
+        self.assertEqual(pricing_references_by_id["synthetic-exhibition-fixture-pricing"]["source"], "workspace-seed")
         self.assertEqual(
             [item["label"] for item in pricing_references],
             sorted([item["label"] for item in pricing_references], key=str.casefold),
         )
-        self.assertEqual([item["id"] for item in pricing_references].count("koncept-exhibition-quotation"), 1)
-        self.assertEqual([item["id"] for item in pricing_references].count("koncept-workspace-pricing"), 1)
+        self.assertEqual([item["id"] for item in pricing_references].count("synthetic-exhibition-fixture-pricing"), 1)
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertTrue(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["company_details"]["keep_logo_and_details_inside_print_area"])
@@ -4158,13 +4155,13 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("pricing_catalog", webapp.profile_public_summary(profile))
         self.assertNotIn("pricing_catalog", profile)
         public_profile = webapp.profile_public_summary(profile_pack)
-        self.assertEqual(public_profile["default_quote_detail_preset"], "koncept-image-default")
+        self.assertEqual(public_profile["default_quote_detail_preset"], "synthetic-fixture-default")
         default_preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "default")
         self.assertEqual(default_preset["name"], "Default")
         self.assertNotIn("company", default_preset["details"])
         self.assertEqual(default_preset["details"]["quote_text"]["terms_heading"], "Terms & Conditions:")
         self.assertEqual(default_preset["details"]["quote_text"]["notes_heading"], "Note:")
-        preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "koncept-image-default")
+        preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "synthetic-fixture-default")
         self.assertEqual(preset["name"], "Synthetic Fallback Quote Company")
         preset_company = preset["details"]["company"]
         preset_quote_text = preset["details"]["quote_text"]
@@ -4218,24 +4215,28 @@ class WebappServerTest(unittest.TestCase):
             self.assertNotIn(removed_real_detail, serialized_profile)
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
+        raw_sample = json.loads((ROOT / "fixtures" / "samples" / "kent-group" / "sample.json").read_text(encoding="utf-8"))
         sample = webapp.load_sample("kent-group")
 
         self.assertIsNotNone(sample)
-        self.assertEqual(sample["profile_id"], "koncept")
-        self.assertEqual(sample["details"]["project"]["title"], "RE: Synthetic Fixture Booth")
+        self.assertEqual(raw_sample["profile_id"], "koncept")
+        self.assertEqual(raw_sample["pricing_reference_id"], "koncept-exhibition-quotation")
+        self.assertEqual(sample["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(sample["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
+        self.assertEqual(sample["details"]["project"]["title"], "RE: Kent Group Exhibition Booth")
         self.assertNotIn("booth_width", sample["details"]["project"])
         self.assertNotIn("booth_depth", sample["details"]["project"])
         self.assertNotIn("quote_date", sample["details"])
-        self.assertEqual(sample["details"]["project_number"], "SYN-SAMPLE-001")
-        self.assertEqual(sample["details"]["rich_text"]["clientName"], "<div><strong>Example Fixture Client</strong></div>")
-        self.assertEqual(sample["details"]["rich_text"]["clientAddress"], "<div>Synthetic Address</div>")
-        self.assertEqual(sample["details"]["rich_text"]["clientAttention"], "<div><strong>Fixture Review Team</strong></div>")
+        self.assertEqual(sample["details"]["project_number"], "KI-SAMPLE-001")
+        self.assertEqual(sample["details"]["rich_text"]["clientName"], "<div><strong>Kent Group</strong></div>")
+        self.assertEqual(sample["details"]["rich_text"]["clientAddress"], "<div>Singapore</div>")
+        self.assertEqual(sample["details"]["rich_text"]["clientAttention"], "<div><strong>Kent Group Team</strong></div>")
         self.assertEqual(sample["details"]["rich_text"]["clientTitle"], "<div>Project Team</div>")
         self.assertEqual(
             sample["details"]["rich_text"]["projectTitle"],
-            "<div><strong>RE: Synthetic Fixture Booth</strong></div>",
+            "<div><strong>RE: Kent Group Exhibition Booth</strong></div>",
         )
-        self.assertEqual(sample["details"]["rich_text"]["projectNumber"], "<div>SYN-SAMPLE-001</div>")
+        self.assertEqual(sample["details"]["rich_text"]["projectNumber"], "<div>KI-SAMPLE-001</div>")
         self.assertNotIn("company", sample["details"])
         self.assertNotIn("quote_text", sample["details"])
         self.assertEqual(len(sample["images"]), 1)
@@ -7922,12 +7923,12 @@ function syncRichTextSources() {
   syncCalls += 1;
 }
 
-const DEFAULT_PROFILE_ID = "koncept";
+const DEFAULT_PROFILE_ID = "synthetic-exhibition-fixture-template";
 const state = {
-  profileId: "koncept",
-  pricingReferenceId: "koncept-exhibition-quotation",
-  profiles: [{ id: "koncept", label: "Koncept" }],
-  pricingReferences: [{ id: "koncept-exhibition-quotation", label: "Koncept", profile_id: "koncept" }],
+  profileId: "synthetic-exhibition-fixture-template",
+  pricingReferenceId: "synthetic-exhibition-fixture-pricing",
+  profiles: [{ id: "synthetic-exhibition-fixture-template", label: "Synthetic" }],
+  pricingReferences: [{ id: "synthetic-exhibition-fixture-pricing", label: "Synthetic", profile_id: "synthetic-exhibition-fixture-template" }],
   images: [],
   headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
   isAnalysisRunning: false,
@@ -8480,15 +8481,15 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const DEFAULT_PROFILE_ID = "koncept";
-const DEFAULT_PRICING_REFERENCE_ID = "koncept-exhibition-quotation";
+const DEFAULT_PROFILE_ID = "synthetic-exhibition-fixture-template";
+const DEFAULT_PRICING_REFERENCE_ID = "synthetic-exhibition-fixture-pricing";
 const rawPricingReferences = [
     { id: "shared", label: "Shared A", source: "bundled" },
     { id: "unique", label: "Unique", source: "bundled" },
     { id: "workspace", label: "Workspace Seed", source: "workspace-seed" },
     { id: "local-one", label: "Local One", source: "local" },
-    { id: "koncept-exhibition-quotation", label: "Bundled Koncept", source: "bundled" },
-    { id: "koncept-exhibition-quotation", label: "Company Koncept", source: "company" },
+    { id: "synthetic-exhibition-fixture-pricing", label: "Bundled Synthetic", source: "bundled" },
+    { id: "synthetic-exhibition-fixture-pricing", label: "Company Synthetic", source: "company" },
 ];
 const state = {
   profileId: "other",
@@ -8496,7 +8497,7 @@ const state = {
   pricingReferenceSource: "",
   defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   profiles: [
-    { id: "koncept", label: "Koncept", default_pricing_reference: "shared" },
+    { id: "synthetic-exhibition-fixture-template", label: "Synthetic", default_pricing_reference: "shared" },
     { id: "other", label: "Other Profile", default_pricing_reference: "unique" },
   ],
   pricingReferences: [],
@@ -8513,7 +8514,7 @@ eval([
 ].map(extractFunction).join("\n"));
 
 state.pricingReferences = mergePricingReferences(rawPricingReferences);
-assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Bundled Koncept"]);
+assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Bundled Synthetic"]);
 assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[2]), "workspace-seed::workspace");
 
 assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[3]), "local::local-one");
@@ -8527,21 +8528,21 @@ assert.strictEqual(currentPricingReference().label, "Unique");
 assert.strictEqual(currentProfile().id, "other");
 assert.strictEqual(resolvedProfileIdForPayload(), "other");
 
-const bundledKoncept = pricingReferenceSelectionFromValue("bundled::koncept-exhibition-quotation");
-state.pricingReferenceId = bundledKoncept.pricingReferenceId;
-state.pricingReferenceSource = bundledKoncept.source;
-assert.strictEqual(currentPricingReference().label, "Bundled Koncept");
-const companyKoncept = pricingReferenceSelectionFromValue("company::koncept-exhibition-quotation");
-state.pricingReferenceId = companyKoncept.pricingReferenceId;
-state.pricingReferenceSource = companyKoncept.source;
+const bundledSynthetic = pricingReferenceSelectionFromValue("bundled::synthetic-exhibition-fixture-pricing");
+state.pricingReferenceId = bundledSynthetic.pricingReferenceId;
+state.pricingReferenceSource = bundledSynthetic.source;
+assert.strictEqual(currentPricingReference().label, "Bundled Synthetic");
+const companySynthetic = pricingReferenceSelectionFromValue("company::synthetic-exhibition-fixture-pricing");
+state.pricingReferenceId = companySynthetic.pricingReferenceId;
+state.pricingReferenceSource = companySynthetic.source;
 assert.strictEqual(currentPricingReference(), null);
 
-state.profileId = "koncept";
+state.profileId = "synthetic-exhibition-fixture-template";
 state.pricingReferenceId = "";
 state.pricingReferenceSource = "";
 syncSelectedPricingReference();
 assert.strictEqual(currentPricingReference().label, "Shared A");
-assert.strictEqual(resolvedProfileIdForPayload(), "koncept");
+assert.strictEqual(resolvedProfileIdForPayload(), "synthetic-exhibition-fixture-template");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -8585,7 +8586,7 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const DEFAULT_PROFILE_ID = "koncept";
+const DEFAULT_PROFILE_ID = "synthetic-exhibition-fixture-template";
 const DEFAULT_PRICING_REFERENCE_ID = "default-ref";
 const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
 const state = {
@@ -8820,10 +8821,10 @@ const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
 const MAX_REFERENCE_IMAGES = 8;
 const state = {
   isBooting: false,
-  profileId: "koncept",
-  pricingReferenceId: "koncept-exhibition-quotation",
+  profileId: "synthetic-exhibition-fixture-template",
+  pricingReferenceId: "synthetic-exhibition-fixture-pricing",
   pricingReferenceSource: "bundled",
-  selectedPresetValue: "profile:koncept-image-default",
+  selectedPresetValue: "profile:synthetic-fixture-default",
   images: [{
     name: "huge-reference.pdf",
     type: "application/pdf",
@@ -9589,10 +9590,10 @@ function extractFunction(name) {
 }
 
 const state = {
-  pricingReferenceId: "koncept-exhibition-quotation",
+  pricingReferenceId: "synthetic-exhibition-fixture-pricing",
   pricingReferenceSource: "",
   pricingReferences: [
-    { id: "koncept-exhibition-quotation", items: [{ section: "Graphics" }] },
+    { id: "synthetic-exhibition-fixture-pricing", items: [{ section: "Graphics" }] },
   ],
   quoteBasisSections: [{
     id: "graphics",
@@ -11124,7 +11125,7 @@ const status = {
   },
 };
 const state = {
-  editingPricingReferenceId: "koncept-exhibition-quotation",
+  editingPricingReferenceId: "synthetic-exhibition-fixture-pricing",
   pricingReferenceSaveBusy: false,
   pricingReferenceSavedNotice: "",
   pricingReferenceEditNotice: "2 pricing rows amended in Review Rows.",
@@ -12482,51 +12483,51 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(seed["profile_presets"]["storage_collection"], "profiles")
         self.assertEqual(seed["pricing_references"]["storage_collection"], "pricing-references")
         self.assertEqual(seed["profile_presets"]["default_profile_id"], "koncept-images-pte-ltd")
-        self.assertEqual(seed["defaults"]["profile_id"], "koncept-workspace-template")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-workspace-pricing")
+        self.assertEqual(seed["defaults"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
         self.assertTrue(seed["migration_notes"])
         dependencies = webapp.workspace_runtime_dependencies(seed)
         self.assertEqual(dependencies["quote_company_profile"]["source"], "workspace-store")
         self.assertEqual(dependencies["quote_company_profile"]["store"], "profiles")
         self.assertEqual(dependencies["quote_company_profile"]["id"], "koncept-images-pte-ltd")
-        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["profile_id"], "koncept")
-        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["preset_id"], "koncept-image-default")
+        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["preset_id"], "synthetic-fixture-default")
         self.assertEqual(dependencies["logo"]["source"], "quote-company-profile")
         self.assertEqual(dependencies["quotation_layout"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "koncept-workspace-template")
-        self.assertEqual(dependencies["quotation_layout"]["fallback"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(dependencies["quotation_layout"]["fallback"]["profile_id"], "synthetic-exhibition-fixture-template")
         self.assertEqual(dependencies["layout_rules"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["layout_rules"]["profile_id"], "koncept-workspace-template")
-        self.assertEqual(dependencies["layout_rules"]["fallback"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["layout_rules"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(dependencies["layout_rules"]["fallback"]["profile_id"], "synthetic-exhibition-fixture-template")
         self.assertEqual(dependencies["pricing_reference"]["source"], "workspace-seed-pricing-reference")
-        self.assertEqual(dependencies["pricing_reference"]["id"], "koncept-workspace-pricing")
-        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "koncept-exhibition-quotation")
+        self.assertEqual(dependencies["pricing_reference"]["id"], "synthetic-exhibition-fixture-pricing")
+        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "synthetic-exhibition-fixture-pricing")
 
     def test_koncept_workspace_seed_declares_workspace_owned_runtime_asset_packs(self):
         seed = webapp.default_workspace_seed()
         asset_packs = seed["asset_packs"]
         dependencies = webapp.workspace_runtime_dependencies(seed)
 
-        self.assertEqual(seed["defaults"]["profile_id"], "koncept-workspace-template")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-workspace-pricing")
+        self.assertEqual(seed["defaults"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
         self.assertEqual(asset_packs["quote_company_profile"]["source"], "workspace-store")
         self.assertEqual(asset_packs["quote_company_profile"]["active_profile_id"], "koncept-images-pte-ltd")
         self.assertEqual(asset_packs["logo"]["source"], "quote-company-profile.logo_data_url")
         self.assertEqual(asset_packs["quotation_layout"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(asset_packs["quotation_layout"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(asset_packs["quotation_layout"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
         self.assertEqual(asset_packs["layout_rules"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(asset_packs["layout_rules"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(asset_packs["layout_rules"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
         self.assertEqual(asset_packs["pricing_reference"]["source"], "workspace-seed-pricing-reference")
-        self.assertEqual(asset_packs["pricing_reference"]["path"], "asset-packs/pricing-references/koncept-workspace-pricing")
+        self.assertEqual(asset_packs["pricing_reference"]["path"], "asset-packs/pricing-references/synthetic-exhibition-fixture-pricing")
         self.assertEqual(dependencies["quotation_layout"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "koncept-workspace-template")
-        self.assertEqual(dependencies["quotation_layout"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(dependencies["quotation_layout"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
         self.assertEqual(dependencies["layout_rules"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["layout_rules"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(dependencies["layout_rules"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
         self.assertEqual(dependencies["pricing_reference"]["source"], "workspace-seed-pricing-reference")
-        self.assertEqual(dependencies["pricing_reference"]["id"], "koncept-workspace-pricing")
-        self.assertEqual(dependencies["pricing_reference"]["path"], "asset-packs/pricing-references/koncept-workspace-pricing")
-        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "koncept-exhibition-quotation")
+        self.assertEqual(dependencies["pricing_reference"]["id"], "synthetic-exhibition-fixture-pricing")
+        self.assertEqual(dependencies["pricing_reference"]["path"], "asset-packs/pricing-references/synthetic-exhibition-fixture-pricing")
+        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "synthetic-exhibition-fixture-pricing")
 
     def test_workspace_seed_asset_packs_drive_template_layout_rules_pricing_and_api_defaults(self):
         profile_id = "workspace-layout"
@@ -12536,19 +12537,19 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "source": "workspace-seed-profile-pack",
                 "profile_id": profile_id,
                 "path": f"asset-packs/quotation-layouts/{profile_id}",
-                "fallback": {"source": "bundled-profile", "profile_id": "koncept"},
+                "fallback": {"source": "bundled-profile", "profile_id": "synthetic-exhibition-fixture-template"},
             },
             "layout_rules": {
                 "source": "workspace-seed-profile-pack",
                 "profile_id": profile_id,
                 "path": f"asset-packs/quotation-layouts/{profile_id}",
-                "fallback": {"source": "bundled-profile", "profile_id": "koncept"},
+                "fallback": {"source": "bundled-profile", "profile_id": "synthetic-exhibition-fixture-template"},
             },
             "pricing_reference": {
                 "source": "workspace-seed-pricing-reference",
                 "id": reference_id,
                 "path": f"asset-packs/pricing-references/{reference_id}",
-                "fallback": {"source": "bundled", "id": "koncept-exhibition-quotation"},
+                "fallback": {"source": "bundled", "id": "synthetic-exhibition-fixture-pricing"},
             },
         }
 
@@ -12608,8 +12609,8 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "store": "profiles",
                 "fallback": {
                     "source": "bundled-profile-preset",
-                    "profile_id": "koncept",
-                    "preset_id": "koncept-image-default",
+                    "profile_id": "synthetic-exhibition-fixture-template",
+                    "preset_id": "synthetic-fixture-default",
                 },
             },
             "logo": {"source": "quote-company-profile"},
@@ -12660,8 +12661,8 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 "store": "profiles",
                 "fallback": {
                     "source": "bundled-profile-preset",
-                    "profile_id": "koncept",
-                    "preset_id": "koncept-image-default",
+                    "profile_id": "synthetic-exhibition-fixture-template",
+                    "preset_id": "synthetic-fixture-default",
                 },
             },
             "logo": {"source": "quote-company-profile"},
@@ -12678,7 +12679,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 resolved_payload = webapp.payload_with_workspace_quote_profile_defaults(payload)
 
         self.assertEqual(workspace_profile["source"], "bundled-profile-preset")
-        self.assertEqual(workspace_profile["id"], "koncept-image-default")
+        self.assertEqual(workspace_profile["id"], "synthetic-fixture-default")
         self.assertEqual(resolved_payload["company"]["name"], "")
         self.assertNotIn("logo_data_url", resolved_payload["company"])
 
@@ -12687,17 +12688,17 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             "quotation_layout": {
                 "source": "bundled-profile",
                 "profile_id": "workspace-layout",
-                "fallback_profile_id": "koncept",
+                "fallback_profile_id": "synthetic-exhibition-fixture-template",
             },
             "layout_rules": {
                 "source": "bundled-profile",
                 "profile_id": "workspace-layout",
-                "fallback_profile_id": "koncept",
+                "fallback_profile_id": "synthetic-exhibition-fixture-template",
             },
             "pricing_reference": {
                 "source": "bundled",
                 "id": "workspace-pricing",
-                "fallback_reference_id": "koncept-exhibition-quotation",
+                "fallback_reference_id": "synthetic-exhibition-fixture-pricing",
             },
         }
 
@@ -12733,12 +12734,12 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             "quotation_layout": {
                 "source": "bundled-profile",
                 "profile_id": "workspace-layout",
-                "fallback_profile_id": "koncept",
+                "fallback_profile_id": "synthetic-exhibition-fixture-template",
             },
             "pricing_reference": {
                 "source": "bundled",
                 "id": "workspace-pricing",
-                "fallback_reference_id": "koncept-exhibition-quotation",
+                "fallback_reference_id": "synthetic-exhibition-fixture-pricing",
             },
         }
 
@@ -12935,11 +12936,11 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(generated_logo_bytes, SANITIZED_LOGO_PNG_BYTES)
         self.assertIn("../media/header_logo.png", drawing_rels)
 
-    def test_koncept_workspace_seed_keeps_bundled_profile_pricing_and_template_files(self):
+    def test_koncept_workspace_seed_uses_synthetic_packs_without_bundled_fallback_folders(self):
         seed = webapp.default_workspace_seed()
 
-        self.assertEqual(seed["defaults"]["profile_id"], "koncept-workspace-template")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-workspace-pricing")
+        self.assertEqual(seed["defaults"]["profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
         self.assertTrue(KONCEPT_WORKSPACE_LAYOUT_PACK.is_dir())
         self.assertTrue(KONCEPT_WORKSPACE_PRICING_PACK.is_dir())
         self.assertTrue(KONCEPT_WORKSPACE_CATALOG.is_file())
@@ -12947,21 +12948,19 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertTrue(KONCEPT_WORKSPACE_LAYOUT_RULES.is_file())
         self.assertTrue((KONCEPT_WORKSPACE_LAYOUT_PACK / "profile.json").is_file())
         self.assertTrue((KONCEPT_WORKSPACE_PRICING_PACK / "reference.json").is_file())
-        self.assertTrue(KONCEPT_PROFILE.is_dir())
-        self.assertTrue(KONCEPT_PRICING_REFERENCE.is_dir())
         self.assertTrue(KONCEPT_CATALOG.is_file())
         self.assertTrue(KONCEPT_LAYOUT.is_file())
         self.assertTrue(KONCEPT_LAYOUT_RULES.is_file())
         self.assertTrue((KONCEPT_PROFILE / "profile.json").is_file())
         self.assertTrue((KONCEPT_PRICING_REFERENCE / "reference.json").is_file())
-        self.assertFalse((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
+        self.assertFalse(LEGACY_BUNDLED_PROFILE.exists())
+        self.assertFalse(LEGACY_BUNDLED_PRICING_REFERENCE.exists())
         logo_fixture = seed["asset_packs"]["logo"]["fallback_fixture"]
-        self.assertEqual(logo_fixture["source"], "removed-bundled-profile-asset")
-        self.assertEqual(logo_fixture["removed_path"], "profiles/koncept/assets/koncept-header-logo.jpeg")
+        self.assertEqual(logo_fixture["source"], "workspace-seed-profile-preset")
+        self.assertIn("synthetic-exhibition-fixture-template/profile.json", logo_fixture["replacement"])
         self.assertNotIn("path", logo_fixture)
-        fallback_paths = [item["path"] for item in seed["asset_packs"]["fallback_test_fixtures"]]
-        self.assertIn("profiles/koncept", fallback_paths)
-        self.assertIn("pricing-references/koncept-exhibition-quotation", fallback_paths)
+        sample_paths = [item["path"] for item in seed["asset_packs"]["sample_fixtures"]]
+        self.assertEqual(sample_paths, ["fixtures/samples/kent-group"])
 
     def test_profile_payload_sanitizes_formula_like_defaults(self):
         profile = webapp.normalize_profile_payload({
@@ -13548,12 +13547,10 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertNotIn("company-ref", serialized)
         self.assertNotIn("Company Ref", serialized)
         self.assertNotIn("internal_cost", serialized)
-        self.assertEqual(payload["default_profile_id"], "koncept-workspace-template")
-        self.assertEqual(payload["default_pricing_reference_id"], "koncept-workspace-pricing")
+        self.assertEqual(payload["default_profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(payload["default_pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
         sources = {item.get("source") for item in payload["pricing_references"]}
-        self.assertIn("workspace-seed", sources)
-        self.assertIn("bundled", sources)
-        self.assertTrue(all(item.get("source") in {"workspace-seed", "bundled"} for item in payload["pricing_references"]))
+        self.assertEqual(sources, {"workspace-seed"})
 
     def test_profiles_api_exposes_active_koncept_workspace_sources(self):
         with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
@@ -13565,11 +13562,11 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(payload["company_id"], "koncept-images-pte-ltd")
         self.assertEqual(workspace["company"]["display_name"], "Koncept Images Pte Ltd")
         self.assertEqual(workspace["workspace"]["slug"], "koncept-images-pte-ltd")
-        self.assertEqual(payload["default_profile_id"], "koncept-workspace-template")
-        self.assertEqual(payload["default_pricing_reference_id"], "koncept-workspace-pricing")
-        active_profile = next(item for item in payload["profiles"] if item["id"] == "koncept-workspace-template")
-        active_pricing = next(item for item in payload["pricing_references"] if item["id"] == "koncept-workspace-pricing")
-        self.assertEqual(active_profile["default_pricing_reference"], "koncept-workspace-pricing")
+        self.assertEqual(payload["default_profile_id"], "synthetic-exhibition-fixture-template")
+        self.assertEqual(payload["default_pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
+        active_profile = next(item for item in payload["profiles"] if item["id"] == "synthetic-exhibition-fixture-template")
+        active_pricing = next(item for item in payload["pricing_references"] if item["id"] == "synthetic-exhibition-fixture-pricing")
+        self.assertEqual(active_profile["default_pricing_reference"], "synthetic-exhibition-fixture-pricing")
         self.assertEqual(active_pricing["source"], "workspace-seed")
         self.assertEqual(
             workspace["runtime_dependencies"]["quotation_layout"]["source"],
@@ -13629,7 +13626,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
     def test_line_item_normalize_endpoint_uses_selected_basis_catalog_match_on_first_confirm(self):
         payload = {
-            "profile_id": "koncept",
+            "profile_id": "synthetic-exhibition-fixture-template",
             "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
             "quote_basis_sections": [{
                 "id": "furniture-rental",
@@ -13681,7 +13678,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         partition_keyword = "synthetic-structures-synthetic-double-side-partition"
         partition_description = "m length synthetic double side partition"
         payload = {
-            "profile_id": "koncept",
+            "profile_id": "synthetic-exhibition-fixture-template",
             "pricing_reference_id": webapp.DEFAULT_PRICING_REFERENCE_ID,
             "quote_basis_sections": [{
                 "id": "synthetic-structures",
@@ -13763,15 +13760,15 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         with tempfile.TemporaryDirectory() as tmp:
             store = webapp.CompanyConfigStore(Path(tmp))
             store.save_pricing_reference("default", {
-                "id": "koncept-exhibition-quotation",
-                "label": "Company Koncept",
+                "id": "synthetic-exhibition-fixture-pricing",
+                "label": "Company Synthetic",
                 "tax": {"label": "VAT", "rate": 0.2},
                 "items": [company_item],
             })
             with mock.patch.object(webapp, "company_config_store", return_value=store):
                 bundled_payload = {
-                    "pricing_reference_id": "koncept-exhibition-quotation",
-                    "pricing_reference": {"id": "koncept-exhibition-quotation", "source": "bundled"},
+                    "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
+                    "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "bundled"},
                 }
                 bundled_rows = webapp.pricing_catalog_prompt_rows_for_payload(bundled_payload)
                 self.assertTrue(bundled_rows)
@@ -13779,8 +13776,8 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                 self.assertNotIn("Company-only collision catalogue item", {row["description"] for row in bundled_rows})
 
                 company_payload = {
-                    "pricing_reference_id": "koncept-exhibition-quotation",
-                    "pricing_reference": {"id": "koncept-exhibition-quotation", "source": "company"},
+                    "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
+                    "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "company"},
                 }
                 company_rows = webapp.pricing_catalog_prompt_rows_for_payload(company_payload)
                 self.assertEqual(company_rows, bundled_rows)

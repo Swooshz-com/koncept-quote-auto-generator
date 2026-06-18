@@ -1,11 +1,11 @@
 {
-  "id": "koncept",
-  "label": "Synthetic Legacy Fallback Fixture",
-  "description": "Deterministic synthetic bundled profile kept only for fallback and regression coverage.",
-  "default_pricing_reference": "koncept-exhibition-quotation",
+  "id": "synthetic-exhibition-fixture-template",
+  "label": "Synthetic Exhibition Fixture Template",
+  "description": "Deterministic synthetic workspace-owned quotation layout pack.",
+  "default_pricing_reference": "synthetic-exhibition-fixture-pricing",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json",
-  "default_quote_detail_preset": "koncept-image-default",
+  "default_quote_detail_preset": "synthetic-fixture-default",
   "quote_detail_presets": [
     {
       "id": "default",
@@ -38,7 +38,7 @@
       }
     },
     {
-      "id": "koncept-image-default",
+      "id": "synthetic-fixture-default",
       "name": "Synthetic Fallback Quote Company",
       "details": {
         "tax": {

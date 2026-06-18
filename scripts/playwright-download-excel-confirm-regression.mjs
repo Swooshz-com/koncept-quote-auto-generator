@@ -187,10 +187,10 @@ function acceptedConfirmSessionSnapshot() {
   return {
     version: 4,
     savedAt: new Date().toISOString(),
-    profileId: "koncept",
-    pricingReferenceId: "koncept-exhibition-quotation",
-    pricingReferenceSource: "bundled",
-    selectedPresetValue: "profile:koncept-image-default",
+    profileId: "synthetic-exhibition-fixture-template",
+    pricingReferenceId: "synthetic-exhibition-fixture-pricing",
+    pricingReferenceSource: "workspace-seed",
+    selectedPresetValue: "profile:synthetic-fixture-default",
     images: [{
       name: "booth-render.png",
       type: "image/png",

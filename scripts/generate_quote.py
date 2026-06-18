@@ -49,8 +49,42 @@ def discovered_default_resource_dir(root: Path, marker_filename: str, fallback: 
     return candidates[0] if candidates else root / fallback
 
 
-DEFAULT_PROFILE_DIR = discovered_default_resource_dir(PROJECT_ROOT / "profiles", "profile.json")
-DEFAULT_PRICING_REFERENCE_DIR = discovered_default_resource_dir(PROJECT_ROOT / "pricing-references", "reference.json")
+def safe_seed_resource_id(value: object) -> str:
+    text = str(value or "").strip()
+    return text if RESOURCE_ID_RE.fullmatch(text) else ""
+
+
+def workspace_seed_default_resource_dirs(seed_path: Path) -> tuple[Path | None, Path | None]:
+    try:
+        seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        seed = {}
+    defaults = seed.get("defaults") if isinstance(seed.get("defaults"), dict) else {}
+    runtime = seed.get("runtime_dependencies") if isinstance(seed.get("runtime_dependencies"), dict) else {}
+    layout = runtime.get("quotation_layout") if isinstance(runtime.get("quotation_layout"), dict) else {}
+    pricing = runtime.get("pricing_reference") if isinstance(runtime.get("pricing_reference"), dict) else {}
+    seed_root = seed_path.parent
+
+    profile_id = safe_seed_resource_id(defaults.get("profile_id") or layout.get("profile_id") or layout.get("id"))
+    profile_path = str(layout.get("path") or "").replace("\\", "/").strip("/")
+    profile_dir = seed_root / profile_path if profile_id and profile_path else None
+    if profile_dir and not (profile_dir / "profile.json").is_file():
+        profile_dir = None
+
+    pricing_id = safe_seed_resource_id(defaults.get("pricing_reference_id") or pricing.get("id"))
+    pricing_path = str(pricing.get("path") or "").replace("\\", "/").strip("/")
+    pricing_dir = seed_root / pricing_path if pricing_id and pricing_path else None
+    if pricing_dir and not (pricing_dir / "reference.json").is_file():
+        pricing_dir = None
+
+    return profile_dir, pricing_dir
+
+
+WORKSPACE_DEFAULT_PROFILE_DIR, WORKSPACE_DEFAULT_PRICING_REFERENCE_DIR = workspace_seed_default_resource_dirs(
+    PROJECT_ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "workspace.json"
+)
+DEFAULT_PROFILE_DIR = WORKSPACE_DEFAULT_PROFILE_DIR or discovered_default_resource_dir(PROJECT_ROOT / "profiles", "profile.json")
+DEFAULT_PRICING_REFERENCE_DIR = WORKSPACE_DEFAULT_PRICING_REFERENCE_DIR or discovered_default_resource_dir(PROJECT_ROOT / "pricing-references", "reference.json")
 DEFAULT_TEMPLATE = DEFAULT_PRICING_REFERENCE_DIR / "pricing-catalog.json"
 DEFAULT_LAYOUT_TEMPLATE = DEFAULT_PROFILE_DIR / "quotation-layout.xlsx"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output"

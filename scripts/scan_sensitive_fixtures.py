@@ -54,28 +54,28 @@ PAYMENT_RE = re.compile(
 )
 KNOWN_SYNTHETIC_REVIEW_ALLOWLIST = {
     ("committed-pdf-sample", "fixtures/samples/kent-group/kent-group.pdf"),
-    ("committed-fixture-media", "pricing-references/koncept-exhibition-quotation/pricing-catalog-images/synthetic-chip.png"),
     (
         "committed-fixture-media",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/pricing-catalog-images/synthetic-chip.png",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/pricing-catalog-images/synthetic-chip.png",
     ),
     ("customer-sample-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
     ("customer-sample-marker", "fixtures/samples/kent-group/sample.json"),
     ("customer-sample-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
-    ("embedded-logo-reference", "profiles/koncept/profile.json"),
+    (
+        "embedded-logo-reference",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/profile.json",
+    ),
     ("internal-pricing-field", "docs/pricing-catalog-import.md"),
-    ("internal-pricing-field", "pricing-references/koncept-exhibition-quotation/pricing-catalog.json"),
     (
         "internal-pricing-field",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/pricing-catalog.json",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/pricing-catalog.json",
     ),
     ("real-company-identity-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
     ("real-company-identity-marker", "docs/pr-checks/quote-generator-pr-checklist.md"),
     ("real-company-identity-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
-    ("xlsx-defined-name", "profiles/koncept/quotation-layout.xlsx"),
     (
         "xlsx-defined-name",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/quotation-layout.xlsx",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/quotation-layout.xlsx",
     ),
     ("xlsx-embedded-media", "docs/Quotation-Cost-Template-V1.1.xlsx"),
 }

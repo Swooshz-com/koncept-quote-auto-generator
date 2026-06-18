@@ -1,6 +1,6 @@
-{
+﻿{
   "schema_version": 1,
-  "profile_id": "koncept-workspace-template",
+  "profile_id": "synthetic-exhibition-fixture-template",
   "output": {
     "master_format": "xlsx",
     "pdf_default": "disabled",

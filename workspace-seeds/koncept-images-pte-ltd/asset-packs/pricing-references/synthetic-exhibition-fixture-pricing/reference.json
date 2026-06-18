@@ -1,7 +1,7 @@
-{
-  "id": "koncept-exhibition-quotation",
+﻿{
+  "id": "synthetic-exhibition-fixture-pricing",
   "label": "Synthetic Exhibition Fixture Pricing",
-  "description": "Deterministic synthetic bundled pricing reference for parser, matching, and fallback tests.",
+  "description": "Deterministic synthetic workspace-owned pricing reference seed.",
   "currency": "SGD",
   "pricing_catalog": "pricing-catalog.json",
   "pricing_reference": "pricing-catalog.ai-reference.md",
