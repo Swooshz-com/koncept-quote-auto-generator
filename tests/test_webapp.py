@@ -260,6 +260,73 @@ def write_test_pricing_reference(root: Path, reference_id: str, items: list[dict
     return reference_dir
 
 
+def write_test_profile_pack(root: Path, profile_id: str, pricing_reference_id: str) -> Path:
+    profile_dir = root / profile_id
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / "quotation-layout.xlsx").write_bytes(KONCEPT_LAYOUT.read_bytes())
+    (profile_dir / "layout-rules.json").write_text(
+        json.dumps({"output": {"master_format": "xlsx"}, "workspace_fixture": profile_id}, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    (profile_dir / "profile.json").write_text(
+        json.dumps(
+            {
+                "id": profile_id,
+                "label": "Workspace Test Layout",
+                "default_pricing_reference": pricing_reference_id,
+                "quotation_layout": "quotation-layout.xlsx",
+                "layout_rules": "layout-rules.json",
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    return profile_dir
+
+
+def write_workspace_seed(root: Path, dependencies: dict) -> Path:
+    seed_dir = root / "koncept-images-pte-ltd"
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    seed_path = seed_dir / "workspace.json"
+    seed_path.write_text(
+        json.dumps(
+            {
+                "schema": "swooshz.local-company-workspace-seed.v1",
+                "company": {
+                    "id": "koncept-images-pte-ltd",
+                    "slug": "koncept-images-pte-ltd",
+                    "display_name": "Koncept Images Pte Ltd",
+                },
+                "workspace": {
+                    "id": "koncept-images-pte-ltd",
+                    "slug": "koncept-images-pte-ltd",
+                    "display_name": "Koncept Images Pte Ltd",
+                    "storage_backend": "local-json-bridge",
+                },
+                "profile_presets": {
+                    "storage_collection": "profiles",
+                    "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/profiles.json",
+                    "import_schema": "swooshz.quote-company-profile.v1",
+                    "default_profile_id": "koncept",
+                },
+                "pricing_references": {
+                    "storage_collection": "pricing-references",
+                    "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/pricing-references.json",
+                    "default_pricing_reference_id": "koncept-exhibition-quotation",
+                },
+                "defaults": {
+                    "profile_id": "koncept",
+                    "pricing_reference_id": "koncept-exhibition-quotation",
+                },
+                "runtime_dependencies": dependencies,
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    return seed_path
+
+
 class LocalRunnerServer:
     def __enter__(self):
         self.server = webapp.ThreadingHTTPServer(("127.0.0.1", 0), webapp.QuoteRunnerHandler)
@@ -12283,6 +12350,201 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(seed["defaults"]["profile_id"], "koncept")
         self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-exhibition-quotation")
         self.assertTrue(seed["migration_notes"])
+        dependencies = webapp.workspace_runtime_dependencies(seed)
+        self.assertEqual(dependencies["quote_company_profile"]["source"], "workspace-store")
+        self.assertEqual(dependencies["quote_company_profile"]["store"], "profiles")
+        self.assertEqual(dependencies["quote_company_profile"]["id"], "koncept-images-pte-ltd")
+        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["preset_id"], "koncept-image-default")
+        self.assertEqual(dependencies["logo"]["source"], "quote-company-profile")
+        self.assertEqual(dependencies["quotation_layout"]["source"], "bundled-profile")
+        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["layout_rules"]["source"], "bundled-profile")
+        self.assertEqual(dependencies["layout_rules"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["pricing_reference"]["source"], "bundled")
+        self.assertEqual(dependencies["pricing_reference"]["id"], "koncept-exhibition-quotation")
+
+    def test_workspace_quote_company_profile_resolution_prefers_workspace_store(self):
+        dependencies = {
+            "quote_company_profile": {
+                "id": "active-imported-profile",
+                "source": "workspace-store",
+                "store": "profiles",
+                "fallback": {
+                    "source": "bundled-profile-preset",
+                    "profile_id": "koncept",
+                    "preset_id": "koncept-image-default",
+                },
+            },
+            "logo": {"source": "quote-company-profile"},
+        }
+        imported_profile = webapp.normalize_profile_payload({
+            "id": "active-imported-profile",
+            "label": "Active Imported Fixture",
+            "defaults": {
+                "company": {
+                    "name": "Workspace Fixture Co Pte Ltd",
+                    "header_details": "Workspace Fixture Co Pte Ltd\n1 Fixture Way",
+                    "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                },
+                "quote_text": {
+                    "payment_terms": ["Workspace payment terms."],
+                },
+            },
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            seed_root = Path(tmp) / "workspace-seeds"
+            write_workspace_seed(seed_root, dependencies)
+            store = webapp.CompanyConfigStore(Path(tmp) / "data")
+            store.save_profile("koncept-images-pte-ltd", imported_profile)
+            payload = valid_payload()
+            payload["company"].pop("logo_data_url")
+            payload["company"]["name"] = ""
+            payload["quote_text"]["payment_terms"] = []
+            with (
+                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+            ):
+                workspace_profile = webapp.workspace_quote_company_profile()
+                resolved_payload = webapp.payload_with_workspace_quote_profile_defaults(payload)
+
+        self.assertEqual(workspace_profile["id"], "active-imported-profile")
+        self.assertEqual(workspace_profile["source"], "workspace-store")
+        self.assertEqual(resolved_payload["company"]["name"], "Workspace Fixture Co Pte Ltd")
+        self.assertEqual(resolved_payload["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
+        self.assertEqual(resolved_payload["quote_text"]["payment_terms"], ["Workspace payment terms."])
+        self.assertEqual(resolved_payload["client"], payload["client"])
+
+    def test_workspace_profile_defaults_do_not_silently_fill_from_bundled_fallback(self):
+        dependencies = {
+            "quote_company_profile": {
+                "id": "missing-imported-profile",
+                "source": "workspace-store",
+                "store": "profiles",
+                "fallback": {
+                    "source": "bundled-profile-preset",
+                    "profile_id": "koncept",
+                    "preset_id": "koncept-image-default",
+                },
+            },
+            "logo": {"source": "quote-company-profile"},
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            seed_root = Path(tmp) / "workspace-seeds"
+            write_workspace_seed(seed_root, dependencies)
+            payload = valid_payload()
+            payload["company"].pop("logo_data_url")
+            payload["company"]["name"] = ""
+            with mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root):
+                workspace_profile = webapp.workspace_quote_company_profile()
+                resolved_payload = webapp.payload_with_workspace_quote_profile_defaults(payload)
+
+        self.assertEqual(workspace_profile["source"], "bundled-profile-preset")
+        self.assertEqual(workspace_profile["id"], "koncept-image-default")
+        self.assertEqual(resolved_payload["company"]["name"], "")
+        self.assertNotIn("logo_data_url", resolved_payload["company"])
+
+    def test_workspace_dependencies_drive_template_layout_rules_and_pricing_resolution(self):
+        dependencies = {
+            "quotation_layout": {
+                "source": "bundled-profile",
+                "profile_id": "workspace-layout",
+                "fallback_profile_id": "koncept",
+            },
+            "layout_rules": {
+                "source": "bundled-profile",
+                "profile_id": "workspace-layout",
+                "fallback_profile_id": "koncept",
+            },
+            "pricing_reference": {
+                "source": "bundled",
+                "id": "workspace-pricing",
+                "fallback_reference_id": "koncept-exhibition-quotation",
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seed_root = root / "workspace-seeds"
+            profiles_root = root / "profiles"
+            pricing_root = root / "pricing-references"
+            write_workspace_seed(seed_root, dependencies)
+            profile_dir = write_test_profile_pack(profiles_root, "workspace-layout", "workspace-pricing")
+            reference_dir = write_test_pricing_reference(pricing_root, "workspace-pricing", [
+                with_required_pricing_metadata({
+                    "id": "workspace-row",
+                    "section": "Graphics",
+                    "description": "Workspace graphics",
+                    "unit_hint": "sqm",
+                    "sale_unit_price": 123,
+                })
+            ])
+            with (
+                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
+                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
+            ):
+                self.assertEqual(webapp.profile_id_from_payload({}), "workspace-layout")
+                self.assertEqual(webapp.pricing_reference_id_from_payload({}), "workspace-pricing")
+                self.assertEqual(webapp.workspace_quotation_layout_path(), profile_dir / "quotation-layout.xlsx")
+                self.assertEqual(webapp.workspace_layout_rules_path(), profile_dir / "layout-rules.json")
+                self.assertEqual(webapp.load_pricing_reference_pack(webapp.pricing_reference_id_from_payload({})).pricing_catalog_path, reference_dir / "pricing-catalog.json")
+
+    def test_run_quote_job_uses_workspace_dependencies_when_payload_ids_are_absent(self):
+        dependencies = {
+            "quotation_layout": {
+                "source": "bundled-profile",
+                "profile_id": "workspace-layout",
+                "fallback_profile_id": "koncept",
+            },
+            "pricing_reference": {
+                "source": "bundled",
+                "id": "workspace-pricing",
+                "fallback_reference_id": "koncept-exhibition-quotation",
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seed_root = root / "workspace-seeds"
+            profiles_root = root / "profiles"
+            pricing_root = root / "pricing-references"
+            write_workspace_seed(seed_root, dependencies)
+            profile_dir = write_test_profile_pack(profiles_root, "workspace-layout", "workspace-pricing")
+            reference_dir = write_test_pricing_reference(pricing_root, "workspace-pricing", [
+                with_required_pricing_metadata({
+                    "id": "workspace-row",
+                    "section": "Floor Design",
+                    "description": "Workspace carpet",
+                    "unit_hint": "sqm",
+                    "sale_unit_price": 99,
+                })
+            ])
+            payload = valid_payload()
+            payload.pop("profile_id")
+            payload.pop("pricing_reference_id")
+            completed = webapp.subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Wrote quotation.xlsx\nPDF export status: skipped\n",
+                stderr="",
+            )
+            with (
+                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
+                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
+                mock.patch.object(webapp.subprocess, "run", return_value=completed) as run,
+            ):
+                result = webapp.run_quote_job(payload, output_root=root / "out", tmp_root=root / "tmp")
+
+        command = run.call_args.args[0]
+        self.assertEqual(result["status"], "completed")
+        self.assertIn(str(reference_dir / "pricing-catalog.json"), command)
+        self.assertIn(str(profile_dir / "quotation-layout.xlsx"), command)
+        self.assertNotIn(str(KONCEPT_CATALOG), command)
+        self.assertNotIn(str(KONCEPT_LAYOUT), command)
 
     def test_exported_quote_company_profile_imports_to_koncept_workspace_store(self):
         exported_profile = {

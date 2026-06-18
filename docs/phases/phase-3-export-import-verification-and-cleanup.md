@@ -76,3 +76,79 @@ sample fixture inspected above is still referenced by app behavior, tests, or
 guardrails. Future removal should wait until replacement imported profile,
 template, pricing-reference, and sample fixture paths are implemented and
 covered by tests.
+
+## Phase 3B Workspace-Owned Dependency Resolution - 2026-06-18
+
+Phase 3B moves cleanup forward by letting the Koncept Images workspace seed own
+the active local/staging runtime dependencies instead of relying on discovered
+bundled defaults as the only resolution path.
+
+### Runtime Dependency Model
+
+`workspace-seeds/koncept-images-pte-ltd/workspace.json` now declares
+`runtime_dependencies` for:
+
+- active quote-company profile: workspace profile store
+  `QUOTE_DATA_ROOT/koncept-images-pte-ltd/profiles.json`, preferred id
+  `koncept-images-pte-ltd`
+- active logo: the active quote-company profile's `logo_data_url`
+- active quotation layout/template: bundled profile `koncept` for this phase
+- active layout rules: bundled profile `koncept` for this phase
+- active pricing reference: bundled pricing reference
+  `koncept-exhibition-quotation` for this phase
+
+This keeps the local/staging model migration-shaped: the workspace records the
+company id, profile store, selected quote-company profile, selected layout
+source, selected layout-rules source, and selected pricing-reference source that
+can later become platform company records.
+
+### Runtime Resolution
+
+- Missing payload `profile_id` now resolves from the workspace's active
+  quotation layout dependency before falling back to the repo default profile.
+- Missing payload `pricing_reference_id` now resolves from the workspace's
+  active pricing-reference dependency before falling back to repo defaults.
+- Generated XLSX jobs use the workspace-resolved pricing catalog and layout
+  template when payload ids are absent.
+- Saved/imported workspace quote-company profiles can fill missing quote-company
+  defaults, including `logo_data_url`, before generation validation.
+- Bundled quote-company profile presets are exposed only as explicit fallback
+  metadata and are not silently applied to generation payloads.
+
+### Bundled Files Still Kept
+
+The same bundled files from Phase 3A remain because they are now fallback/test
+fixtures or active workspace-declared dependencies:
+
+- `profiles/koncept/profile.json`
+- `profiles/koncept/quotation-layout.xlsx`
+- `profiles/koncept/layout-rules.json`
+- `profiles/koncept/assets/koncept-header-logo.jpeg`
+- `pricing-references/koncept-exhibition-quotation/reference.json`
+- `pricing-references/koncept-exhibition-quotation/pricing-catalog.json`
+- `pricing-references/koncept-exhibition-quotation/pricing-catalog.ai-reference.md`
+- `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/*`
+- `fixtures/samples/kent-group/sample.json`
+- `fixtures/samples/kent-group/kent-group.pdf`
+- `pricing-references/import-cleanup-rules.json`
+- `scripts/build_pricing_catalog.py`
+- `scripts/validate_dynamic_pricing_reference_rules.py`
+
+### Next Deletion Gate
+
+Do not delete bundled default/demo packs until workspace-owned replacement paths
+cover every active runtime and test dependency:
+
+1. imported workspace quote-company profile exists and is selected without
+   relying on bundled preset details
+2. workspace-owned layout/template and layout-rules source exists outside the
+   bundled `profiles/koncept` pack
+3. workspace-owned pricing-reference pack exists outside the bundled
+   `pricing-references/koncept-exhibition-quotation` pack
+4. sample/PDF smoke flows either use sanitized workspace-owned fixtures or are
+   replaced by smaller deterministic test fixtures
+5. full local tests and CI prove no active app path still requires the old
+   bundled files
+
+Phase 3B does not add hosting, deployment, auth, Supabase, Stripe, billing,
+OIDC completion, production exposure, or a credit ledger.
