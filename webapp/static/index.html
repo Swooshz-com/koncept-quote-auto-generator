@@ -109,6 +109,11 @@
                   <button class="secondary-button panel-clear-button" type="button" id="resetOutputButton" hidden>Reset Draft</button>
                 </div>
               </div>
+              <div class="active-workspace-summary" id="activeWorkspaceSummary" aria-label="Active workspace status">
+                <span>Company <strong id="activeCompanyName">Koncept Images Pte Ltd</strong></span>
+                <span>Profile <strong id="activeProfileSummary">Workspace template</strong></span>
+                <span>Pricing <strong id="activePricingSummary">Workspace pricing</strong></span>
+              </div>
               <div class="workspace-pane-scroll">
               <section class="image-intake side-panel-card side-panel-section is-active" id="imageIntake" data-side-panel-content="images" aria-label="Reference uploads">
                 <label class="dropzone" for="imageInput">
@@ -130,9 +135,9 @@
                   <div class="pricing-reference-copy">
                     <div class="pricing-reference-heading">
                       <h3>Quote Pricing Reference</h3>
-                      <span class="pricing-reference-source-badge">Repo catalog</span>
+                      <span class="pricing-reference-source-badge">Workspace seed</span>
                     </div>
-                    <p class="settings-note" id="selectedPricingReferenceSummary">Managed in Settings.</p>
+                    <p class="settings-note" id="selectedPricingReferenceSummary">Active workspace pricing pack. Manage references in Settings.</p>
                   </div>
                   <div class="pricing-reference-controls">
                     <div class="pricing-reference-control-group pricing-reference-card">
@@ -251,7 +256,7 @@
                       <h3>Select Profile</h3>
                       <span class="company-preset-source-badge">Profile template</span>
                     </div>
-                    <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
+                    <p class="settings-note" id="presetFlowStatus">Use the selected profile for this quote. Manage saved/imported profiles in Settings.</p>
                   </div>
                   <div class="company-preset-controls">
                     <div class="company-preset-control-group company-preset-card company-preset-profile-card">
@@ -260,16 +265,6 @@
                         <select id="presetSelect"></select>
                       </label>
                       <div class="settings-button-row">
-                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M4 7h16"></path>
-                            <path d="M10 11v6"></path>
-                            <path d="M14 11v6"></path>
-                            <path d="M6 7l1 14h10l1-14"></path>
-                            <path d="M9 7V4h6v3"></path>
-                          </svg>
-                          <span>Delete</span>
-                        </button>
                         <button class="primary-button profile-load-button" type="button" id="loadPresetButton">
                           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                             <path d="M4 20h16"></path>
@@ -277,39 +272,6 @@
                             <path d="m7 11 5 5 5-5"></path>
                           </svg>
                           <span>Load</span>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="company-preset-control-group company-preset-card company-preset-save-card">
-                      <label class="compact-control preset-save-name">
-                        Reusable Profile Name
-                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
-                      </label>
-                      <div class="settings-button-row company-preset-file-actions">
-                        <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
-                        <button class="secondary-button" type="button" id="exportPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 20V9"></path>
-                            <path d="m7 14 5-5 5 5"></path>
-                            <path d="M5 4h14"></path>
-                          </svg>
-                          <span>Export</span>
-                        </button>
-                        <button class="secondary-button" type="button" id="importPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 4v11"></path>
-                            <path d="m7 10 5 5 5-5"></path>
-                            <path d="M5 20h14"></path>
-                          </svg>
-                          <span>Import</span>
-                        </button>
-                        <button class="primary-button" type="button" id="savePresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                            <polyline points="7 3 7 8 15 8"></polyline>
-                          </svg>
-                          <span>Save</span>
                         </button>
                       </div>
                     </div>
@@ -642,7 +604,7 @@
           <header class="modal-header">
             <div>
               <span class="basis-chat-eyebrow">Settings</span>
-              <h3 id="pricingReferenceModalTitle">Pricing Reference Settings</h3>
+              <h3 id="pricingReferenceModalTitle">Workspace Settings</h3>
             </div>
             <button class="icon-button" type="button" id="pricingReferenceCloseButton" aria-label="Close pricing reference modal">x</button>
           </header>
@@ -652,13 +614,96 @@
               <p>Your current role cannot create, edit, import, delete, or save pricing references.</p>
             </div>
             <div class="pricing-reference-editor-body" id="pricingReferenceEditorBody">
+              <section class="settings-status-section" aria-label="Active workspace sources">
+                <div class="settings-status-heading">
+                  <span class="pricing-reference-field-title">Active workspace</span>
+                  <span class="settings-note">Local/staging workspace status for quote-company, template, and pricing sources.</span>
+                </div>
+                <div class="settings-status-grid">
+                  <div>
+                    <span>Company</span>
+                    <strong id="settingsActiveCompany">Koncept Images Pte Ltd</strong>
+                  </div>
+                  <div>
+                    <span>Workspace ID</span>
+                    <strong id="settingsWorkspaceId">koncept-images-pte-ltd</strong>
+                  </div>
+                  <div>
+                    <span>Active profile</span>
+                    <strong id="settingsActiveProfile">Workspace template</strong>
+                  </div>
+                  <div>
+                    <span>Profile source</span>
+                    <strong id="settingsActiveProfileSource">Workspace seed profile pack</strong>
+                  </div>
+                  <div>
+                    <span>Pricing reference</span>
+                    <strong id="settingsActivePricingReference">Workspace pricing</strong>
+                  </div>
+                  <div>
+                    <span>Pricing source</span>
+                    <strong id="settingsPricingSource">Workspace seed pricing reference</strong>
+                  </div>
+                  <div>
+                    <span>Template source</span>
+                    <strong id="settingsTemplateSource">Workspace seed layout pack</strong>
+                  </div>
+                </div>
+              </section>
               <div class="pricing-reference-settings-tabs" role="tablist" aria-label="Pricing reference settings">
                 <button class="pricing-reference-settings-tab is-active" type="button" id="pricingReferenceManageTab" role="tab" aria-selected="true" aria-controls="pricingReferenceManagePanel" data-pricing-reference-settings-mode="manage">Manage</button>
                 <button class="pricing-reference-settings-tab" type="button" id="pricingReferenceImportTab" role="tab" aria-selected="false" aria-controls="pricingReferenceImportPanel" data-pricing-reference-settings-mode="import">Import</button>
               </div>
               <section class="pricing-reference-mode-panel pricing-reference-manage-panel" id="pricingReferenceManagePanel" role="tabpanel" aria-labelledby="pricingReferenceManageTab" data-pricing-reference-mode-panel="manage">
+                <section class="pricing-reference-upload-field profile-management-section" id="profileManagementSection">
+                  <span class="pricing-reference-field-title">Quote-company profiles</span>
+                  <span class="settings-note" id="presetStatus">Import, export, save, or delete saved quote-company profiles for this local workspace.</span>
+                  <div class="company-preset-control-group company-preset-card company-preset-save-card profile-management-controls">
+                    <label class="compact-control preset-save-name">
+                      Reusable Profile Name
+                      <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
+                    </label>
+                    <div class="settings-button-row company-preset-file-actions">
+                      <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+                      <button class="secondary-button" type="button" id="exportPresetButton">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <path d="M12 20V9"></path>
+                          <path d="m7 14 5-5 5 5"></path>
+                          <path d="M5 4h14"></path>
+                        </svg>
+                        <span>Export</span>
+                      </button>
+                      <button class="secondary-button" type="button" id="importPresetButton">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <path d="M12 4v11"></path>
+                          <path d="m7 10 5 5 5-5"></path>
+                          <path d="M5 20h14"></path>
+                        </svg>
+                        <span>Import</span>
+                      </button>
+                      <button class="primary-button" type="button" id="savePresetButton">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                          <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        <span>Save</span>
+                      </button>
+                      <button class="secondary-button danger-button" type="button" id="deletePresetButton">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <path d="M4 7h16"></path>
+                          <path d="M10 11v6"></path>
+                          <path d="M14 11v6"></path>
+                          <path d="M6 7l1 14h10l1-14"></path>
+                          <path d="M9 7V4h6v3"></path>
+                        </svg>
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                </section>
                 <section class="pricing-reference-upload-field pricing-reference-delete-section" id="pricingReferenceDeleteSection">
-                  <span class="pricing-reference-field-title">Existing repo references</span>
+                  <span class="pricing-reference-field-title">Pricing references</span>
                   <span class="settings-note">Select a repo pack to review and edit its pricing rows. Delete imported packs that are no longer needed. Default profile references are protected.</span>
                   <div class="pricing-reference-delete-controls">
                     <label class="compact-control">
