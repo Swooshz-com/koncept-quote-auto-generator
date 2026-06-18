@@ -7376,12 +7376,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("function handleProfileSelectionChange", js)
         self.assertIn("clearGeneratedQuoteState();", js)
         self.assertIn("Quote Pricing Reference", html)
-        self.assertIn("Repo catalog", html)
+        self.assertIn("Workspace seed", html)
         self.assertIn('class="pricing-reference-copy"', html)
         self.assertIn('class="pricing-reference-control-group pricing-reference-card"', html)
-        self.assertIn('class="pricing-reference-source-badge">Repo catalog</span>', html)
-        self.assertIn('id="selectedPricingReferenceSummary">Managed in Settings.</p>', html)
-        self.assertIn('? "Managed in Settings."', js)
+        self.assertIn('class="pricing-reference-source-badge">Workspace seed</span>', html)
+        self.assertIn('id="selectedPricingReferenceSummary">Active workspace pricing pack. Manage references in Settings.</p>', html)
+        self.assertIn("pricingReferenceSourceLabel(reference)", js)
         self.assertNotIn("Required before moving to Quote Company. Managed in Settings.", html)
         self.assertNotIn("Quote type", html)
         self.assertNotIn("Quote type changed", js)
@@ -7397,7 +7397,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"{forbidden_source_term} context", html)
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
-        self.assertIn("Load a template, or save/import/export a reusable company profile.", html)
+        self.assertIn("Use the selected profile for this quote. Manage saved/imported profiles in Settings.", html)
+        self.assertIn("Import, export, save, or delete saved quote-company profiles for this local workspace.", html)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
@@ -7441,7 +7442,19 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("Save &amp; Manage Data", html)
         self.assertNotIn("More Actions", html)
         self.assertIn('class="company-preset-control-group company-preset-card company-preset-profile-card"', html)
-        self.assertIn('class="company-preset-control-group company-preset-card company-preset-save-card"', html)
+        self.assertIn('class="company-preset-control-group company-preset-card company-preset-save-card profile-management-controls"', html)
+        quote_company_panel = html.split('id="quoteCompanyPanel"', 1)[1].split('id="quoteBasisPanel"', 1)[0]
+        settings_panel = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
+        for management_id in (
+            "deletePresetButton",
+            "presetNameInput",
+            "importPresetFile",
+            "exportPresetButton",
+            "importPresetButton",
+            "savePresetButton",
+        ):
+            self.assertNotIn(f'id="{management_id}"', quote_company_panel)
+            self.assertIn(f'id="{management_id}"', settings_panel)
         self.assertIn("profile-load-button", html)
         self.assertIn('id="deletePresetButton"', html)
         self.assertNotIn('id="deletePresetButton" hidden', html)
@@ -7698,6 +7711,49 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("syncControlStates();", profile_change_body)
         self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
         self.assertIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
+
+    def test_static_workspace_status_and_settings_host_profile_management(self):
+        static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        quote_company_panel = html.split('id="quoteCompanyPanel"', 1)[1].split('id="quoteBasisPanel"', 1)[0]
+        settings_panel = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
+
+        self.assertIn("Koncept Images Pte Ltd", html)
+        self.assertIn("koncept-images-pte-ltd", html)
+        self.assertIn('id="activeCompanyName"', html)
+        self.assertIn('id="activeProfileSummary"', html)
+        self.assertIn('id="activePricingSummary"', html)
+        for settings_id in (
+            "settingsActiveCompany",
+            "settingsWorkspaceId",
+            "settingsActiveProfile",
+            "settingsActiveProfileSource",
+            "settingsActivePricingReference",
+            "settingsPricingSource",
+            "settingsTemplateSource",
+        ):
+            self.assertIn(f'id="{settings_id}"', html)
+            self.assertIn(settings_id, js)
+        self.assertIn("function renderWorkspaceStatus", js)
+        self.assertIn('"workspace-seed": "Workspace seed"', js)
+        self.assertIn('const allowedQuoteSources = new Set(["workspace-seed", "bundled"]);', js)
+        self.assertIn("Workspace Settings", settings_panel)
+        self.assertIn("Quote-company profiles", settings_panel)
+        self.assertIn("Pricing references", settings_panel)
+        self.assertIn('id="presetSelect"', quote_company_panel)
+        self.assertIn('id="loadPresetButton"', quote_company_panel)
+        for management_id in (
+            "deletePresetButton",
+            "presetNameInput",
+            "importPresetFile",
+            "exportPresetButton",
+            "importPresetButton",
+            "savePresetButton",
+        ):
+            self.assertNotIn(f'id="{management_id}"', quote_company_panel)
+            self.assertIn(f'id="{management_id}"', settings_panel)
 
     def test_static_webapp_uses_simplified_setup_assistant_flow(self):
         static_dir = ROOT / "webapp" / "static"
@@ -8458,6 +8514,7 @@ const state = {
   pricingReferences: [],
 };
 eval([
+  "pricingReferenceSourceValue",
   "pricingReferenceSelectValue",
   "pricingReferenceSelectionFromValue",
   "mergePricingReferences",
@@ -8595,6 +8652,7 @@ global.fetch = async (url) => {
 };
 
 eval([
+  "pricingReferenceSourceValue",
   "pricingReferenceSelectValue",
   "pricingReferenceSelectionFromValue",
   "mergePricingReferences",
@@ -9193,7 +9251,6 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn('value="manual"', html)
         self.assertIn('value="pricing_reference" selected', html)
         self.assertIn("source_basis_line_id", js)
-        self.assertIn('source: "bundled"', js)
         self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
@@ -9324,7 +9381,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertNotIn("Optional starter file for clean manual entry.", html)
         pricing_reference_modal = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
         self.assertLess(pricing_reference_modal.index("Manage"), pricing_reference_modal.index("Import"))
-        self.assertLess(pricing_reference_modal.index("Existing repo references"), pricing_reference_modal.index("Pricing catalog upload"))
+        self.assertLess(pricing_reference_modal.index("Pricing references"), pricing_reference_modal.index("Pricing catalog upload"))
         self.assertLess(pricing_reference_modal.index("Pricing catalog upload"), pricing_reference_modal.index("Pricing reference name"))
         self.assertLess(pricing_reference_modal.index('id="pricingReferencePreview"'), pricing_reference_modal.index("Pricing reference name"))
         self.assertLess(pricing_reference_modal.index("Pricing reference name"), pricing_reference_modal.index("Tax label"))
@@ -9877,10 +9934,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".company-preset-panel .settings-note", css)
         self.assertIn(".pricing-reference-control-group", css)
         self.assertIn(".pricing-reference-card", css)
-        self.assertIn("grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);", css)
+        self.assertIn("grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px);", css)
         self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
-        self.assertIn(".company-preset-profile-card {\n  grid-column: 2;", css)
-        self.assertIn(".company-preset-save-card {\n  grid-column: 3;", css)
+        self.assertIn(".company-preset-panel .company-preset-profile-card {\n  grid-column: 2;", css)
+        self.assertIn(".profile-management-controls.company-preset-save-card", css)
         self.assertIn(".pricing-reference-panel .settings-note {\n  align-self: start;\n  padding-top: 0;", css)
         self.assertIn("padding: 12px 28px 80px;", css)
         self.assertIn('/api/settings/pricing-references/import-preview', js)
@@ -10127,6 +10184,7 @@ function pricingReferenceOperationBusy() { return Boolean(state.pricingReference
 
 eval([
   "canManagePricingReferences",
+  "canManageSettings",
   "pricingReferenceNoAccessReason",
   "setPricingReferenceModalBusyState",
   "setPricingReferenceSaveButtonState",
@@ -13509,6 +13567,31 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertIn("workspace-seed", sources)
         self.assertIn("bundled", sources)
         self.assertTrue(all(item.get("source") in {"workspace-seed", "bundled"} for item in payload["pricing_references"]))
+
+    def test_profiles_api_exposes_active_koncept_workspace_sources(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
+            with LocalRunnerServer() as runner:
+                response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
+                payload = json.loads(response.read().decode("utf-8"))
+
+        workspace = payload["workspace"]
+        self.assertEqual(payload["company_id"], "koncept-images-pte-ltd")
+        self.assertEqual(workspace["company"]["display_name"], "Koncept Images Pte Ltd")
+        self.assertEqual(workspace["workspace"]["slug"], "koncept-images-pte-ltd")
+        self.assertEqual(payload["default_profile_id"], "koncept-workspace-template")
+        self.assertEqual(payload["default_pricing_reference_id"], "koncept-workspace-pricing")
+        active_profile = next(item for item in payload["profiles"] if item["id"] == "koncept-workspace-template")
+        active_pricing = next(item for item in payload["pricing_references"] if item["id"] == "koncept-workspace-pricing")
+        self.assertEqual(active_profile["default_pricing_reference"], "koncept-workspace-pricing")
+        self.assertEqual(active_pricing["source"], "workspace-seed")
+        self.assertEqual(
+            workspace["runtime_dependencies"]["quotation_layout"]["source"],
+            "workspace-seed-profile-pack",
+        )
+        self.assertEqual(
+            workspace["runtime_dependencies"]["pricing_reference"]["source"],
+            "workspace-seed-pricing-reference",
+        )
 
     def test_settings_read_endpoints_require_management_permission(self):
         paths = [
