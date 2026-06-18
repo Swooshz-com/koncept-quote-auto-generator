@@ -2260,6 +2260,41 @@ def manual_page_break_ids(last_row: int) -> list[int]:
     return break_ids
 
 
+def ooxml_cell_has_payload(cell: ET.Element) -> bool:
+    if cell.find(f"{NS_MAIN}f") is not None:
+        return True
+    value = cell.find(f"{NS_MAIN}v")
+    if value is not None and (value.text or "").strip():
+        return True
+    inline = cell.find(f"{NS_MAIN}is")
+    if inline is None:
+        return False
+    return any((text.text or "").strip() for text in inline.iter(f"{NS_MAIN}t"))
+
+
+def last_payload_row(root: ET.Element, max_row: int) -> int:
+    result = 0
+    for cell in root.iter(f"{NS_MAIN}c"):
+        if not ooxml_cell_has_payload(cell):
+            continue
+        row_number, _ = parse_cell_ref(cell.attrib.get("r", "A1"))
+        if row_number <= max_row:
+            result = max(result, row_number)
+    return result
+
+
+def printable_last_row(root: ET.Element, last_row: int, manual_pagination_enabled: bool) -> int:
+    if not manual_pagination_enabled:
+        return last_row
+    payload_row = last_payload_row(root, last_row)
+    if not payload_row:
+        return last_row
+    break_ids = manual_page_break_ids(last_row)
+    if break_ids and break_ids[-1] >= payload_row:
+        return payload_row
+    return last_row
+
+
 def set_manual_page_breaks(root: ET.Element, last_row: int, enabled: bool) -> None:
     row_breaks = root.find(f"{NS_MAIN}rowBreaks")
     if row_breaks is not None:
@@ -2623,7 +2658,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "companyDateLabel", clean_text(signature.get("company_date_label"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
-    last_print_row = acceptance_row + 8
+    last_print_row = printable_last_row(root, acceptance_row + 8, manual_pagination_enabled)
     trim_layout_worksheet(root, last_print_row)
     complete_quote_layout_worksheet(root, last_print_row)
     set_manual_page_breaks(root, last_print_row, manual_pagination_enabled)

@@ -267,6 +267,33 @@ def row_break_ids(sheet):
     return [int(brk.attrib["id"]) for brk in row_breaks.findall(f"{NS_MAIN}brk")]
 
 
+def payload_row_numbers(sheet):
+    rows = set()
+    for cell in sheet.iter(f"{NS_MAIN}c"):
+        has_payload = cell.find(f"{NS_MAIN}f") is not None
+        value = cell.find(f"{NS_MAIN}v")
+        if value is not None and (value.text or "").strip():
+            has_payload = True
+        inline = cell.find(f"{NS_MAIN}is")
+        if inline is not None and any((text.text or "").strip() for text in inline.iter(f"{NS_MAIN}t")):
+            has_payload = True
+        if has_payload:
+            rows.add(quote.parse_cell_ref(cell.attrib.get("r", "A1"))[0])
+    return rows
+
+
+def no_trailing_blank_print_page(sheet, workbook):
+    payload_rows = payload_row_numbers(sheet)
+    if not payload_rows:
+        return True
+    breaks = row_break_ids(sheet)
+    last_print = int(defined_name_text(workbook, "_xlnm.Print_Area").rsplit("$", 1)[-1])
+    page_starts = [1] + [break_id + 1 for break_id in breaks]
+    page_ends = breaks + [last_print]
+    last_start, last_end = list(zip(page_starts, page_ends))[-1]
+    return any(last_start <= row <= last_end for row in payload_rows)
+
+
 def column_widths(sheet):
     widths = {}
     cols = sheet.find(f"{NS_MAIN}cols")
@@ -1300,6 +1327,15 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             if quote.parse_cell_ref(item.attrib.get("r", "A1"))[0] > 40 and quote.parse_cell_ref(item.attrib.get("r", "A1"))[1] <= 9
         ])
 
+    def test_layout_print_area_trims_trailing_blank_manual_page(self):
+        root = ET.Element(f"{NS_MAIN}worksheet")
+        ET.SubElement(root, f"{NS_MAIN}sheetData")
+        quote.set_ooxml_cell(root, 183, 1, "payload")
+
+        self.assertEqual(quote.manual_page_break_ids(184), [61, 122, 183])
+        self.assertEqual(quote.printable_last_row(root, 184, True), 183)
+        self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, 184, True)), [61, 122])
+
     def test_layout_extends_quote_table_past_preserved_second_page(self):
         brief = {
             "company_identity": "Koncept Image",
@@ -1352,6 +1388,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
         self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 13}")
         self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_layout_uses_manual_continuation_pages_with_table_headers_only(self):
         brief = {
@@ -1394,6 +1431,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             with zipfile.ZipFile(path) as zf:
                 sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
                 styles = ET.fromstring(zf.read("xl/styles.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
 
         header_refs = find_cell_refs(sheet, "Pos.")
         title_refs = find_cell_refs(sheet, "RE: Large Generated Booth")
@@ -1401,6 +1439,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(header_refs[:3], ["A20", "A64", "A125"])
         self.assertEqual(title_refs, ["A18"])
         self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
         for ref in ("E20", "E21", "E64", "E65"):
             self.assertEqual(alignment_for_style(styles, cell_style(sheet, ref)).attrib.get("horizontal"), "right")
 
