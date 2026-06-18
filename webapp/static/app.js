@@ -441,7 +441,7 @@ function mergePricingReferences(bundled = []) {
   const seen = new Set();
   return [...bundled].filter((reference) => {
     const source = String(reference?.source || "bundled").trim() || "bundled";
-    if (!["workspace-seed", "bundled"].includes(source)) return false;
+    if (!["workspace-seed", "bundled", "company"].includes(source)) return false;
     const key = pricingReferenceSelectValue(reference);
     if (!key || seen.has(key)) return false;
     seen.add(key);

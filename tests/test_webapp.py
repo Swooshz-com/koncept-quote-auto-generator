@@ -3327,7 +3327,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("path", visual_refs[0])
         self.assertNotIn("data_url", visual_refs[0])
         self.assertTrue(saved_file_exists)
-        self.assertEqual(prompt_items[0]["visual_references"][0]["data_url"], "data:image/png;base64,ZmFrZS1jaGFpcg==")
+        self.assertEqual(prompt_items[0]["visual_references"][0]["path"], visual_refs[0]["path"])
+        self.assertNotIn("data_url", prompt_items[0]["visual_references"][0])
 
     def test_pricing_reference_import_prompt_reuses_reference_sections_first(self):
         prompt = webapp.build_pricing_catalog_import_prompt(
@@ -4140,14 +4141,25 @@ class WebappServerTest(unittest.TestCase):
         self.assertFalse((LEGACY_BUNDLED_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
         pricing_references = webapp.list_pricing_references()
-        pricing_references_by_id = {item["id"]: item for item in pricing_references}
-        self.assertEqual(pricing_references_by_id["synthetic-exhibition-fixture-pricing"]["label"], "Synthetic Exhibition Fixture Pricing")
-        self.assertEqual(pricing_references_by_id["synthetic-exhibition-fixture-pricing"]["source"], "workspace-seed")
+        workspace_summary = next(
+            item
+            for item in pricing_references
+            if item["id"] == "synthetic-exhibition-fixture-pricing" and item["source"] == "workspace-seed"
+        )
+        self.assertEqual(workspace_summary["label"], "Synthetic Exhibition Fixture Pricing")
+        self.assertEqual(workspace_summary["source"], "workspace-seed")
         self.assertEqual(
             [item["label"] for item in pricing_references],
             sorted([item["label"] for item in pricing_references], key=str.casefold),
         )
-        self.assertEqual([item["id"] for item in pricing_references].count("synthetic-exhibition-fixture-pricing"), 1)
+        self.assertEqual(
+            [
+                (item["source"], item["id"])
+                for item in pricing_references
+                if item["id"] == "synthetic-exhibition-fixture-pricing" and item["source"] == "workspace-seed"
+            ].count(("workspace-seed", "synthetic-exhibition-fixture-pricing")),
+            1,
+        )
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertTrue(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["company_details"]["keep_logo_and_details_inside_print_area"])
@@ -8514,7 +8526,7 @@ eval([
 ].map(extractFunction).join("\n"));
 
 state.pricingReferences = mergePricingReferences(rawPricingReferences);
-assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Bundled Synthetic"]);
+assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Bundled Synthetic", "Company Synthetic"]);
 assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[2]), "workspace-seed::workspace");
 
 assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[3]), "local::local-one");
@@ -8535,7 +8547,7 @@ assert.strictEqual(currentPricingReference().label, "Bundled Synthetic");
 const companySynthetic = pricingReferenceSelectionFromValue("company::synthetic-exhibition-fixture-pricing");
 state.pricingReferenceId = companySynthetic.pricingReferenceId;
 state.pricingReferenceSource = companySynthetic.source;
-assert.strictEqual(currentPricingReference(), null);
+assert.strictEqual(currentPricingReference().label, "Company Synthetic");
 
 state.profileId = "synthetic-exhibition-fixture-template";
 state.pricingReferenceId = "";
@@ -12692,10 +12704,12 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
 
     def test_static_pricing_reference_selection_keeps_workspace_seed_sources(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        merge_references_body = js.split("function mergePricingReferences(bundled = [])", 1)[1].split("function sortedPricingReferencesForDisplay", 1)[0]
         render_options_body = js.split("function renderProfileOptions()", 1)[1].split("function canManagePricingReferences()", 1)[0]
         build_payload_body = js.split("function buildPayload(options = {})", 1)[1].split("function buildLineItemNormalizePayload()", 1)[0]
 
         self.assertNotIn('filter((reference) => String(reference?.source || "bundled") === "bundled")', render_options_body)
+        self.assertIn('["workspace-seed", "bundled", "company"].includes(source)', merge_references_body)
         self.assertIn('source: pricingReference.source || "bundled"', build_payload_body)
         self.assertNotIn('source: "bundled",', build_payload_body.split("pricing_reference: pricingReference ? {", 1)[1].split("} :", 1)[0])
 
@@ -13130,9 +13144,10 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         items = webapp.local_pricing_reference_items({
             "pricing_reference": {"source": "local", "items": reference["items"]},
         }, limit=None)
-        self.assertEqual(items[0]["visual_references"][0]["data_url"], data_url)
+        self.assertEqual(items[0]["visual_references"][0]["source"], "xl/media/image4.png")
+        self.assertNotIn("data_url", items[0]["visual_references"][0])
 
-    def test_public_company_reference_is_not_quote_selectable_server_side(self):
+    def test_public_company_reference_is_quote_selectable_server_side(self):
         company_item = {
             "id": "company-ref-row",
             "section": "Graphics",
@@ -13142,8 +13157,9 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             "markup_multiplier": 2,
         }
         with tempfile.TemporaryDirectory() as tmp:
+            company_id = webapp.DEFAULT_COMPANY_ID
             store = webapp.CompanyConfigStore(Path(tmp))
-            saved = store.save_pricing_reference("default", {
+            saved = store.save_pricing_reference(company_id, {
                 "id": "company-ref",
                 "label": "Company Ref",
                 "tax": {"label": "VAT", "rate": 0.2},
@@ -13151,14 +13167,81 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
             })
             public_reference = webapp.public_company_pricing_reference(saved)
             with mock.patch.object(webapp, "company_config_store", return_value=store):
+                pricing_references = webapp.list_pricing_references(company_id)
                 rows = webapp.pricing_catalog_prompt_rows_for_payload({
                     "pricing_reference_id": "company-ref",
                     "pricing_reference": public_reference,
                 })
+                sections = webapp.pricing_reference_section_names_for_payload({
+                    "pricing_reference_id": "company-ref",
+                    "pricing_reference": public_reference,
+                })
 
-        self.assertTrue(rows)
-        self.assertNotIn("company-ref-row", {row["id"] for row in rows})
-        self.assertNotIn("Company saved graphics", {row["description"] for row in rows})
+        self.assertIn("company-ref", {reference["id"] for reference in pricing_references if reference.get("source") == "company"})
+        self.assertIn("company-ref-row", {row["id"] for row in rows})
+        self.assertIn("Company saved graphics", {row["description"] for row in rows})
+        self.assertEqual(sections, ["Graphics"])
+
+    def test_run_quote_job_uses_company_pricing_reference_without_repo_pack(self):
+        company_item = with_required_pricing_metadata({
+            "id": "company-graphics-row",
+            "section": "Graphics",
+            "description": "Company runtime graphics",
+            "unit_hint": "sqm",
+            "internal_cost": 10,
+            "markup_multiplier": 2,
+            "category_order": 2,
+            "item_order": 3,
+        })
+        company_reference = {
+            "id": "company-runtime-ref",
+            "label": "Company Runtime Ref",
+            "tax": {"label": "VAT", "rate": 0.2},
+            "currency": "USD",
+            "items": [company_item],
+        }
+        payload = valid_payload()
+        payload["pricing_reference_id"] = "company-runtime-ref"
+        payload["pricing_reference"] = webapp.public_company_pricing_reference(company_reference)
+        payload["line_items"] = [{
+            "section": "Graphics",
+            "quantity": "2",
+            "unit": "sqm",
+            "description": "Company runtime graphics",
+            "pricing_keyword": "company-graphics-row",
+        }]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = webapp.CompanyConfigStore(root / "data")
+            store.save_pricing_reference(webapp.DEFAULT_COMPANY_ID, company_reference)
+            completed = webapp.subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Wrote quotation.xlsx\nPDF export status: skipped\n",
+                stderr="",
+            )
+            with (
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+                mock.patch.object(webapp.subprocess, "run", return_value=completed) as run,
+            ):
+                result = webapp.run_quote_job(
+                    payload,
+                    output_root=root / "out",
+                    tmp_root=root / "tmp",
+                    job_id="company-runtime",
+                )
+
+            command = run.call_args.args[0]
+            template_path = Path(command[command.index("--template") + 1])
+            catalog = json.loads(template_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "completed")
+        self.assertIn("company-runtime", str(template_path))
+        self.assertNotIn(str(webapp.pricing_references_root()), str(template_path))
+        self.assertEqual(catalog["currency"], "USD")
+        self.assertEqual(catalog["items"][0]["id"], "company-graphics-row")
+        self.assertEqual(catalog["items"][0]["description"], "Company runtime graphics")
 
     def test_save_pricing_reference_pack_writes_repo_reference_files_and_images(self):
         data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
@@ -13875,7 +13958,7 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         }
         with tempfile.TemporaryDirectory() as tmp:
             store = webapp.CompanyConfigStore(Path(tmp))
-            store.save_pricing_reference("default", {
+            store.save_pricing_reference(webapp.DEFAULT_COMPANY_ID, {
                 "id": "synthetic-exhibition-fixture-pricing",
                 "label": "Company Synthetic",
                 "tax": {"label": "VAT", "rate": 0.2},
@@ -13896,7 +13979,9 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                     "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "company"},
                 }
                 company_rows = webapp.pricing_catalog_prompt_rows_for_payload(company_payload)
-                self.assertEqual(company_rows, bundled_rows)
+                self.assertIn("company-collision-row", {row["id"] for row in company_rows})
+                self.assertIn("Company-only collision catalogue item", {row["description"] for row in company_rows})
+                self.assertNotEqual(company_rows, bundled_rows)
 
     def test_deploy_generate_response_omits_local_paths_and_raw_process_output(self):
         payload = valid_payload()
