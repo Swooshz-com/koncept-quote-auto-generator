@@ -77,7 +77,6 @@ KNOWN_SYNTHETIC_REVIEW_ALLOWLIST = {
         "xlsx-defined-name",
         "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/quotation-layout.xlsx",
     ),
-    ("xlsx-embedded-media", "docs/Quotation-Cost-Template-V1.1.xlsx"),
 }
 
 

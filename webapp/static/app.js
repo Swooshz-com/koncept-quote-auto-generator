@@ -182,6 +182,7 @@ const state = {
   activeJob: null,
   pendingPricingReference: null,
   editingPricingReferenceId: "",
+  editingPricingReferenceSource: "",
   pricingReferenceSettingsMode: PRICING_REFERENCE_SETTINGS_MODE_MANAGE,
   pricingReferenceImportFileSelected: false,
   pricingReferenceImportBusy: false,
@@ -195,6 +196,7 @@ const state = {
   pricingReferenceAutoLoadToken: "",
   pricingReferenceSavedNotice: "",
   pricingReferenceDeleteConfirmId: "",
+  pricingReferenceDeleteConfirmSource: "",
   pricingReferenceDeleteError: "",
   pricingReferenceDeleteBusy: false,
   profileDeleteConfirmId: "",
@@ -441,7 +443,7 @@ function mergePricingReferences(bundled = []) {
   const seen = new Set();
   return [...bundled].filter((reference) => {
     const source = String(reference?.source || "bundled").trim() || "bundled";
-    if (!["workspace-seed", "bundled", "company"].includes(source)) return false;
+    if (!["workspace-seed", "bundled", "company", "local"].includes(source)) return false;
     const key = pricingReferenceSelectValue(reference);
     if (!key || seen.has(key)) return false;
     seen.add(key);
@@ -2719,7 +2721,8 @@ function protectedPricingReferenceReason(reference = currentPricingReference()) 
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
   if (String(reference.source || "bundled") === "workspace-seed") return "Workspace seed pricing references cannot be deleted here.";
-  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be deleted here.";
+  if (String(reference.source || "bundled") === "bundled") return "Bundled pricing reference packs are read-only.";
+  if (String(reference.source || "bundled") !== "local") return "Only local pricing reference packs can be deleted here.";
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "Select a pricing reference first.";
   const profileDefault = String(currentProfile()?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID).trim();
@@ -2744,7 +2747,7 @@ function canDeleteSelectedPricingReference() {
 function pricingReferenceExportBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be exported here.";
+  if (String(reference.source || "bundled") !== "local") return "Only local pricing reference packs can be exported here.";
   if (!String(reference.id || "").trim()) return "Select a pricing reference first.";
   return "";
 }
@@ -2765,7 +2768,7 @@ function updatePricingReferenceExportButton() {
 function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (!["workspace-seed", "bundled"].includes(String(reference.source || "bundled"))) return "Only repo pricing reference packs can be edited here.";
+  if (!["workspace-seed", "local"].includes(String(reference.source || "bundled"))) return "Only local or workspace seed pricing reference packs can be edited here.";
   const knownItemCount = Array.isArray(reference.items) ? reference.items.length : Number(reference.item_count);
   if (Number.isFinite(knownItemCount) && knownItemCount <= 0) return "This pricing reference has no editable rows.";
   return "";
@@ -2805,9 +2808,23 @@ function pricingReferenceSaveProgressMarkup() {
 function renderPricingReferenceManageStatus(result = state.pendingPricingReference) {
   const status = elements.pricingReferenceManageStatus;
   if (!status) return;
-  if (!state.editingPricingReferenceId || !result) {
+  const resultErrors = Array.isArray(result?.errors) ? result.errors.filter(Boolean) : [];
+  if (!result || (!state.editingPricingReferenceId && !resultErrors.length)) {
     status.hidden = true;
     status.innerHTML = "";
+    return;
+  }
+  const label = elements.pricingReferenceName?.value || result.sourceName || state.editingPricingReferenceId || "Pricing reference";
+  if (String(result.layout || "") === "loading-pricing-reference") {
+    status.hidden = false;
+    status.className = "pricing-reference-manage-status is-warn";
+    status.innerHTML = `
+      <div>
+        <span>Loading reference</span>
+        <strong>${escapeHtml(label)}</strong>
+        <p>Loading editable pricing rows...</p>
+      </div>
+    `;
     return;
   }
   if (state.pricingReferenceSaveBusy) {
@@ -2817,12 +2834,10 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
     return;
   }
   const canSave = Boolean(result.canSave) && !pricingReferenceSaveBlockReason(result);
-  const label = elements.pricingReferenceName?.value || result.sourceName || state.editingPricingReferenceId;
   const hasChanges = pricingReferenceHasPendingChanges(result);
   const savedNotice = String(state.pricingReferenceSavedNotice || "").trim();
   const editNotice = String(state.pricingReferenceEditNotice || "").trim();
   const rowIssues = pricingReferenceRowIssues(result.items || []);
-  const resultErrors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
   const noUnsavedChanges = !savedNotice && !editNotice && !hasChanges;
   const rowCount = Array.isArray(result.items) ? result.items.length : Number(result.rowCount || 0);
   const blockingStatusText = rowIssues.length
@@ -2832,9 +2847,11 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
       : rowCount <= 0
         ? "Add at least one valid pricing row before saving."
         : "";
-  const statusText = !savedNotice && editNotice && blockingStatusText
-    ? `${editNotice} ${blockingStatusText}`
-    : savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
+  const statusText = !state.editingPricingReferenceId && blockingStatusText
+    ? blockingStatusText
+    : !savedNotice && editNotice && blockingStatusText
+      ? `${editNotice} ${blockingStatusText}`
+      : savedNotice || editNotice || (hasChanges ? pricingReferenceEditStatusText(result) : "No unsaved changes.");
   const hasBlockingIssues = rowIssues.length > 0
     || resultErrors.length > 0
     || rowCount <= 0;
@@ -2849,11 +2866,11 @@ function renderPricingReferenceManageStatus(result = state.pendingPricingReferen
   status.classList.toggle("is-saved", Boolean(savedNotice));
   status.innerHTML = `
     <div>
-      <span>${savedNotice ? "Saved reference" : "Editing reference"}</span>
+      <span>${savedNotice ? "Saved reference" : state.editingPricingReferenceId ? "Editing reference" : "Reference unavailable"}</span>
       <strong>${escapeHtml(label)}</strong>
       <p>${escapeHtml(sentenceLineBreakText(statusText))}</p>
     </div>
-    <button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review</button>
+    ${rowCount > 0 ? '<button class="secondary-button pricing-reference-table-open" type="button" data-pricing-reference-table-open>Review</button>' : ""}
   `;
 }
 
@@ -2941,6 +2958,7 @@ function clearPricingReferenceDraft(options = {}) {
   stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
+  state.editingPricingReferenceSource = "";
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceSaveBusy = false;
@@ -2969,7 +2987,7 @@ function renderPricingReferenceDeleteOptions() {
   if (!select) return;
   const previousValue = select.value;
   const references = sortedPricingReferencesForDisplay(
-    state.pricingReferences.filter((reference) => ["workspace-seed", "bundled"].includes(String(reference?.source || "bundled")))
+    state.pricingReferences.filter((reference) => ["workspace-seed", "local", "bundled"].includes(String(reference?.source || "bundled")))
   );
   select.innerHTML = references.map((reference) => `
     <option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || reference.id || "Pricing reference")}</option>
@@ -2992,19 +3010,21 @@ function updatePricingReferenceDeleteButton() {
   const reason = protectedPricingReferenceReason(reference);
   const busy = pricingReferenceOperationBusy();
   button.disabled = Boolean(reason) || busy;
-  button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this repo pricing reference.";
+  button.title = busy ? "Pricing reference operation is still running." : reason || "Delete this local pricing reference.";
   button.setAttribute("aria-disabled", String(button.disabled));
   if (typeof updatePricingReferenceExportButton === "function") updatePricingReferenceExportButton();
 }
 
 function pricingReferenceDeleteConfirmReference() {
   const referenceId = String(state.pricingReferenceDeleteConfirmId || "").trim();
+  const source = String(state.pricingReferenceDeleteConfirmSource || "local").trim() || "local";
   if (!referenceId) return null;
-  return state.pricingReferences.find((reference) => reference.id === referenceId && String(reference.source || "bundled") === "bundled") || null;
+  return state.pricingReferences.find((reference) => reference.id === referenceId && String(reference.source || "bundled") === source) || null;
 }
 
 function hidePricingReferenceDeleteConfirm() {
   state.pricingReferenceDeleteConfirmId = "";
+  state.pricingReferenceDeleteConfirmSource = "";
   state.pricingReferenceDeleteError = "";
   if (elements.pricingReferenceDeleteConfirm) elements.pricingReferenceDeleteConfirm.hidden = true;
   if (elements.pricingReferenceDeleteError) {
@@ -3027,7 +3047,7 @@ function renderPricingReferenceDeleteConfirm() {
     elements.pricingReferenceDeleteConfirmTitle.textContent = `Delete ${label}?`;
   }
   if (elements.pricingReferenceDeleteConfirmText) {
-    elements.pricingReferenceDeleteConfirmText.textContent = "This removes the saved repo pricing reference pack from this local app. Existing quotes already generated from it are not changed.";
+    elements.pricingReferenceDeleteConfirmText.textContent = "This removes the saved local pricing reference pack from this app. Existing quotes already generated from it are not changed.";
   }
   if (elements.pricingReferenceDeleteError) {
     const message = String(state.pricingReferenceDeleteError || "").trim();
@@ -3047,6 +3067,7 @@ function renderPricingReferenceDeleteConfirm() {
 function showPricingReferenceDeleteConfirm(reference) {
   if (!reference) return;
   state.pricingReferenceDeleteConfirmId = reference.id || "";
+  state.pricingReferenceDeleteConfirmSource = reference.source || "local";
   state.pricingReferenceDeleteError = "";
   renderPricingReferenceDeleteConfirm();
   window.setTimeout(() => elements.cancelPricingReferenceDeleteButton?.focus(), 0);
@@ -3302,7 +3323,9 @@ function pricingReferencePreviewFromReference(reference = {}) {
 async function fetchPricingReferenceDetail(reference = {}) {
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return null;
-  const { ok, data } = await getJson(`/api/settings/pricing-references/${encodeURIComponent(referenceId)}`);
+  const source = String(reference.source || "").trim();
+  const query = source ? `?source=${encodeURIComponent(source)}` : "";
+  const { ok, data } = await getJson(`/api/settings/pricing-references/${encodeURIComponent(referenceId)}${query}`);
   if (!ok || !data || typeof data.pricing_reference !== "object") {
     return null;
   }
@@ -4328,7 +4351,11 @@ function exportSelectedPricingReference(event) {
     return;
   }
   const referenceId = String(reference.id || "").trim();
-  const exportUrl = `/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx?t=${Date.now()}`;
+  const query = new URLSearchParams({
+    source: String(reference.source || "local"),
+    t: String(Date.now()),
+  });
+  const exportUrl = `/api/settings/pricing-references/${encodeURIComponent(referenceId)}/export.xlsx?${query.toString()}`;
   try {
     const link = document.createElement("a");
     link.href = exportUrl;
@@ -4384,6 +4411,7 @@ function closePricingReferenceModal() {
   elements.pricingReferenceModal.hidden = true;
   state.pendingPricingReference = null;
   state.editingPricingReferenceId = "";
+  state.editingPricingReferenceSource = "";
   state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
@@ -4407,6 +4435,16 @@ async function editSelectedPricingReference(options = {}) {
   const loadToken = `${summaryReference.id || ""}-${Date.now()}`;
   state.pricingReferenceAutoLoadToken = loadToken;
   state.editingPricingReferenceId = summaryReference.id || "";
+  state.editingPricingReferenceSource = summaryReference.source || "";
+  state.pendingPricingReference = {
+    sourceName: summaryReference.label || summaryReference.id || "Pricing reference",
+    items: [],
+    rowCount: 0,
+    errors: [],
+    warnings: [],
+    canSave: false,
+    layout: "loading-pricing-reference",
+  };
   state.pricingReferenceImportFileSelected = false;
   state.pricingReferenceImportBusy = false;
   state.pricingReferenceSaveBusy = false;
@@ -4414,13 +4452,17 @@ async function editSelectedPricingReference(options = {}) {
   stopElapsedTimer("pricingReferenceImportElapsed");
   stopElapsedTimer("pricingReferenceSaveElapsed");
   state.pricingReferenceEditNotice = "";
+  renderPricingReferenceManageStatus(state.pendingPricingReference);
   const reference = await fetchPricingReferenceDetail(summaryReference).catch(() => null);
   if (state.pricingReferenceAutoLoadToken !== loadToken) return;
   if (!reference || !Array.isArray(reference.items) || !reference.items.length) {
     state.editingPricingReferenceId = "";
-    renderPricingReferencePreview({
+    state.pendingPricingReference = {
       ...pricingReferenceValidationResult([], [], 0, summaryReference?.label || "Pricing reference"),
       errors: ["Could not load editable pricing reference rows."],
+    };
+    renderPricingReferencePreview({
+      ...state.pendingPricingReference,
     }, { scrollIntoView: true });
     syncControlStates();
     return;
@@ -4498,6 +4540,7 @@ async function savePricingReferenceFromModal(event) {
   try {
     const { ok, data } = await postJson("/api/settings/pricing-references", {
       id: state.editingPricingReferenceId || safeId(name, `pricing-ref-${Date.now().toString(36)}`),
+      source: state.editingPricingReferenceSource || "",
       label: name,
       description: result.description || `Imported from ${result.sourceName || "settings upload"}`,
       tax,
@@ -4536,6 +4579,7 @@ async function savePricingReferenceFromModal(event) {
       }
     }
     state.editingPricingReferenceId = savedReference.id || state.editingPricingReferenceId || safeId(name, "pricing-reference");
+    state.editingPricingReferenceSource = savedReference.source || state.editingPricingReferenceSource || "local";
     state.pricingReferenceSettingsMode = PRICING_REFERENCE_SETTINGS_MODE_MANAGE;
     state.pricingReferenceImportFileSelected = false;
     state.pendingPricingReference = {
@@ -4594,8 +4638,8 @@ async function savePricingReferenceFromModal(event) {
   }
 }
 
-async function deleteRepoPricingReference(referenceId) {
-  const reference = state.pricingReferences.find((item) => item.id === referenceId && String(item.source || "bundled") === "bundled");
+async function deleteRepoPricingReference(referenceId, source = "local") {
+  const reference = state.pricingReferences.find((item) => item.id === referenceId && String(item.source || "bundled") === source);
   if (!reference) return;
   const reason = protectedPricingReferenceReason(reference);
   if (reason) {
@@ -4608,7 +4652,8 @@ async function deleteRepoPricingReference(referenceId) {
   setPricingReferenceModalBusyState(true, "Deleting pricing reference...");
   updatePricingReferenceDeleteButton();
   try {
-    const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}`, {
+    const query = source ? `?source=${encodeURIComponent(source)}` : "";
+    const { ok, data } = await fetch(`/api/settings/pricing-references/${encodeURIComponent(reference.id)}${query}`, {
       method: "DELETE",
       headers: state.csrfToken ? { [state.csrfHeaderName]: state.csrfToken } : {},
     }).then(async (response) => ({ ok: response.ok, data: await response.json().catch(() => ({})) }));
@@ -4659,7 +4704,7 @@ async function deleteSelectedPricingReference() {
     updatePricingReferenceDeleteButton();
     return;
   }
-  await deleteRepoPricingReference(selected.id);
+  await deleteRepoPricingReference(selected.id, selected.source || "local");
 }
 
 async function loadProfiles() {
@@ -4981,8 +5026,10 @@ function unitPriceEditKind(value) {
 }
 
 function effectiveOutputUnitPrice(row = {}) {
-  const manual = numberOrNull(row.unit_price_override);
+  const overrideText = String(row.unit_price_override ?? "").trim();
+  const manual = numberOrNull(overrideText);
   if (manual !== null) return manual;
+  if (overrideText && overrideText.toLowerCase() !== "included") return null;
   return numberOrNull(row.catalog_unit_price);
 }
 
@@ -5366,6 +5413,7 @@ function outputCellDisplayValue(row = {}, field = "") {
   if (field === "price_mode") return row.price_mode === "Included" ? "Included" : "Priced";
   if (field === "unit_price_override") {
     if (row.price_mode === "Included") return "Included";
+    if (unitPriceEditKind(row.unit_price_override) === "invalid") return "???";
     if (numberOrNull(row.unit_price_override) !== null) return formatAmount(row.unit_price_override);
     if (numberOrNull(row.catalog_unit_price) !== null) return formatAmount(row.catalog_unit_price);
     return "???";

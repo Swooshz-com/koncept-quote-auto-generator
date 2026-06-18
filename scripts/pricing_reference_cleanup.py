@@ -11,7 +11,7 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-IMPORT_CLEANUP_RULES_PATH = PROJECT_ROOT / "pricing-references" / "import-cleanup-rules.json"
+IMPORT_CLEANUP_RULES_PATH = PROJECT_ROOT / "_pricing-references" / "import-cleanup-rules.json"
 
 
 def normalized_import_text(value: Any) -> str:

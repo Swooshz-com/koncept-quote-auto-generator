@@ -2159,11 +2159,13 @@ select:focus {
 }
 
 .basis-line-possible-matches {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
   margin-top: 6px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .basis-line-possible-match {
@@ -4955,6 +4957,11 @@ body.privacy-page {
 
 .output-stat-card-row .stat-card {
   min-height: 84px;
+}
+
+.output-stat-card-row .stat-card-value {
+  font-size: 18px;
+  letter-spacing: 0;
 }
 
 .analysis-findings-card {

@@ -34,7 +34,7 @@ replacement, or documented sample-only retention:
 | Renamed synthetic workspace pricing pack | `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/**` |
 | Restored sample-only Kent upload fixture | `fixtures/samples/kent-group/**` |
 | Workspace bridge identity retained | `workspace-seeds/koncept-images-pte-ltd/workspace.json` |
-| XLSX package internals requiring review | `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/quotation-layout.xlsx`, `docs/Quotation-Cost-Template-V1.1.xlsx`, `docs/examples/super-messy-pricing-reference.xlsx` |
+| XLSX package internals requiring review | `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/quotation-layout.xlsx` |
 | XLSX formulas/header-footer/shared strings/defined names/document properties | Same XLSX paths above, depending on package part |
 
 XLSX inspection covered visible and hidden workbook metadata surfaces available
@@ -68,7 +68,6 @@ sample-only:
 
 Files that remain safe to keep after review:
 
-- `pricing-references/import-cleanup-rules.json`
 - scanner/test code that contains only synthetic trigger strings
 - deterministic synthetic workspace seed fixtures created from scratch for
   parser, generator, import/export, logo-data-url, and smoke tests
