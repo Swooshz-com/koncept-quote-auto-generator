@@ -27,6 +27,10 @@ KONCEPT_CATALOG = KONCEPT_PRICING_REFERENCE / "pricing-catalog.json"
 KONCEPT_AI_REFERENCE = KONCEPT_PRICING_REFERENCE / "pricing-catalog.ai-reference.md"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
+SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
+SANITIZED_LOGO_DATA_URL = "data:image/png;base64," + base64.b64encode(SANITIZED_LOGO_PNG_BYTES).decode("ascii")
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -12318,6 +12322,8 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
                         )
                         response = urllib.request.urlopen(request, timeout=3)
                         body = json.loads(response.read().decode("utf-8"))
+                        settings_response = urllib.request.urlopen(f"{runner.base_url}/api/settings/profiles", timeout=3)
+                        settings_body = json.loads(settings_response.read().decode("utf-8"))
             workspace_store = Path(tmp) / "koncept-images-pte-ltd" / "profiles.json"
             default_store = Path(tmp) / "default" / "profiles.json"
             workspace_store_exists = workspace_store.exists()
@@ -12333,6 +12339,70 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertFalse(default_store_exists)
         self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["name"], "Koncept Images Pte Ltd")
         self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
+        loaded_profile = next(item for item in settings_body["company_profiles"] if item["id"] == "koncept-images-import")
+        self.assertEqual(loaded_profile["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
+
+    def test_imported_profile_logo_data_url_is_written_to_generated_xlsx(self):
+        imported_profile = webapp.normalize_profile_payload({
+            "schema": "swooshz.quote-company-profile.v1",
+            "profile": {
+                "id": "sanitized-imported-profile",
+                "label": "Sanitized Imported Profile",
+                "description": "Synthetic fixture for workspace import logo output.",
+                "defaults": {
+                    "company": {
+                        "name": "Sanitized Quote Company Pte Ltd",
+                        "header_details": "Sanitized Quote Company Pte Ltd\n1 Fixture Road\nSingapore 000001",
+                        "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                    },
+                    "quote_text": {
+                        "payment_terms": ["70% payment upon confirmation."],
+                        "cheque_payee": "Sanitized Quote Company Pte Ltd",
+                    },
+                    "signature": {
+                        "company_signatory": "Fixture Signatory",
+                        "company_title": "Fixture Title",
+                        "company_date_label": "Date:",
+                    },
+                    "rich_text": {
+                        "quoteCompanyName": "<div>Sanitized Quote Company Pte Ltd</div>",
+                        "headerDetails": "<div><strong>Sanitized Quote Company Pte Ltd</strong></div><div>1 Fixture Road</div>",
+                        "paymentTerms": "<div><strong>70% payment upon confirmation.</strong></div>",
+                        "companySignatory": "<div>Fixture Signatory</div>",
+                        "companyTitle": "<div>Fixture Title</div>",
+                        "companyDateLabel": "<div>Date:</div>",
+                    },
+                },
+            },
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp) / "data")
+            company_id = webapp.default_workspace_seed()["company"]["id"]
+            saved_profile = store.save_profile(company_id, imported_profile)
+            restored_profile = store.list_profiles(company_id)[0]
+            payload = valid_payload()
+            for section in ("company", "quote_text", "signature", "rich_text"):
+                payload[section].update(restored_profile["defaults"][section])
+
+            result = webapp.run_quote_job(
+                payload,
+                output_root=Path(tmp) / "out",
+                tmp_root=Path(tmp) / "tmp",
+                job_id="imported-logo",
+            )
+            quotation_path = Path(result["output_dir"]) / "quotation.xlsx"
+            with zipfile.ZipFile(quotation_path) as zf:
+                workbook_names = set(zf.namelist())
+                generated_logo_bytes = zf.read("xl/media/header_logo.png")
+                drawing_rels = zf.read("xl/drawings/_rels/drawing1.xml.rels").decode("utf-8")
+
+        self.assertEqual(saved_profile["id"], "sanitized-imported-profile")
+        self.assertEqual(restored_profile["defaults"]["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
+        self.assertEqual(result["status"], "completed", result.get("errors"))
+        self.assertIn("xl/media/header_logo.png", workbook_names)
+        self.assertEqual(generated_logo_bytes, SANITIZED_LOGO_PNG_BYTES)
+        self.assertIn("../media/header_logo.png", drawing_rels)
 
     def test_koncept_workspace_seed_keeps_bundled_profile_pricing_and_template_files(self):
         seed = webapp.default_workspace_seed()
