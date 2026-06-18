@@ -28,6 +28,36 @@
     "profile_id": "koncept",
     "pricing_reference_id": "koncept-exhibition-quotation"
   },
+  "runtime_dependencies": {
+    "quote_company_profile": {
+      "id": "koncept-images-pte-ltd",
+      "source": "workspace-store",
+      "store": "profiles",
+      "fallback": {
+        "source": "bundled-profile-preset",
+        "profile_id": "koncept",
+        "preset_id": "koncept-image-default"
+      }
+    },
+    "logo": {
+      "source": "quote-company-profile"
+    },
+    "quotation_layout": {
+      "source": "bundled-profile",
+      "profile_id": "koncept",
+      "fallback_profile_id": "koncept"
+    },
+    "layout_rules": {
+      "source": "bundled-profile",
+      "profile_id": "koncept",
+      "fallback_profile_id": "koncept"
+    },
+    "pricing_reference": {
+      "source": "bundled",
+      "id": "koncept-exhibition-quotation",
+      "fallback_reference_id": "koncept-exhibition-quotation"
+    }
+  },
   "migration_notes": [
     "Temporary local/staging bridge for the first internal Koncept Images Pte Ltd workspace.",
     "Imported quote-company profile exports are stored under the workspace company id and can later become platform quote_presets.",
