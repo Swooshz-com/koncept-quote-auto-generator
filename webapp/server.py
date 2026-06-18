@@ -4320,6 +4320,17 @@ def pricing_reference_section_names(reference_id: str | None = None) -> list[str
 
 
 def pricing_reference_section_names_for_payload(payload: dict[str, Any]) -> list[str]:
+    runtime_reference = runtime_pricing_reference_from_payload(payload)
+    if runtime_reference:
+        sections: list[str] = []
+        seen: set[str] = set()
+        for item in local_pricing_reference_items(payload, limit=None):
+            section = clean_basis_section_title(item.get("reference_section") or item.get("section"))
+            key = section.casefold()
+            if section and key not in seen:
+                sections.append(section)
+                seen.add(key)
+        return sections
     return pricing_reference_section_names(pricing_reference_id_from_payload(payload))
 
 
@@ -5829,6 +5840,64 @@ def pricing_reference_id_from_payload(payload: dict[str, Any]) -> str:
     return profile.default_pricing_reference_id() or DEFAULT_PRICING_REFERENCE_ID
 
 
+def pricing_reference_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    reference = payload.get("pricing_reference")
+    return reference if isinstance(reference, dict) else {}
+
+
+def pricing_reference_source_from_payload(payload: dict[str, Any]) -> str:
+    source = clean_text(pricing_reference_payload(payload).get("source")).lower()
+    return source if source in {"bundled", "workspace-seed", "company", "local"} else ""
+
+
+def pricing_reference_company_id_from_payload(payload: dict[str, Any]) -> str:
+    reference = pricing_reference_payload(payload)
+    workspace = default_workspace_seed()
+    workspace_company = workspace.get("company") if isinstance(workspace.get("company"), dict) else {}
+    fallback = safe_company_id(workspace_company.get("id"), DEFAULT_COMPANY_ID)
+    return safe_company_id(reference.get("company_id") or payload.get("company_id"), fallback)
+
+
+def runtime_pricing_reference_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    reference = pricing_reference_payload(payload)
+    source = pricing_reference_source_from_payload(payload)
+    if source == "local":
+        return reference if isinstance(reference.get("items"), list) else {}
+    if source != "company":
+        return {}
+    raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
+    if raw_items:
+        return reference
+    reference_id = safe_resource_id(reference.get("id") or payload.get("pricing_reference_id"), "")
+    if not reference_id:
+        return {}
+    company_id = pricing_reference_company_id_from_payload(payload)
+    for item in company_config_store().list_pricing_references(company_id):
+        if safe_resource_id(item.get("id"), "") == reference_id:
+            return item
+    return {}
+
+
+def runtime_pricing_reference_visual_base_dir(payload: dict[str, Any]) -> Path | None:
+    if pricing_reference_source_from_payload(payload) != "company":
+        return None
+    return company_config_store().company_dir(pricing_reference_company_id_from_payload(payload))
+
+
+def runtime_pricing_catalog_payload_for_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
+    reference = runtime_pricing_reference_from_payload(payload)
+    return pricing_reference_catalog_payload(reference) if reference else None
+
+
+def pricing_catalog_path_for_payload(payload: dict[str, Any], job_tmp: Path) -> Path:
+    runtime_catalog = runtime_pricing_catalog_payload_for_payload(payload)
+    if runtime_catalog is None:
+        return load_pricing_reference_pack(pricing_reference_id_from_payload(payload)).pricing_catalog_path
+    catalog_path = job_tmp / "pricing-catalog.json"
+    catalog_path.write_text(json.dumps(runtime_catalog, indent=2), encoding="utf-8")
+    return catalog_path
+
+
 def load_json_file(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -6187,12 +6256,13 @@ def public_company_pricing_reference(reference: dict[str, Any]) -> dict[str, Any
 
 
 def list_pricing_references(company_id: str = DEFAULT_COMPANY_ID) -> list[dict[str, Any]]:
-    # Quote-facing pricing references are repo-backed packs only. Future DB-backed
-    # references should be introduced through an explicit source boundary instead
-    # of leaking the legacy company JSON store into quote selection.
-    _ = company_id
+    safe_company = safe_company_id(company_id, DEFAULT_COMPANY_ID)
+    company_references = [
+        public_company_pricing_reference(reference)
+        for reference in company_config_store().list_pricing_references(safe_company)
+    ]
     references_by_key: dict[tuple[str, str], dict[str, Any]] = {}
-    for reference in list_workspace_pricing_references() + list_bundled_pricing_references():
+    for reference in list_workspace_pricing_references() + company_references + list_bundled_pricing_references():
         key = (clean_text(reference.get("source")) or "bundled", safe_resource_id(reference.get("id"), ""))
         if key[1]:
             references_by_key[key] = reference
@@ -7748,19 +7818,10 @@ def pricing_catalog_prompt_rows(reference_id: str | None = None) -> list[dict[st
 
 
 def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = MAX_PROMPT_CATALOG_ROWS) -> list[dict[str, Any]]:
-    reference = payload.get("pricing_reference") if isinstance(payload.get("pricing_reference"), dict) else {}
-    source = clean_text(reference.get("source"))
-    visual_base_dir: Path | None = None
-    if source == "company":
-        visual_base_dir = company_config_store().company_dir(DEFAULT_COMPANY_ID)
-        raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
-        if not raw_items:
-            reference_id = safe_resource_id(reference.get("id") or payload.get("pricing_reference_id"), "")
-            reference = next((item for item in company_config_store().list_pricing_references(DEFAULT_COMPANY_ID) if safe_resource_id(item.get("id"), "") == reference_id), {})
-    elif source != "local":
-        return []
+    reference = runtime_pricing_reference_from_payload(payload)
     if not reference:
         return []
+    visual_base_dir = runtime_pricing_reference_visual_base_dir(payload)
     raw_items = reference.get("items") if isinstance(reference.get("items"), list) else []
     source_items = raw_items if limit is None else raw_items[:limit]
     items: list[dict[str, Any]] = []
@@ -7809,13 +7870,16 @@ def local_pricing_reference_items(payload: dict[str, Any], limit: int | None = M
             ],
         }
         visual_references = resolve_visual_references(raw.get("visual_references"), visual_base_dir)
-        if visual_references:
-            item["visual_references"] = visual_references
+        visual_metadata = visual_reference_prompt_metadata(visual_references)
+        if visual_metadata:
+            item["visual_references"] = visual_metadata
         items.append(item)
     return items
 
 
 def pricing_catalog_prompt_rows_for_payload(payload: dict[str, Any], profile_id: str | None = None) -> list[dict[str, Any]]:
+    if runtime_pricing_reference_from_payload(payload):
+        return local_pricing_reference_items(payload)
     return pricing_catalog_prompt_rows(pricing_reference_id_from_payload(payload))
 
 
@@ -7925,10 +7989,12 @@ def legacy_pricing_catalog_id_aliases(item_id: str, item: dict[str, Any] | None 
 
 
 def pricing_catalog_runtime_lookup_for_payload(payload: dict[str, Any], profile_id: str | None = None) -> dict[str, dict[str, Any]]:
-    try:
-        payload_json = json.loads(load_pricing_reference_pack(pricing_reference_id_from_payload(payload)).pricing_catalog_path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    payload_json = runtime_pricing_catalog_payload_for_payload(payload)
+    if payload_json is None:
+        try:
+            payload_json = json.loads(load_pricing_reference_pack(pricing_reference_id_from_payload(payload)).pricing_catalog_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            return {}
     lookup = {}
     for item in payload_json.get("items") or []:
         if not isinstance(item, dict):
@@ -10700,8 +10766,7 @@ def run_quote_job(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     profile = load_profile_pack(profile_id_from_payload(payload))
-    pricing_reference = load_pricing_reference_pack(pricing_reference_id_from_payload(payload))
-    pricing_catalog_path = pricing_reference.pricing_catalog_path
+    pricing_catalog_path = pricing_catalog_path_for_payload(payload, job_tmp)
     layout_template_path = profile.quotation_layout_path
     uploaded_images = save_uploaded_images(image_entries(payload), job_tmp)
     brief = payload_to_brief(payload)
