@@ -13243,6 +13243,103 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(catalog["items"][0]["id"], "company-graphics-row")
         self.assertEqual(catalog["items"][0]["description"], "Company runtime graphics")
 
+    def test_synthetic_internal_workspace_smoke_uses_runtime_company_profile_and_pricing(self):
+        company_id = webapp.DEFAULT_COMPANY_ID
+        profile = webapp.normalize_profile_payload({
+            "id": company_id,
+            "label": "Synthetic Internal Workspace Profile",
+            "defaults": {
+                "company": {
+                    "name": "Synthetic Internal Workspace Pte Ltd",
+                    "header_details": "Synthetic Internal Workspace Pte Ltd\n1 Synthetic Way",
+                    "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                },
+                "quote_text": {
+                    "payment_terms": ["Synthetic payment term."],
+                    "cheque_payee": "Synthetic Internal Workspace Pte Ltd",
+                },
+                "signature": {
+                    "company_signatory": "Synthetic Signatory",
+                    "company_title": "Synthetic Title",
+                    "company_date_label": "Synthetic date:",
+                },
+            },
+        })
+        pricing_reference = {
+            "id": "synthetic-internal-runtime-pricing",
+            "label": "Synthetic Internal Runtime Pricing",
+            "currency": "SGD",
+            "tax": {"label": "GST", "rate": 0.09},
+            "items": [with_required_pricing_metadata({
+                "id": "synthetic-internal-graphics-row",
+                "section": "Graphics",
+                "description": "Synthetic internal graphics",
+                "unit_hint": "sqm",
+                "internal_cost": 12,
+                "markup_multiplier": 2,
+                "category_order": 1,
+                "item_order": 1,
+            })],
+        }
+        payload = valid_payload()
+        payload["pricing_reference_id"] = pricing_reference["id"]
+        payload["line_items"] = [{
+            "section": "Graphics",
+            "quantity": "3",
+            "unit": "sqm",
+            "description": "Synthetic internal graphics",
+            "pricing_keyword": "synthetic-internal-graphics-row",
+        }]
+        payload["company"] = {"name": "", "header_details": ""}
+        payload["quote_text"]["payment_terms"] = []
+        payload["quote_text"]["cheque_payee"] = ""
+        payload["signature"] = {
+            "company_signatory": "",
+            "company_title": "",
+            "company_date_label": "",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = webapp.CompanyConfigStore(root / "data")
+            store.save_profile(company_id, profile)
+            saved_reference = store.save_pricing_reference(company_id, pricing_reference)
+            payload["pricing_reference"] = webapp.public_company_pricing_reference(saved_reference)
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                listed_references = webapp.list_pricing_references(company_id)
+                result = webapp.run_quote_job(
+                    payload,
+                    output_root=root / "out",
+                    tmp_root=root / "tmp",
+                    job_id="synthetic-internal-workspace",
+                )
+
+            job_tmp = root / "tmp" / "synthetic-internal-workspace"
+            runtime_catalog_path = job_tmp / "pricing-catalog.json"
+            brief = json.loads(Path(result["brief_path"]).read_text(encoding="utf-8"))
+            runtime_catalog = json.loads(runtime_catalog_path.read_text(encoding="utf-8"))
+            output_dir = Path(result["output_dir"])
+            runtime_catalog_under_job_tmp = runtime_catalog_path.is_relative_to(job_tmp)
+            runtime_catalog_avoids_repo_root = str(webapp.pricing_references_root()) not in str(runtime_catalog_path)
+            quotation_exists = (output_dir / "quotation.xlsx").exists()
+
+        self.assertIn(
+            "synthetic-internal-runtime-pricing",
+            {reference["id"] for reference in listed_references if reference.get("source") == "company"},
+        )
+        self.assertEqual(result["status"], "completed", result.get("errors"))
+        self.assertTrue(runtime_catalog_under_job_tmp)
+        self.assertTrue(runtime_catalog_avoids_repo_root)
+        self.assertEqual(runtime_catalog["items"][0]["id"], "synthetic-internal-graphics-row")
+        self.assertEqual(runtime_catalog["items"][0]["sale_unit_price"], 24)
+        self.assertEqual(brief["company"]["name"], "Synthetic Internal Workspace Pte Ltd")
+        self.assertEqual(brief["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
+        self.assertEqual(brief["payment_terms"], ["Synthetic payment term."])
+        self.assertEqual(brief["signature"]["company_signatory"], "Synthetic Signatory")
+        self.assertEqual(brief["line_items"][0]["pricing_keyword"], "synthetic-internal-graphics-row")
+        self.assertTrue(quotation_exists)
+        self.assertEqual(result["pricing_matches"][0]["keyword"], "synthetic-internal-graphics-row")
+
     def test_save_pricing_reference_pack_writes_repo_reference_files_and_images(self):
         data_url = "data:image/png;base64,ZmFrZS1jaGFpcg=="
         with mock_pricing_metadata_enrichment():
