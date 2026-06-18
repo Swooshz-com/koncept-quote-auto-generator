@@ -66,12 +66,17 @@ The first internal workspace seed is represented by
   `QUOTE_DATA_ROOT/koncept-images-pte-ltd/profiles.json`
 - local pricing-reference storage target:
   `QUOTE_DATA_ROOT/koncept-images-pte-ltd/pricing-references.json`
+- active Phase 3C workspace layout/template pack:
+  `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/`
+- active Phase 3C workspace pricing-reference pack:
+  `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/`
 
 This is a bridge toward the later platform company model only. It does not add
 Supabase, production auth, billing, a credit ledger, deployment, or public
-onboarding. The seed manifest preserves the company id, display name, default
-profile/pricing reference ids, storage collections, created/updated metadata,
-and migration notes so imported profile presets can later become
+onboarding. The seed manifest preserves the company id, display name, selected
+quote-company profile store, workspace-owned layout/template and pricing pack
+ids, storage collections, created/updated metadata, and migration notes so
+imported profile presets and workspace asset packs can later become
 company-scoped platform records.
 
 ## Maintainer Export/Import Notes

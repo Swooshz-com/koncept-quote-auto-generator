@@ -27,6 +27,12 @@ KONCEPT_CATALOG = KONCEPT_PRICING_REFERENCE / "pricing-catalog.json"
 KONCEPT_AI_REFERENCE = KONCEPT_PRICING_REFERENCE / "pricing-catalog.ai-reference.md"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
+KONCEPT_WORKSPACE_SEED = ROOT / "workspace-seeds" / "koncept-images-pte-ltd"
+KONCEPT_WORKSPACE_LAYOUT_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "quotation-layouts" / "koncept-workspace-template"
+KONCEPT_WORKSPACE_PRICING_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "pricing-references" / "koncept-workspace-pricing"
+KONCEPT_WORKSPACE_CATALOG = KONCEPT_WORKSPACE_PRICING_PACK / "pricing-catalog.json"
+KONCEPT_WORKSPACE_LAYOUT = KONCEPT_WORKSPACE_LAYOUT_PACK / "quotation-layout.xlsx"
+KONCEPT_WORKSPACE_LAYOUT_RULES = KONCEPT_WORKSPACE_LAYOUT_PACK / "layout-rules.json"
 SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
@@ -284,10 +290,14 @@ def write_test_profile_pack(root: Path, profile_id: str, pricing_reference_id: s
     return profile_dir
 
 
-def write_workspace_seed(root: Path, dependencies: dict) -> Path:
+def write_workspace_seed(root: Path, dependencies: dict, defaults: dict | None = None, asset_packs: dict | None = None) -> Path:
     seed_dir = root / "koncept-images-pte-ltd"
     seed_dir.mkdir(parents=True, exist_ok=True)
     seed_path = seed_dir / "workspace.json"
+    seed_defaults = defaults or {
+        "profile_id": "koncept",
+        "pricing_reference_id": "koncept-exhibition-quotation",
+    }
     seed_path.write_text(
         json.dumps(
             {
@@ -307,17 +317,15 @@ def write_workspace_seed(root: Path, dependencies: dict) -> Path:
                     "storage_collection": "profiles",
                     "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/profiles.json",
                     "import_schema": "swooshz.quote-company-profile.v1",
-                    "default_profile_id": "koncept",
+                    "default_profile_id": seed_defaults["profile_id"],
                 },
                 "pricing_references": {
                     "storage_collection": "pricing-references",
                     "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/pricing-references.json",
-                    "default_pricing_reference_id": "koncept-exhibition-quotation",
+                    "default_pricing_reference_id": seed_defaults["pricing_reference_id"],
                 },
-                "defaults": {
-                    "profile_id": "koncept",
-                    "pricing_reference_id": "koncept-exhibition-quotation",
-                },
+                "defaults": seed_defaults,
+                "asset_packs": asset_packs or {},
                 "runtime_dependencies": dependencies,
             },
             ensure_ascii=True,
@@ -325,6 +333,60 @@ def write_workspace_seed(root: Path, dependencies: dict) -> Path:
         encoding="utf-8",
     )
     return seed_path
+
+
+def write_workspace_seed_profile_pack(seed_root: Path, profile_id: str, pricing_reference_id: str) -> Path:
+    profile_dir = seed_root / "koncept-images-pte-ltd" / "asset-packs" / "quotation-layouts" / profile_id
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / "quotation-layout.xlsx").write_bytes(KONCEPT_LAYOUT.read_bytes())
+    (profile_dir / "layout-rules.json").write_text(
+        json.dumps({"output": {"master_format": "xlsx"}, "workspace_seed_fixture": profile_id}, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    (profile_dir / "profile.json").write_text(
+        json.dumps(
+            {
+                "id": profile_id,
+                "label": "Workspace Seed Layout",
+                "description": "Sanitized workspace-owned quotation layout fixture.",
+                "default_pricing_reference": pricing_reference_id,
+                "quotation_layout": "quotation-layout.xlsx",
+                "layout_rules": "layout-rules.json",
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    return profile_dir
+
+
+def write_workspace_seed_pricing_pack(seed_root: Path, reference_id: str, items: list[dict]) -> Path:
+    reference_dir = seed_root / "koncept-images-pte-ltd" / "asset-packs" / "pricing-references" / reference_id
+    reference_dir.mkdir(parents=True, exist_ok=True)
+    (reference_dir / "reference.json").write_text(
+        json.dumps(
+            {
+                "id": reference_id,
+                "label": "Workspace Seed Pricing",
+                "description": "Sanitized workspace-owned pricing reference fixture.",
+                "pricing_catalog": "pricing-catalog.json",
+                "pricing_reference": "pricing-catalog.ai-reference.md",
+                "tax": {"label": "GST", "rate": 0.09},
+                "currency": "SGD",
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    (reference_dir / "pricing-catalog.json").write_text(
+        json.dumps({"items": items}, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    (reference_dir / "pricing-catalog.ai-reference.md").write_text(
+        "# Workspace Seed Pricing\n\n- Workspace-owned pricing fixture.\n",
+        encoding="utf-8",
+    )
+    return reference_dir
 
 
 class LocalRunnerServer:
@@ -4065,24 +4127,37 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(profile["id"], "koncept")
         self.assertEqual(profile_pack.id, "koncept")
         self.assertIn("koncept", [item["id"] for item in webapp.list_profiles()])
-        self.assertEqual(webapp.profile_pricing_catalog_path(), KONCEPT_CATALOG)
-        self.assertEqual(webapp.profile_quotation_layout_path(), KONCEPT_LAYOUT)
-        self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_LAYOUT_RULES)
+        self.assertIn("koncept-workspace-template", [item["id"] for item in webapp.list_profiles()])
+        self.assertEqual(webapp.profile_pricing_catalog_path(), KONCEPT_WORKSPACE_CATALOG)
+        self.assertEqual(webapp.profile_quotation_layout_path(), KONCEPT_WORKSPACE_LAYOUT)
+        self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_WORKSPACE_LAYOUT_RULES)
+        self.assertEqual(webapp.profile_pricing_catalog_path("koncept"), KONCEPT_CATALOG)
+        self.assertEqual(webapp.profile_quotation_layout_path("koncept"), KONCEPT_LAYOUT)
+        self.assertEqual(webapp.profile_layout_rules_path("koncept"), KONCEPT_LAYOUT_RULES)
         self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
         self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
+        workspace_profile_pack = webapp.load_profile_pack("koncept-workspace-template")
+        self.assertEqual(workspace_profile_pack.source, "workspace-seed")
+        self.assertEqual(workspace_profile_pack.quotation_layout_path, KONCEPT_WORKSPACE_LAYOUT)
+        self.assertEqual(workspace_profile_pack.layout_rules_path, KONCEPT_WORKSPACE_LAYOUT_RULES)
         pricing_pack = webapp.load_pricing_reference_pack("koncept-exhibition-quotation")
         self.assertEqual(pricing_pack.pricing_catalog_path, KONCEPT_CATALOG)
         self.assertEqual(pricing_pack.pricing_reference_path, KONCEPT_AI_REFERENCE)
+        workspace_pricing_pack = webapp.load_pricing_reference_pack("koncept-workspace-pricing")
+        self.assertEqual(workspace_pricing_pack.source, "workspace-seed")
+        self.assertEqual(workspace_pricing_pack.pricing_catalog_path, KONCEPT_WORKSPACE_CATALOG)
         self.assertTrue((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
         pricing_references = webapp.list_pricing_references()
         pricing_references_by_id = {item["id"]: item for item in pricing_references}
         self.assertEqual(pricing_references_by_id["koncept-exhibition-quotation"]["label"], "Koncept Exhibition Quotation")
+        self.assertEqual(pricing_references_by_id["koncept-workspace-pricing"]["source"], "workspace-seed")
         self.assertEqual(
             [item["label"] for item in pricing_references],
             sorted([item["label"] for item in pricing_references], key=str.casefold),
         )
         self.assertEqual([item["id"] for item in pricing_references].count("koncept-exhibition-quotation"), 1)
+        self.assertEqual([item["id"] for item in pricing_references].count("koncept-workspace-pricing"), 1)
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertTrue(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["company_details"]["keep_logo_and_details_inside_print_area"])
@@ -9105,7 +9180,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('value="pricing_reference" selected', html)
         self.assertIn("source_basis_line_id", js)
         self.assertIn('source: "bundled"', js)
-        self.assertNotIn('source: state.pricingReferenceSource || "bundled"', js)
+        self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
         generate_body = js.split("async function handleGenerate()", 1)[1].split("async function resumeSavedJob", 1)[0]
@@ -12347,8 +12422,9 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(seed["profile_presets"]["import_schema"], webapp.COMPANY_PROFILE_EXPORT_SCHEMA)
         self.assertEqual(seed["profile_presets"]["storage_collection"], "profiles")
         self.assertEqual(seed["pricing_references"]["storage_collection"], "pricing-references")
-        self.assertEqual(seed["defaults"]["profile_id"], "koncept")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-exhibition-quotation")
+        self.assertEqual(seed["profile_presets"]["default_profile_id"], "koncept-images-pte-ltd")
+        self.assertEqual(seed["defaults"]["profile_id"], "koncept-workspace-template")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-workspace-pricing")
         self.assertTrue(seed["migration_notes"])
         dependencies = webapp.workspace_runtime_dependencies(seed)
         self.assertEqual(dependencies["quote_company_profile"]["source"], "workspace-store")
@@ -12357,12 +12433,113 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(dependencies["quote_company_profile"]["fallback"]["profile_id"], "koncept")
         self.assertEqual(dependencies["quote_company_profile"]["fallback"]["preset_id"], "koncept-image-default")
         self.assertEqual(dependencies["logo"]["source"], "quote-company-profile")
-        self.assertEqual(dependencies["quotation_layout"]["source"], "bundled-profile")
-        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "koncept")
-        self.assertEqual(dependencies["layout_rules"]["source"], "bundled-profile")
-        self.assertEqual(dependencies["layout_rules"]["profile_id"], "koncept")
-        self.assertEqual(dependencies["pricing_reference"]["source"], "bundled")
-        self.assertEqual(dependencies["pricing_reference"]["id"], "koncept-exhibition-quotation")
+        self.assertEqual(dependencies["quotation_layout"]["source"], "workspace-seed-profile-pack")
+        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "koncept-workspace-template")
+        self.assertEqual(dependencies["quotation_layout"]["fallback"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["layout_rules"]["source"], "workspace-seed-profile-pack")
+        self.assertEqual(dependencies["layout_rules"]["profile_id"], "koncept-workspace-template")
+        self.assertEqual(dependencies["layout_rules"]["fallback"]["profile_id"], "koncept")
+        self.assertEqual(dependencies["pricing_reference"]["source"], "workspace-seed-pricing-reference")
+        self.assertEqual(dependencies["pricing_reference"]["id"], "koncept-workspace-pricing")
+        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "koncept-exhibition-quotation")
+
+    def test_koncept_workspace_seed_declares_workspace_owned_runtime_asset_packs(self):
+        seed = webapp.default_workspace_seed()
+        asset_packs = seed["asset_packs"]
+        dependencies = webapp.workspace_runtime_dependencies(seed)
+
+        self.assertEqual(seed["defaults"]["profile_id"], "koncept-workspace-template")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-workspace-pricing")
+        self.assertEqual(asset_packs["quote_company_profile"]["source"], "workspace-store")
+        self.assertEqual(asset_packs["quote_company_profile"]["active_profile_id"], "koncept-images-pte-ltd")
+        self.assertEqual(asset_packs["logo"]["source"], "quote-company-profile.logo_data_url")
+        self.assertEqual(asset_packs["quotation_layout"]["source"], "workspace-seed-profile-pack")
+        self.assertEqual(asset_packs["quotation_layout"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(asset_packs["layout_rules"]["source"], "workspace-seed-profile-pack")
+        self.assertEqual(asset_packs["layout_rules"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(asset_packs["pricing_reference"]["source"], "workspace-seed-pricing-reference")
+        self.assertEqual(asset_packs["pricing_reference"]["path"], "asset-packs/pricing-references/koncept-workspace-pricing")
+        self.assertEqual(dependencies["quotation_layout"]["source"], "workspace-seed-profile-pack")
+        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "koncept-workspace-template")
+        self.assertEqual(dependencies["quotation_layout"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(dependencies["layout_rules"]["source"], "workspace-seed-profile-pack")
+        self.assertEqual(dependencies["layout_rules"]["path"], "asset-packs/quotation-layouts/koncept-workspace-template")
+        self.assertEqual(dependencies["pricing_reference"]["source"], "workspace-seed-pricing-reference")
+        self.assertEqual(dependencies["pricing_reference"]["id"], "koncept-workspace-pricing")
+        self.assertEqual(dependencies["pricing_reference"]["path"], "asset-packs/pricing-references/koncept-workspace-pricing")
+        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "koncept-exhibition-quotation")
+
+    def test_workspace_seed_asset_packs_drive_template_layout_rules_pricing_and_api_defaults(self):
+        profile_id = "workspace-layout"
+        reference_id = "workspace-pricing"
+        dependencies = {
+            "quotation_layout": {
+                "source": "workspace-seed-profile-pack",
+                "profile_id": profile_id,
+                "path": f"asset-packs/quotation-layouts/{profile_id}",
+                "fallback": {"source": "bundled-profile", "profile_id": "koncept"},
+            },
+            "layout_rules": {
+                "source": "workspace-seed-profile-pack",
+                "profile_id": profile_id,
+                "path": f"asset-packs/quotation-layouts/{profile_id}",
+                "fallback": {"source": "bundled-profile", "profile_id": "koncept"},
+            },
+            "pricing_reference": {
+                "source": "workspace-seed-pricing-reference",
+                "id": reference_id,
+                "path": f"asset-packs/pricing-references/{reference_id}",
+                "fallback": {"source": "bundled", "id": "koncept-exhibition-quotation"},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            seed_root = root / "workspace-seeds"
+            profiles_root = root / "profiles"
+            pricing_root = root / "pricing-references"
+            write_workspace_seed(
+                seed_root,
+                dependencies,
+                defaults={"profile_id": profile_id, "pricing_reference_id": reference_id},
+            )
+            profile_dir = write_workspace_seed_profile_pack(seed_root, profile_id, reference_id)
+            reference_dir = write_workspace_seed_pricing_pack(seed_root, reference_id, [
+                with_required_pricing_metadata({
+                    "id": "workspace-seed-row",
+                    "section": "Graphics",
+                    "description": "Workspace seed graphics",
+                    "unit_hint": "sqm",
+                    "sale_unit_price": 321,
+                })
+            ])
+            with (
+                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
+                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
+            ):
+                self.assertEqual(webapp.profile_id_from_payload({}), profile_id)
+                self.assertEqual(webapp.pricing_reference_id_from_payload({}), reference_id)
+                self.assertEqual(webapp.workspace_quotation_layout_path(), profile_dir / "quotation-layout.xlsx")
+                self.assertEqual(webapp.workspace_layout_rules_path(), profile_dir / "layout-rules.json")
+                self.assertEqual(webapp.load_profile_pack(profile_id).directory, profile_dir)
+                pricing_pack = webapp.load_pricing_reference_pack(reference_id)
+                self.assertEqual(pricing_pack.directory, reference_dir)
+                self.assertEqual(pricing_pack.pricing_catalog_path, reference_dir / "pricing-catalog.json")
+                pricing_references = webapp.list_pricing_references()
+                workspace_summary = next(item for item in pricing_references if item["id"] == reference_id)
+
+        self.assertEqual(workspace_summary["source"], "workspace-seed")
+        self.assertEqual(workspace_summary["label"], "Workspace Seed Pricing")
+
+    def test_static_pricing_reference_selection_keeps_workspace_seed_sources(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        render_options_body = js.split("function renderProfileOptions()", 1)[1].split("function canManagePricingReferences()", 1)[0]
+        build_payload_body = js.split("function buildPayload(options = {})", 1)[1].split("function buildLineItemNormalizePayload()", 1)[0]
+
+        self.assertNotIn('filter((reference) => String(reference?.source || "bundled") === "bundled")', render_options_body)
+        self.assertIn('source: pricingReference.source || "bundled"', build_payload_body)
+        self.assertNotIn('source: "bundled",', build_payload_body.split("pricing_reference: pricingReference ? {", 1)[1].split("} :", 1)[0])
 
     def test_workspace_quote_company_profile_resolution_prefers_workspace_store(self):
         dependencies = {
@@ -12669,8 +12846,15 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
     def test_koncept_workspace_seed_keeps_bundled_profile_pricing_and_template_files(self):
         seed = webapp.default_workspace_seed()
 
-        self.assertEqual(seed["defaults"]["profile_id"], "koncept")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-exhibition-quotation")
+        self.assertEqual(seed["defaults"]["profile_id"], "koncept-workspace-template")
+        self.assertEqual(seed["defaults"]["pricing_reference_id"], "koncept-workspace-pricing")
+        self.assertTrue(KONCEPT_WORKSPACE_LAYOUT_PACK.is_dir())
+        self.assertTrue(KONCEPT_WORKSPACE_PRICING_PACK.is_dir())
+        self.assertTrue(KONCEPT_WORKSPACE_CATALOG.is_file())
+        self.assertTrue(KONCEPT_WORKSPACE_LAYOUT.is_file())
+        self.assertTrue(KONCEPT_WORKSPACE_LAYOUT_RULES.is_file())
+        self.assertTrue((KONCEPT_WORKSPACE_LAYOUT_PACK / "profile.json").is_file())
+        self.assertTrue((KONCEPT_WORKSPACE_PRICING_PACK / "reference.json").is_file())
         self.assertTrue(KONCEPT_PROFILE.is_dir())
         self.assertTrue(KONCEPT_PRICING_REFERENCE.is_dir())
         self.assertTrue(KONCEPT_CATALOG.is_file())
@@ -12678,6 +12862,9 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertTrue(KONCEPT_LAYOUT_RULES.is_file())
         self.assertTrue((KONCEPT_PROFILE / "profile.json").is_file())
         self.assertTrue((KONCEPT_PRICING_REFERENCE / "reference.json").is_file())
+        fallback_paths = [item["path"] for item in seed["asset_packs"]["fallback_test_fixtures"]]
+        self.assertIn("profiles/koncept", fallback_paths)
+        self.assertIn("pricing-references/koncept-exhibition-quotation", fallback_paths)
 
     def test_profile_payload_sanitizes_formula_like_defaults(self):
         profile = webapp.normalize_profile_payload({
@@ -13264,7 +13451,12 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertNotIn("company-ref", serialized)
         self.assertNotIn("Company Ref", serialized)
         self.assertNotIn("internal_cost", serialized)
-        self.assertTrue(all(item.get("source") == "bundled" for item in payload["pricing_references"]))
+        self.assertEqual(payload["default_profile_id"], "koncept-workspace-template")
+        self.assertEqual(payload["default_pricing_reference_id"], "koncept-workspace-pricing")
+        sources = {item.get("source") for item in payload["pricing_references"]}
+        self.assertIn("workspace-seed", sources)
+        self.assertIn("bundled", sources)
+        self.assertTrue(all(item.get("source") in {"workspace-seed", "bundled"} for item in payload["pricing_references"]))
 
     def test_settings_read_endpoints_require_management_permission(self):
         paths = [

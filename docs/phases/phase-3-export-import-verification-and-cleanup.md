@@ -152,3 +152,88 @@ cover every active runtime and test dependency:
 
 Phase 3B does not add hosting, deployment, auth, Supabase, Stripe, billing,
 OIDC completion, production exposure, or a credit ledger.
+
+## Phase 3C Workspace-Owned Template/Pricing Packs - 2026-06-18
+
+Phase 3C makes the Koncept Images local/staging runtime prefer workspace-owned
+seed asset packs for the active quotation template, layout rules, and pricing
+reference. Bundled Koncept packs remain in the repo, but they are now explicit
+fallback/test fixtures rather than the primary runtime dependency.
+
+### Workspace-Owned Packs
+
+`workspace-seeds/koncept-images-pte-ltd/workspace.json` now declares an
+`asset_packs` inventory and `runtime_dependencies` for:
+
+- active quote-company profile: workspace profile store
+  `QUOTE_DATA_ROOT/koncept-images-pte-ltd/profiles.json`, preferred id
+  `koncept-images-pte-ltd`
+- active logo: imported quote-company profile `logo_data_url`
+- active quotation layout/template: workspace seed profile pack
+  `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/`
+- active layout rules: workspace seed profile pack
+  `workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/koncept-workspace-template/layout-rules.json`
+- active pricing reference: workspace seed pricing-reference pack
+  `workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/`
+
+The workspace layout pack uses sanitized metadata only. It does not copy the
+bundled quote-company preset containing real company header/bank details. The
+quote-company profile and logo continue to come from the importable workspace
+profile store, with tests using tiny sanitized logo data.
+
+### Runtime Resolution
+
+- Missing payload `profile_id` resolves to `koncept-workspace-template`.
+- Missing payload `pricing_reference_id` resolves to
+  `koncept-workspace-pricing`.
+- `load_profile_pack("koncept-workspace-template")` resolves from the workspace
+  seed pack path.
+- `load_pricing_reference_pack("koncept-workspace-pricing")` resolves from the
+  workspace seed pricing pack path.
+- `/api/profiles` exposes the workspace seed pricing reference with source
+  `workspace-seed` and keeps bundled repo packs separately with source
+  `bundled`.
+- The browser pricing-reference selector keeps non-bundled sources selectable
+  and preserves the selected source in generated payloads.
+
+### Bundled Files Demoted To Fallback/Test Fixtures
+
+- `profiles/koncept/profile.json`
+- `profiles/koncept/quotation-layout.xlsx`
+- `profiles/koncept/layout-rules.json`
+- `profiles/koncept/assets/koncept-header-logo.jpeg`
+- `pricing-references/koncept-exhibition-quotation/reference.json`
+- `pricing-references/koncept-exhibition-quotation/pricing-catalog.json`
+- `pricing-references/koncept-exhibition-quotation/pricing-catalog.ai-reference.md`
+- `pricing-references/koncept-exhibition-quotation/pricing-catalog-images/*`
+- `fixtures/samples/kent-group/sample.json`
+- `fixtures/samples/kent-group/kent-group.pdf`
+
+`pricing-references/import-cleanup-rules.json`,
+`scripts/build_pricing_catalog.py`, and
+`scripts/validate_dynamic_pricing_reference_rules.py` remain guardrails/builders,
+not deletion candidates.
+
+### Removed In Phase 3C
+
+None. Deletion is not yet safe because the bundled Koncept profile still carries
+fallback quote-company preset coverage, explicit fallback layout/pricing packs,
+and existing sample/smoke coverage. Removing those files should wait until the
+next deletion gate proves every fallback/test path has a smaller sanitized
+replacement or is no longer needed.
+
+### Next Deletion Gate
+
+Before deleting the old bundled packs, a later PR must prove:
+
+1. imported workspace quote-company profile data is mandatory or has its own
+   sanitized fallback fixture
+2. template/layout/rules tests no longer need `profiles/koncept`
+3. pricing-reference tests no longer need
+   `pricing-references/koncept-exhibition-quotation`
+4. sample/PDF smoke flows no longer need `fixtures/samples/kent-group`
+5. full local tests and CI pass without hidden references to removed files
+
+Phase 3C does not add hosting, deployment, auth, Supabase, Stripe, billing,
+OIDC completion, production exposure, a credit ledger, secrets, or real customer
+data.
