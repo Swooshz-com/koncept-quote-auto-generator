@@ -1,0 +1,12 @@
+{
+  "id": "synthetic-exhibition-fixture-pricing",
+  "label": "Synthetic Exhibition Fixture Pricing",
+  "description": "Deterministic synthetic workspace-owned pricing reference seed.",
+  "currency": "SGD",
+  "pricing_catalog": "pricing-catalog.json",
+  "pricing_reference": "pricing-catalog.ai-reference.md",
+  "tax": {
+    "label": "GST",
+    "rate": 0.09
+  }
+}

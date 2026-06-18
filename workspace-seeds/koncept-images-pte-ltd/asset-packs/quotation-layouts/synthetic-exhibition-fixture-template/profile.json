@@ -1,0 +1,118 @@
+{
+  "id": "synthetic-exhibition-fixture-template",
+  "label": "Synthetic Exhibition Fixture Template",
+  "description": "Deterministic synthetic workspace-owned quotation layout pack.",
+  "default_pricing_reference": "synthetic-exhibition-fixture-pricing",
+  "quotation_layout": "quotation-layout.xlsx",
+  "layout_rules": "layout-rules.json",
+  "default_quote_detail_preset": "synthetic-fixture-default",
+  "quote_detail_presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "details": {
+        "tax": {
+          "label": "GST",
+          "rate": 0.09
+        },
+        "quote_text": {
+          "terms_heading": "Terms & Conditions:",
+          "notes_heading": "Note:",
+          "acceptance_text": "We accept the quotation amount and the terms",
+          "person_label": "Person in charge",
+          "stamp_label": "Company name & stamp",
+          "date_label": "Date:"
+        },
+        "signature": {
+          "company_date_label": "Date:"
+        },
+        "rich_text": {
+          "termsHeading": "<div>Terms &amp; Conditions:</div>",
+          "notesHeading": "<div>Note:</div>",
+          "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
+          "companyDateLabel": "<div>Date:</div>",
+          "personLabel": "<div>Person in charge</div>",
+          "stampLabel": "<div>Company name &amp; stamp</div>",
+          "dateLabel": "<div>Date:</div>"
+        }
+      }
+    },
+    {
+      "id": "synthetic-fixture-default",
+      "name": "Synthetic Fallback Quote Company",
+      "details": {
+        "tax": {
+          "label": "GST",
+          "rate": 0.09
+        },
+        "company": {
+          "name": "Synthetic Fallback Quote Company Pte Ltd",
+          "header_details": "Synthetic Fallback Quote Company Pte Ltd\n1 Synthetic Way\nSingapore 000001",
+          "logo_data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+          "logo_name": "synthetic-fallback-logo.png",
+          "logo_type": "image/png"
+        },
+        "quote_text": {
+          "terms_heading": "Terms & Conditions:",
+          "payment_terms": [
+            "70% synthetic deposit upon confirmation.",
+            "30% synthetic balance before handover."
+          ],
+          "cheque_payee": "Synthetic Fallback Quote Company Pte Ltd",
+          "notes_heading": "Note:",
+          "standard_notes": [
+            "This deterministic fixture is for local regression tests only.",
+            "Replace with reviewed commercial terms before issuing a real quotation."
+          ],
+          "acceptance_text": "We accept the quotation amount and the terms",
+          "person_label": "Person in charge",
+          "stamp_label": "Company name & stamp",
+          "date_label": "Date:"
+        },
+        "rich_text": {
+          "quoteCompanyName": "<div>Synthetic Fallback Quote Company Pte Ltd</div>",
+          "headerDetails": "<div><strong>Synthetic Fallback Quote Company Pte Ltd</strong></div><div>1 Synthetic Way</div><div>Singapore 000001</div>",
+          "termsHeading": "<div><strong>Terms &amp; Conditions:</strong></div>",
+          "paymentTerms": "<div><strong>70% synthetic deposit upon confirmation.</strong></div><div><strong>30% synthetic balance before handover.</strong></div>",
+          "notesHeading": "<div><strong>Note:</strong></div>",
+          "standardNotes": "<div>This deterministic fixture is for local regression tests only.</div><div>Replace with reviewed commercial terms before issuing a real quotation.</div>",
+          "acceptanceText": "<div>We accept the quotation amount and the terms</div>",
+          "companySignatory": "<div>Synthetic Signatory</div>",
+          "companyTitle": "<div>Synthetic Title</div>",
+          "companyDateLabel": "<div>Date:</div>",
+          "personLabel": "<div>Person in charge</div>",
+          "stampLabel": "<div>Company name &amp; stamp</div>",
+          "dateLabel": "<div>Date:</div>"
+        },
+        "signature": {
+          "company_signatory": "Synthetic Signatory",
+          "company_title": "Synthetic Title",
+          "company_date_label": "Date:"
+        }
+      }
+    }
+  ],
+  "default_quote_basis": {
+    "surfaces": "Confirm: Please confirm synthetic surfaces and finishes.",
+    "structures": "Confirm: Please confirm synthetic structure lengths and heights.",
+    "graphics": "Confirm: Please confirm synthetic print coverage.",
+    "services": "Confirm: Please confirm synthetic services and rentals.",
+    "electrical": "Confirm: Please confirm synthetic lighting and power points."
+  },
+  "fallback_line_items": [
+    {
+      "section": "Synthetic Floors",
+      "quantity_formula": "area",
+      "unit": "sqm",
+      "description": "Synthetic carpet tile",
+      "pricing_keyword": "synthetic-floors-synthetic-carpet-tile"
+    },
+    {
+      "section": "Synthetic Graphics",
+      "quantity_formula": "half_area_min_1",
+      "unit": "sqm",
+      "description": "Synthetic printed wall graphic",
+      "pricing_keyword": "synthetic-graphics-synthetic-printed-wall-graphic"
+    }
+  ]
+}

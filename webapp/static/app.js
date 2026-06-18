@@ -2718,6 +2718,7 @@ function pricingReferenceNoAccessReason() {
 function protectedPricingReferenceReason(reference = currentPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
+  if (String(reference.source || "bundled") === "workspace-seed") return "Workspace seed pricing references cannot be deleted here.";
   if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be deleted here.";
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "Select a pricing reference first.";
@@ -2764,7 +2765,7 @@ function updatePricingReferenceExportButton() {
 function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (String(reference.source || "bundled") !== "bundled") return "Only repo pricing reference packs can be edited here.";
+  if (!["workspace-seed", "bundled"].includes(String(reference.source || "bundled"))) return "Only repo pricing reference packs can be edited here.";
   const knownItemCount = Array.isArray(reference.items) ? reference.items.length : Number(reference.item_count);
   if (Number.isFinite(knownItemCount) && knownItemCount <= 0) return "This pricing reference has no editable rows.";
   return "";
@@ -2968,7 +2969,7 @@ function renderPricingReferenceDeleteOptions() {
   if (!select) return;
   const previousValue = select.value;
   const references = sortedPricingReferencesForDisplay(
-    state.pricingReferences.filter((reference) => String(reference?.source || "bundled") === "bundled")
+    state.pricingReferences.filter((reference) => ["workspace-seed", "bundled"].includes(String(reference?.source || "bundled")))
   );
   select.innerHTML = references.map((reference) => `
     <option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || reference.id || "Pricing reference")}</option>
@@ -3627,6 +3628,9 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
   }
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && !state.editingPricingReferenceId) {
     return "Select a pricing reference before saving changes.";
+  }
+  if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && String(deletionPricingReference()?.source || "bundled") === "workspace-seed") {
+    return "Workspace seed pricing references are read-only here.";
   }
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT && state.editingPricingReferenceId) {
     return "Return to Manage to save existing-reference edits, or upload a pricing catalog file to import.";

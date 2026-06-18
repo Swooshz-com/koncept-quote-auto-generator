@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "profile_id": "synthetic-exhibition-fixture-template",
+  "output": {
+    "master_format": "xlsx",
+    "pdf_default": "disabled",
+    "currency": "SGD"
+  },
+  "template": {
+    "workbook": "quotation-layout.xlsx",
+    "worksheet": "Quotation",
+    "print_area_columns": "A:I"
+  },
+  "header": {
+    "client_block": {
+      "position": "top-left",
+      "alignment": "left",
+      "fields": [
+        "client.name",
+        "client.address",
+        "client.attention",
+        "client.title",
+        "quote_date",
+        "project.title"
+      ]
+    },
+    "company_block": {
+      "position": "top-right",
+      "alignment": "left",
+      "show_details_on_first_page_only": true,
+      "repeat_logo_on_continuation_pages": true
+    }
+  },
+  "line_items": {
+    "columns": [
+      "Pos.",
+      "Quantity",
+      "Service",
+      "Estimate"
+    ],
+    "bold_headers": true,
+    "quantity_alignment": "center",
+    "estimate_alignment": "right",
+    "square_metre_unit": "sqm",
+    "show_internal_costs": false,
+    "numeric_price_format": "#,##0.00",
+    "quantity_column_must_fit_examples": [
+      "24 m length",
+      "36 sqm"
+    ],
+    "section_rows": {
+      "number_format": "0.0",
+      "amount_mode": "itemized_by_default"
+    },
+    "detail_rows": {
+      "number_format": "0.0",
+      "allowed_display_prices": [
+        "numeric",
+        "FOC",
+        "Included"
+      ]
+    }
+  },
+  "totals": {
+    "labels": [
+      "Total",
+      "Quote-level tax label and rate",
+      "Total including selected tax label"
+    ],
+    "keep_rows_together": true,
+    "border_scope": [
+      "label",
+      "amount",
+      "currency"
+    ],
+    "use_top_rule_above_total": true,
+    "use_top_rule_above_final_total": true,
+    "use_strong_bottom_rule_under_final_total": true
+  },
+  "terms_notes_signature": {
+    "payment_terms_bold": true,
+    "notes_numbering": "plain_sequential",
+    "acceptance_block_separate_from_notes": true,
+    "signature_blocks": [
+      "company",
+      "customer"
+    ],
+    "customer_acceptance_text_separate_from_terms": true,
+    "company_signatory_title_below_name": true
+  },
+  "company_details": {
+    "keep_logo_and_details_inside_print_area": true,
+    "print_area_columns": "A:I",
+    "details_below_logo": true,
+    "align_details_to_logo_left": true,
+    "details_font_size_pt": 9,
+    "details_alignment": "left",
+    "details_first_page_only": true,
+    "blank_line_before_bank_detail": true
+  },
+  "security": {
+    "treat_text_as_untrusted_spreadsheet_text": true,
+    "escape_formula_prefixes": [
+      "=",
+      "+",
+      "-",
+      "@"
+    ],
+    "frontend_exposes_internal_pricing": false
+  }
+}

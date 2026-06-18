@@ -75,7 +75,15 @@ class SensitiveFixtureScanTest(unittest.TestCase):
     def test_synthetic_review_allowlist_does_not_suppress_blocking_categories(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            profile_path = root / "profiles" / "koncept" / "profile.json"
+            profile_path = (
+                root
+                / "workspace-seeds"
+                / "koncept-images-pte-ltd"
+                / "asset-packs"
+                / "quotation-layouts"
+                / "synthetic-exhibition-fixture-template"
+                / "profile.json"
+            )
             profile_path.parent.mkdir(parents=True)
             profile_path.write_text(
                 json.dumps({

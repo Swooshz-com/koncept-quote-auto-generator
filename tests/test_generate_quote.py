@@ -12,8 +12,8 @@ from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
-KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
-KONCEPT_CATALOG = ROOT / "pricing-references" / "koncept-exhibition-quotation" / "pricing-catalog.json"
+KONCEPT_PROFILE = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "quotation-layouts" / "synthetic-exhibition-fixture-template"
+KONCEPT_CATALOG = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "pricing-references" / "synthetic-exhibition-fixture-pricing" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="

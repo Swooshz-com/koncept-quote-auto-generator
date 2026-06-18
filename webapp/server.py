@@ -62,7 +62,7 @@ COMPANY_WORKSPACE_SEED_SCHEMA = "swooshz.local-company-workspace-seed.v1"
 DEFAULT_COMPANY_ID = "koncept-images-pte-ltd"
 DEFAULT_COMPANY_DISPLAY_NAME = "Koncept Images Pte Ltd"
 DEFAULT_QUOTE_COMPANY_PROFILE_ID = "koncept-images-pte-ltd"
-DEFAULT_QUOTE_COMPANY_FALLBACK_PRESET_ID = "koncept-image-default"
+DEFAULT_QUOTE_COMPANY_FALLBACK_PRESET_ID = "synthetic-fixture-default"
 
 
 def discovered_default_resource_id(root: Path, marker_filename: str, fallback: str = "default") -> str:
@@ -107,8 +107,29 @@ def discovered_default_pricing_reference_id(
     return discovered_reference
 
 
-DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json")
-DEFAULT_PRICING_REFERENCE_ID = discovered_default_pricing_reference_id(PRICING_REFERENCES_ROOT, PROFILES_ROOT)
+def workspace_seed_default_resource_ids(seed_path: Path) -> tuple[str, str]:
+    try:
+        seed = json.loads(seed_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        seed = {}
+    profile_presets = seed.get("profile_presets") if isinstance(seed.get("profile_presets"), dict) else {}
+    pricing_references = seed.get("pricing_references") if isinstance(seed.get("pricing_references"), dict) else {}
+    defaults = seed.get("defaults") if isinstance(seed.get("defaults"), dict) else {}
+    profile_id = safe_boot_resource_id(defaults.get("profile_id") or profile_presets.get("default_profile_id"), "")
+    pricing_reference_id = safe_boot_resource_id(
+        defaults.get("pricing_reference_id") or pricing_references.get("default_pricing_reference_id"),
+        "",
+    )
+    return profile_id, pricing_reference_id
+
+
+BUNDLED_DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json")
+BUNDLED_DEFAULT_PRICING_REFERENCE_ID = discovered_default_pricing_reference_id(PRICING_REFERENCES_ROOT, PROFILES_ROOT)
+WORKSPACE_DEFAULT_PROFILE_ID, WORKSPACE_DEFAULT_PRICING_REFERENCE_ID = workspace_seed_default_resource_ids(
+    WORKSPACE_SEEDS_ROOT / DEFAULT_COMPANY_ID / "workspace.json"
+)
+DEFAULT_PROFILE_ID = WORKSPACE_DEFAULT_PROFILE_ID or BUNDLED_DEFAULT_PROFILE_ID
+DEFAULT_PRICING_REFERENCE_ID = WORKSPACE_DEFAULT_PRICING_REFERENCE_ID or BUNDLED_DEFAULT_PRICING_REFERENCE_ID
 PRICING_REFERENCE_TEMPLATE_PATH = PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
@@ -5352,7 +5373,7 @@ def normalized_runtime_dependency_config(
             "source": dependency_source(raw_quote_profile.get("source"), "workspace-store"),
             "store": clean_text(raw_quote_profile.get("store")) or "profiles",
             "fallback": {
-                "source": dependency_source(raw_quote_fallback.get("source"), "bundled-profile-preset"),
+                "source": dependency_source(raw_quote_fallback.get("source"), "workspace-seed-profile-preset"),
                 "profile_id": fallback_profile_id,
                 "preset_id": fallback_preset_id,
             },
@@ -5366,7 +5387,7 @@ def normalized_runtime_dependency_config(
             "fallback_profile_id": dependency_resource_id(raw_layout.get("fallback_profile_id"), DEFAULT_PROFILE_ID),
             "path": dependency_seed_relative_path(raw_layout.get("path") or raw_layout.get("seed_path")),
             "fallback": {
-                "source": dependency_source(raw_layout_fallback.get("source"), "bundled-profile"),
+                "source": dependency_source(raw_layout_fallback.get("source"), dependency_source(raw_layout.get("source"), "workspace-seed-profile-pack")),
                 "profile_id": dependency_resource_id(
                     raw_layout_fallback.get("profile_id"),
                     dependency_resource_id(raw_layout.get("fallback_profile_id"), DEFAULT_PROFILE_ID),
@@ -5379,7 +5400,7 @@ def normalized_runtime_dependency_config(
             "fallback_profile_id": dependency_resource_id(raw_rules.get("fallback_profile_id"), DEFAULT_PROFILE_ID),
             "path": dependency_seed_relative_path(raw_rules.get("path") or raw_rules.get("seed_path")),
             "fallback": {
-                "source": dependency_source(raw_rules_fallback.get("source"), "bundled-profile"),
+                "source": dependency_source(raw_rules_fallback.get("source"), dependency_source(raw_rules.get("source"), "workspace-seed-profile-pack")),
                 "profile_id": dependency_resource_id(
                     raw_rules_fallback.get("profile_id"),
                     dependency_resource_id(raw_rules.get("fallback_profile_id"), DEFAULT_PROFILE_ID),
@@ -5392,7 +5413,7 @@ def normalized_runtime_dependency_config(
             "fallback_reference_id": dependency_resource_id(raw_pricing.get("fallback_reference_id"), DEFAULT_PRICING_REFERENCE_ID),
             "path": dependency_seed_relative_path(raw_pricing.get("path") or raw_pricing.get("seed_path")),
             "fallback": {
-                "source": dependency_source(raw_pricing_fallback.get("source"), "bundled"),
+                "source": dependency_source(raw_pricing_fallback.get("source"), dependency_source(raw_pricing.get("source"), "workspace-seed-pricing-reference")),
                 "id": dependency_resource_id(
                     raw_pricing_fallback.get("id") or raw_pricing_fallback.get("reference_id"),
                     dependency_resource_id(raw_pricing.get("fallback_reference_id"), DEFAULT_PRICING_REFERENCE_ID),
@@ -5480,7 +5501,7 @@ def normalize_workspace_seed(raw: dict[str, Any] | None) -> dict[str, Any]:
 
 def load_workspace_seed(workspace_id: str | None = None) -> dict[str, Any]:
     try:
-        raw = json.loads(workspace_seed_path(workspace_id).read_text(encoding="utf-8"))
+        raw = json.loads(workspace_seed_path(workspace_id).read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         raw = {}
     return normalize_workspace_seed(raw)
@@ -5570,7 +5591,8 @@ def workspace_pricing_reference_pack_dir(reference_id: str | None = None, worksp
     return None
 
 
-def bundled_profile_preset_as_quote_company_profile(fallback: dict[str, Any]) -> dict[str, Any] | None:
+def profile_preset_as_quote_company_profile(fallback: dict[str, Any]) -> dict[str, Any] | None:
+    source = dependency_source(fallback.get("source"), "workspace-seed-profile-preset")
     profile_id = dependency_resource_id(fallback.get("profile_id"), DEFAULT_PROFILE_ID)
     preset_id = dependency_resource_id(fallback.get("preset_id"), DEFAULT_QUOTE_COMPANY_FALLBACK_PRESET_ID)
     profile = load_profile_pack(profile_id)
@@ -5581,7 +5603,7 @@ def bundled_profile_preset_as_quote_company_profile(fallback: dict[str, Any]) ->
                 "label": clean_text(preset.get("name")) or preset_id,
                 "description": f"Fallback quote-company profile preset from {profile.id}.",
                 "defaults": copy.deepcopy(preset.get("details")) if isinstance(preset.get("details"), dict) else {},
-                "source": "bundled-profile-preset",
+                "source": source,
                 "profile_id": profile.id,
             }
     return None
@@ -5605,8 +5627,12 @@ def workspace_quote_company_profile(workspace: dict[str, Any] | None = None) -> 
             resolved["source"] = "workspace-store"
             return resolved
     fallback = dependency.get("fallback") if isinstance(dependency.get("fallback"), dict) else {}
-    if dependency_source(fallback.get("source"), "bundled-profile-preset") == "bundled-profile-preset":
-        return bundled_profile_preset_as_quote_company_profile(fallback)
+    if dependency_source(fallback.get("source"), "workspace-seed-profile-preset") in {
+        "bundled-profile-preset",
+        "workspace-profile-preset",
+        "workspace-seed-profile-preset",
+    }:
+        return profile_preset_as_quote_company_profile(fallback)
     return None
 
 
@@ -5805,7 +5831,7 @@ def pricing_reference_id_from_payload(payload: dict[str, Any]) -> str:
 
 def load_json_file(path: Path) -> dict[str, Any]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -5840,9 +5866,7 @@ class ProfilePack:
 
         config = load_json_file(profile_dir / "profile.json")
         if not config and resolved_id != DEFAULT_PROFILE_ID:
-            resolved_id = DEFAULT_PROFILE_ID
-            profile_dir = root / resolved_id
-            config = load_json_file(profile_dir / "profile.json")
+            return cls.resolve(DEFAULT_PROFILE_ID)
 
         profile_id_from_config = safe_resource_id(config.get("id"), resolved_id)
         return cls(profile_id_from_config, profile_dir, dict(config))
@@ -5981,9 +6005,7 @@ class PricingReferencePack:
 
         config = load_json_file(reference_dir / "reference.json")
         if not config and resolved_id != DEFAULT_PRICING_REFERENCE_ID:
-            resolved_id = DEFAULT_PRICING_REFERENCE_ID
-            reference_dir = root / resolved_id
-            config = load_json_file(reference_dir / "reference.json")
+            return cls.resolve(DEFAULT_PRICING_REFERENCE_ID)
 
         reference_id_from_config = safe_resource_id(config.get("id"), resolved_id)
         return cls(reference_id_from_config, reference_dir, dict(config))
@@ -6137,8 +6159,8 @@ def list_bundled_pricing_references() -> list[dict[str, Any]]:
                 clean_text(item.get("id")).casefold(),
             ),
         )
-    reference = load_pricing_reference_pack(DEFAULT_PRICING_REFERENCE_ID)
-    return [reference.public_summary()]
+    reference = load_pricing_reference_pack(BUNDLED_DEFAULT_PRICING_REFERENCE_ID)
+    return [reference.public_summary()] if reference.config and reference.source == "bundled" else []
 
 
 def list_workspace_pricing_references(workspace: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -10472,6 +10494,10 @@ def load_sample(sample_id: str) -> dict[str, Any] | None:
     data = load_json_file(path / "sample.json")
     if not data:
         return None
+    profile_id = load_profile_pack(safe_resource_id(data.get("profile_id"), DEFAULT_PROFILE_ID)).id
+    pricing_reference_id = load_pricing_reference_pack(
+        safe_resource_id(data.get("pricing_reference_id"), DEFAULT_PRICING_REFERENCE_ID)
+    ).id
     image_entries_for_sample: list[dict[str, Any]] = []
     raw_images = data.get("images") if isinstance(data.get("images"), list) else []
     for index, raw_image in enumerate(raw_images, start=1):
@@ -10496,8 +10522,8 @@ def load_sample(sample_id: str) -> dict[str, Any] | None:
         "id": safe_resource_id(data.get("id"), path.name),
         "label": clean_text(data.get("label")) or path.name,
         "description": clean_text(data.get("description")),
-        "profile_id": safe_resource_id(data.get("profile_id"), DEFAULT_PROFILE_ID),
-        "pricing_reference_id": safe_resource_id(data.get("pricing_reference_id"), DEFAULT_PRICING_REFERENCE_ID),
+        "profile_id": profile_id,
+        "pricing_reference_id": pricing_reference_id,
         "details": data.get("details") if isinstance(data.get("details"), dict) else {},
         "images": image_entries_for_sample,
     }
