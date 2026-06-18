@@ -156,7 +156,7 @@ async function main() {
       element.scrollTop = 0;
     });
     const pricingSummary = await page.locator("#selectedPricingReferenceSummary").innerText();
-    if (!pricingSummary.includes("Manage references in Settings")) {
+    if (!pricingSummary.includes("Managed in Settings")) {
       throw new Error(`Unexpected pricing reference summary: ${pricingSummary}`);
     }
     const pricingTaxText = await page.locator("#selectedPricingReferenceTax").innerText();
@@ -182,7 +182,7 @@ async function main() {
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
     await page.locator("#settingsButton").click();
     await page.locator("#pricingReferenceModal").waitFor({ state: "visible" });
-    await page.getByRole("heading", { name: "Workspace Settings" }).waitFor();
+    await page.getByRole("heading", { name: "Pricing Reference Settings" }).waitFor();
     await page.keyboard.press("Escape");
     await page.locator("#pricingReferenceModal").waitFor({ state: "hidden" });
     await page.locator("#quoteDate").waitFor({ state: "visible" });
