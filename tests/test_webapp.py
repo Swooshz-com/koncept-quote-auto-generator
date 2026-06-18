@@ -8554,6 +8554,104 @@ assert.strictEqual(resolvedProfileIdForPayload(), "synthetic-exhibition-fixture-
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_pricing_reference_manage_select_can_review_workspace_seed_reference(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "synthetic-exhibition-fixture-template";
+const DEFAULT_PRICING_REFERENCE_ID = "synthetic-exhibition-fixture-pricing";
+const PRICING_REFERENCE_SETTINGS_MODE_MANAGE = "manage";
+const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
+const state = {
+  permissions: { canManagePricingReferences: true },
+  pricingReferences: [
+    { id: "synthetic-exhibition-fixture-pricing", label: "Synthetic Fixture", source: "workspace-seed", item_count: 2 },
+  ],
+  pricingReferenceSettingsMode: "manage",
+  pricingReferenceImportBusy: false,
+  pricingReferenceSaveBusy: false,
+  pricingReferenceSavedNotice: "",
+  editingPricingReferenceId: "synthetic-exhibition-fixture-pricing",
+  defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
+  profileId: DEFAULT_PROFILE_ID,
+  profiles: [{ id: DEFAULT_PROFILE_ID, default_pricing_reference: DEFAULT_PRICING_REFERENCE_ID }],
+};
+const select = { value: "", innerHTML: "" };
+const button = {
+  disabled: false,
+  title: "",
+  hidden: false,
+  setAttribute(name, value) { this[name] = value; },
+};
+const elements = {
+  deletePricingReferenceSelect: select,
+  deletePricingReferenceButton: button,
+  exportPricingReferenceButton: { ...button },
+  pricingReferenceDeleteSection: { hidden: false },
+};
+function escapeHtml(value = "") { return String(value); }
+function canManagePricingReferences() { return true; }
+function pricingReferenceNoAccessReason() { return "No access"; }
+function pricingReferenceOperationBusy() { return false; }
+
+eval([
+  "pricingReferenceSelectValue",
+  "pricingReferenceSelectionFromValue",
+  "sortedPricingReferencesForDisplay",
+  "currentProfile",
+  "protectedPricingReferenceReason",
+  "deletionPricingReference",
+  "pricingReferenceExportBlockReason",
+  "updatePricingReferenceExportButton",
+  "pricingReferenceEditBlockReason",
+  "normalizePricingReferenceSettingsMode",
+  "pricingReferenceSaveBlockReason",
+  "updatePricingReferenceDeleteButton",
+  "renderPricingReferenceDeleteOptions",
+].map(extractFunction).join("\n"));
+
+renderPricingReferenceDeleteOptions();
+assert.ok(select.innerHTML.includes("Synthetic Fixture"));
+assert.strictEqual(select.value, "workspace-seed::synthetic-exhibition-fixture-pricing");
+assert.strictEqual(pricingReferenceEditBlockReason(deletionPricingReference()), "");
+assert.strictEqual(protectedPricingReferenceReason(deletionPricingReference()), "Workspace seed pricing references cannot be deleted here.");
+assert.strictEqual(
+  pricingReferenceSaveBlockReason({ items: [{ warning: "OK" }], errors: [], canSave: true }),
+  "Workspace seed pricing references are read-only here."
+);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_delete_active_pricing_reference_preserves_quote_basis(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")
@@ -13429,6 +13527,23 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertEqual(detail["item_count"], 1)
         self.assertEqual(detail["items"][0]["description"], "Printed graphics")
 
+    def test_pricing_reference_detail_endpoint_returns_workspace_seed_rows(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+            with LocalRunnerServer() as runner:
+                response = urllib.request.urlopen(
+                    f"{runner.base_url}/api/settings/pricing-references/synthetic-exhibition-fixture-pricing",
+                    timeout=3,
+                )
+                body = json.loads(response.read().decode("utf-8"))
+
+        detail = body["pricing_reference"]
+        self.assertEqual(detail["id"], "synthetic-exhibition-fixture-pricing")
+        self.assertEqual(detail["source"], "workspace-seed")
+        self.assertGreater(detail["item_count"], 0)
+        self.assertTrue(detail["items"])
+        self.assertTrue(all(item.get("section") for item in detail["items"]))
+        self.assertTrue(all(item.get("description") for item in detail["items"]))
+
     def test_pricing_reference_delete_endpoint_removes_repo_pack(self):
         with mock_pricing_metadata_enrichment():
             reference = webapp.normalize_pricing_reference_payload({
@@ -13567,6 +13682,8 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         active_profile = next(item for item in payload["profiles"] if item["id"] == "synthetic-exhibition-fixture-template")
         active_pricing = next(item for item in payload["pricing_references"] if item["id"] == "synthetic-exhibition-fixture-pricing")
         self.assertEqual(active_profile["default_pricing_reference"], "synthetic-exhibition-fixture-pricing")
+        self.assertTrue(active_profile["quote_detail_presets"])
+        self.assertIn("synthetic-fixture-default", {item["id"] for item in active_profile["quote_detail_presets"]})
         self.assertEqual(active_pricing["source"], "workspace-seed")
         self.assertEqual(
             workspace["runtime_dependencies"]["quotation_layout"]["source"],
