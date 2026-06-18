@@ -17,16 +17,82 @@
     "storage_collection": "profiles",
     "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/profiles.json",
     "import_schema": "swooshz.quote-company-profile.v1",
-    "default_profile_id": "koncept"
+    "default_profile_id": "koncept-images-pte-ltd"
   },
   "pricing_references": {
     "storage_collection": "pricing-references",
     "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/pricing-references.json",
-    "default_pricing_reference_id": "koncept-exhibition-quotation"
+    "default_pricing_reference_id": "koncept-workspace-pricing"
   },
   "defaults": {
-    "profile_id": "koncept",
-    "pricing_reference_id": "koncept-exhibition-quotation"
+    "profile_id": "koncept-workspace-template",
+    "pricing_reference_id": "koncept-workspace-pricing"
+  },
+  "asset_packs": {
+    "quote_company_profile": {
+      "source": "workspace-store",
+      "store": "profiles",
+      "active_profile_id": "koncept-images-pte-ltd",
+      "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/profiles.json",
+      "fallback_fixture": {
+        "source": "bundled-profile-preset",
+        "profile_id": "koncept",
+        "preset_id": "koncept-image-default",
+        "reason": "Kept only for fallback/test coverage until imported workspace profiles are mandatory."
+      }
+    },
+    "logo": {
+      "source": "quote-company-profile.logo_data_url",
+      "fallback_fixture": {
+        "source": "bundled-profile-asset",
+        "path": "profiles/koncept/assets/koncept-header-logo.jpeg",
+        "reason": "Kept only for fallback/test coverage; active workspace output should use imported logo_data_url."
+      }
+    },
+    "quotation_layout": {
+      "id": "koncept-workspace-template",
+      "source": "workspace-seed-profile-pack",
+      "path": "asset-packs/quotation-layouts/koncept-workspace-template",
+      "fallback_fixture": {
+        "source": "bundled-profile",
+        "profile_id": "koncept",
+        "reason": "Kept as rollback/test fixture while workspace-owned layout pack is verified."
+      }
+    },
+    "layout_rules": {
+      "id": "koncept-workspace-template",
+      "source": "workspace-seed-profile-pack",
+      "path": "asset-packs/quotation-layouts/koncept-workspace-template",
+      "fallback_fixture": {
+        "source": "bundled-profile",
+        "profile_id": "koncept",
+        "reason": "Kept as rollback/test fixture while workspace-owned layout rules are verified."
+      }
+    },
+    "pricing_reference": {
+      "id": "koncept-workspace-pricing",
+      "source": "workspace-seed-pricing-reference",
+      "path": "asset-packs/pricing-references/koncept-workspace-pricing",
+      "fallback_fixture": {
+        "source": "bundled",
+        "id": "koncept-exhibition-quotation",
+        "reason": "Kept as rollback/test fixture while workspace-owned pricing pack is verified."
+      }
+    },
+    "fallback_test_fixtures": [
+      {
+        "path": "profiles/koncept",
+        "reason": "Bundled quote profile, layout, layout rules, and logo fallback/test fixture."
+      },
+      {
+        "path": "pricing-references/koncept-exhibition-quotation",
+        "reason": "Bundled pricing reference fallback/test fixture."
+      },
+      {
+        "path": "fixtures/samples/kent-group",
+        "reason": "Sanitized sample/PDF smoke fixture; not an active workspace runtime dependency."
+      }
+    ]
   },
   "runtime_dependencies": {
     "quote_company_profile": {
@@ -43,24 +109,40 @@
       "source": "quote-company-profile"
     },
     "quotation_layout": {
-      "source": "bundled-profile",
-      "profile_id": "koncept",
-      "fallback_profile_id": "koncept"
+      "source": "workspace-seed-profile-pack",
+      "profile_id": "koncept-workspace-template",
+      "path": "asset-packs/quotation-layouts/koncept-workspace-template",
+      "fallback_profile_id": "koncept",
+      "fallback": {
+        "source": "bundled-profile",
+        "profile_id": "koncept"
+      }
     },
     "layout_rules": {
-      "source": "bundled-profile",
-      "profile_id": "koncept",
-      "fallback_profile_id": "koncept"
+      "source": "workspace-seed-profile-pack",
+      "profile_id": "koncept-workspace-template",
+      "path": "asset-packs/quotation-layouts/koncept-workspace-template",
+      "fallback_profile_id": "koncept",
+      "fallback": {
+        "source": "bundled-profile",
+        "profile_id": "koncept"
+      }
     },
     "pricing_reference": {
-      "source": "bundled",
-      "id": "koncept-exhibition-quotation",
-      "fallback_reference_id": "koncept-exhibition-quotation"
+      "source": "workspace-seed-pricing-reference",
+      "id": "koncept-workspace-pricing",
+      "path": "asset-packs/pricing-references/koncept-workspace-pricing",
+      "fallback_reference_id": "koncept-exhibition-quotation",
+      "fallback": {
+        "source": "bundled",
+        "id": "koncept-exhibition-quotation"
+      }
     }
   },
   "migration_notes": [
     "Temporary local/staging bridge for the first internal Koncept Images Pte Ltd workspace.",
     "Imported quote-company profile exports are stored under the workspace company id and can later become platform quote_presets.",
-    "Pricing reference and profile identifiers are preserved so Phase 6 can migrate them into company-scoped platform records."
+    "Workspace-owned quotation layout and pricing-reference seed packs are stored under this workspace seed so Phase 6 can migrate them into company-scoped platform records.",
+    "Bundled Koncept profile/pricing/sample files are fallback/test fixtures only until the next deletion gate proves they can be removed."
   ]
 }

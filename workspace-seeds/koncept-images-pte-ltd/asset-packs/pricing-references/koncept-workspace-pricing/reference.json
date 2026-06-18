@@ -1,0 +1,12 @@
+{
+  "currency": "SGD",
+  "description": "Workspace-owned Koncept Images pricing reference seed copied from the verified local/staging Koncept Exhibition quotation pack.",
+  "id": "koncept-workspace-pricing",
+  "label": "Koncept Images Workspace Pricing",
+  "pricing_catalog": "pricing-catalog.json",
+  "pricing_reference": "pricing-catalog.ai-reference.md",
+  "tax": {
+    "label": "GST",
+    "rate": 0.09
+  }
+}

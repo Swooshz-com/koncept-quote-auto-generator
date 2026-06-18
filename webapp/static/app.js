@@ -146,6 +146,7 @@ const state = {
   companyProfiles: [],
   workspace: null,
   pricingReferences: [],
+  defaultProfileId: DEFAULT_PROFILE_ID,
   defaultPricingReferenceId: DEFAULT_PRICING_REFERENCE_ID,
   images: [],
   headerLogo: null,
@@ -757,7 +758,7 @@ function normalizeUnit(value = "") {
 }
 
 function currentProfile() {
-  const resolvedProfileId = String(state.profileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
+  const resolvedProfileId = String(state.profileId || state.defaultProfileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
   return state.profiles.find((profile) => profile.id === resolvedProfileId)
     || state.profiles.find((profile) => profile.id === DEFAULT_PROFILE_ID)
     || state.profiles[0]
@@ -771,7 +772,8 @@ function currentProfile() {
 
 function defaultPricingReference() {
   const profile = currentProfile();
-  const defaultReferenceId = String(profile?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID).trim();
+  const profileReferenceId = String(profile?.default_pricing_reference || "").trim();
+  const defaultReferenceId = String((state.profileId ? profileReferenceId : state.defaultPricingReferenceId) || profileReferenceId || DEFAULT_PRICING_REFERENCE_ID).trim();
   return state.pricingReferences.find((reference) => reference.id === defaultReferenceId)
     || state.pricingReferences.find((reference) => reference.id === DEFAULT_PRICING_REFERENCE_ID)
     || state.pricingReferences[0]
@@ -788,7 +790,7 @@ function currentPricingReference() {
 }
 
 function resolvedProfileIdForPayload() {
-  return String(state.profileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
+  return String(state.profileId || state.defaultProfileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
 }
 
 function syncSelectedPricingReference() {
@@ -2683,9 +2685,7 @@ function requestPresetImport(event) {
 
 function renderProfileOptions() {
   if (!elements.profileSelect) return;
-  const references = sortedPricingReferencesForDisplay(
-    state.pricingReferences.filter((reference) => String(reference?.source || "bundled") === "bundled")
-  );
+  const references = sortedPricingReferencesForDisplay(state.pricingReferences);
   const selectedValue = currentPricingReference() ? pricingReferenceSelectValue(currentPricingReference()) : "";
   const referenceOption = (reference) => {
     const referenceId = String(reference.id || "").trim();
@@ -4659,6 +4659,7 @@ async function loadProfiles() {
   if (ok && Array.isArray(data.profiles)) {
     state.profiles = data.profiles;
     state.workspace = data.workspace && typeof data.workspace === "object" ? data.workspace : null;
+    state.defaultProfileId = data.default_profile_id || DEFAULT_PROFILE_ID;
     state.defaultPricingReferenceId = data.default_pricing_reference_id || DEFAULT_PRICING_REFERENCE_ID;
     state.pricingReferences = mergePricingReferences(Array.isArray(data.pricing_references) ? data.pricing_references : []);
     if (state.pricingReferenceId) {
@@ -4774,10 +4775,10 @@ function buildPayload(options = {}) {
     pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
     pricing_reference: pricingReference ? {
       ...pricingReference,
-      source: "bundled",
+      source: pricingReference.source || "bundled",
       tax: pricingReference.tax || selectedPricingReferenceTax(),
       currency: selectedPricingReferenceCurrency(),
-    } : { id: state.pricingReferenceId || "", source: "bundled", tax: selectedPricingReferenceTax(), currency: selectedPricingReferenceCurrency() },
+    } : { id: state.pricingReferenceId || "", source: state.pricingReferenceSource || "bundled", tax: selectedPricingReferenceTax(), currency: selectedPricingReferenceCurrency() },
     analysis_mode: normalizeAnalysisMode(options.analysisMode || state.pendingAnalysisMode),
     generator_label: generator.label,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES),
