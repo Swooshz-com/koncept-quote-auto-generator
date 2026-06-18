@@ -44,9 +44,10 @@
     "logo": {
       "source": "quote-company-profile.logo_data_url",
       "fallback_fixture": {
-        "source": "bundled-profile-asset",
-        "path": "profiles/koncept/assets/koncept-header-logo.jpeg",
-        "reason": "Kept only for fallback/test coverage; active workspace output should use imported logo_data_url."
+        "source": "removed-bundled-profile-asset",
+        "removed_path": "profiles/koncept/assets/koncept-header-logo.jpeg",
+        "replacement": "profiles/koncept/profile.json quote_detail_presets[koncept-image-default].details.company.logo_data_url",
+        "reason": "Removed in Phase 3D after imported workspace profile logo_data_url output coverage and sanitized fallback preset coverage replaced the large bundled JPEG."
       }
     },
     "quotation_layout": {
@@ -82,7 +83,7 @@
     "fallback_test_fixtures": [
       {
         "path": "profiles/koncept",
-        "reason": "Bundled quote profile, layout, layout rules, and logo fallback/test fixture."
+        "reason": "Sanitized bundled quote profile plus layout and layout-rules fallback/test fixture; the old logo asset was removed in Phase 3D."
       },
       {
         "path": "pricing-references/koncept-exhibition-quotation",
@@ -143,6 +144,7 @@
     "Temporary local/staging bridge for the first internal Koncept Images Pte Ltd workspace.",
     "Imported quote-company profile exports are stored under the workspace company id and can later become platform quote_presets.",
     "Workspace-owned quotation layout and pricing-reference seed packs are stored under this workspace seed so Phase 6 can migrate them into company-scoped platform records.",
-    "Bundled Koncept profile/pricing/sample files are fallback/test fixtures only until the next deletion gate proves they can be removed."
+    "Bundled Koncept profile/pricing/sample files are fallback/test fixtures only until the next deletion gate proves they can be removed.",
+    "Phase 3D removed the old bundled logo JPEG and keeps only a tiny sanitized fallback logo data URL in the legacy profile fixture."
   ]
 }

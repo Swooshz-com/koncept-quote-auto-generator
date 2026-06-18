@@ -4146,7 +4146,7 @@ class WebappServerTest(unittest.TestCase):
         workspace_pricing_pack = webapp.load_pricing_reference_pack("koncept-workspace-pricing")
         self.assertEqual(workspace_pricing_pack.source, "workspace-seed")
         self.assertEqual(workspace_pricing_pack.pricing_catalog_path, KONCEPT_WORKSPACE_CATALOG)
-        self.assertTrue((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
+        self.assertFalse((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
         pricing_references = webapp.list_pricing_references()
         pricing_references_by_id = {item["id"]: item for item in pricing_references}
@@ -4172,21 +4172,24 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(default_preset["details"]["quote_text"]["terms_heading"], "Terms & Conditions:")
         self.assertEqual(default_preset["details"]["quote_text"]["notes_heading"], "Note:")
         preset = next(item for item in public_profile["quote_detail_presets"] if item["id"] == "koncept-image-default")
-        self.assertEqual(preset["name"], "Koncept Images Pte. Ltd.")
+        self.assertEqual(preset["name"], "Sanitized Fallback Quote Company")
         preset_company = preset["details"]["company"]
         preset_quote_text = preset["details"]["quote_text"]
         preset_rich_text = preset["details"]["rich_text"]
-        self.assertTrue(preset_company["logo_data_url"].startswith("data:image/jpeg;base64,"))
-        self.assertEqual(preset_company["logo_name"], "koncept-header-logo.jpeg")
+        self.assertEqual(preset_company["name"], "Sanitized Fallback Quote Company Pte Ltd")
+        self.assertEqual(preset_company["logo_data_url"], SANITIZED_LOGO_DATA_URL)
+        self.assertEqual(preset_company["logo_name"], "sanitized-fallback-logo.png")
+        self.assertEqual(preset_company["logo_type"], "image/png")
         self.assertEqual(
-            preset_quote_text["payment_terms"][-1],
-            "All cheques should be crossed and made payable to Koncept Images Pte. Ltd.",
+            preset_quote_text["payment_terms"],
+            ["70% payment upon confirmation.", "30% balance before show starts."],
         )
-        self.assertIn("<strong>Koncept Images Pte. Ltd.</strong>", preset_rich_text["headerDetails"])
-        self.assertEqual(preset_rich_text["quoteCompanyName"], "<div>Koncept Images Pte. Ltd.</div>")
+        self.assertEqual(preset_quote_text["cheque_payee"], "Sanitized Fallback Quote Company Pte Ltd")
+        self.assertIn("<strong>Sanitized Fallback Quote Company Pte Ltd</strong>", preset_rich_text["headerDetails"])
+        self.assertEqual(preset_rich_text["quoteCompanyName"], "<div>Sanitized Fallback Quote Company Pte Ltd</div>")
         self.assertIn("<strong>Terms &amp; Conditions:</strong>", preset_rich_text["termsHeading"])
         self.assertIn("<strong>70% payment", preset_rich_text["paymentTerms"])
-        self.assertIn("All cheques should be crossed and made payable to <strong>Koncept Images Pte. Ltd.</strong>", preset_rich_text["paymentTerms"])
+        self.assertNotIn("All cheques should be crossed", preset_rich_text["paymentTerms"])
         self.assertIn("<strong>Note:</strong>", preset_rich_text["notesHeading"])
         self.assertEqual(preset_rich_text["acceptanceText"], "<div>We accept the quotation amount and the terms</div>")
         self.assertEqual(preset_rich_text["companyDateLabel"], "<div>Date:</div>")
@@ -4208,7 +4211,18 @@ class WebappServerTest(unittest.TestCase):
             self.assertIn(key, preset_rich_text)
         self.assertNotIn("chequePayee", preset_rich_text)
         self.assertNotIn("logo_path", preset_company)
-        self.assertNotIn("pricing-catalog", json.dumps(public_profile))
+        serialized_profile = json.dumps(public_profile)
+        self.assertNotIn("pricing-catalog", serialized_profile)
+        for removed_real_detail in (
+            "61 Kaki Bukit",
+            "Shunli Industrial Park",
+            "United Overseas Bank",
+            "335-3020-445",
+            "UOVBSGSG",
+            "Francies Cheng",
+            "koncept-header-logo",
+        ):
+            self.assertNotIn(removed_real_detail, serialized_profile)
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
         sample = webapp.load_sample("kent-group")
@@ -12723,6 +12737,39 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertNotIn(str(KONCEPT_CATALOG), command)
         self.assertNotIn(str(KONCEPT_LAYOUT), command)
 
+    def test_run_quote_job_uses_workspace_seed_packs_when_legacy_bundled_roots_are_absent(self):
+        payload = valid_payload()
+        payload.pop("profile_id")
+        payload.pop("pricing_reference_id")
+        completed = webapp.subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="Wrote quotation.xlsx\nPDF export status: skipped\n",
+            stderr="",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            empty_profiles_root = root / "profiles"
+            empty_pricing_root = root / "pricing-references"
+            empty_profiles_root.mkdir()
+            empty_pricing_root.mkdir()
+            store = webapp.CompanyConfigStore(root / "data")
+            with (
+                mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=empty_pricing_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+                mock.patch.object(webapp.subprocess, "run", return_value=completed) as run,
+            ):
+                result = webapp.run_quote_job(payload, output_root=root / "out", tmp_root=root / "tmp")
+
+        command = run.call_args.args[0]
+        self.assertEqual(result["status"], "completed")
+        self.assertIn(str(KONCEPT_WORKSPACE_CATALOG), command)
+        self.assertIn(str(KONCEPT_WORKSPACE_LAYOUT), command)
+        self.assertNotIn(str(KONCEPT_CATALOG), command)
+        self.assertNotIn(str(KONCEPT_LAYOUT), command)
+
     def test_exported_quote_company_profile_imports_to_koncept_workspace_store(self):
         exported_profile = {
             "schema": "swooshz.quote-company-profile.v1",
@@ -12862,6 +12909,11 @@ assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
         self.assertTrue(KONCEPT_LAYOUT_RULES.is_file())
         self.assertTrue((KONCEPT_PROFILE / "profile.json").is_file())
         self.assertTrue((KONCEPT_PRICING_REFERENCE / "reference.json").is_file())
+        self.assertFalse((KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
+        logo_fixture = seed["asset_packs"]["logo"]["fallback_fixture"]
+        self.assertEqual(logo_fixture["source"], "removed-bundled-profile-asset")
+        self.assertEqual(logo_fixture["removed_path"], "profiles/koncept/assets/koncept-header-logo.jpeg")
+        self.assertNotIn("path", logo_fixture)
         fallback_paths = [item["path"] for item in seed["asset_packs"]["fallback_test_fixtures"]]
         self.assertIn("profiles/koncept", fallback_paths)
         self.assertIn("pricing-references/koncept-exhibition-quotation", fallback_paths)

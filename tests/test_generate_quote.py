@@ -15,7 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 KONCEPT_PROFILE = ROOT / "profiles" / "koncept"
 KONCEPT_CATALOG = ROOT / "pricing-references" / "koncept-exhibition-quotation" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
-KONCEPT_LOGO = KONCEPT_PROFILE / "assets" / "koncept-header-logo.jpeg"
+SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
+SANITIZED_LOGO_DATA_URL = "data:image/png;base64," + base64.b64encode(SANITIZED_LOGO_PNG_BYTES).decode("ascii")
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import generate_quote as quote
@@ -276,7 +279,7 @@ def declared_xml_prefixes(xml_text, root_name):
 
 
 def logo_data_url():
-    return f"data:image/jpeg;base64,{base64.b64encode(KONCEPT_LOGO.read_bytes()).decode('ascii')}"
+    return SANITIZED_LOGO_DATA_URL
 
 
 def generate_layout_workbook(brief_updates=None):
@@ -1282,7 +1285,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             ],
         )
         project_index = paragraphs.index("Project No: KI-TEST-001")
-        self.assertIn("xl/media/header_logo.jpeg", media_names)
+        self.assertIn("xl/media/header_logo.png", media_names)
         self.assertEqual(paragraphs[project_index - 1], "")
         self.assertFalse(any(current == "" and following == "" for current, following in zip(paragraphs, paragraphs[1:])))
 
