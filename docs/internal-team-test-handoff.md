@@ -2,14 +2,17 @@
 
 This runbook is for local/internal Koncept Images team testing of the current
 KQAG/SAQG quote flow. It is meant to make the private profile and pricing
-import smoke repeatable without putting private assets into the repo.
+import smoke repeatable without putting private assets into the repo. Team
+testers should start from a clean local runtime workspace, then manually import
+the real private quote-company profile JSON and real private pricing XLSX.
 
 ## Scope
 
 This phase is:
 
 - Local/internal testing of the current quote workflow.
-- Private asset import into local runtime storage only.
+- Clean local runtime workspace setup before team testing.
+- Manual private asset import into local runtime storage only.
 - Verification that the normal quote-facing flow uses the selected company
   profile and selected pricing reference.
 - Excel output verification before broader platform work.
@@ -37,6 +40,52 @@ This phase is not:
   `QUOTE_DATA_ROOT=<local-runtime-data-root>` and
   `KQAG_LOCAL_PRICING_REFERENCES_ROOT=<local-runtime-pricing-root>`.
 - Keep generated outputs in ignored runtime/output folders only.
+- Synthetic workspace seed fixtures remain in the repo for automated tests and
+  fallback coverage. They are not the expected source for internal team-test
+  results.
+
+## Clean Runtime Workspace Checklist
+
+Use a clean local runtime workspace before the internal team test run. The
+preferred path is to point the app at a new empty runtime root for each run
+instead of deleting old data.
+
+1. Stop the local webapp if it is running.
+2. Confirm the repo working tree is clean:
+
+   ```powershell
+   git status --short
+   ```
+
+   Expected result: no output.
+3. Choose a placeholder runtime root outside the repo:
+
+   ```powershell
+   $env:QUOTE_DATA_ROOT="<local-runtime-data-root>"
+   $env:QUOTE_TMP_ROOT="<local-runtime-temp-root>"
+   $env:QUOTE_OUTPUT_ROOT="<local-runtime-output-root>"
+   $env:QUOTE_LOG_ROOT="<local-runtime-log-root>"
+   $env:KQAG_LOCAL_PRICING_REFERENCES_ROOT="<local-runtime-pricing-root>"
+   ```
+
+4. Make sure the chosen runtime roots are outside tracked repo paths such as
+   `docs/`, `fixtures/`, `profiles/`, `pricing-references/`, and
+   `workspace-seeds/`.
+5. If reusing an existing runtime root, clear only the local runtime/imported
+   workspace data under that placeholder root. Do not delete repo fixtures, do
+   not delete `workspace-seeds`, and do not clear paths that contain private
+   data needed for another test run.
+6. Restart the local webapp.
+7. Manually import `<private-profile-json-outside-repo>`.
+8. Manually import `<private-pricing-xlsx-outside-repo>`.
+9. Generate and export a quote through the normal flow.
+10. Confirm `git status --short` remains clean.
+
+Synthetic/demo data note: committed synthetic fixture packs and
+`workspace-seeds` are kept for CI/tests and fallback coverage. They should not
+be treated as the expected team-test data source. If synthetic imported runtime
+data appears in the app during team testing, reset to a clean runtime root and
+import the private profile/pricing files manually.
 
 ## Fresh-Pull Setup Checklist
 
@@ -49,7 +98,8 @@ This phase is not:
 
    Expected result: no output.
 3. Keep the private profile JSON and pricing XLSX outside the repo.
-4. If using custom runtime roots, set them before starting the app:
+4. Start from a clean runtime workspace using the checklist above.
+5. If using custom runtime roots, set them before starting the app:
 
    ```powershell
    $env:QUOTE_DATA_ROOT="<local-runtime-data-root>"
@@ -59,13 +109,13 @@ This phase is not:
    $env:KQAG_LOCAL_PRICING_REFERENCES_ROOT="<local-runtime-pricing-root>"
    ```
 
-5. Start the local webapp:
+6. Start the local webapp:
 
    ```powershell
    python webapp/server.py --host 127.0.0.1 --port 8765
    ```
 
-6. Open:
+7. Open:
 
    ```text
    http://127.0.0.1:8765/
@@ -97,6 +147,8 @@ Expected result: the private pricing reference is saved in ignored local/runtime
 storage and is available to the normal quote flow. The current UI may still use
 the temporary wording "local references"; that wording can later become
 "workspace pricing references" after login/company platform context exists.
+Synthetic or demo references may still exist as committed test/fallback
+fixtures, but they are not the expected internal team-test source.
 
 ## Generate A Quote With The Normal Flow
 
@@ -212,6 +264,7 @@ but a hard refresh is still the quickest manual recovery.
 
 Use this list for each internal smoke run:
 
+- [ ] Clean local runtime workspace selected before import.
 - [ ] Profile import succeeds.
 - [ ] Pricing import succeeds.
 - [ ] Imported pricing reference is selectable in the normal quote flow.
@@ -237,6 +290,7 @@ Data set used:
 Describe without attaching private files or real private paths.
 
 Checklist:
+- Clean local runtime workspace selected before import: Pass/Fail
 - Profile import succeeds: Pass/Fail
 - Pricing import succeeds: Pass/Fail
 - Imported pricing reference selectable: Pass/Fail
