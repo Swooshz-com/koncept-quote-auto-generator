@@ -167,6 +167,7 @@ Do not run live n8n, Docker, import/export, sync, activation, execution, publish
 
 # Swooshz Quote Generator Rules
 
+- SAQG/KQAG solution UI is complete and final. Do not change visible UI, layout, DOM, CSS, workflow placement, cards, tabs, buttons, modals, spacing, component hierarchy, or visual status components unless the user explicitly approves UI work in the current turn. Text-only wording changes and backend/data mapping are allowed when scoped. If UI files are touched without explicit UI approval, the PR must fail/reject itself unless the change is text-only wording or invisible data serialization.
 - Require booth/render images before preparing or generating a quote. If images are missing, ask exactly: `Please upload the booth render images first so I can analyze the design and prepare the quote.`
 - Do not generate a quote from a text-only item list, and do not ask the user to create, edit, inspect, or approve an internal generator brief file.
 - Suggest a quote basis from images and user notes, then ask the user to confirm it before generating. Do not silently assume materials, finishes, dimensions, or inclusions.
