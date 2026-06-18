@@ -433,45 +433,45 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         catalog_path = KONCEPT_CATALOG
         rows = quote.extract_price_rows(catalog_path)
 
-        self.assertGreaterEqual(len(rows), 100)
-        self.assertEqual(rows[0].pricing_id, "floor-design-needle-punch-carpet-in-colour")
-        self.assertEqual(rows[0].section, "Floor Design")
-        self.assertEqual(rows[0].description, "sqm needle punch carpet in colour")
+        self.assertGreaterEqual(len(rows), 20)
+        self.assertEqual(rows[0].pricing_id, "synthetic-floors-synthetic-carpet-tile")
+        self.assertEqual(rows[0].section, "Synthetic Floors")
+        self.assertEqual(rows[0].description, "sqm synthetic carpet tile")
         self.assertEqual(rows[0].unit_hint, "sqm")
         first_catalog_item = json.loads(catalog_path.read_text(encoding="utf-8"))["items"][0]
         self.assertEqual(rows[0].cost, first_catalog_item["internal_cost"])
         self.assertEqual(rows[0].gst_multiplier, 1.0)
-        self.assertEqual(rows[0].markup, 1.5)
-        self.assertIn("needle punch", rows[0].aliases)
+        self.assertEqual(rows[0].markup, 1.2)
+        self.assertIn("synthetic carpet", rows[0].aliases)
 
-        wall_row = next(row for row in rows if row.pricing_id == "booth-structure-single-side-partition-wall-at-height-2-4m-wooden-construct-in-painted-finished-as-per-design-proposal")
-        self.assertEqual(wall_row.description, "m length single side partition wall at height 2.4m; wooden construct in painted finished as per design proposal")
-        self.assertEqual(wall_row.remark, "Backwall or any partition; PAINTED")
+        wall_row = next(row for row in rows if row.pricing_id == "synthetic-structures-synthetic-wall-rail")
+        self.assertEqual(wall_row.description, "m length synthetic wall rail")
+        self.assertEqual(wall_row.remark, "synthetic wall rail")
 
-        graphics_row = next(row for row in rows if row.pricing_id == "graphics-vinyl-printed-graphics")
-        self.assertEqual(graphics_row.description, "sqm of vinyl printed graphics")
-        self.assertIn("printed graphics on wall", graphics_row.remark.lower())
+        graphics_row = next(row for row in rows if row.pricing_id == "synthetic-graphics-synthetic-printed-wall-graphic")
+        self.assertEqual(graphics_row.description, "sqm synthetic printed wall graphic")
+        self.assertIn("synthetic print", graphics_row.remark.lower())
 
         self.assertFalse([row.pricing_id for row in rows if not row.unit_hint])
-        truss_row = next(row for row in rows if row.pricing_id == "hanging-structure-m-rental-of-300mm-x-300mm-aluminium-box-truss")
+        truss_row = next(row for row in rows if row.pricing_id == "synthetic-structures-m-synthetic-box-truss")
         self.assertEqual(truss_row.unit_hint, "m")
 
     def test_catalog_id_pricing_keyword_matches_exact_catalog_item(self):
         rows = quote.extract_price_rows(KONCEPT_CATALOG)
 
-        status, match, _ = quote.find_price_match("graphics.vinyl-printed-graphics", rows)
+        status, match, _ = quote.find_price_match("synthetic-graphics-synthetic-printed-wall-graphic", rows)
 
         self.assertEqual(status, "matched")
         self.assertIsNotNone(match)
-        self.assertEqual(match.pricing_id, "graphics-vinyl-printed-graphics")
+        self.assertEqual(match.pricing_id, "synthetic-graphics-synthetic-printed-wall-graphic")
 
     def test_catalog_matching_uses_numeric_size_and_explicit_unit_context(self):
         rows = quote.extract_price_rows(KONCEPT_CATALOG)
 
         status, match, _ = quote.find_price_match(
-            'LED recess downlight 6"',
+            "synthetic spotlight 6 inch",
             rows,
-            section="Electrical Fittings ( Excluding connection fees by Organiser)",
+            section="Synthetic Lighting And AV",
             unit="nos",
         )
 
@@ -479,28 +479,28 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(
             match.pricing_id,
-            "electrical-fittings-excluding-connection-fees-by-organiser-led-recess-downlight-6",
+            "synthetic-lighting-and-av-synthetic-spotlight-6-inch",
         )
 
         sqm_status, sqm_match, _ = quote.find_price_match(
-            "Side wall printed graphic panels",
+            "synthetic printed graphic panels",
             rows,
-            section="Graphics",
+            section="Synthetic Graphics",
             unit="sqm",
         )
         nos_status, nos_match, _ = quote.find_price_match(
-            "Side wall printed graphic panels",
+            "synthetic printed graphic panels",
             rows,
-            section="Graphics",
+            section="Synthetic Graphics",
             unit="nos",
         )
 
         self.assertEqual(sqm_status, "matched")
-        self.assertEqual(sqm_match.pricing_id, "graphics-vinyl-printed-graphics")
+        self.assertEqual(sqm_match.pricing_id, "synthetic-graphics-synthetic-printed-wall-graphic")
         self.assertEqual(nos_status, "matched")
         self.assertEqual(
             nos_match.pricing_id,
-            "graphics-digital-print-graphic-mounted-directly-onto-system-panels-size-950mml-x-2340mmh",
+            "synthetic-graphics-synthetic-printed-system-panel",
         )
 
     def test_generated_styles_declares_ignorable_prefixes_without_excel_repair(self):
@@ -745,14 +745,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
     def test_exact_catalog_id_one_metre_structural_row_stays_priced(self):
         rows = quote.extract_price_rows(KONCEPT_CATALOG)
-        partition_keyword = (
-            "booth-structure-double-side-partition-wall-at-height-2-4m-"
-            "wooden-construct-in-painted-finished-as-per-design-proposal"
-        )
-        partition_description = (
-            "m length double side partition wall at height 2.4m; "
-            "wooden construct in painted finished as per design proposal"
-        )
+        partition_keyword = "synthetic-structures-synthetic-double-side-partition"
+        partition_description = "m length synthetic double side partition"
         brief = {
             "line_items": [{
                 "section": "Booth Structure",
@@ -768,8 +762,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(line.match_status, "matched")
         self.assertIsNotNone(line.matched_price)
         self.assertEqual(line.matched_price.pricing_id, partition_keyword)
-        self.assertEqual(line.matched_price.sale_unit_price, 540.0)
-        self.assertEqual(line.amount, 540)
+        self.assertEqual(line.matched_price.sale_unit_price, 40.25)
+        self.assertEqual(line.amount, 40)
 
     def test_fractional_information_counter_requires_quantity_review(self):
         rows = [

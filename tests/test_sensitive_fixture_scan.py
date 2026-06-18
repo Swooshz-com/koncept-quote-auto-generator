@@ -31,6 +31,7 @@ class SensitiveFixtureScanTest(unittest.TestCase):
         blocking = [finding for finding in findings if finding.severity == "block"]
 
         self.assertEqual(blocking, [])
+        self.assertEqual(findings, [])
 
     def test_dangerous_private_or_generated_files_are_in_default_scan_scope(self):
         for rel_path in DANGEROUS_OUT_OF_SCOPE_PATHS:
@@ -70,6 +71,37 @@ class SensitiveFixtureScanTest(unittest.TestCase):
         self.assertIn("private.quote-company-profile.json", text)
         self.assertNotIn("Do Not Echo", text)
         self.assertNotIn("1234567890", text)
+
+    def test_synthetic_review_allowlist_does_not_suppress_blocking_categories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile_path = root / "profiles" / "koncept" / "profile.json"
+            profile_path.parent.mkdir(parents=True)
+            profile_path.write_text(
+                json.dumps({
+                    "company": {
+                        "name": "Synthetic Fixture Company",
+                        "logo_data_url": "data:image/png;base64,ZmFrZQ==",
+                        "bank": "Do Not Echo Bank",
+                    }
+                }),
+                encoding="utf-8",
+            )
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exit_code = scan_sensitive_fixtures.main([
+                    "--root",
+                    str(root),
+                    "--path",
+                    str(profile_path),
+                ])
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 1)
+        self.assertIn("bank-payment-marker", text)
+        self.assertNotIn("embedded-logo-reference", text)
+        self.assertNotIn("Do Not Echo", text)
 
     def test_tracked_forced_private_or_generated_files_block_by_category_only(self):
         with tempfile.TemporaryDirectory() as tmp:
