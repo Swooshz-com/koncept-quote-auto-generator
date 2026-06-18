@@ -54,6 +54,11 @@ PAYMENT_RE = re.compile(
 )
 KNOWN_SYNTHETIC_REVIEW_ALLOWLIST = {
     ("committed-pdf-sample", "fixtures/samples/kent-group/kent-group.pdf"),
+    ("committed-fixture-media", "pricing-references/koncept-exhibition-quotation/pricing-catalog-images/synthetic-chip.png"),
+    (
+        "committed-fixture-media",
+        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/koncept-workspace-pricing/pricing-catalog-images/synthetic-chip.png",
+    ),
     ("customer-sample-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
     ("customer-sample-marker", "fixtures/samples/kent-group/sample.json"),
     ("customer-sample-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
