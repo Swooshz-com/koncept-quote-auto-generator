@@ -806,6 +806,22 @@
           </div>
         </section>
       </div>
+      <div class="modal-overlay profile-delete-modal" id="outputDeleteModal" role="dialog" aria-modal="true" aria-labelledby="outputDeleteTitle" hidden>
+        <div class="modal-backdrop" data-output-delete-close></div>
+        <section class="modal-panel profile-delete-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Output Row</span>
+              <h3 id="outputDeleteTitle">Delete output row?</h3>
+            </div>
+          </header>
+          <p id="outputDeleteText">Delete this output row?</p>
+          <div class="modal-actions profile-delete-actions">
+            <button class="secondary-button" type="button" id="cancelOutputDeleteButton">Cancel</button>
+            <button class="secondary-button danger-button" type="button" id="confirmOutputDeleteButton">Delete</button>
+          </div>
+        </section>
+      </div>
       <div class="modal-overlay" id="analysisConfirmModal" role="dialog" aria-modal="true" aria-labelledby="analysisConfirmTitle" hidden>
         <div class="modal-backdrop" data-analysis-confirm-close></div>
         <section class="modal-panel analysis-confirm-panel">

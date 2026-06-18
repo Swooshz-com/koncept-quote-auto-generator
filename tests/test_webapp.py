@@ -7529,6 +7529,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "profileDeleteError",
             "cancelProfileDeleteButton",
             "confirmProfileDeleteButton",
+            "outputDeleteModal",
+            "outputDeleteTitle",
+            "outputDeleteText",
+            "cancelOutputDeleteButton",
+            "confirmOutputDeleteButton",
             "presetStatus",
             "aiFailureBanner",
         ):
@@ -7643,6 +7648,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("requestSelectedPresetDelete", js)
         self.assertIn("function renderProfileDeleteModal", js)
         self.assertNotIn('window.confirm(`Delete "${label}"? This removes the saved company profile', js)
+        self.assertIn("Delete output row?", html)
+        self.assertIn("requestOutputRowDelete", js)
+        self.assertIn("function renderOutputDeleteModal", js)
+        self.assertIn("function confirmOutputRowDelete", js)
+        self.assertNotIn("window.confirm(`Delete output row", js)
         self.assertIn('id="importPresetButton"', html)
         self.assertIn('id="exportPresetButton"', html)
         self.assertIn('id="importPresetFile" type="file" accept="application/json,.json" hidden', html)
@@ -7823,6 +7833,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("CSRF_HEADER_NAME", js)
         self.assertIn("/api/session", js)
         self.assertIn("initializeSession", js)
+        self.assertIn("function refreshSessionToken", js)
+        self.assertIn("response.status === 403 && await refreshSessionToken()", js)
+        self.assertIn("return { ok: response.ok, data, status: response.status };", js)
         self.assertIn("state.permissions = { ...state.permissions, ...data.permissions };", js)
         self.assertIn("canManagePricingReferences", js)
         self.assertIn("You do not have access to manage pricing references.", js)

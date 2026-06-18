@@ -203,6 +203,7 @@ const state = {
   profileDeleteError: "",
   profileSaveBusy: false,
   profileDeleteBusy: false,
+  outputDeleteRowIndex: -1,
   permissions: {
     role: "viewer",
     canManageSettings: false,
@@ -310,6 +311,11 @@ const elements = {
   profileDeleteError: qs("#profileDeleteError"),
   cancelProfileDeleteButton: qs("#cancelProfileDeleteButton"),
   confirmProfileDeleteButton: qs("#confirmProfileDeleteButton"),
+  outputDeleteModal: qs("#outputDeleteModal"),
+  outputDeleteTitle: qs("#outputDeleteTitle"),
+  outputDeleteText: qs("#outputDeleteText"),
+  cancelOutputDeleteButton: qs("#cancelOutputDeleteButton"),
+  confirmOutputDeleteButton: qs("#confirmOutputDeleteButton"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
@@ -5555,19 +5561,65 @@ function outputRowsValid(rows = state.outputRows) {
   return { valid: errors.length === 0 && rows.length > 0, errors };
 }
 
-function deleteOutputRow(index) {
+function outputDeleteRowLabel(index) {
   if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) return;
   const row = state.outputRows[index];
-  const confirmed = window.confirm(`Delete output row "${row.description || `Row ${index + 1}`}"?`);
-  if (!confirmed) return;
+  const description = String(row.description || "").trim();
+  return description || `Row ${index + 1}`;
+}
+
+function hideOutputDeleteModal() {
+  state.outputDeleteRowIndex = -1;
+  if (elements.outputDeleteModal) {
+    elements.outputDeleteModal.classList.remove("is-open");
+    elements.outputDeleteModal.hidden = true;
+  }
+}
+
+function renderOutputDeleteModal() {
+  const modal = elements.outputDeleteModal;
+  if (!modal) return;
+  const label = outputDeleteRowLabel(state.outputDeleteRowIndex);
+  if (!label) {
+    hideOutputDeleteModal();
+    return;
+  }
+  if (elements.outputDeleteTitle) elements.outputDeleteTitle.textContent = "Delete output row?";
+  if (elements.outputDeleteText) {
+    elements.outputDeleteText.textContent = `Delete output row "${label}"?`;
+  }
+  modal.hidden = false;
+  modal.classList.add("is-open");
+  window.setTimeout(() => elements.confirmOutputDeleteButton?.focus(), 0);
+}
+
+function requestOutputRowDelete(index) {
+  if (appIsBusy()) return;
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) return;
+  state.outputDeleteRowIndex = index;
+  renderOutputDeleteModal();
+}
+
+function confirmOutputRowDelete() {
+  const index = state.outputDeleteRowIndex;
+  if (!Number.isInteger(index) || index < 0 || !state.outputRows[index]) {
+    hideOutputDeleteModal();
+    return;
+  }
   state.outputRows.splice(index, 1);
   state.lineItems = outputRowsToLineItems();
   state.downloadFile = null;
+  setDownloadFiles([]);
+  hideOutputDeleteModal();
   const validation = outputRowsValid();
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   syncControlStates();
+}
+
+function deleteOutputRow(index) {
+  requestOutputRowDelete(index);
 }
 
 function renderOutputValidationMessages(errors = state.outputErrors) {
@@ -7133,45 +7185,80 @@ async function resetOutputDraft() {
   syncControlStates();
 }
 
-async function postJson(url, payload) {
-  let response;
+function postJsonFetchFailure(url, error) {
+  if (!state.isPageUnloading) {
+    logClientEvent("client_error", { url, message: error.message || String(error) });
+  }
+  return {
+    ok: false,
+    data: {
+      status: "failed",
+      fetch_failed: true,
+      page_unloading: state.isPageUnloading,
+      message: error.message || String(error),
+      errors: genericFailureMessages(),
+    },
+    status: 0,
+  };
+}
+
+async function fetchPostJsonResponse(url, payload) {
   const headers = { "Content-Type": "application/json" };
   if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    if (!state.isPageUnloading) {
-      logClientEvent("client_error", { url, message: error.message || String(error) });
-    }
-    return {
-      ok: false,
-      data: {
-        status: "failed",
-        fetch_failed: true,
-        page_unloading: state.isPageUnloading,
-        message: error.message || String(error),
-        errors: genericFailureMessages(),
-      },
-    };
-  }
+  return fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
 
-  let data;
+async function jsonFromResponse(response) {
   try {
-    data = await response.json();
+    return await response.json();
   } catch {
-    data = {
+    return {
       status: "failed",
       errors: genericFailureMessages(),
     };
   }
+}
+
+function applySessionData(data = {}) {
+  if (!data.csrf_token) return false;
+  state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
+  state.csrfToken = data.csrf_token;
+  if (data.permissions && typeof data.permissions === "object") {
+    state.permissions = { ...state.permissions, ...data.permissions };
+  }
+  return true;
+}
+
+async function refreshSessionToken() {
+  const { ok, data } = await getJson("/api/session", { logFetchFailure: false });
+  return ok && applySessionData(data);
+}
+
+async function postJson(url, payload) {
+  let response;
+  try {
+    response = await fetchPostJsonResponse(url, payload);
+  } catch (error) {
+    return postJsonFetchFailure(url, error);
+  }
+
+  let data = await jsonFromResponse(response);
+  if (response.status === 403 && await refreshSessionToken()) {
+    try {
+      response = await fetchPostJsonResponse(url, payload);
+      data = await jsonFromResponse(response);
+    } catch (error) {
+      return postJsonFetchFailure(url, error);
+    }
+  }
   if (!response.ok) {
     logClientEvent("server_error", { url, status: response.status, errors: data.errors || [] });
   }
-  return { ok: response.ok, data };
+  return { ok: response.ok, data, status: response.status };
 }
 
 async function getJson(url, options = {}) {
@@ -7282,12 +7369,7 @@ function logClientEvent(event, details = {}) {
 
 async function initializeSession() {
   const { ok, data } = await getJson("/api/session");
-  if (ok && data.csrf_token) {
-    state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
-    state.csrfToken = data.csrf_token;
-    if (data.permissions && typeof data.permissions === "object") {
-      state.permissions = { ...state.permissions, ...data.permissions };
-    }
+  if (ok && applySessionData(data)) {
     return;
   }
   if (elements.healthText) elements.healthText.textContent = "Local session unavailable";
@@ -8060,6 +8142,8 @@ function wireEvents() {
         closePricingReferenceTableOverlay();
       } else if (!elements.basisChatOverlay.hidden) {
         closeBasisChatOverlay();
+      } else if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) {
+        hideOutputDeleteModal();
       } else if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
         hideProfileDeleteModal();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
@@ -8200,6 +8284,13 @@ function wireEvents() {
   elements.profileDeleteModal?.addEventListener("click", (event) => {
     if (event.target.closest("[data-profile-delete-close]")) {
       hideProfileDeleteModal();
+    }
+  });
+  elements.cancelOutputDeleteButton?.addEventListener("click", hideOutputDeleteModal);
+  elements.confirmOutputDeleteButton?.addEventListener("click", confirmOutputRowDelete);
+  elements.outputDeleteModal?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-output-delete-close]")) {
+      hideOutputDeleteModal();
     }
   });
   elements.importPresetButton?.addEventListener("click", requestPresetImport);
