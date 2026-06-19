@@ -3975,11 +3975,17 @@ class WebappServerTest(unittest.TestCase):
     def test_pricing_reference_template_download_uses_normalized_columns(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
+        sheets = webapp.xlsx_all_sheets_rows_with_numbers_from_bytes(raw)
 
         expected_path = ROOT / "templates" / "pricing-reference" / "pricing-reference-template.xlsx"
         self.assertEqual(webapp.PRICING_REFERENCE_TEMPLATE_PATH, expected_path)
         self.assertEqual(raw, expected_path.read_bytes())
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
+        self.assertEqual(sheets[1][1][0][1], ["Swooshz Pricing Reference Info"])
+        self.assertIn(["Reference name", ""], [row for _row_number, row in sheets[1][1]])
+        self.assertIn(["Tax label", "GST"], [row for _row_number, row in sheets[1][1]])
+        self.assertIn(["Tax rate", "0.09"], [row for _row_number, row in sheets[1][1]])
+        self.assertIn(["Currency", "SGD"], [row for _row_number, row in sheets[1][1]])
         self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         self.assertNotIn("aliases", headers)
         self.assertGreaterEqual(len(rows), 2)
@@ -4087,6 +4093,53 @@ class WebappServerTest(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             self.assertIn("xl/drawings/drawing1.xml", zf.namelist())
             self.assertTrue(any(name.startswith("xl/media/") for name in zf.namelist()))
+
+    def test_pricing_reference_import_metadata_prefers_reference_info_over_item_rows(self):
+        first_sheet = [
+            list(webapp.PRICING_REFERENCE_EXPORT_COLUMNS),
+            [
+                "item-row",
+                "Services",
+                "lot imported service",
+                "lot",
+                100,
+                1.2,
+                "",
+                "",
+                "",
+                "",
+                1,
+                1,
+                "",
+                "",
+                "",
+                "SGD",
+                "GST",
+                0.09,
+            ],
+        ]
+        reference_info = [
+            ["Swooshz Pricing Reference Export"],
+            ["Reference name", "Imported VAT Reference"],
+            ["Currency", "USD"],
+            ["Tax label", "VAT"],
+            ["Tax rate", 0.2],
+        ]
+        raw = xlsx_with_sheet_rows([first_sheet, reference_info])
+
+        metadata = webapp.pricing_reference_import_metadata_from_xlsx(raw)
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "imported-vat-reference.xlsx",
+            "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+            + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertEqual(metadata["label"], "Imported VAT Reference")
+        self.assertEqual(metadata["currency"], "USD")
+        self.assertEqual(metadata["tax"], {"label": "VAT", "rate": 0.2})
+        self.assertEqual(result["suggested_label"], "Imported VAT Reference")
+        self.assertEqual(result["currency"], "USD")
+        self.assertEqual(result["tax"], {"label": "VAT", "rate": 0.2})
 
     def test_non_template_pricing_reference_upload_is_rejected(self):
         raw = minimal_pricing_reference_xlsx(["old_id", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])

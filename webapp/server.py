@@ -3412,11 +3412,18 @@ def pricing_reference_import_metadata_from_xlsx(raw: bytes) -> dict[str, Any]:
         if text and not clean_text(metadata.get(key)):
             metadata[key] = text
 
+    def row_value_after_key(row: list[str]) -> str:
+        for value in row[1:]:
+            text = clean_text(value)
+            if text:
+                return text
+        return ""
+
     for _sheet_name, rows in sheets:
         for _row_number, row in rows:
             if len(row) >= 2:
                 key = pricing_reference_import_metadata_key(row[0])
-                value = row[1]
+                value = row_value_after_key(row)
                 if key in {"reference name", "pricing reference name", "reference label"}:
                     set_if_empty("label", value)
                 elif key in {"reference id", "pricing reference id"}:
@@ -3428,6 +3435,7 @@ def pricing_reference_import_metadata_from_xlsx(raw: bytes) -> dict[str, Any]:
                 elif key in {"tax rate", "tax rate percent", "tax percentage"}:
                     set_if_empty("tax_rate", str(normalize_tax_rate(value, DEFAULT_TAX_RATE)))
 
+    for _sheet_name, rows in sheets:
         for index, (_row_number, row) in enumerate(rows):
             header_indexes = {
                 pricing_reference_import_metadata_key(value): column_index
@@ -3540,9 +3548,21 @@ def pricing_reference_template_sheet_xml(
 
 def generated_pricing_reference_template_xlsx_bytes() -> bytes:
     pricing_rows = [list(PRICING_REFERENCE_TEMPLATE_COLUMNS), *PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS]
+    reference_info_rows = [
+        ["Swooshz Pricing Reference Info"],
+        ["Reference ID", ""],
+        ["Reference name", ""],
+        ["Description", ""],
+        ["Currency", DEFAULT_CURRENCY_LABEL],
+        ["Tax label", DEFAULT_TAX_LABEL],
+        ["Tax rate", f"{DEFAULT_TAX_RATE:g}"],
+        ["Import note", "Edit these values, then upload this workbook through Pricing Reference Settings > Import."],
+    ]
     instruction_rows = [
         ["Pricing Reference Import Template"],
         ["Edit or add pricing rows in the Pricing Reference sheet, then upload this workbook in New Pricing Reference."],
+        ["Reference info", "Edit Reference name, Currency, Tax label, and Tax rate in the Reference Info sheet."],
+        ["Tax rate format", "Use a decimal rate, for example 0.09 for 9% or 0.2 for 20%."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
         ["section", "Quotation section, for example Services."],
         ["description", "Customer-facing wording. Catalog-backed quote basis and output rows will use this exactly."],
@@ -3551,16 +3571,24 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
         ["markup_multiplier", "Number only, for example 1.5."],
         ["remarks", "Optional. Internal matching/search notes; separate multiple values with semicolon. AI-generated aliases are added during import."],
     ]
+    sheets = [
+        ("Pricing Reference", pricing_rows),
+        ("Reference Info", reference_info_rows),
+        ("Instructions", instruction_rows),
+    ]
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        sheet_overrides = "".join(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            for index, _sheet in enumerate(sheets, start=1)
+        )
         zf.writestr("[Content_Types].xml", (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             '<Default Extension="xml" ContentType="application/xml"/>'
             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            f'{sheet_overrides}'
             '</Types>'
         ))
         zf.writestr("_rels/.rels", (
@@ -3574,19 +3602,26 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
             '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
             '<sheets>'
-            '<sheet name="Pricing Reference" sheetId="1" r:id="rId1"/>'
-            '<sheet name="Instructions" sheetId="2" r:id="rId2"/>'
-            '</sheets></workbook>'
+            + "".join(
+                f'<sheet name="{xml_escape(sheet_name)}" sheetId="{index}" r:id="rId{index}"/>'
+                for index, (sheet_name, _rows) in enumerate(sheets, start=1)
+            )
+            + '</sheets></workbook>'
         ))
         zf.writestr("xl/_rels/workbook.xml.rels", (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'
-            '</Relationships>'
+            + "".join(
+                f'<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
+                for index, _sheet in enumerate(sheets, start=1)
+            )
+            + '</Relationships>'
         ))
-        zf.writestr("xl/worksheets/sheet1.xml", pricing_reference_template_sheet_xml(pricing_rows, hide_internal_id=True))
-        zf.writestr("xl/worksheets/sheet2.xml", pricing_reference_template_sheet_xml(instruction_rows))
+        for index, (_sheet_name, rows) in enumerate(sheets, start=1):
+            zf.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                pricing_reference_template_sheet_xml(rows, hide_internal_id=(index == 1)),
+            )
     return buffer.getvalue()
 
 
