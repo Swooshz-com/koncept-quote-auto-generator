@@ -466,10 +466,10 @@ def manual_print_page_for_row(row_number):
 
 
 def declared_xml_prefixes(xml_text, root_name):
-    match = re.search(rf"<{root_name}\b[^>]*>", xml_text)
+    match = re.search(rf"<(?:[A-Za-z0-9_.-]+:)?{re.escape(root_name)}\b[^>]*>", xml_text)
     if not match:
         raise AssertionError(f"Could not find <{root_name}> start tag")
-    return set(re.findall(r"\sxmlns:([A-Za-z0-9_]+)=", match.group(0)))
+    return set(re.findall(r"\sxmlns:([A-Za-z0-9_.-]+)=", match.group(0)))
 
 
 def logo_data_url():

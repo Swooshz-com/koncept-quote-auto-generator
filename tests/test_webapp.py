@@ -166,7 +166,7 @@ def xlsx_with_single_cell(cell_ref: str, value: str = "section", *, shared_strin
     return buffer.getvalue()
 
 
-def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
+def xlsx_sheet_xml(rows: list[list[object | None]]) -> str:
     def cell_xml(row_number: int, col_number: int, value: object | None) -> str:
         if value in (None, ""):
             return ""
@@ -179,15 +179,26 @@ def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
     for row_number, row in enumerate(rows, start=1):
         cells = "".join(cell_xml(row_number, col_number, value) for col_number, value in enumerate(row))
         sheet_rows.append(f'<row r="{row_number}">{cells}</row>')
-    worksheet = (
+    return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
         f"<sheetData>{''.join(sheet_rows)}</sheetData>"
         "</worksheet>"
     )
+
+
+def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
-        zf.writestr("xl/worksheets/sheet1.xml", worksheet)
+        zf.writestr("xl/worksheets/sheet1.xml", xlsx_sheet_xml(rows))
+    return buffer.getvalue()
+
+
+def xlsx_with_sheet_rows(sheets: list[list[list[object | None]]]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for sheet_index, rows in enumerate(sheets, start=1):
+            zf.writestr(f"xl/worksheets/sheet{sheet_index}.xml", xlsx_sheet_xml(rows))
     return buffer.getvalue()
 
 
@@ -4065,6 +4076,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("chair rental", rows[0]["match_terms"])
         self.assertEqual(result["errors"], [])
         self.assertTrue(result["canSave"])
+        self.assertEqual(result["suggested_label"], "Export Ref")
+        self.assertEqual(result["tax"], {"label": "GST", "rate": 0.09})
         self.assertEqual(result["currency"], "USD")
         self.assertEqual(result["items"][0]["description"], "nos. White chair rental")
         self.assertIn("chair rental", result["items"][0]["match_terms"])
@@ -4108,7 +4121,16 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("invalid cell reference", " ".join(result["errors"]))
 
     def test_xlsx_rows_for_ai_uses_real_excel_column_labels(self):
-        raw = minimal_pricing_reference_xlsx(["section", "description", "unit_hint"])
+        raw = xlsx_with_sheet_rows([
+            [
+                ["section", "description", "unit_hint"],
+                ["Structures", "White painted walling", "sqm"],
+            ],
+            [
+                ["Reference name", "Imported Export Ref"],
+                ["Currency", "USD"],
+            ],
+        ])
 
         rows = webapp.xlsx_rows_for_ai(raw)
 
@@ -4116,10 +4138,15 @@ class WebappServerTest(unittest.TestCase):
             rows[0]["non_empty_cells"],
             {"A": "section", "B": "description", "C": "unit_hint"},
         )
+        self.assertEqual(rows[0]["sheet"], "sheet1")
         self.assertEqual(
             rows[1]["non_empty_cells"],
             {"A": "Structures", "B": "White painted walling", "C": "sqm"},
         )
+        self.assertEqual(rows[1]["sheet"], "sheet1")
+        self.assertEqual(rows[2]["sheet"], "sheet2")
+        self.assertEqual(rows[2]["non_empty_cells"], {"A": "Reference name", "B": "Imported Export Ref"})
+        self.assertEqual(rows[3]["non_empty_cells"], {"A": "Currency", "B": "USD"})
 
     def test_xlsx_pricing_reference_rejects_large_uncompressed_xml(self):
         shared_strings = (
@@ -4229,7 +4256,9 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(profiles[0]["label"], "Default")
         self.assertEqual(profiles[0]["default_quote_detail_preset"], "default")
         self.assertEqual(profiles[0]["quote_detail_presets"][0]["id"], "default")
+        self.assertTrue((ROOT / "templates" / "profile" / "default" / "profile.json").is_file())
         self.assertEqual(default_pack.quotation_layout_path, ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx")
+        self.assertEqual(webapp.embedded_layout_rules_from_xlsx_path(default_pack.quotation_layout_path)["output"]["master_format"], "xlsx")
         self.assertEqual(pricing_references, [])
         self.assertEqual(profile_id, "default")
         self.assertEqual(pricing_reference_id, "")
@@ -4349,7 +4378,6 @@ class WebappServerTest(unittest.TestCase):
 
     def test_default_profile_pack_uses_repo_placeholder_template_when_profile_layout_missing(self):
         expected_layout = ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx"
-        expected_rules = ROOT / "templates" / "quote-layout" / "layout-rules.json"
 
         with tempfile.TemporaryDirectory() as tmp:
             empty_profiles_root = Path(tmp) / "profiles"
@@ -4358,10 +4386,10 @@ class WebappServerTest(unittest.TestCase):
                 profile_pack = webapp.load_profile_pack("")
 
         self.assertTrue(expected_layout.is_file())
-        self.assertTrue(expected_rules.is_file())
         self.assertEqual(missing_ignorable_namespace_prefixes_from_xlsx(expected_layout), [])
         self.assertEqual(profile_pack.quotation_layout_path, expected_layout)
-        self.assertEqual(profile_pack.layout_rules_path, expected_rules)
+        self.assertEqual(profile_pack.layout_rules_path, expected_layout)
+        self.assertEqual(webapp.default_layout_rules_payload()["template"]["workbook"], "quotation-layout.xlsx")
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
         raw_sample = json.loads((ROOT / "fixtures" / "samples" / "kent-group" / "sample.json").read_text(encoding="utf-8"))
@@ -7590,6 +7618,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="layoutTemplateButton"', html)
         self.assertIn("pendingProfilePack", js)
         self.assertIn("fetchCompanyProfileExport", js)
+        self.assertIn("downloadBlobFile", js)
+        self.assertIn("newClientErrorReference", js)
+        self.assertIn("error_reference", js)
+        self.assertIn("applyPricingReferenceImportMetadata", js)
+        self.assertIn("setPricingReferenceTaxControls(result.tax)", js)
+        self.assertIn("setPricingReferenceCurrencyControls(result.currency)", js)
         self.assertNotIn("handleLayoutTemplateFileChange", js)
         self.assertIn("profilePackPayloadForSave()", js)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
@@ -13207,7 +13241,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(dependencies["quote_company_profile"]["store"], "profiles")
         self.assertEqual(dependencies["logo"]["source"], "quote-company-profile")
         self.assertEqual(dependencies["quotation_layout"]["source"], "profile-pack")
-        self.assertEqual(dependencies["layout_rules"]["source"], "profile-pack")
+        self.assertEqual(dependencies["layout_rules"]["source"], "embedded-profile-layout")
         self.assertEqual(dependencies["pricing_reference"]["source"], "selected-runtime-reference")
         self.assertNotIn("asset_packs", runtime)
 
@@ -13402,7 +13436,6 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                         disposition = response.headers["Content-Disposition"]
 
         layout_payload = body["pack"]["quotation_layout"]
-        rules_payload = body["pack"]["layout_rules"]
         layout_bytes = base64.b64decode(layout_payload["data_url"].split(",", 1)[1])
         self.assertTrue(content_type.startswith("application/json"))
         self.assertIn("portable-layout-profile.quote-company-profile.json", disposition)
@@ -13410,9 +13443,37 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(body["profile"]["id"], "portable-layout-profile")
         self.assertEqual(body["profile"]["defaults"]["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
         self.assertEqual(layout_payload["filename"], "quotation-layout.xlsx")
-        self.assertEqual(layout_bytes, KONCEPT_LAYOUT.read_bytes())
-        self.assertEqual(rules_payload["filename"], "layout-rules.json")
-        self.assertEqual(rules_payload["json"]["output"]["master_format"], "xlsx")
+        self.assertNotIn("layout_rules", body["pack"])
+        embedded_rules = webapp.embedded_layout_rules_from_xlsx_bytes(layout_bytes)
+        self.assertEqual(embedded_rules["output"]["master_format"], "xlsx")
+
+    def test_company_profile_export_failure_returns_reference_and_logs_generic_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp) / "data")
+            log_root = Path(tmp) / "logs"
+            with (
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+                mock.patch.object(webapp, "configured_log_root", return_value=log_root),
+                mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False),
+            ):
+                with LocalRunnerServer() as runner:
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(
+                            f"{runner.base_url}/api/settings/profiles/missing-profile/export.json",
+                            timeout=3,
+                        )
+                    body = json.loads(error.exception.read().decode("utf-8"))
+
+            log_path = next((log_root / "app").glob("*.jsonl"))
+            log_records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(error.exception.code, 404)
+        self.assertEqual(body["status"], "failed")
+        self.assertEqual(body["errors"], ["Profile export failed."])
+        self.assertRegex(body["error_reference"], r"^ERR-[0-9A-F]{8}$")
+        self.assertEqual(log_records[-1]["event"], "profile_export_not_found")
+        self.assertEqual(log_records[-1]["details"]["error_reference"], body["error_reference"])
+        self.assertIn("Match the browser-visible error reference", log_records[-1]["meaning"])
 
     def test_imported_profile_logo_data_url_is_written_to_generated_xlsx(self):
         imported_profile = webapp.normalize_profile_payload({
@@ -13778,7 +13839,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             rules_path = store.company_dir(company_id) / "profile-packs" / company_id / "layout-rules.json"
             layout_exists = layout_path.is_file()
             layout_bytes = layout_path.read_bytes() if layout_exists else b""
-            rules_payload = json.loads(rules_path.read_text(encoding="utf-8")) if rules_path.is_file() else {}
+            rules_payload = webapp.embedded_layout_rules_from_xlsx_bytes(layout_bytes) if layout_exists else {}
             with zipfile.ZipFile(quotation_path) as zf:
                 workbook_names = set(zf.namelist())
 
@@ -13801,7 +13862,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(brief["line_items"][0]["pricing_keyword"], "synthetic-internal-graphics-row")
         self.assertTrue(quotation_exists)
         self.assertTrue(layout_exists)
-        self.assertEqual(layout_bytes, KONCEPT_LAYOUT.read_bytes())
+        self.assertFalse(rules_path.exists())
         self.assertEqual(rules_payload["custom_layout_fixture"], True)
         self.assertIn("xl/styles.xml", workbook_names)
         self.assertIn("xl/theme/theme1.xml", workbook_names)

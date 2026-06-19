@@ -982,6 +982,18 @@ function errorReferenceFrom(data = {}) {
   ).trim();
 }
 
+function newClientErrorReference() {
+  const bytes = new Uint8Array(4);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `ERR-${Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
 function genericFailureMessage(data = {}) {
   const reference = typeof data === "string" ? "" : errorReferenceFrom(data);
   return reference ? `${GENERIC_FAILURE_MESSAGE} Reference: ${reference}.` : GENERIC_FAILURE_MESSAGE;
@@ -2721,6 +2733,10 @@ function exportedCompanyProfilePayload(label = "") {
 
 function downloadJsonFile(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  downloadBlobFile(filename, blob);
+}
+
+function downloadBlobFile(filename, blob) {
   const url = URL.createObjectURL(blob);
   try {
     const link = document.createElement("a");
@@ -2734,12 +2750,48 @@ function downloadJsonFile(filename, payload) {
   }
 }
 
+function filenameFromContentDisposition(value = "", fallback = "download.json") {
+  const match = String(value || "").match(/filename\*?=(?:UTF-8''|")?([^";]+)"?/i);
+  if (!match) return fallback;
+  try {
+    return decodeURIComponent(match[1]).trim() || fallback;
+  } catch {
+    return match[1].trim() || fallback;
+  }
+}
+
 async function fetchCompanyProfileExport(profileId = "") {
   const safeId = safeProfileId(profileId, "");
   if (!safeId) {
     return { ok: false, data: { errors: ["Select a saved profile to export."] } };
   }
-  return getJson(`/api/settings/profiles/${encodeURIComponent(safeId)}/export.json`);
+  const url = `/api/settings/profiles/${encodeURIComponent(safeId)}/export.json`;
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    const errorReference = newClientErrorReference();
+    if (!state.isPageUnloading) {
+      logClientEvent("client_error", { url, message: error.message || String(error), error_reference: errorReference });
+    }
+    return { ok: false, data: { status: "failed", fetch_failed: true, error_reference: errorReference } };
+  }
+  if (!response.ok) {
+    const data = await jsonFromResponse(response);
+    logClientEvent("server_error", {
+      url,
+      status: response.status,
+      error_reference: errorReferenceFrom(data),
+      errors: data.errors || [],
+    });
+    return { ok: false, data, status: response.status };
+  }
+  const blob = await response.blob();
+  return {
+    ok: true,
+    blob,
+    filename: filenameFromContentDisposition(response.headers.get("Content-Disposition"), `${safeId}.quote-company-profile.json`),
+  };
 }
 
 async function exportCurrentPreset(event) {
@@ -2750,12 +2802,14 @@ async function exportCurrentPreset(event) {
   let payload = null;
   if (selected?.source === "company" && !profilePackPayloadForSave()) {
     renderPresetStatus(`Exporting "${selected.name || selected.id}"...`);
-    const { ok, data } = await fetchCompanyProfileExport(selected.id);
+    const { ok, data, blob, filename } = await fetchCompanyProfileExport(selected.id);
     if (!ok) {
       renderPresetStatus(genericFailureMessages(data).join(" "));
       return;
     }
-    payload = data;
+    downloadBlobFile(filename, blob);
+    renderPresetStatus(`Exported "${selected.name || selected.id}".`);
+    return;
   } else {
     payload = exportedCompanyProfilePayload(label);
   }
@@ -4388,6 +4442,20 @@ function resetPricingReferenceTaxInputs() {
   setPricingReferenceCurrencyControls(DEFAULT_CURRENCY_LABEL);
 }
 
+function applyPricingReferenceImportMetadata(result = {}) {
+  if (!result || typeof result !== "object") return;
+  const suggestedLabel = String(result.suggested_label || result.label || "").trim();
+  if (suggestedLabel && elements.pricingReferenceName && !String(elements.pricingReferenceName.value || "").trim()) {
+    elements.pricingReferenceName.value = neutralizeFormulaText(suggestedLabel);
+  }
+  if (result.tax && typeof result.tax === "object") {
+    setPricingReferenceTaxControls(result.tax);
+  }
+  if (result.currency) {
+    setPricingReferenceCurrencyControls(result.currency);
+  }
+}
+
 async function validatePricingReferenceFile(file) {
   if (!file) return pricingReferenceValidationResult([], [], 0, "");
   if (file.size > MAX_PRICING_REFERENCE_FILE_BYTES) {
@@ -4456,6 +4524,7 @@ async function handlePricingReferenceFileChange() {
   state.pendingPricingReference = result;
   state.pricingReferenceImportBusy = false;
   stopElapsedTimer("pricingReferenceImportElapsed");
+  applyPricingReferenceImportMetadata(result);
   renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
 }
 
