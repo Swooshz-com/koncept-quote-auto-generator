@@ -1003,6 +1003,10 @@ function genericFailureMessages(data = {}) {
   return [genericFailureMessage(data)];
 }
 
+function fetchFailureLogDetails(url, details = {}) {
+  return { url, reason: "fetch_failed", ...details };
+}
+
 function setAiStatusBanner(tone, title, message, options = {}) {
   if (tone !== "running") stopAnalysisElapsedTimer();
   const elapsedMarkup = options.elapsed
@@ -2774,7 +2778,7 @@ async function fetchCompanyProfileExport(profileId = "") {
   } catch (error) {
     const errorReference = newClientErrorReference();
     if (!state.isPageUnloading) {
-      logClientEvent("client_error", { url, message: error.message || String(error), error_reference: errorReference });
+      logClientEvent("client_error", fetchFailureLogDetails(url, { error_reference: errorReference }));
     }
     return { ok: false, data: { status: "failed", fetch_failed: true, error_reference: errorReference } };
   }
@@ -7388,9 +7392,9 @@ async function resetOutputDraft() {
   syncControlStates();
 }
 
-function postJsonFetchFailure(url, error) {
+function postJsonFetchFailure(url) {
   if (!state.isPageUnloading) {
-    logClientEvent("client_error", { url, message: error.message || String(error) });
+    logClientEvent("client_error", fetchFailureLogDetails(url));
   }
   return {
     ok: false,
@@ -7398,7 +7402,7 @@ function postJsonFetchFailure(url, error) {
       status: "failed",
       fetch_failed: true,
       page_unloading: state.isPageUnloading,
-      message: error.message || String(error),
+      message: "fetch_failed",
       errors: genericFailureMessages(),
     },
     status: 0,
@@ -7469,9 +7473,8 @@ async function getJson(url, options = {}) {
   try {
     response = await fetch(url);
   } catch (error) {
-    const message = error.message || String(error);
     if (!state.isPageUnloading && options.logFetchFailure !== false) {
-      logClientEvent("client_error", { url, message });
+      logClientEvent("client_error", fetchFailureLogDetails(url));
     }
     return {
       ok: false,
@@ -7479,7 +7482,7 @@ async function getJson(url, options = {}) {
         status: "failed",
         fetch_failed: true,
         page_unloading: state.isPageUnloading,
-        message,
+        message: "fetch_failed",
         errors: genericFailureMessages(),
       },
     };
