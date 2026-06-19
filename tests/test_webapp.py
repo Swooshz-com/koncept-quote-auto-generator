@@ -13569,15 +13569,39 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                     "name": "Synthetic Internal Workspace Pte Ltd",
                     "header_details": "Synthetic Internal Workspace Pte Ltd\n1 Synthetic Way",
                     "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                    "logo_name": "synthetic-logo.png",
+                    "logo_type": "image/png",
                 },
                 "quote_text": {
+                    "terms_heading": "Synthetic terms heading:",
                     "payment_terms": ["Synthetic payment term."],
                     "cheque_payee": "Synthetic Internal Workspace Pte Ltd",
+                    "notes_heading": "Synthetic notes heading:",
+                    "standard_notes": ["Synthetic standard note."],
+                    "acceptance_text": "Synthetic acceptance text.",
+                    "person_label": "Synthetic person label",
+                    "stamp_label": "Synthetic stamp label",
+                    "date_label": "Synthetic date label",
                 },
                 "signature": {
                     "company_signatory": "Synthetic Signatory",
                     "company_title": "Synthetic Title",
                     "company_date_label": "Synthetic date:",
+                },
+                "rich_text": {
+                    "headerDetails": "<div><strong>Synthetic Internal Workspace Pte Ltd</strong></div><div>1 Synthetic Way</div>",
+                    "quoteCompanyName": "<div>Synthetic Internal Workspace Pte Ltd</div>",
+                    "termsHeading": "<div><strong>Synthetic terms heading:</strong></div>",
+                    "paymentTerms": "<div>Synthetic payment term.</div>",
+                    "notesHeading": "<div><strong>Synthetic notes heading:</strong></div>",
+                    "standardNotes": "<div>Synthetic standard note.</div>",
+                    "acceptanceText": "<div>Synthetic acceptance text.</div>",
+                    "companySignatory": "<div>Synthetic Signatory</div>",
+                    "companyTitle": "<div>Synthetic Title</div>",
+                    "companyDateLabel": "<div>Synthetic date:</div>",
+                    "personLabel": "<div>Synthetic person label</div>",
+                    "stampLabel": "<div>Synthetic stamp label</div>",
+                    "dateLabel": "<div>Synthetic date label</div>",
                 },
             },
             "pack": {
@@ -13633,7 +13657,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             store = webapp.CompanyConfigStore(root / "data")
-            store.save_profile(company_id, profile)
+            saved_profile = store.save_profile(company_id, profile)
             saved_reference = store.save_pricing_reference(company_id, pricing_reference)
             payload["pricing_reference"] = webapp.public_company_pricing_reference(saved_reference)
             with mock.patch.object(webapp, "company_config_store", return_value=store):
@@ -13675,6 +13699,9 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(brief["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
         self.assertEqual(brief["payment_terms"], ["Synthetic payment term."])
         self.assertEqual(brief["signature"]["company_signatory"], "Synthetic Signatory")
+        self.assertEqual(saved_profile["defaults"]["company"]["logo_name"], "synthetic-logo.png")
+        self.assertIn("rich_text", saved_profile["defaults"])
+        self.assertIn("terms_heading", saved_profile["defaults"]["quote_text"])
         self.assertEqual(brief["line_items"][0]["pricing_keyword"], "synthetic-internal-graphics-row")
         self.assertTrue(quotation_exists)
         self.assertTrue(layout_exists)
