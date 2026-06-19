@@ -77,10 +77,10 @@ class SensitiveFixtureScanTest(unittest.TestCase):
             root = Path(tmp)
             profile_path = (
                 root
-                / "workspace-seeds"
-                / "koncept-images-pte-ltd"
-                / "asset-packs"
-                / "quotation-layouts"
+                / "tests"
+                / "fixtures"
+                / "quote-generator"
+                / "profiles"
                 / "synthetic-exhibition-fixture-template"
                 / "profile.json"
             )

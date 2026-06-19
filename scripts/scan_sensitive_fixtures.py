@@ -33,7 +33,7 @@ TEXT_SUFFIXES = {
     ".yml",
 }
 MEDIA_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-DEFAULT_SCAN_ROOTS = ("profiles/", "pricing-references/", "workspace-seeds/", "fixtures/")
+DEFAULT_SCAN_ROOTS = ("profiles/", "pricing-references/", "fixtures/", "tests/fixtures/quote-generator/")
 GENERATED_OUTPUT_DIRS = {"_output", "output", "generated-output", "generated-outputs"}
 LOCAL_OUTPUT_ARTIFACT_DIRS = {"screenshots", "_screenshots", "playwright-screenshots", "playwright-report", "test-results"}
 PROFILE_EXPORT_RE = re.compile(r"quote-company-profile", re.IGNORECASE)
@@ -56,26 +56,21 @@ KNOWN_SYNTHETIC_REVIEW_ALLOWLIST = {
     ("committed-pdf-sample", "fixtures/samples/kent-group/kent-group.pdf"),
     (
         "committed-fixture-media",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/pricing-catalog-images/synthetic-chip.png",
+        "tests/fixtures/quote-generator/pricing-references/synthetic-exhibition-fixture-pricing/pricing-catalog-images/synthetic-chip.png",
     ),
-    ("customer-sample-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
     ("customer-sample-marker", "fixtures/samples/kent-group/sample.json"),
-    ("customer-sample-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
     (
         "embedded-logo-reference",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/profile.json",
+        "tests/fixtures/quote-generator/profiles/synthetic-exhibition-fixture-template/profile.json",
     ),
     ("internal-pricing-field", "docs/pricing-catalog-import.md"),
     (
         "internal-pricing-field",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/pricing-references/synthetic-exhibition-fixture-pricing/pricing-catalog.json",
+        "tests/fixtures/quote-generator/pricing-references/synthetic-exhibition-fixture-pricing/pricing-catalog.json",
     ),
-    ("real-company-identity-marker", "docs/phases/phase-3-export-import-verification-and-cleanup.md"),
-    ("real-company-identity-marker", "docs/pr-checks/quote-generator-pr-checklist.md"),
-    ("real-company-identity-marker", "workspace-seeds/koncept-images-pte-ltd/workspace.json"),
     (
         "xlsx-defined-name",
-        "workspace-seeds/koncept-images-pte-ltd/asset-packs/quotation-layouts/synthetic-exhibition-fixture-template/quotation-layout.xlsx",
+        "tests/fixtures/quote-generator/profiles/synthetic-exhibition-fixture-template/quotation-layout.xlsx",
     ),
 }
 

@@ -193,7 +193,7 @@ function acceptedConfirmSessionSnapshot() {
     savedAt: new Date().toISOString(),
     profileId: "synthetic-exhibition-fixture-template",
     pricingReferenceId: "synthetic-exhibition-fixture-pricing",
-    pricingReferenceSource: "workspace-seed",
+    pricingReferenceSource: "local",
     selectedPresetValue: "profile:synthetic-fixture-default",
     images: [{
       name: "booth-render.png",

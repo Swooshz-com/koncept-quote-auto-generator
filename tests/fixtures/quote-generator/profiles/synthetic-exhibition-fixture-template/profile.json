@@ -1,7 +1,7 @@
 {
   "id": "synthetic-exhibition-fixture-template",
   "label": "Synthetic Exhibition Fixture Template",
-  "description": "Deterministic synthetic workspace-owned quotation layout pack.",
+  "description": "Deterministic synthetic test-only quotation layout pack.",
   "default_pricing_reference": "synthetic-exhibition-fixture-pricing",
   "quotation_layout": "quotation-layout.xlsx",
   "layout_rules": "layout-rules.json",
