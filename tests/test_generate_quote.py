@@ -1557,6 +1557,70 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             {manual_print_page_for_row(total_row)},
         )
 
+    def test_layout_keeps_acceptance_signature_block_together_on_one_manual_page(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Signature Boundary Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "acceptance": {
+                "company_name": "Koncept Image Pte Ltd",
+                "text": "We accept the quotation amount and the terms",
+                "person_label": "Person in charge",
+                "stamp_label": "Company name & stamp",
+                "date_label": "Date:",
+            },
+            "signature": {
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 34)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        acceptance_refs = [
+            find_cell_ref(sheet, "Koncept Image Pte Ltd"),
+            find_cell_ref(sheet, "We accept the quotation amount and the terms"),
+            find_cell_ref(sheet, "Francies Cheng"),
+            find_cell_ref(sheet, "Director"),
+            find_cell_ref(sheet, "Person in charge"),
+            find_cell_ref(sheet, "Company name & stamp"),
+        ]
+        acceptance_rows = [quote.parse_cell_ref(ref)[0] for ref in acceptance_refs]
+        acceptance_pages = {manual_print_page_for_row(row) for row in acceptance_rows}
+
+        self.assertEqual(acceptance_pages, {manual_print_page_for_row(acceptance_rows[0])})
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
+
     def test_empty_terms_and_notes_do_not_insert_default_rows(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)

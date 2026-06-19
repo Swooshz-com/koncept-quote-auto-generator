@@ -1843,11 +1843,13 @@ select:focus {
   align-items: start;
   gap: 8px;
   margin: 0 0 9px;
+  padding-right: 8px;
 }
 
 .basis-section-actions {
   display: grid;
   grid-template-columns: 32px 32px 38px;
+  align-items: start;
   justify-content: end;
   gap: 5px;
   width: var(--basis-action-width);
@@ -1873,6 +1875,7 @@ select:focus {
   color: #213b5c;
   font-size: 13px;
   font-weight: 850;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -2203,9 +2206,11 @@ select:focus {
 
 .basis-line-tool,
 .basis-line-tag-button {
+  display: inline-grid;
+  place-items: center;
   align-self: start;
   width: 32px;
-  min-height: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);

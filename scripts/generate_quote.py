@@ -115,6 +115,7 @@ CONTINUATION_TABLE_HEADER_OFFSET = 2
 CONTINUATION_CURRENCY_OFFSET = 3
 CONTINUATION_BODY_OFFSET = 5
 TOTAL_BLOCK_HEIGHT = 3
+SIGNATURE_BLOCK_HEIGHT = 8
 QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT = "18.7"
 QUOTE_LAYOUT_COLUMN_WIDTHS = {
     1: 6.125,
@@ -193,6 +194,12 @@ class QuoteLine:
     match_candidates: list[PriceRow]
     price_mode: str = "Priced"
     unit_price_override: float | None = None
+
+
+@dataclass(frozen=True)
+class LayoutChunk:
+    name: str
+    height: int
 
 
 @dataclass
@@ -2211,6 +2218,12 @@ def summary_block_start_row(row_number: int, block_height: int) -> int:
     return page_start + CONTINUATION_BODY_OFFSET
 
 
+def layout_chunk_start_row(row_number: int, chunk: LayoutChunk) -> tuple[int, bool]:
+    if chunk.height <= 0 or row_number + chunk.height - 1 <= manual_page_end_for_row(row_number):
+        return row_number, False
+    return next_continuation_page_start(row_number), True
+
+
 def manual_page_break_ids(last_row: int) -> list[int]:
     if last_row <= FIRST_PRINT_PAGE_END_ROW:
         return []
@@ -2608,7 +2621,12 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             next_text_row += 1
         last_optional_row = next_text_row - 1
 
-    acceptance_row = last_optional_row + 3 if last_optional_row else next_text_row
+    acceptance_candidate_row = last_optional_row + 3 if last_optional_row else next_text_row
+    acceptance_row, acceptance_moved = layout_chunk_start_row(
+        acceptance_candidate_row,
+        LayoutChunk("acceptance_signature", SIGNATURE_BLOCK_HEIGHT),
+    )
+    manual_pagination_enabled = manual_pagination_enabled or acceptance_moved
     set_ooxml_rich_text_cell(root, acceptance_row, 2, brief_rich_text_cell_runs(brief, "quoteCompanyName", clean_text(acceptance.get("company_name")) or company_name), layout_styles["signature_text"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row, 5, brief_rich_text_cell_runs(brief, "acceptanceText", clean_text(acceptance.get("text"))), layout_styles["signature_text"], **footer_rich_text)
     set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", layout_styles["signature_line"])
