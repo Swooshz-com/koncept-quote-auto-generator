@@ -234,6 +234,58 @@ async function installMockJobs(page) {
   const jobs = new Map();
   let counter = 0;
 
+  await page.route("**/api/profiles", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        profiles: [{
+          id: "synthetic-playwright-profile",
+          label: "Synthetic Playwright Profile",
+          description: "Test-only profile for the AI basis chat smoke.",
+          default_pricing_reference: "synthetic-playwright-pricing",
+          default_quote_detail_preset: "synthetic-playwright-default",
+          quote_detail_presets: [{
+            id: "synthetic-playwright-default",
+            name: "Synthetic Playwright Quote Company",
+            details: {
+              company: {
+                name: "Synthetic Playwright Quote Company Pte Ltd",
+                header_details: "Synthetic Playwright Quote Company Pte Ltd\n1 Synthetic Way\nSingapore 000001",
+                logo_data_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+              },
+              quote_text: {
+                payment_terms: ["70% synthetic deposit upon confirmation."],
+                cheque_payee: "Synthetic Playwright Quote Company Pte Ltd",
+              },
+              signature: {
+                company_signatory: "Synthetic Signatory",
+                company_title: "Synthetic Title",
+                company_date_label: "Date:",
+              },
+            },
+          }],
+        }],
+        pricing_references: [{
+          id: "synthetic-playwright-pricing",
+          label: "Synthetic Playwright Pricing",
+          source: "local",
+          currency: "SGD",
+          tax: { label: "GST", rate: 0.09 },
+          item_count: 1,
+        }],
+        default_profile_id: "synthetic-playwright-profile",
+        default_pricing_reference_id: "synthetic-playwright-pricing",
+        company_id: "default",
+        workspace: {
+          company: { id: "default", slug: "default", display_name: "Quote Generator Workspace" },
+          workspace: { id: "default", slug: "default", display_name: "Quote Generator Workspace" },
+          runtime_dependencies: {},
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/jobs", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();

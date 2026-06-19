@@ -14,8 +14,9 @@ from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
-KONCEPT_PROFILE = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "quotation-layouts" / "synthetic-exhibition-fixture-template"
-KONCEPT_CATALOG = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "pricing-references" / "synthetic-exhibition-fixture-pricing" / "pricing-catalog.json"
+QUOTE_GENERATOR_FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "quote-generator"
+KONCEPT_PROFILE = QUOTE_GENERATOR_FIXTURE_ROOT / "profiles" / "synthetic-exhibition-fixture-template"
+KONCEPT_CATALOG = QUOTE_GENERATOR_FIXTURE_ROOT / "pricing-references" / "synthetic-exhibition-fixture-pricing" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
@@ -539,16 +540,37 @@ def generate_layout_workbook(brief_updates=None):
 
 class GenerateQuoteRowsTest(unittest.TestCase):
     def test_pdf_generation_is_opt_in_by_default(self):
-        with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", "brief.json"]):
+        with mock.patch.object(sys, "argv", [
+            "generate_quote.py",
+            "--brief",
+            "brief.json",
+            "--template",
+            str(KONCEPT_CATALOG),
+            "--layout-template",
+            str(KONCEPT_LAYOUT),
+        ]):
             args = quote.parse_args()
 
         self.assertEqual(args.pdf_mode, "none")
 
-    def test_json_pricing_catalog_is_default_template(self):
-        with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", "brief.json"]):
+    def test_pricing_catalog_and_layout_paths_are_explicit_cli_inputs(self):
+        with self.assertRaises(SystemExit):
+            with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", "brief.json"]):
+                quote.parse_args()
+
+        with mock.patch.object(sys, "argv", [
+            "generate_quote.py",
+            "--brief",
+            "brief.json",
+            "--template",
+            str(KONCEPT_CATALOG),
+            "--layout-template",
+            str(KONCEPT_LAYOUT),
+        ]):
             args = quote.parse_args()
 
         self.assertEqual(args.template, KONCEPT_CATALOG)
+        self.assertEqual(args.layout_template, KONCEPT_LAYOUT)
 
     def test_xlsx_catalog_builder_collapses_continuation_rows(self):
         rows = [
@@ -732,7 +754,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         if "rowBreaks" in child_names and "drawing" in child_names:
             self.assertLess(child_names.index("rowBreaks"), child_names.index("drawing"))
 
-    def test_workspace_seed_layout_template_keeps_quote_formatting_shell(self):
+    def test_test_only_layout_template_keeps_quote_formatting_shell(self):
         with zipfile.ZipFile(KONCEPT_LAYOUT) as zf:
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
             styles = ET.fromstring(zf.read("xl/styles.xml"))
@@ -901,7 +923,17 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             stale_pdf.write_bytes(b"old pdf")
             brief_path.write_text(json.dumps(brief), encoding="utf-8")
 
-            with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", str(brief_path), "--out", str(out_dir)]):
+            with mock.patch.object(sys, "argv", [
+                "generate_quote.py",
+                "--brief",
+                str(brief_path),
+                "--out",
+                str(out_dir),
+                "--template",
+                str(KONCEPT_CATALOG),
+                "--layout-template",
+                str(KONCEPT_LAYOUT),
+            ]):
                 self.assertEqual(quote.main(), 0)
 
             self.assertTrue((out_dir / "quotation.xlsx").exists())
@@ -934,7 +966,17 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             out_dir = tmp_path / "out"
             brief_path.write_text(json.dumps(brief), encoding="utf-8")
 
-            with mock.patch.object(sys, "argv", ["generate_quote.py", "--brief", str(brief_path), "--out", str(out_dir)]):
+            with mock.patch.object(sys, "argv", [
+                "generate_quote.py",
+                "--brief",
+                str(brief_path),
+                "--out",
+                str(out_dir),
+                "--template",
+                str(KONCEPT_CATALOG),
+                "--layout-template",
+                str(KONCEPT_LAYOUT),
+            ]):
                 self.assertEqual(quote.main(), 2)
 
             self.assertTrue((out_dir / "pricing_matches.csv").exists())

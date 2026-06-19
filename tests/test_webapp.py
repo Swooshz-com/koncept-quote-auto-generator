@@ -22,20 +22,15 @@ from xml.etree import ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
-KONCEPT_PROFILE = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "quotation-layouts" / "synthetic-exhibition-fixture-template"
-KONCEPT_PRICING_REFERENCE = ROOT / "workspace-seeds" / "koncept-images-pte-ltd" / "asset-packs" / "pricing-references" / "synthetic-exhibition-fixture-pricing"
+QUOTE_GENERATOR_FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "quote-generator"
+KONCEPT_PROFILE = QUOTE_GENERATOR_FIXTURE_ROOT / "profiles" / "synthetic-exhibition-fixture-template"
+KONCEPT_PRICING_REFERENCE = QUOTE_GENERATOR_FIXTURE_ROOT / "pricing-references" / "synthetic-exhibition-fixture-pricing"
 LEGACY_BUNDLED_PROFILE = ROOT / "profiles" / "koncept"
 LEGACY_BUNDLED_PRICING_REFERENCE = ROOT / "pricing-references" / "koncept-exhibition-quotation"
 KONCEPT_CATALOG = KONCEPT_PRICING_REFERENCE / "pricing-catalog.json"
 KONCEPT_AI_REFERENCE = KONCEPT_PRICING_REFERENCE / "pricing-catalog.ai-reference.md"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
 KONCEPT_LAYOUT_RULES = KONCEPT_PROFILE / "layout-rules.json"
-KONCEPT_WORKSPACE_SEED = ROOT / "workspace-seeds" / "koncept-images-pte-ltd"
-KONCEPT_WORKSPACE_LAYOUT_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "quotation-layouts" / "synthetic-exhibition-fixture-template"
-KONCEPT_WORKSPACE_PRICING_PACK = KONCEPT_WORKSPACE_SEED / "asset-packs" / "pricing-references" / "synthetic-exhibition-fixture-pricing"
-KONCEPT_WORKSPACE_CATALOG = KONCEPT_WORKSPACE_PRICING_PACK / "pricing-catalog.json"
-KONCEPT_WORKSPACE_LAYOUT = KONCEPT_WORKSPACE_LAYOUT_PACK / "quotation-layout.xlsx"
-KONCEPT_WORKSPACE_LAYOUT_RULES = KONCEPT_WORKSPACE_LAYOUT_PACK / "layout-rules.json"
 SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
@@ -436,105 +431,6 @@ def write_test_profile_pack(root: Path, profile_id: str, pricing_reference_id: s
     return profile_dir
 
 
-def write_workspace_seed(root: Path, dependencies: dict, defaults: dict | None = None, asset_packs: dict | None = None) -> Path:
-    seed_dir = root / "koncept-images-pte-ltd"
-    seed_dir.mkdir(parents=True, exist_ok=True)
-    seed_path = seed_dir / "workspace.json"
-    seed_defaults = defaults or {
-        "profile_id": "synthetic-exhibition-fixture-template",
-        "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
-    }
-    seed_path.write_text(
-        json.dumps(
-            {
-                "schema": "swooshz.local-company-workspace-seed.v1",
-                "company": {
-                    "id": "koncept-images-pte-ltd",
-                    "slug": "koncept-images-pte-ltd",
-                    "display_name": "Koncept Images Pte Ltd",
-                },
-                "workspace": {
-                    "id": "koncept-images-pte-ltd",
-                    "slug": "koncept-images-pte-ltd",
-                    "display_name": "Koncept Images Pte Ltd",
-                    "storage_backend": "local-json-bridge",
-                },
-                "profile_presets": {
-                    "storage_collection": "profiles",
-                    "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/profiles.json",
-                    "import_schema": "swooshz.quote-company-profile.v1",
-                    "default_profile_id": seed_defaults["profile_id"],
-                },
-                "pricing_references": {
-                    "storage_collection": "pricing-references",
-                    "storage_path_template": "QUOTE_DATA_ROOT/{company_id}/pricing-references.json",
-                    "default_pricing_reference_id": seed_defaults["pricing_reference_id"],
-                },
-                "defaults": seed_defaults,
-                "asset_packs": asset_packs or {},
-                "runtime_dependencies": dependencies,
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-    return seed_path
-
-
-def write_workspace_seed_profile_pack(seed_root: Path, profile_id: str, pricing_reference_id: str) -> Path:
-    profile_dir = seed_root / "koncept-images-pte-ltd" / "asset-packs" / "quotation-layouts" / profile_id
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    (profile_dir / "quotation-layout.xlsx").write_bytes(KONCEPT_LAYOUT.read_bytes())
-    (profile_dir / "layout-rules.json").write_text(
-        json.dumps({"output": {"master_format": "xlsx"}, "workspace_seed_fixture": profile_id}, ensure_ascii=True),
-        encoding="utf-8",
-    )
-    (profile_dir / "profile.json").write_text(
-        json.dumps(
-            {
-                "id": profile_id,
-                "label": "Workspace Seed Layout",
-                "description": "Sanitized workspace-owned quotation layout fixture.",
-                "default_pricing_reference": pricing_reference_id,
-                "quotation_layout": "quotation-layout.xlsx",
-                "layout_rules": "layout-rules.json",
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-    return profile_dir
-
-
-def write_workspace_seed_pricing_pack(seed_root: Path, reference_id: str, items: list[dict]) -> Path:
-    reference_dir = seed_root / "koncept-images-pte-ltd" / "asset-packs" / "pricing-references" / reference_id
-    reference_dir.mkdir(parents=True, exist_ok=True)
-    (reference_dir / "reference.json").write_text(
-        json.dumps(
-            {
-                "id": reference_id,
-                "label": "Workspace Seed Pricing",
-                "description": "Sanitized workspace-owned pricing reference fixture.",
-                "pricing_catalog": "pricing-catalog.json",
-                "pricing_reference": "pricing-catalog.ai-reference.md",
-                "tax": {"label": "GST", "rate": 0.09},
-                "currency": "SGD",
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-    (reference_dir / "pricing-catalog.json").write_text(
-        json.dumps({"items": items}, ensure_ascii=True),
-        encoding="utf-8",
-    )
-    (reference_dir / "pricing-catalog.ai-reference.md").write_text(
-        "# Workspace Seed Pricing\n\n- Workspace-owned pricing fixture.\n",
-        encoding="utf-8",
-    )
-    return reference_dir
-
-
 class LocalRunnerServer:
     def __enter__(self):
         self.server = webapp.ThreadingHTTPServer(("127.0.0.1", 0), webapp.QuoteRunnerHandler)
@@ -551,6 +447,25 @@ class LocalRunnerServer:
 
 
 class WebappServerTest(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self._empty_bundled_pricing_root = tempfile.TemporaryDirectory()
+        self.addCleanup(self._empty_bundled_pricing_root.cleanup)
+        fixture_profiles_root = QUOTE_GENERATOR_FIXTURE_ROOT / "profiles"
+        fixture_pricing_root = QUOTE_GENERATOR_FIXTURE_ROOT / "pricing-references"
+        patchers = [
+            mock.patch.object(webapp, "DEFAULT_PROFILE_ID", "synthetic-exhibition-fixture-template"),
+            mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", "synthetic-exhibition-fixture-pricing"),
+            mock.patch.object(webapp, "BUNDLED_DEFAULT_PROFILE_ID", "synthetic-exhibition-fixture-template"),
+            mock.patch.object(webapp, "BUNDLED_DEFAULT_PRICING_REFERENCE_ID", "synthetic-exhibition-fixture-pricing"),
+            mock.patch.object(webapp, "profiles_root", return_value=fixture_profiles_root),
+            mock.patch.object(webapp, "pricing_references_root", return_value=fixture_pricing_root),
+            mock.patch.object(webapp, "bundled_pricing_references_root", return_value=Path(self._empty_bundled_pricing_root.name)),
+        ]
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_job_request_limit_covers_documented_reference_upload_capacity(self):
         max_reference_bytes = webapp.MAX_REFERENCE_IMAGES * max(webapp.MAX_IMAGE_BYTES, webapp.MAX_PDF_BYTES)
         base64_bytes = ((max_reference_bytes + 2) // 3) * 4
@@ -2830,15 +2745,17 @@ class WebappServerTest(unittest.TestCase):
                 self.assertTrue(login_redirect.exception.headers["Location"].startswith("https://issuer.example/authorize?"))
                 self.assertIn(webapp.OIDC_STATE_COOKIE_NAME, login_redirect.exception.headers["Set-Cookie"])
 
-    def test_non_coolify_deploy_examples_are_not_kept_as_stale_targets(self):
+    def test_platform_deploy_docs_are_not_kept_as_active_kqag_targets(self):
         self.assertFalse((ROOT / "render.yaml").exists())
         self.assertFalse((ROOT / "docs" / "examples" / "render.yaml").exists())
-        infra = (ROOT / "docs" / "mvp-implementation-plan.md").read_text(encoding="utf-8")
+        self.assertFalse((ROOT / "docs" / "mvp-implementation-plan.md").exists())
+        self.assertFalse((ROOT / "docs" / "phases").exists())
+        checklist = (ROOT / "docs" / "pr-checks" / "quote-generator-pr-checklist.md").read_text(encoding="utf-8")
 
-        self.assertIn("Hostinger VPS + Coolify", infra)
-        self.assertIn("do not keep", infra)
-        self.assertIn("complete OIDC callback", infra)
-        self.assertNotIn("docs/examples/render.yaml", infra)
+        self.assertIn("KQAG owns quote-specific workflow/settings", checklist)
+        self.assertIn("future platform repository", checklist)
+        self.assertNotIn("Hostinger", checklist)
+        self.assertNotIn("Coolify", checklist)
 
     def test_xlsx_pricing_reference_upload_validates_to_sanitized_json(self):
         raw = minimal_pricing_reference_xlsx()
@@ -3051,7 +2968,7 @@ class WebappServerTest(unittest.TestCase):
         raw = (
             "Item,Cost,Markup\n"
             "\"nos. rigging point for Overhead Structure or Aluminium Box Truss\n"
-            "â€¢ Prices are not inclusive of truss\",300,1.5\n"
+            "Ã¢â‚¬Â¢ Prices are not inclusive of truss\",300,1.5\n"
         ).encode("utf-8")
         parsed = {
             "items": [{
@@ -3109,7 +3026,7 @@ class WebappServerTest(unittest.TestCase):
                         "row_index": 12,
                         "non_empty_cells": {
                             "A": "Hanging Structure",
-                            "B": "nos. RIGGING POINT for Overhead Structure or Aluminium Box Truss\nâ€¢ Prices are not inclusive of truss",
+                            "B": "nos. RIGGING POINT for Overhead Structure or Aluminium Box Truss\nÃ¢â‚¬Â¢ Prices are not inclusive of truss",
                             "C": "nos",
                             "D": "300",
                             "E": "1.5",
@@ -4263,50 +4180,79 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(brief["company"]["header_lines"], ["Line one", "Line two", "", "Line four"])
 
-    def test_default_profile_resolves_koncept_assets(self):
-        profile = webapp.load_profile()
-        profile_pack = webapp.load_profile_pack()
+    def test_fresh_runtime_has_no_repo_backed_pricing_reference_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            empty_profiles_root = root / "profiles"
+            empty_pricing_root = root / "pricing-references"
+            empty_profiles_root.mkdir()
+            empty_pricing_root.mkdir()
+            store = webapp.CompanyConfigStore(root / "data")
+            with (
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
+                mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=empty_pricing_root),
+                mock.patch.object(webapp, "bundled_pricing_references_root", return_value=empty_pricing_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+            ):
+                profiles = webapp.list_profiles()
+                pricing_references = webapp.list_pricing_references()
+                profile_id = webapp.profile_id_from_payload({})
+                pricing_reference_id = webapp.pricing_reference_id_from_payload({})
+
+        self.assertEqual(profiles, [])
+        self.assertEqual(pricing_references, [])
+        self.assertEqual(profile_id, "")
+        self.assertEqual(pricing_reference_id, "")
+
+    def test_generate_job_blocks_when_selected_pricing_reference_is_missing(self):
+        payload = valid_payload()
+        payload["pricing_reference_id"] = "stale-reference"
+        payload["pricing_reference"] = {"id": "stale-reference", "source": "local"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            empty_profiles_root = root / "profiles"
+            empty_pricing_root = root / "pricing-references"
+            empty_profiles_root.mkdir()
+            empty_pricing_root.mkdir()
+            store = webapp.CompanyConfigStore(root / "data")
+            with (
+                mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=empty_pricing_root),
+                mock.patch.object(webapp, "bundled_pricing_references_root", return_value=empty_pricing_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+            ):
+                result = webapp.create_job("generate", payload)
+                validation_errors = webapp.validate_generation_payload(payload)
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("Select a valid pricing reference before generating a quote.", result["errors"])
+        self.assertIn("Select a valid pricing reference before generating a quote.", validation_errors)
+
+    def test_explicit_test_fixture_profile_and_pricing_roots_resolve_assets(self):
+        fixture_profiles_root = QUOTE_GENERATOR_FIXTURE_ROOT / "profiles"
+        fixture_pricing_root = QUOTE_GENERATOR_FIXTURE_ROOT / "pricing-references"
+        with (
+            mock.patch.object(webapp, "profiles_root", return_value=fixture_profiles_root),
+            mock.patch.object(webapp, "pricing_references_root", return_value=fixture_pricing_root),
+        ):
+            profile = webapp.load_profile("synthetic-exhibition-fixture-template")
+            profile_pack = webapp.load_profile_pack("synthetic-exhibition-fixture-template")
+            pricing_pack = webapp.load_pricing_reference_pack("synthetic-exhibition-fixture-pricing", source="local")
+            pricing_references = webapp.list_pricing_references()
 
         self.assertEqual(profile["id"], "synthetic-exhibition-fixture-template")
         self.assertEqual(profile_pack.id, "synthetic-exhibition-fixture-template")
-        self.assertEqual([item["id"] for item in webapp.list_profiles()].count("synthetic-exhibition-fixture-template"), 1)
-        self.assertEqual(webapp.profile_pricing_catalog_path(), KONCEPT_WORKSPACE_CATALOG)
-        self.assertEqual(webapp.profile_quotation_layout_path(), KONCEPT_WORKSPACE_LAYOUT)
-        self.assertEqual(webapp.profile_layout_rules_path(), KONCEPT_WORKSPACE_LAYOUT_RULES)
-        self.assertEqual(webapp.profile_pricing_catalog_path("synthetic-exhibition-fixture-template"), KONCEPT_CATALOG)
-        self.assertEqual(webapp.profile_quotation_layout_path("synthetic-exhibition-fixture-template"), KONCEPT_LAYOUT)
-        self.assertEqual(webapp.profile_layout_rules_path("synthetic-exhibition-fixture-template"), KONCEPT_LAYOUT_RULES)
         self.assertEqual(profile_pack.quotation_layout_path, KONCEPT_LAYOUT)
         self.assertEqual(profile_pack.layout_rules_path, KONCEPT_LAYOUT_RULES)
-        workspace_profile_pack = webapp.load_profile_pack("synthetic-exhibition-fixture-template")
-        self.assertEqual(workspace_profile_pack.source, "workspace-seed")
-        self.assertEqual(workspace_profile_pack.quotation_layout_path, KONCEPT_WORKSPACE_LAYOUT)
-        self.assertEqual(workspace_profile_pack.layout_rules_path, KONCEPT_WORKSPACE_LAYOUT_RULES)
-        workspace_pricing_pack = webapp.load_pricing_reference_pack("synthetic-exhibition-fixture-pricing")
-        self.assertEqual(workspace_pricing_pack.source, "workspace-seed")
-        self.assertEqual(workspace_pricing_pack.pricing_catalog_path, KONCEPT_WORKSPACE_CATALOG)
+        self.assertEqual(pricing_pack.source, "local")
+        self.assertEqual(pricing_pack.pricing_catalog_path, KONCEPT_CATALOG)
+        self.assertEqual([item["id"] for item in pricing_references].count("synthetic-exhibition-fixture-pricing"), 1)
+        self.assertEqual(pricing_references[0]["source"], "local")
         self.assertFalse((LEGACY_BUNDLED_PROFILE / "assets" / "koncept-header-logo.jpeg").exists())
         self.assertTrue(KONCEPT_AI_REFERENCE.exists())
-        pricing_references = webapp.list_pricing_references()
-        workspace_summary = next(
-            item
-            for item in pricing_references
-            if item["id"] == "synthetic-exhibition-fixture-pricing" and item["source"] == "workspace-seed"
-        )
-        self.assertEqual(workspace_summary["label"], "Synthetic Exhibition Fixture Pricing")
-        self.assertEqual(workspace_summary["source"], "workspace-seed")
-        self.assertEqual(
-            [item["label"] for item in pricing_references],
-            sorted([item["label"] for item in pricing_references], key=str.casefold),
-        )
-        self.assertEqual(
-            [
-                (item["source"], item["id"])
-                for item in pricing_references
-                if item["id"] == "synthetic-exhibition-fixture-pricing" and item["source"] == "workspace-seed"
-            ].count(("workspace-seed", "synthetic-exhibition-fixture-pricing")),
-            1,
-        )
         self.assertTrue(KONCEPT_LAYOUT_RULES.exists())
         self.assertEqual(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["output"]["master_format"], "xlsx")
         self.assertTrue(json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8"))["company_details"]["keep_logo_and_details_inside_print_area"])
@@ -7432,7 +7378,7 @@ const assert = require("assert");
 const source = fs.readFileSync("webapp/static/app.js", "utf8");
 
 function extractFunction(name) {
-  const marker = `function ${name}`;
+  const marker = `function ${name}(`;
   const start = source.indexOf(marker);
   if (start < 0) throw new Error(`Missing function ${name}`);
   const bodyStart = source.indexOf(") {", start) + 2;
@@ -8109,7 +8055,7 @@ const assert = require("assert");
 const source = fs.readFileSync("webapp/static/app.js", "utf8");
 
 function extractFunction(name) {
-  const marker = `function ${name}`;
+  const marker = `function ${name}(`;
   const start = source.indexOf(marker);
   if (start < 0) throw new Error(`Missing function ${name}`);
   const bodyStart = source.indexOf(") {", start) + 2;
@@ -8705,7 +8651,6 @@ const DEFAULT_PRICING_REFERENCE_ID = "synthetic-exhibition-fixture-pricing";
 const rawPricingReferences = [
     { id: "shared", label: "Shared A", source: "bundled" },
     { id: "unique", label: "Unique", source: "bundled" },
-    { id: "workspace", label: "Workspace Seed", source: "workspace-seed" },
     { id: "local-one", label: "Local One", source: "local" },
     { id: "synthetic-exhibition-fixture-pricing", label: "Bundled Synthetic", source: "bundled" },
     { id: "synthetic-exhibition-fixture-pricing", label: "Company Synthetic", source: "company" },
@@ -8733,10 +8678,9 @@ eval([
 ].map(extractFunction).join("\n"));
 
 state.pricingReferences = mergePricingReferences(rawPricingReferences);
-assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Workspace Seed", "Local One", "Bundled Synthetic", "Company Synthetic"]);
-assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[2]), "workspace-seed::workspace");
+assert.deepStrictEqual(state.pricingReferences.map((reference) => reference.label), ["Shared A", "Unique", "Local One", "Bundled Synthetic", "Company Synthetic"]);
 
-assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[3]), "local::local-one");
+assert.strictEqual(pricingReferenceSelectValue(rawPricingReferences[2]), "local::local-one");
 const selection = pricingReferenceSelectionFromValue("local::local-one");
 state.pricingReferenceId = selection.pricingReferenceId;
 state.pricingReferenceSource = selection.source;
@@ -8773,7 +8717,7 @@ assert.strictEqual(resolvedProfileIdForPayload(), "synthetic-exhibition-fixture-
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
-    def test_static_pricing_reference_manage_select_can_review_workspace_seed_reference(self):
+    def test_static_pricing_reference_empty_state_disables_selection_and_next_button(self):
         node = require_node(self)
 
         script = r"""
@@ -8782,7 +8726,151 @@ const assert = require("assert");
 const source = fs.readFileSync("webapp/static/app.js", "utf8");
 
 function extractFunction(name) {
-  const marker = `function ${name}`;
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "";
+const DEFAULT_PRICING_REFERENCE_ID = "";
+const DEFAULT_TAX_LABEL = "GST";
+const DEFAULT_TAX_RATE = 0.09;
+const DEFAULT_CURRENCY_LABEL = "SGD";
+const MISSING_PRICING_REFERENCES_MESSAGE = "No pricing references found. Please contact an admin or import a pricing reference in Settings before generating a quote.";
+const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "output"];
+const state = {
+  activeSidePanel: "customer",
+  profileId: "",
+  pricingReferenceId: "",
+  pricingReferenceSource: "",
+  defaultPricingReferenceId: "",
+  profiles: [],
+  pricingReferences: [],
+  images: [{ name: "render.jpg" }],
+  isBooting: false,
+  isAnalysisRunning: false,
+  isGenerating: false,
+  isPreparingOutput: false,
+  originalOutputRows: [],
+  originalAnalysisSnapshot: null,
+};
+const classList = () => ({ add() {}, remove() {}, toggle() {} });
+const optionSelect = {
+  value: "",
+  innerHTML: "",
+  disabled: false,
+  title: "",
+  setAttribute(name, value) { this[name] = value; },
+};
+const summary = { textContent: "" };
+const button = {
+  hidden: false,
+  disabled: false,
+  title: "",
+  textContent: "",
+  classList: classList(),
+  setAttribute(name, value) { this[name] = value; },
+};
+const elements = {
+  profileSelect: optionSelect,
+  selectedPricingReferenceSummary: summary,
+  selectedPricingReferenceCurrency: { textContent: "" },
+  selectedPricingReferenceTax: { textContent: "" },
+  taxLabel: { value: "" },
+  taxRate: { value: "" },
+  deletePricingReferenceSelect: null,
+  deletePricingReferenceButton: null,
+  sideBackButton: { disabled: false },
+  sideNextButton: button,
+  sideDownloadButton: { hidden: false },
+  sampleDetailsButton: { hidden: false, disabled: false },
+  resetImagesButton: { hidden: false, disabled: false },
+  clearCustomerButton: { hidden: false, disabled: false },
+  clearQuoteCompanyButton: { hidden: false, disabled: false },
+  analyseAgainButton: { hidden: false, disabled: false },
+  resetQuoteBasisButton: { hidden: false, disabled: false },
+  resetOutputButton: { hidden: false, disabled: false },
+};
+const document = { querySelectorAll() { return []; } };
+function escapeHtml(value = "") { return String(value); }
+function updatePricingReferenceDeleteButton() {}
+function updateOutputHeader() {}
+function renderPricingReferenceDeleteOptions() {}
+function appIsBusy() { return false; }
+function appBusyTitle() { return "Busy"; }
+function currentGenerator() { return { analyzeLabel: "Start Analysis" }; }
+function sidePanelBlockReason(panelName) { return panelName === "quote_company" && !currentPricingReference() ? "Complete Customer details before opening Quote Company: Quote Pricing Reference." : ""; }
+function basisConfirmBlockReason() { return ""; }
+function startAnalysisBlockReason() { return ""; }
+function updateDownloadButton() {}
+function activeSidePanelIndex() { return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel)); }
+
+eval([
+  "pricingReferenceSelectValue",
+  "pricingReferenceSelectionFromValue",
+  "sortedPricingReferencesForDisplay",
+  "currentProfile",
+  "defaultPricingReference",
+  "currentPricingReference",
+  "selectedPricingReferenceTax",
+  "selectedPricingReferenceCurrency",
+  "taxRatePercentText",
+  "normalizeTaxLabel",
+  "normalizeTaxRate",
+  "normalizeCurrencyLabel",
+  "renderSelectedPricingReferenceSummary",
+  "renderProfileOptions",
+  "updateSidePanelNav",
+].map(extractFunction).join("\n"));
+
+renderProfileOptions();
+assert.strictEqual(optionSelect.disabled, true);
+assert.ok(optionSelect.innerHTML.includes(MISSING_PRICING_REFERENCES_MESSAGE));
+assert.strictEqual(summary.textContent, MISSING_PRICING_REFERENCES_MESSAGE);
+
+updateSidePanelNav();
+assert.strictEqual(button.textContent, "Next: Quote Company");
+assert.strictEqual(button.disabled, true);
+assert.strictEqual(button["aria-disabled"], "true");
+
+state.pricingReferences = [{ id: "runtime-ref", label: "Runtime Ref", source: "local", tax: { label: "GST", rate: 0.09 }, currency: "SGD" }];
+renderProfileOptions();
+assert.strictEqual(optionSelect.disabled, false);
+assert.strictEqual(state.pricingReferenceId, "runtime-ref");
+assert.strictEqual(currentPricingReference().label, "Runtime Ref");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_pricing_reference_manage_select_can_review_local_reference(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
   const start = source.indexOf(marker);
   if (start < 0) throw new Error(`Missing function ${name}`);
   const bodyStart = source.indexOf(") {", start) + 2;
@@ -8806,7 +8894,7 @@ const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const state = {
   permissions: { canManagePricingReferences: true },
   pricingReferences: [
-    { id: "synthetic-exhibition-fixture-pricing", label: "Synthetic Fixture", source: "workspace-seed", item_count: 2 },
+    { id: "synthetic-exhibition-fixture-pricing", label: "Synthetic Fixture", source: "local", item_count: 2 },
   ],
   pricingReferenceSettingsMode: "manage",
   pricingReferenceImportBusy: false,
@@ -8829,11 +8917,26 @@ const elements = {
   deletePricingReferenceButton: button,
   exportPricingReferenceButton: { ...button },
   pricingReferenceDeleteSection: { hidden: false },
+  pricingReferenceName: { value: "Synthetic Fixture" },
 };
 function escapeHtml(value = "") { return String(value); }
 function canManagePricingReferences() { return true; }
 function pricingReferenceNoAccessReason() { return "No access"; }
 function pricingReferenceOperationBusy() { return false; }
+function normalizeCategoryTitle(value = "") { return String(value).trim(); }
+function cleanCustomerQuoteLineText(value = "") { return String(value).trim(); }
+function normalizeUnit(value = "") { return String(value).trim(); }
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function orderNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function pricingReferenceModalTax() { return { label: "GST", rate: 0.09 }; }
+function pricingReferenceModalCurrency() { return "SGD"; }
+function pricingReferenceImportNameConflictMessage() { return ""; }
 
 eval([
   "pricingReferenceSelectValue",
@@ -8846,20 +8949,15 @@ eval([
   "updatePricingReferenceExportButton",
   "pricingReferenceEditBlockReason",
   "normalizePricingReferenceSettingsMode",
-  "pricingReferenceSaveBlockReason",
   "updatePricingReferenceDeleteButton",
   "renderPricingReferenceDeleteOptions",
 ].map(extractFunction).join("\n"));
 
 renderPricingReferenceDeleteOptions();
 assert.ok(select.innerHTML.includes("Synthetic Fixture"));
-assert.strictEqual(select.value, "workspace-seed::synthetic-exhibition-fixture-pricing");
+assert.strictEqual(select.value, "local::synthetic-exhibition-fixture-pricing");
 assert.strictEqual(pricingReferenceEditBlockReason(deletionPricingReference()), "");
-assert.strictEqual(protectedPricingReferenceReason(deletionPricingReference()), "Workspace seed pricing references cannot be deleted here.");
-assert.strictEqual(
-  pricingReferenceSaveBlockReason({ items: [{ warning: "OK" }], errors: [], canSave: true }),
-  "Workspace seed pricing references are read-only here."
-);
+assert.strictEqual(protectedPricingReferenceReason(deletionPricingReference()), "Default pricing references cannot be deleted.");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -12825,300 +12923,110 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             with self.assertRaises(ValueError):
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
 
-    def test_koncept_workspace_seed_bridge_exposes_migration_shaped_identity(self):
-        seed = webapp.default_workspace_seed()
+    def test_runtime_workspace_metadata_is_generic_and_has_no_repo_defaults(self):
+        with (
+            mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+            mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
+        ):
+            runtime = webapp.default_runtime_workspace()
+            dependencies = webapp.workspace_runtime_dependencies(runtime)
 
-        self.assertEqual(webapp.DEFAULT_COMPANY_ID, "koncept-images-pte-ltd")
-        self.assertEqual(seed["schema"], webapp.COMPANY_WORKSPACE_SEED_SCHEMA)
-        self.assertEqual(seed["company"]["id"], "koncept-images-pte-ltd")
-        self.assertEqual(seed["company"]["slug"], "koncept-images-pte-ltd")
-        self.assertEqual(seed["company"]["display_name"], "Koncept Images Pte Ltd")
-        self.assertEqual(seed["workspace"]["id"], "koncept-images-pte-ltd")
-        self.assertEqual(seed["workspace"]["storage_backend"], "local-json-bridge")
-        self.assertEqual(seed["profile_presets"]["import_schema"], webapp.COMPANY_PROFILE_EXPORT_SCHEMA)
-        self.assertEqual(seed["profile_presets"]["storage_collection"], "profiles")
-        self.assertEqual(seed["pricing_references"]["storage_collection"], "pricing-references")
-        self.assertEqual(seed["profile_presets"]["default_profile_id"], "koncept-images-pte-ltd")
-        self.assertEqual(seed["defaults"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
-        self.assertTrue(seed["migration_notes"])
-        dependencies = webapp.workspace_runtime_dependencies(seed)
-        self.assertEqual(dependencies["quote_company_profile"]["source"], "workspace-store")
+        self.assertEqual(webapp.DEFAULT_COMPANY_ID, "default")
+        self.assertEqual(runtime["schema"], webapp.RUNTIME_WORKSPACE_SCHEMA)
+        self.assertEqual(runtime["company"]["id"], "default")
+        self.assertEqual(runtime["company"]["display_name"], "Quote Generator Workspace")
+        self.assertEqual(runtime["workspace"]["storage_backend"], "local-runtime-json")
+        self.assertEqual(runtime["profile_presets"]["import_schema"], webapp.COMPANY_PROFILE_EXPORT_SCHEMA)
+        self.assertEqual(runtime["profile_presets"]["storage_collection"], "profiles")
+        self.assertEqual(runtime["pricing_references"]["storage_collection"], "pricing-references")
+        self.assertEqual(runtime["defaults"]["profile_id"], "")
+        self.assertEqual(runtime["defaults"]["pricing_reference_id"], "")
+        self.assertEqual(dependencies["quote_company_profile"]["source"], "company-store")
         self.assertEqual(dependencies["quote_company_profile"]["store"], "profiles")
-        self.assertEqual(dependencies["quote_company_profile"]["id"], "koncept-images-pte-ltd")
-        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["quote_company_profile"]["fallback"]["preset_id"], "synthetic-fixture-default")
         self.assertEqual(dependencies["logo"]["source"], "quote-company-profile")
-        self.assertEqual(dependencies["quotation_layout"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["quotation_layout"]["fallback"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["layout_rules"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["layout_rules"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["layout_rules"]["fallback"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["pricing_reference"]["source"], "workspace-seed-pricing-reference")
-        self.assertEqual(dependencies["pricing_reference"]["id"], "synthetic-exhibition-fixture-pricing")
-        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "synthetic-exhibition-fixture-pricing")
+        self.assertEqual(dependencies["quotation_layout"]["source"], "profile-pack")
+        self.assertEqual(dependencies["layout_rules"]["source"], "profile-pack")
+        self.assertEqual(dependencies["pricing_reference"]["source"], "selected-runtime-reference")
+        self.assertNotIn("asset_packs", runtime)
 
-    def test_koncept_workspace_seed_declares_workspace_owned_runtime_asset_packs(self):
-        seed = webapp.default_workspace_seed()
-        asset_packs = seed["asset_packs"]
-        dependencies = webapp.workspace_runtime_dependencies(seed)
-
-        self.assertEqual(seed["defaults"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
-        self.assertEqual(asset_packs["quote_company_profile"]["source"], "workspace-store")
-        self.assertEqual(asset_packs["quote_company_profile"]["active_profile_id"], "koncept-images-pte-ltd")
-        self.assertEqual(asset_packs["logo"]["source"], "quote-company-profile.logo_data_url")
-        self.assertEqual(asset_packs["quotation_layout"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(asset_packs["quotation_layout"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
-        self.assertEqual(asset_packs["layout_rules"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(asset_packs["layout_rules"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
-        self.assertEqual(asset_packs["pricing_reference"]["source"], "workspace-seed-pricing-reference")
-        self.assertEqual(asset_packs["pricing_reference"]["path"], "asset-packs/pricing-references/synthetic-exhibition-fixture-pricing")
-        self.assertEqual(dependencies["quotation_layout"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["quotation_layout"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["quotation_layout"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["layout_rules"]["source"], "workspace-seed-profile-pack")
-        self.assertEqual(dependencies["layout_rules"]["path"], "asset-packs/quotation-layouts/synthetic-exhibition-fixture-template")
-        self.assertEqual(dependencies["pricing_reference"]["source"], "workspace-seed-pricing-reference")
-        self.assertEqual(dependencies["pricing_reference"]["id"], "synthetic-exhibition-fixture-pricing")
-        self.assertEqual(dependencies["pricing_reference"]["path"], "asset-packs/pricing-references/synthetic-exhibition-fixture-pricing")
-        self.assertEqual(dependencies["pricing_reference"]["fallback"]["id"], "synthetic-exhibition-fixture-pricing")
-
-    def test_workspace_seed_asset_packs_drive_template_layout_rules_pricing_and_api_defaults(self):
-        profile_id = "workspace-layout"
-        reference_id = "workspace-pricing"
-        dependencies = {
-            "quotation_layout": {
-                "source": "workspace-seed-profile-pack",
-                "profile_id": profile_id,
-                "path": f"asset-packs/quotation-layouts/{profile_id}",
-                "fallback": {"source": "bundled-profile", "profile_id": "synthetic-exhibition-fixture-template"},
-            },
-            "layout_rules": {
-                "source": "workspace-seed-profile-pack",
-                "profile_id": profile_id,
-                "path": f"asset-packs/quotation-layouts/{profile_id}",
-                "fallback": {"source": "bundled-profile", "profile_id": "synthetic-exhibition-fixture-template"},
-            },
-            "pricing_reference": {
-                "source": "workspace-seed-pricing-reference",
-                "id": reference_id,
-                "path": f"asset-packs/pricing-references/{reference_id}",
-                "fallback": {"source": "bundled", "id": "synthetic-exhibition-fixture-pricing"},
-            },
-        }
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            seed_root = root / "workspace-seeds"
-            profiles_root = root / "profiles"
-            pricing_root = root / "pricing-references"
-            write_workspace_seed(
-                seed_root,
-                dependencies,
-                defaults={"profile_id": profile_id, "pricing_reference_id": reference_id},
-            )
-            profile_dir = write_workspace_seed_profile_pack(seed_root, profile_id, reference_id)
-            reference_dir = write_workspace_seed_pricing_pack(seed_root, reference_id, [
-                with_required_pricing_metadata({
-                    "id": "workspace-seed-row",
-                    "section": "Graphics",
-                    "description": "Workspace seed graphics",
-                    "unit_hint": "sqm",
-                    "sale_unit_price": 321,
-                })
-            ])
-            with (
-                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
-                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
-                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
-            ):
-                self.assertEqual(webapp.profile_id_from_payload({}), profile_id)
-                self.assertEqual(webapp.pricing_reference_id_from_payload({}), reference_id)
-                self.assertEqual(webapp.workspace_quotation_layout_path(), profile_dir / "quotation-layout.xlsx")
-                self.assertEqual(webapp.workspace_layout_rules_path(), profile_dir / "layout-rules.json")
-                self.assertEqual(webapp.load_profile_pack(profile_id).directory, profile_dir)
-                pricing_pack = webapp.load_pricing_reference_pack(reference_id)
-                self.assertEqual(pricing_pack.directory, reference_dir)
-                self.assertEqual(pricing_pack.pricing_catalog_path, reference_dir / "pricing-catalog.json")
-                pricing_references = webapp.list_pricing_references()
-                workspace_summary = next(item for item in pricing_references if item["id"] == reference_id)
-
-        self.assertEqual(workspace_summary["source"], "workspace-seed")
-        self.assertEqual(workspace_summary["label"], "Workspace Seed Pricing")
-
-    def test_static_pricing_reference_selection_keeps_workspace_seed_sources(self):
+    def test_static_pricing_reference_selection_keeps_runtime_sources(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
         merge_references_body = js.split("function mergePricingReferences(bundled = [])", 1)[1].split("function sortedPricingReferencesForDisplay", 1)[0]
         render_options_body = js.split("function renderProfileOptions()", 1)[1].split("function canManagePricingReferences()", 1)[0]
         build_payload_body = js.split("function buildPayload(options = {})", 1)[1].split("function buildLineItemNormalizePayload()", 1)[0]
 
         self.assertNotIn('filter((reference) => String(reference?.source || "bundled") === "bundled")', render_options_body)
-        self.assertIn('["workspace-seed", "bundled", "company", "local"].includes(source)', merge_references_body)
+        self.assertIn('["bundled", "company", "local"].includes(source)', merge_references_body)
         self.assertIn('source: pricingReference.source || "bundled"', build_payload_body)
         self.assertNotIn('source: "bundled",', build_payload_body.split("pricing_reference: pricingReference ? {", 1)[1].split("} :", 1)[0])
 
-    def test_workspace_quote_company_profile_resolution_prefers_workspace_store(self):
-        dependencies = {
-            "quote_company_profile": {
-                "id": "active-imported-profile",
-                "source": "workspace-store",
-                "store": "profiles",
-                "fallback": {
-                    "source": "bundled-profile-preset",
-                    "profile_id": "synthetic-exhibition-fixture-template",
-                    "preset_id": "synthetic-fixture-default",
-                },
-            },
-            "logo": {"source": "quote-company-profile"},
-        }
+    def test_runtime_quote_company_profile_resolution_prefers_company_store(self):
         imported_profile = webapp.normalize_profile_payload({
             "id": "active-imported-profile",
             "label": "Active Imported Fixture",
             "defaults": {
                 "company": {
-                    "name": "Workspace Fixture Co Pte Ltd",
-                    "header_details": "Workspace Fixture Co Pte Ltd\n1 Fixture Way",
+                    "name": "Runtime Fixture Co Pte Ltd",
+                    "header_details": "Runtime Fixture Co Pte Ltd\n1 Fixture Way",
                     "logo_data_url": SANITIZED_LOGO_DATA_URL,
                 },
                 "quote_text": {
-                    "payment_terms": ["Workspace payment terms."],
+                    "payment_terms": ["Runtime payment terms."],
                 },
             },
         })
 
         with tempfile.TemporaryDirectory() as tmp:
-            seed_root = Path(tmp) / "workspace-seeds"
-            write_workspace_seed(seed_root, dependencies)
             store = webapp.CompanyConfigStore(Path(tmp) / "data")
-            store.save_profile("koncept-images-pte-ltd", imported_profile)
+            store.save_profile(webapp.DEFAULT_COMPANY_ID, imported_profile)
             payload = valid_payload()
             payload["company"].pop("logo_data_url")
             payload["company"]["name"] = ""
             payload["quote_text"]["payment_terms"] = []
-            with (
-                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
-                mock.patch.object(webapp, "company_config_store", return_value=store),
-            ):
-                workspace_profile = webapp.workspace_quote_company_profile()
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                runtime_profile = webapp.workspace_quote_company_profile()
                 resolved_payload = webapp.payload_with_workspace_quote_profile_defaults(payload)
 
-        self.assertEqual(workspace_profile["id"], "active-imported-profile")
-        self.assertEqual(workspace_profile["source"], "workspace-store")
-        self.assertEqual(resolved_payload["company"]["name"], "Workspace Fixture Co Pte Ltd")
+        self.assertEqual(runtime_profile["id"], "active-imported-profile")
+        self.assertEqual(runtime_profile["source"], "company-store")
+        self.assertEqual(resolved_payload["company"]["name"], "Runtime Fixture Co Pte Ltd")
         self.assertEqual(resolved_payload["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
-        self.assertEqual(resolved_payload["quote_text"]["payment_terms"], ["Workspace payment terms."])
+        self.assertEqual(resolved_payload["quote_text"]["payment_terms"], ["Runtime payment terms."])
         self.assertEqual(resolved_payload["client"], payload["client"])
 
-    def test_workspace_profile_defaults_do_not_silently_fill_from_bundled_fallback(self):
-        dependencies = {
-            "quote_company_profile": {
-                "id": "missing-imported-profile",
-                "source": "workspace-store",
-                "store": "profiles",
-                "fallback": {
-                    "source": "bundled-profile-preset",
-                    "profile_id": "synthetic-exhibition-fixture-template",
-                    "preset_id": "synthetic-fixture-default",
-                },
-            },
-            "logo": {"source": "quote-company-profile"},
-        }
-
+    def test_runtime_profile_defaults_do_not_silently_fill_without_imported_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
-            seed_root = Path(tmp) / "workspace-seeds"
-            write_workspace_seed(seed_root, dependencies)
+            store = webapp.CompanyConfigStore(Path(tmp) / "data")
             payload = valid_payload()
             payload["company"].pop("logo_data_url")
             payload["company"]["name"] = ""
-            with mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root):
-                workspace_profile = webapp.workspace_quote_company_profile()
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                runtime_profile = webapp.workspace_quote_company_profile()
                 resolved_payload = webapp.payload_with_workspace_quote_profile_defaults(payload)
 
-        self.assertIsNone(workspace_profile)
+        self.assertIsNone(runtime_profile)
         self.assertEqual(resolved_payload["company"]["name"], "")
         self.assertNotIn("logo_data_url", resolved_payload["company"])
 
-    def test_workspace_dependencies_drive_template_layout_rules_and_pricing_resolution(self):
-        dependencies = {
-            "quotation_layout": {
-                "source": "bundled-profile",
-                "profile_id": "workspace-layout",
-                "fallback_profile_id": "synthetic-exhibition-fixture-template",
-            },
-            "layout_rules": {
-                "source": "bundled-profile",
-                "profile_id": "workspace-layout",
-                "fallback_profile_id": "synthetic-exhibition-fixture-template",
-            },
-            "pricing_reference": {
-                "source": "bundled",
-                "id": "workspace-pricing",
-                "fallback_reference_id": "synthetic-exhibition-fixture-pricing",
-            },
-        }
-
+    def test_run_quote_job_uses_explicit_profile_and_local_pricing_reference_roots(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            seed_root = root / "workspace-seeds"
             profiles_root = root / "profiles"
             pricing_root = root / "pricing-references"
-            write_workspace_seed(seed_root, dependencies)
-            profile_dir = write_test_profile_pack(profiles_root, "workspace-layout", "workspace-pricing")
-            reference_dir = write_test_pricing_reference(pricing_root, "workspace-pricing", [
+            profile_dir = write_test_profile_pack(profiles_root, "runtime-layout", "runtime-pricing")
+            reference_dir = write_test_pricing_reference(pricing_root, "runtime-pricing", [
                 with_required_pricing_metadata({
-                    "id": "workspace-row",
-                    "section": "Graphics",
-                    "description": "Workspace graphics",
-                    "unit_hint": "sqm",
-                    "sale_unit_price": 123,
-                })
-            ])
-            with (
-                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
-                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
-                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
-            ):
-                self.assertEqual(webapp.profile_id_from_payload({}), "workspace-layout")
-                self.assertEqual(webapp.pricing_reference_id_from_payload({}), "workspace-pricing")
-                self.assertEqual(webapp.workspace_quotation_layout_path(), profile_dir / "quotation-layout.xlsx")
-                self.assertEqual(webapp.workspace_layout_rules_path(), profile_dir / "layout-rules.json")
-                self.assertEqual(webapp.load_pricing_reference_pack(webapp.pricing_reference_id_from_payload({})).pricing_catalog_path, reference_dir / "pricing-catalog.json")
-
-    def test_run_quote_job_uses_workspace_dependencies_when_payload_ids_are_absent(self):
-        dependencies = {
-            "quotation_layout": {
-                "source": "bundled-profile",
-                "profile_id": "workspace-layout",
-                "fallback_profile_id": "synthetic-exhibition-fixture-template",
-            },
-            "pricing_reference": {
-                "source": "bundled",
-                "id": "workspace-pricing",
-                "fallback_reference_id": "synthetic-exhibition-fixture-pricing",
-            },
-        }
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            seed_root = root / "workspace-seeds"
-            profiles_root = root / "profiles"
-            pricing_root = root / "pricing-references"
-            write_workspace_seed(seed_root, dependencies)
-            profile_dir = write_test_profile_pack(profiles_root, "workspace-layout", "workspace-pricing")
-            reference_dir = write_test_pricing_reference(pricing_root, "workspace-pricing", [
-                with_required_pricing_metadata({
-                    "id": "workspace-row",
+                    "id": "runtime-row",
                     "section": "Floor Design",
-                    "description": "Workspace carpet",
+                    "description": "Runtime carpet",
                     "unit_hint": "sqm",
                     "sale_unit_price": 99,
                 })
             ])
             payload = valid_payload()
-            payload.pop("profile_id")
-            payload.pop("pricing_reference_id")
+            payload["profile_id"] = "runtime-layout"
+            payload["pricing_reference_id"] = "runtime-pricing"
+            payload["pricing_reference"] = {"id": "runtime-pricing", "source": "local"}
             completed = webapp.subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
@@ -13126,7 +13034,6 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                 stderr="",
             )
             with (
-                mock.patch.object(webapp, "workspace_seeds_root", return_value=seed_root),
                 mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
                 mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
                 mock.patch.object(webapp.subprocess, "run", return_value=completed) as run,
@@ -13139,51 +13046,17 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertIn(str(profile_dir / "quotation-layout.xlsx"), command)
         self.assertNotIn(str(KONCEPT_CATALOG), command)
         self.assertNotIn(str(KONCEPT_LAYOUT), command)
-
-    def test_run_quote_job_uses_workspace_seed_packs_when_legacy_bundled_roots_are_absent(self):
-        payload = valid_payload()
-        payload.pop("profile_id")
-        payload.pop("pricing_reference_id")
-        completed = webapp.subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout="Wrote quotation.xlsx\nPDF export status: skipped\n",
-            stderr="",
-        )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            empty_profiles_root = root / "profiles"
-            empty_pricing_root = root / "pricing-references"
-            empty_profiles_root.mkdir()
-            empty_pricing_root.mkdir()
-            store = webapp.CompanyConfigStore(root / "data")
-            with (
-                mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root),
-                mock.patch.object(webapp, "pricing_references_root", return_value=empty_pricing_root),
-                mock.patch.object(webapp, "company_config_store", return_value=store),
-                mock.patch.object(webapp.subprocess, "run", return_value=completed) as run,
-            ):
-                result = webapp.run_quote_job(payload, output_root=root / "out", tmp_root=root / "tmp")
-
-        command = run.call_args.args[0]
-        self.assertEqual(result["status"], "completed")
-        self.assertIn(str(KONCEPT_WORKSPACE_CATALOG), command)
-        self.assertIn(str(KONCEPT_WORKSPACE_LAYOUT), command)
-        self.assertNotIn(str(LEGACY_BUNDLED_PRICING_REFERENCE / "pricing-catalog.json"), command)
-        self.assertNotIn(str(LEGACY_BUNDLED_PROFILE / "quotation-layout.xlsx"), command)
-
-    def test_exported_quote_company_profile_imports_to_koncept_workspace_store(self):
+    def test_exported_quote_company_profile_imports_to_default_company_store(self):
         exported_profile = {
             "schema": "swooshz.quote-company-profile.v1",
             "exported_at": "2026-06-18T00:00:00Z",
             "profile": {
-                "id": "koncept-images-import",
-                "label": "Koncept Images Imported",
-                "description": "Fixture export for import bridge tests.",
+                "id": "default-import",
+                "label": "Default Imported Profile",
+                "description": "Fixture export for runtime import tests.",
                 "defaults": {
                     "company": {
-                        "name": "Koncept Images Pte Ltd",
+                        "name": "Synthetic Imported Quote Co Pte Ltd",
                         "header_details": "Fixture address only",
                         "logo_data_url": "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==",
                     },
@@ -13213,22 +13086,19 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                         body = json.loads(response.read().decode("utf-8"))
                         settings_response = urllib.request.urlopen(f"{runner.base_url}/api/settings/profiles", timeout=3)
                         settings_body = json.loads(settings_response.read().decode("utf-8"))
-            workspace_store = Path(tmp) / "koncept-images-pte-ltd" / "profiles.json"
             default_store = Path(tmp) / "default" / "profiles.json"
-            workspace_store_exists = workspace_store.exists()
             default_store_exists = default_store.exists()
-            stored_profiles = json.loads(workspace_store.read_text(encoding="utf-8"))
+            stored_profiles = json.loads(default_store.read_text(encoding="utf-8"))
 
         self.assertEqual(body["status"], "saved")
-        self.assertEqual(body["company_id"], "koncept-images-pte-ltd")
-        self.assertEqual(body["workspace"]["company"]["display_name"], "Koncept Images Pte Ltd")
-        self.assertEqual(body["profile"]["id"], "koncept-images-import")
+        self.assertEqual(body["company_id"], webapp.DEFAULT_COMPANY_ID)
+        self.assertEqual(body["workspace"]["company"]["display_name"], "Quote Generator Workspace")
+        self.assertEqual(body["profile"]["id"], "default-import")
         self.assertEqual(body["profile"]["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
-        self.assertTrue(workspace_store_exists)
-        self.assertFalse(default_store_exists)
-        self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["name"], "Koncept Images Pte Ltd")
+        self.assertTrue(default_store_exists)
+        self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["name"], "Synthetic Imported Quote Co Pte Ltd")
         self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
-        loaded_profile = next(item for item in settings_body["company_profiles"] if item["id"] == "koncept-images-import")
+        loaded_profile = next(item for item in settings_body["company_profiles"] if item["id"] == "default-import")
         self.assertEqual(loaded_profile["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
 
     def test_imported_profile_logo_data_url_is_written_to_generated_xlsx(self):
@@ -13237,7 +13107,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             "profile": {
                 "id": "sanitized-imported-profile",
                 "label": "Sanitized Imported Profile",
-                "description": "Synthetic fixture for workspace import logo output.",
+                "description": "Synthetic fixture for imported profile logo output.",
                 "defaults": {
                     "company": {
                         "name": "Sanitized Quote Company Pte Ltd",
@@ -13267,7 +13137,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 
         with tempfile.TemporaryDirectory() as tmp:
             store = webapp.CompanyConfigStore(Path(tmp) / "data")
-            company_id = webapp.default_workspace_seed()["company"]["id"]
+            company_id = webapp.DEFAULT_COMPANY_ID
             saved_profile = store.save_profile(company_id, imported_profile)
             restored_profile = store.list_profiles(company_id)[0]
             payload = valid_payload()
@@ -13293,18 +13163,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(generated_logo_bytes, SANITIZED_LOGO_PNG_BYTES)
         self.assertIn("../media/header_logo.png", drawing_rels)
 
-    def test_koncept_workspace_seed_uses_synthetic_packs_without_bundled_fallback_folders(self):
-        seed = webapp.default_workspace_seed()
-
-        self.assertEqual(seed["defaults"]["profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(seed["defaults"]["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
-        self.assertTrue(KONCEPT_WORKSPACE_LAYOUT_PACK.is_dir())
-        self.assertTrue(KONCEPT_WORKSPACE_PRICING_PACK.is_dir())
-        self.assertTrue(KONCEPT_WORKSPACE_CATALOG.is_file())
-        self.assertTrue(KONCEPT_WORKSPACE_LAYOUT.is_file())
-        self.assertTrue(KONCEPT_WORKSPACE_LAYOUT_RULES.is_file())
-        self.assertTrue((KONCEPT_WORKSPACE_LAYOUT_PACK / "profile.json").is_file())
-        self.assertTrue((KONCEPT_WORKSPACE_PRICING_PACK / "reference.json").is_file())
+    def test_synthetic_quote_generator_fixtures_are_test_only_assets(self):
         self.assertTrue(KONCEPT_CATALOG.is_file())
         self.assertTrue(KONCEPT_LAYOUT.is_file())
         self.assertTrue(KONCEPT_LAYOUT_RULES.is_file())
@@ -13312,12 +13171,6 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertTrue((KONCEPT_PRICING_REFERENCE / "reference.json").is_file())
         self.assertFalse(LEGACY_BUNDLED_PROFILE.exists())
         self.assertFalse(LEGACY_BUNDLED_PRICING_REFERENCE.exists())
-        logo_fixture = seed["asset_packs"]["logo"]["fallback_fixture"]
-        self.assertEqual(logo_fixture["source"], "workspace-seed-profile-preset")
-        self.assertIn("synthetic-exhibition-fixture-template/profile.json", logo_fixture["replacement"])
-        self.assertNotIn("path", logo_fixture)
-        sample_paths = [item["path"] for item in seed["asset_packs"]["sample_fixtures"]]
-        self.assertEqual(sample_paths, ["fixtures/samples/kent-group"])
 
     def test_profile_payload_sanitizes_formula_like_defaults(self):
         profile = webapp.normalize_profile_payload({
@@ -13635,7 +13488,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(pack.public_summary()["label"], "Repo Ref")
         self.assertEqual(rows[0]["description"], "nos. Eames Replica Chair (White)")
 
-    def test_local_pricing_reference_source_wins_over_workspace_seed_id_collision(self):
+    def test_local_pricing_reference_source_wins_over_bundled_id_collision(self):
         reference_id = "synthetic-exhibition-fixture-pricing"
         with mock_pricing_metadata_enrichment():
             reference = webapp.normalize_pricing_reference_payload({
@@ -13986,23 +13839,6 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(detail["item_count"], 1)
         self.assertEqual(detail["items"][0]["description"], "Printed graphics")
 
-    def test_pricing_reference_detail_endpoint_returns_workspace_seed_rows(self):
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
-            with LocalRunnerServer() as runner:
-                response = urllib.request.urlopen(
-                    f"{runner.base_url}/api/settings/pricing-references/synthetic-exhibition-fixture-pricing",
-                    timeout=3,
-                )
-                body = json.loads(response.read().decode("utf-8"))
-
-        detail = body["pricing_reference"]
-        self.assertEqual(detail["id"], "synthetic-exhibition-fixture-pricing")
-        self.assertEqual(detail["source"], "workspace-seed")
-        self.assertGreater(detail["item_count"], 0)
-        self.assertTrue(detail["items"])
-        self.assertTrue(all(item.get("section") for item in detail["items"]))
-        self.assertTrue(all(item.get("description") for item in detail["items"]))
-
     def test_pricing_reference_delete_endpoint_removes_local_pack(self):
         with mock_pricing_metadata_enrichment():
             reference = webapp.normalize_pricing_reference_payload({
@@ -14095,9 +13931,14 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 
         self.assertEqual(default_id, "real-default")
 
-    def test_profiles_api_omits_legacy_company_pricing_references(self):
+    def test_profiles_api_exposes_company_pricing_reference_summary_without_internal_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
-            store = webapp.CompanyConfigStore(Path(tmp))
+            root = Path(tmp)
+            profiles_root = root / "profiles"
+            pricing_root = root / "pricing-references"
+            profiles_root.mkdir()
+            pricing_root.mkdir()
+            store = webapp.CompanyConfigStore(root / "data")
             store.save_pricing_reference("default", {
                 "id": "company-ref",
                 "label": "Company Ref",
@@ -14111,46 +13952,65 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                     "markup_multiplier": 2,
                 }],
             })
-            with mock.patch.object(webapp, "company_config_store", return_value=store):
+            with (
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
+                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
+                mock.patch.object(webapp, "bundled_pricing_references_root", return_value=pricing_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+            ):
                 with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
                     with LocalRunnerServer() as runner:
                         response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
                         payload = json.loads(response.read().decode("utf-8"))
 
         serialized = json.dumps(payload["pricing_references"])
-        self.assertNotIn("company-ref", serialized)
-        self.assertNotIn("Company Ref", serialized)
+        self.assertIn("company-ref", serialized)
+        self.assertIn("Company Ref", serialized)
         self.assertNotIn("internal_cost", serialized)
-        self.assertEqual(payload["default_profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(payload["default_pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
-        sources = {item.get("source") for item in payload["pricing_references"]}
-        self.assertEqual(sources, {"workspace-seed"})
+        self.assertEqual(payload["default_profile_id"], "")
+        self.assertEqual(payload["default_pricing_reference_id"], "")
+        self.assertEqual(payload["pricing_references"][0]["source"], "company")
+        self.assertEqual(payload["pricing_references"][0]["item_count"], 1)
+        self.assertNotIn("items", payload["pricing_references"][0])
 
-    def test_profiles_api_exposes_active_koncept_workspace_sources(self):
-        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
-            with LocalRunnerServer() as runner:
-                response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
-                payload = json.loads(response.read().decode("utf-8"))
+    def test_profiles_api_exposes_generic_runtime_metadata_without_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profiles_root = root / "profiles"
+            pricing_root = root / "pricing-references"
+            profiles_root.mkdir()
+            pricing_root.mkdir()
+            store = webapp.CompanyConfigStore(root / "data")
+            with (
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
+                mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
+                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
+                mock.patch.object(webapp, "bundled_pricing_references_root", return_value=pricing_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+            ):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "viewer"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        response = urllib.request.urlopen(f"{runner.base_url}/api/profiles", timeout=3)
+                        payload = json.loads(response.read().decode("utf-8"))
 
         workspace = payload["workspace"]
-        self.assertEqual(payload["company_id"], "koncept-images-pte-ltd")
-        self.assertEqual(workspace["company"]["display_name"], "Koncept Images Pte Ltd")
-        self.assertEqual(workspace["workspace"]["slug"], "koncept-images-pte-ltd")
-        self.assertEqual(payload["default_profile_id"], "synthetic-exhibition-fixture-template")
-        self.assertEqual(payload["default_pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
-        active_profile = next(item for item in payload["profiles"] if item["id"] == "synthetic-exhibition-fixture-template")
-        active_pricing = next(item for item in payload["pricing_references"] if item["id"] == "synthetic-exhibition-fixture-pricing")
-        self.assertEqual(active_profile["default_pricing_reference"], "synthetic-exhibition-fixture-pricing")
-        self.assertTrue(active_profile["quote_detail_presets"])
-        self.assertIn("synthetic-fixture-default", {item["id"] for item in active_profile["quote_detail_presets"]})
-        self.assertEqual(active_pricing["source"], "workspace-seed")
+        self.assertEqual(payload["company_id"], webapp.DEFAULT_COMPANY_ID)
+        self.assertEqual(workspace["company"]["display_name"], "Quote Generator Workspace")
+        self.assertEqual(workspace["workspace"]["slug"], webapp.DEFAULT_COMPANY_ID)
+        self.assertEqual(payload["default_profile_id"], "")
+        self.assertEqual(payload["default_pricing_reference_id"], "")
+        self.assertEqual(payload["profiles"], [])
+        self.assertEqual(payload["pricing_references"], [])
         self.assertEqual(
             workspace["runtime_dependencies"]["quotation_layout"]["source"],
-            "workspace-seed-profile-pack",
+            "profile-pack",
         )
         self.assertEqual(
             workspace["runtime_dependencies"]["pricing_reference"]["source"],
-            "workspace-seed-pricing-reference",
+            "selected-runtime-reference",
         )
 
     def test_settings_read_endpoints_require_management_permission(self):
@@ -14324,7 +14184,15 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         brief = webapp.payload_to_brief(payload)
         self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
 
-    def test_pricing_reference_source_ignores_legacy_company_collision(self):
+    def test_pricing_reference_source_keeps_local_and_company_references_separate(self):
+        local_item = {
+            "id": "local-collision-row",
+            "section": "Local Collision",
+            "description": "Local-only collision catalogue item",
+            "unit_hint": "nos",
+            "internal_cost": 9,
+            "markup_multiplier": 2,
+        }
         company_item = {
             "id": "company-collision-row",
             "section": "Company Collision",
@@ -14334,22 +14202,28 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             "markup_multiplier": 2,
         }
         with tempfile.TemporaryDirectory() as tmp:
-            store = webapp.CompanyConfigStore(Path(tmp))
+            root = Path(tmp)
+            pricing_root = root / "pricing-references"
+            store = webapp.CompanyConfigStore(root / "data")
+            write_test_pricing_reference(pricing_root, "synthetic-exhibition-fixture-pricing", [local_item])
             store.save_pricing_reference(webapp.DEFAULT_COMPANY_ID, {
                 "id": "synthetic-exhibition-fixture-pricing",
                 "label": "Company Synthetic",
                 "tax": {"label": "VAT", "rate": 0.2},
                 "items": [company_item],
             })
-            with mock.patch.object(webapp, "company_config_store", return_value=store):
-                workspace_payload = {
+            with (
+                mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+            ):
+                local_payload = {
                     "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
-                    "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "workspace-seed"},
+                    "pricing_reference": {"id": "synthetic-exhibition-fixture-pricing", "source": "local"},
                 }
-                workspace_rows = webapp.pricing_catalog_prompt_rows_for_payload(workspace_payload)
-                self.assertTrue(workspace_rows)
-                self.assertNotIn("company-collision-row", {row["id"] for row in workspace_rows})
-                self.assertNotIn("Company-only collision catalogue item", {row["description"] for row in workspace_rows})
+                local_rows = webapp.pricing_catalog_prompt_rows_for_payload(local_payload)
+                self.assertTrue(local_rows)
+                self.assertIn("local-collision-row", {row["id"] for row in local_rows})
+                self.assertNotIn("company-collision-row", {row["id"] for row in local_rows})
 
                 company_payload = {
                     "pricing_reference_id": "synthetic-exhibition-fixture-pricing",
@@ -14358,7 +14232,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                 company_rows = webapp.pricing_catalog_prompt_rows_for_payload(company_payload)
                 self.assertIn("company-collision-row", {row["id"] for row in company_rows})
                 self.assertIn("Company-only collision catalogue item", {row["description"] for row in company_rows})
-                self.assertNotEqual(company_rows, workspace_rows)
+                self.assertNotEqual(company_rows, local_rows)
 
     def test_deploy_generate_response_omits_local_paths_and_raw_process_output(self):
         payload = valid_payload()

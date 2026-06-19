@@ -36,6 +36,7 @@ const DEFAULT_STAMP_LABEL = "Company name & stamp";
 const DEFAULT_TAX_LABEL = "GST";
 const DEFAULT_TAX_RATE = 0.09;
 const DEFAULT_CURRENCY_LABEL = "SGD";
+const MISSING_PRICING_REFERENCES_MESSAGE = "No pricing references found. Please contact an admin or import a pricing reference in Settings before generating a quote.";
 const CUSTOM_CURRENCY_VALUE = "__CUSTOM__";
 const CURRENCY_OPTIONS = [
   ["SGD", "Singapore Dollar"],
@@ -424,9 +425,7 @@ function syncAnalysisCreditLabels() {
 function pricingReferenceSelectValue(reference = {}) {
   const referenceId = String(reference.id || "").trim();
   if (!referenceId) return "";
-  const source = reference.source === "workspace-seed"
-    ? "workspace-seed"
-    : reference.source === "company"
+  const source = reference.source === "company"
       ? "company"
       : reference.source === "local" ? "local" : "bundled";
   return `${source}::${referenceId}`;
@@ -449,7 +448,7 @@ function mergePricingReferences(bundled = []) {
   const seen = new Set();
   return [...bundled].filter((reference) => {
     const source = String(reference?.source || "bundled").trim() || "bundled";
-    if (!["workspace-seed", "bundled", "company", "local"].includes(source)) return false;
+    if (!["bundled", "company", "local"].includes(source)) return false;
     const key = pricingReferenceSelectValue(reference);
     if (!key || seen.has(key)) return false;
     seen.add(key);
@@ -1412,7 +1411,9 @@ function renderSelectedPricingReferenceSummary() {
   if (elements.selectedPricingReferenceSummary) {
     elements.selectedPricingReferenceSummary.textContent = reference
       ? "Managed in Settings."
-      : "Select a pricing reference.";
+      : state.pricingReferences.length
+        ? "Select a pricing reference."
+        : MISSING_PRICING_REFERENCES_MESSAGE;
   }
   if (elements.selectedPricingReferenceCurrency) elements.selectedPricingReferenceCurrency.textContent = currency;
   if (elements.selectedPricingReferenceTax) elements.selectedPricingReferenceTax.textContent = taxText;
@@ -2703,14 +2704,22 @@ function renderProfileOptions() {
     const referenceId = String(reference.id || "").trim();
     return `<option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || referenceId)}</option>`;
   };
-  elements.profileSelect.innerHTML = references.map(referenceOption).join("");
+  elements.profileSelect.innerHTML = references.length
+    ? references.map(referenceOption).join("")
+    : `<option value="">${escapeHtml(MISSING_PRICING_REFERENCES_MESSAGE)}</option>`;
   const fallbackReference = currentPricingReference() || defaultPricingReference() || references[0] || null;
   if (fallbackReference) {
     state.pricingReferenceId = fallbackReference.id || "";
     state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallbackReference)).source;
+  } else {
+    state.pricingReferenceId = "";
+    state.pricingReferenceSource = "";
   }
   const selectedReference = currentPricingReference();
   elements.profileSelect.value = selectedReference ? pricingReferenceSelectValue(selectedReference) : selectedValue;
+  elements.profileSelect.disabled = references.length === 0;
+  elements.profileSelect.title = references.length ? "" : MISSING_PRICING_REFERENCES_MESSAGE;
+  elements.profileSelect.setAttribute("aria-disabled", String(elements.profileSelect.disabled));
   renderSelectedPricingReferenceSummary();
   renderPricingReferenceDeleteOptions();
 }
@@ -2726,7 +2735,6 @@ function pricingReferenceNoAccessReason() {
 function protectedPricingReferenceReason(reference = currentPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (String(reference.source || "bundled") === "workspace-seed") return "Workspace seed pricing references cannot be deleted here.";
   if (String(reference.source || "bundled") === "bundled") return "Bundled pricing reference packs are read-only.";
   if (String(reference.source || "bundled") !== "local") return "Only local pricing reference packs can be deleted here.";
   const referenceId = String(reference.id || "").trim();
@@ -2774,7 +2782,7 @@ function updatePricingReferenceExportButton() {
 function pricingReferenceEditBlockReason(reference = deletionPricingReference()) {
   if (!reference) return "Select a pricing reference first.";
   if (!canManagePricingReferences()) return pricingReferenceNoAccessReason();
-  if (!["workspace-seed", "local"].includes(String(reference.source || "bundled"))) return "Only local or workspace seed pricing reference packs can be edited here.";
+  if (String(reference.source || "bundled") !== "local") return "Only local pricing reference packs can be edited here.";
   const knownItemCount = Array.isArray(reference.items) ? reference.items.length : Number(reference.item_count);
   if (Number.isFinite(knownItemCount) && knownItemCount <= 0) return "This pricing reference has no editable rows.";
   return "";
@@ -2993,7 +3001,7 @@ function renderPricingReferenceDeleteOptions() {
   if (!select) return;
   const previousValue = select.value;
   const references = sortedPricingReferencesForDisplay(
-    state.pricingReferences.filter((reference) => ["workspace-seed", "local", "bundled"].includes(String(reference?.source || "bundled")))
+    state.pricingReferences.filter((reference) => ["local", "bundled"].includes(String(reference?.source || "bundled")))
   );
   select.innerHTML = references.map((reference) => `
     <option value="${escapeHtml(pricingReferenceSelectValue(reference))}">${escapeHtml(reference.label || reference.id || "Pricing reference")}</option>
@@ -3657,9 +3665,6 @@ function pricingReferenceSaveBlockReason(result = state.pendingPricingReference)
   }
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && !state.editingPricingReferenceId) {
     return "Select a pricing reference before saving changes.";
-  }
-  if (mode === PRICING_REFERENCE_SETTINGS_MODE_MANAGE && String(deletionPricingReference()?.source || "bundled") === "workspace-seed") {
-    return "Workspace seed pricing references are read-only here.";
   }
   if (mode === PRICING_REFERENCE_SETTINGS_MODE_IMPORT && state.editingPricingReferenceId) {
     return "Return to Manage to save existing-reference edits, or upload a pricing catalog file to import.";
@@ -7935,7 +7940,8 @@ function updateSidePanelNav() {
   } else {
     nextBlockReason = sidePanelBlockReason(nextPanel);
   }
-  elements.sideNextButton.disabled = false;
+  const shouldDisableNextButton = state.activeSidePanel === "customer" && Boolean(nextBlockReason);
+  elements.sideNextButton.disabled = shouldDisableNextButton;
   elements.sideNextButton.setAttribute("aria-disabled", String(Boolean(nextBlockReason)));
   elements.sideNextButton.classList.toggle("is-disabled", Boolean(nextBlockReason));
   elements.sideNextButton.title = nextBlockReason || "";
