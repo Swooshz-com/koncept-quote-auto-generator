@@ -2221,7 +2221,7 @@ def summary_block_start_row(row_number: int, block_height: int) -> int:
 def layout_chunk_start_row(row_number: int, chunk: LayoutChunk) -> tuple[int, bool]:
     if chunk.height <= 0 or row_number + chunk.height - 1 <= manual_page_end_for_row(row_number):
         return row_number, False
-    return next_continuation_page_start(row_number), True
+    return next_continuation_page_start(row_number) + CONTINUATION_BODY_OFFSET, True
 
 
 def manual_page_break_ids(last_row: int) -> list[int]:

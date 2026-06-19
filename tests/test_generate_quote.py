@@ -1400,6 +1400,15 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(quote.printable_last_row(root, 184, True), 183)
         self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, 184, True)), [61, 122])
 
+    def test_layout_chunk_moves_to_continuation_body_below_repeated_header(self):
+        start_row, moved = quote.layout_chunk_start_row(
+            quote.FIRST_PRINT_PAGE_END_ROW - 3,
+            quote.LayoutChunk("signature", quote.SIGNATURE_BLOCK_HEIGHT),
+        )
+
+        self.assertTrue(moved)
+        self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+
     def test_layout_extends_quote_table_past_preserved_second_page(self):
         brief = {
             "company_identity": "Koncept Image",
@@ -1614,11 +1623,15 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             find_cell_ref(sheet, "Director"),
             find_cell_ref(sheet, "Person in charge"),
             find_cell_ref(sheet, "Company name & stamp"),
+            find_cell_ref(sheet, "_____________________________"),
+            find_cell_ref(sheet, "_____________________________________"),
         ]
         acceptance_rows = [quote.parse_cell_ref(ref)[0] for ref in acceptance_refs]
         acceptance_pages = {manual_print_page_for_row(row) for row in acceptance_rows}
 
         self.assertEqual(acceptance_pages, {manual_print_page_for_row(acceptance_rows[0])})
+        if acceptance_rows[0] > quote.FIRST_PRINT_PAGE_END_ROW:
+            self.assertGreaterEqual(acceptance_rows[0], quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_empty_terms_and_notes_do_not_insert_default_rows(self):
