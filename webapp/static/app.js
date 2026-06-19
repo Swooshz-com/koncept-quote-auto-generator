@@ -27,6 +27,7 @@ const COMPANY_PROFILE_EXPORT_SCHEMA = "swooshz.quote-company-profile.v1";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
 const REFERENCE_FILE_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf,.pdf";
 const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_PROFILE_LAYOUT_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_REFERENCE_IMAGES = 8;
 const DEFAULT_DATE_LABEL = "Date:";
 const DEFAULT_TERMS_HEADING = "Terms & Conditions:";
@@ -205,6 +206,7 @@ const state = {
   profileDeleteError: "",
   profileSaveBusy: false,
   profileDeleteBusy: false,
+  pendingProfilePack: null,
   outputDeleteRowIndex: -1,
   permissions: {
     role: "viewer",
@@ -298,6 +300,8 @@ const elements = {
   deletePresetButton: qs("#deletePresetButton"),
   importPresetButton: qs("#importPresetButton"),
   importPresetFile: qs("#importPresetFile"),
+  layoutTemplateButton: qs("#layoutTemplateButton"),
+  layoutTemplateInput: qs("#layoutTemplateInput"),
   exportPresetButton: qs("#exportPresetButton"),
   resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
@@ -850,6 +854,15 @@ function persistLastPricingReferenceSelection(reference = currentPricingReferenc
 
 function resolvedProfileIdForPayload() {
   return String(state.profileId || state.defaultProfileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
+}
+
+function generationProfileIdForPayload() {
+  const preset = selectedPreset();
+  if (preset?.source === "company") {
+    return safeProfileId(preset.id, resolvedProfileIdForPayload());
+  }
+  const presetProfileId = String(preset?.profile_id || "").trim();
+  return presetProfileId || resolvedProfileIdForPayload();
 }
 
 function syncSelectedPricingReference() {
@@ -2268,6 +2281,82 @@ function renderPresetStatus(message = "") {
   elements.presetStatus.textContent = message || "Load a template, or save/import/export a reusable company profile.";
 }
 
+function isProfileLayoutWorkbookFile(file = {}) {
+  const name = String(file.name || "").toLowerCase();
+  const type = String(file.type || "").toLowerCase();
+  return name.endsWith(".xlsx")
+    || type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+}
+
+function defaultProfileLayoutRules() {
+  return {
+    output: {
+      master_format: "xlsx",
+    },
+    layout: {
+      source: "profile-pack",
+    },
+  };
+}
+
+function profilePackPayloadForSave() {
+  return state.pendingProfilePack && typeof state.pendingProfilePack === "object"
+    ? state.pendingProfilePack
+    : null;
+}
+
+function importedProfilePackPayload(data = {}) {
+  const profile = data.profile && typeof data.profile === "object" ? data.profile : {};
+  const pack = data.pack || data.profile_pack || profile.pack || profile.profile_pack;
+  return pack && typeof pack === "object" ? pack : null;
+}
+
+function clearPendingProfilePack() {
+  state.pendingProfilePack = null;
+}
+
+async function handleLayoutTemplateFileChange() {
+  const file = elements.layoutTemplateInput?.files?.[0];
+  if (!file) return;
+  try {
+    if (file.size > MAX_PROFILE_LAYOUT_FILE_BYTES) {
+      renderPresetStatus("Layout workbook is larger than 10 MB.");
+      return;
+    }
+    if (!isProfileLayoutWorkbookFile(file)) {
+      renderPresetStatus("Upload a .xlsx layout workbook.");
+      return;
+    }
+    state.pendingProfilePack = {
+      quotation_layout: {
+        filename: file.name || "quotation-layout.xlsx",
+        data_url: await fileToDataUrl(file),
+      },
+      layout_rules: {
+        filename: "layout-rules.json",
+        json: defaultProfileLayoutRules(),
+      },
+    };
+    renderPresetStatus(`Layout workbook selected: ${file.name}. Save the profile to keep it.`);
+  } catch (error) {
+    renderPresetStatus(genericFailureMessages(error).join(" "));
+  } finally {
+    if (elements.layoutTemplateInput) elements.layoutTemplateInput.value = "";
+    updatePresetButtons();
+  }
+}
+
+function requestLayoutTemplateFile(event) {
+  event?.preventDefault();
+  if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
+  if (!canManageProfiles()) {
+    renderPresetStatus(profileNoAccessReason());
+    updatePresetButtons();
+    return;
+  }
+  elements.layoutTemplateInput?.click();
+}
+
 function renderHeaderLogoPreview() {
   if (!elements.headerLogoPreview) return;
   if (state.headerLogo) {
@@ -2366,6 +2455,11 @@ function updatePresetButtons() {
     elements.importPresetButton.disabled = busy;
     elements.importPresetButton.setAttribute("aria-disabled", String(elements.importPresetButton.disabled));
   }
+  if (elements.layoutTemplateButton) {
+    elements.layoutTemplateButton.disabled = !canManage || busy;
+    elements.layoutTemplateButton.title = canManage ? "Attach a quotation-layout.xlsx to this saved profile." : profileNoAccessReason();
+    elements.layoutTemplateButton.setAttribute("aria-disabled", String(elements.layoutTemplateButton.disabled));
+  }
   if (elements.exportPresetButton) {
     elements.exportPresetButton.disabled = busy;
     elements.exportPresetButton.setAttribute("aria-disabled", String(elements.exportPresetButton.disabled));
@@ -2392,6 +2486,10 @@ async function saveCurrentPreset() {
     description: "Saved from the Quote Company panel.",
     defaults: collectQuoteCompanyProfileDetails(),
   };
+  const pendingPack = profilePackPayloadForSave();
+  if (pendingPack) {
+    payload.pack = pendingPack;
+  }
   state.profileSaveBusy = true;
   renderPresetStatus(`Saving "${label}"...`);
   updatePresetButtons();
@@ -2409,6 +2507,7 @@ async function saveCurrentPreset() {
     state.selectedPresetValue = companyProfileOptionValue(saved.id);
     persistLastProfilePresetSelection(state.selectedPresetValue);
     elements.presetNameInput.value = saved.label || label;
+    clearPendingProfilePack();
     renderPresetOptions();
     renderPresetStatus(`Saved "${saved.label || label}".`);
   } catch (error) {
@@ -2428,6 +2527,7 @@ function loadSelectedPreset(options = {}) {
   }
   state.selectedPresetValue = elements.presetSelect.value || presetOptionValue(preset);
   persistLastProfilePresetSelection(state.selectedPresetValue);
+  clearPendingProfilePack();
   const details = preset.details || {};
   const clearsLogo = Boolean(details.company && typeof details.company === "object");
   applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
@@ -2494,6 +2594,7 @@ function clearQuoteCompanyDetails() {
   state.headerLogo = null;
   elements.headerLogoInput.value = "";
   state.selectedPresetValue = "";
+  clearPendingProfilePack();
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   updatePresetButtons();
@@ -2531,6 +2632,7 @@ function startNewQuote() {
   state.selectedPresetValue = "";
   elements.presetSelect.value = "";
   elements.presetNameInput.value = "";
+  clearPendingProfilePack();
   applyQuoteDetails({}, { clearLogo: true });
   applyDefaultQuoteCompanyFields();
   clearGeneratedQuoteState();
@@ -2661,7 +2763,7 @@ async function deleteSelectedPreset() {
 
 function exportedCompanyProfilePayload(label = "") {
   const resolvedLabel = safeProfileLabel(label || elements.presetNameInput?.value || elements.quoteCompanyName?.value, "Company Profile");
-  return {
+  const payload = {
     schema: COMPANY_PROFILE_EXPORT_SCHEMA,
     exported_at: new Date().toISOString(),
     workspace: state.workspace && typeof state.workspace === "object" ? {
@@ -2678,6 +2780,11 @@ function exportedCompanyProfilePayload(label = "") {
       defaults: collectQuoteCompanyProfileDetails(),
     },
   };
+  const pendingPack = profilePackPayloadForSave();
+  if (pendingPack) {
+    payload.pack = pendingPack;
+  }
+  return payload;
 }
 
 function downloadJsonFile(filename, payload) {
@@ -2741,9 +2848,11 @@ async function handlePresetImportFileChange() {
     const text = await fileToText(file);
     const data = JSON.parse(text);
     const imported = normalizeImportedCompanyProfile(data, file.name.replace(/\.json$/i, "") || "Imported Company Profile");
+    state.pendingProfilePack = importedProfilePackPayload(data);
     applyQuoteDetails(imported.defaults, { includeLogo: true, clearLogo: true, partial: true });
     if (elements.presetNameInput) elements.presetNameInput.value = imported.label;
-    renderPresetStatus(`Imported "${imported.label}". Review and save it to keep it in this app.`);
+    const layoutCopy = profilePackPayloadForSave()?.quotation_layout ? " Layout workbook included." : "";
+    renderPresetStatus(`Imported "${imported.label}". Review and save it to keep it in this app.${layoutCopy}`);
     clearGeneratedQuoteState();
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   } catch (error) {
@@ -4889,7 +4998,7 @@ function buildPayload(options = {}) {
   syncRichTextSources();
   const generator = currentGenerator();
   const pricingReference = currentPricingReference();
-  const profileId = resolvedProfileIdForPayload();
+  const profileId = generationProfileIdForPayload();
   const includeBoothDimensions = options.includeBoothDimensions !== false;
   const includeDraftContext = options.includeDraftContext !== false;
   const project = {
@@ -4958,7 +5067,7 @@ function buildPayload(options = {}) {
 
 function buildLineItemNormalizePayload() {
   const pricingReference = currentPricingReference();
-  const profileId = resolvedProfileIdForPayload();
+  const profileId = generationProfileIdForPayload();
   return {
     profile_id: profileId,
     pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
@@ -8344,6 +8453,7 @@ function wireEvents() {
   elements.resetOutputButton.addEventListener("click", resetOutputDraft);
   elements.presetSelect.addEventListener("change", () => {
     state.selectedPresetValue = elements.presetSelect.value || "";
+    clearPendingProfilePack();
     persistLastProfilePresetSelection(state.selectedPresetValue);
     updatePresetButtons();
     renderPresetStatus();
@@ -8369,6 +8479,8 @@ function wireEvents() {
   });
   elements.importPresetButton?.addEventListener("click", requestPresetImport);
   elements.importPresetFile?.addEventListener("change", handlePresetImportFileChange);
+  elements.layoutTemplateButton?.addEventListener("click", requestLayoutTemplateFile);
+  elements.layoutTemplateInput?.addEventListener("change", handleLayoutTemplateFileChange);
   elements.exportPresetButton?.addEventListener("click", exportCurrentPreset);
   elements.clearCustomerButton.addEventListener("click", clearCustomerDetails);
   elements.clearQuoteCompanyButton.addEventListener("click", clearQuoteCompanyDetails);

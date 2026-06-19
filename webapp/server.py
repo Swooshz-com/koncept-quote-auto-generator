@@ -131,6 +131,8 @@ MAX_RENDERED_PDF_PAGE_BYTES = 1024 * 1024
 PDF_RENDER_TARGET_LONG_EDGE_PX = 1600
 MAX_JOB_REQUEST_BYTES = (((MAX_REFERENCE_IMAGES * max(MAX_IMAGE_BYTES, MAX_PDF_BYTES)) + 2) // 3) * 4 + 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
+MAX_PROFILE_LAYOUT_BYTES = 10 * 1024 * 1024
+MAX_PROFILE_LAYOUT_RULES_BYTES = 256 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
 MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES = 8 * 1024 * 1024
 MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
@@ -3829,6 +3831,83 @@ def sanitize_profile_defaults(value: Any) -> dict[str, Any]:
     return sanitized if isinstance(sanitized, dict) else {}
 
 
+def safe_profile_pack_filename(value: Any, fallback: str, allowed_suffixes: set[str]) -> str:
+    name = Path(clean_text(value) or fallback).name
+    suffix = Path(name).suffix.lower()
+    if suffix not in allowed_suffixes:
+        return fallback
+    safe_stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(name).stem).strip("-")[:80]
+    return f"{safe_stem or Path(fallback).stem}{suffix}"
+
+
+def validate_profile_layout_xlsx(raw: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            names = set(zf.namelist())
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Quotation layout must be a valid .xlsx workbook.") from exc
+    if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+        raise ValueError("Quotation layout must be a valid .xlsx workbook.")
+
+
+def normalize_profile_layout_rules_payload(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    rules_value: Any
+    if isinstance(value.get("json"), dict):
+        rules_value = value.get("json")
+    elif isinstance(value.get("data"), dict):
+        rules_value = value.get("data")
+    elif clean_text(value.get("data_url")):
+        raw = decode_data_url_bytes(value.get("data_url"), MAX_PROFILE_LAYOUT_RULES_BYTES)
+        try:
+            rules_value = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Layout rules must be valid JSON.") from exc
+    else:
+        rules_value = {
+            key: item
+            for key, item in value.items()
+            if key not in {"filename", "name"}
+        }
+    sanitized = sanitize_profile_default_value(rules_value)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
+def profile_pack_payload_from_profile(profile_payload: dict[str, Any], source_payload: dict[str, Any]) -> dict[str, Any]:
+    for candidate in (
+        profile_payload.get("pack"),
+        profile_payload.get("profile_pack"),
+        source_payload.get("pack"),
+        source_payload.get("profile_pack"),
+    ):
+        if isinstance(candidate, dict):
+            return candidate
+    return {}
+
+
+def normalize_profile_pack_assets(profile_payload: dict[str, Any], source_payload: dict[str, Any]) -> dict[str, Any]:
+    pack = profile_pack_payload_from_profile(profile_payload, source_payload)
+    if not pack:
+        return {}
+    assets: dict[str, Any] = {}
+    layout = pack.get("quotation_layout") if isinstance(pack.get("quotation_layout"), dict) else {}
+    if layout:
+        raw = decode_data_url_bytes(layout.get("data_url"), MAX_PROFILE_LAYOUT_BYTES)
+        validate_profile_layout_xlsx(raw)
+        assets["quotation_layout"] = {
+            "filename": safe_profile_pack_filename(layout.get("filename") or layout.get("name"), "quotation-layout.xlsx", {".xlsx"}),
+            "bytes": raw,
+        }
+    rules = pack.get("layout_rules") if isinstance(pack.get("layout_rules"), dict) else {}
+    if rules:
+        assets["layout_rules"] = {
+            "filename": safe_profile_pack_filename(rules.get("filename") or rules.get("name"), "layout-rules.json", {".json"}),
+            "json": normalize_profile_layout_rules_payload(rules),
+        }
+    return assets
+
+
 def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, Any]:
     reference_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
     if not reference_id:
@@ -4156,7 +4235,11 @@ def delete_pricing_reference_pack(reference_id: str, source: str = "local") -> b
 
 def profile_payload_from_export(payload: dict[str, Any]) -> dict[str, Any]:
     if clean_text(payload.get("schema")) == COMPANY_PROFILE_EXPORT_SCHEMA and isinstance(payload.get("profile"), dict):
-        return payload["profile"]
+        profile = copy.deepcopy(payload["profile"])
+        for key in ("pack", "profile_pack"):
+            if isinstance(payload.get(key), dict) and not isinstance(profile.get(key), dict):
+                profile[key] = payload[key]
+        return profile
     return payload
 
 
@@ -4165,13 +4248,17 @@ def normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
     profile_id = safe_resource_id(profile_payload.get("id") or profile_payload.get("label"), "")
     if not profile_id:
         raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
-    return {
+    normalized = {
         "id": profile_id,
         "label": sanitize_formula_text(profile_payload.get("label")) or profile_id,
         "description": sanitize_formula_text(profile_payload.get("description")),
         "defaults": sanitize_profile_defaults(profile_payload.get("defaults")),
         "saved_at": utc_timestamp(),
     }
+    pack_assets = normalize_profile_pack_assets(profile_payload, payload)
+    if pack_assets:
+        normalized["_pack_assets"] = pack_assets
+    return normalized
 
 
 def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
@@ -5453,6 +5540,34 @@ def payload_with_workspace_quote_profile_defaults(payload: dict[str, Any]) -> di
     return resolved
 
 
+def company_profile_pack_config(profile: dict[str, Any], layout_filename: str = "", rules_filename: str = "") -> dict[str, Any]:
+    profile_id = safe_resource_id(profile.get("id") or profile.get("label"), "")
+    label = clean_text(profile.get("label")) or profile_id or "Company Profile"
+    defaults = copy.deepcopy(profile.get("defaults")) if isinstance(profile.get("defaults"), dict) else {}
+    config: dict[str, Any] = {
+        "id": profile_id,
+        "label": label,
+        "description": clean_text(profile.get("description")),
+        "default_quote_detail_preset": "default" if defaults else "",
+        "quote_detail_presets": [],
+        "saved_at": clean_text(profile.get("saved_at")) or utc_timestamp(),
+    }
+    default_pricing_reference = safe_resource_id(profile.get("default_pricing_reference"), "")
+    if default_pricing_reference:
+        config["default_pricing_reference"] = default_pricing_reference
+    if defaults:
+        config["quote_detail_presets"] = [{
+            "id": "default",
+            "name": label,
+            "details": defaults,
+        }]
+    if layout_filename:
+        config["quotation_layout"] = layout_filename
+    if rules_filename:
+        config["layout_rules"] = rules_filename
+    return config
+
+
 def normalized_tax_config(value: Any | None = None) -> dict[str, Any]:
     tax = value if isinstance(value, dict) else {}
     return {"label": normalize_tax_label(tax.get("label")), "rate": normalize_tax_rate(tax.get("rate"), DEFAULT_TAX_RATE)}
@@ -5522,6 +5637,19 @@ class CompanyConfigStore:
             raise ValueError("Company id is not safe.") from exc
         return resolved_path
 
+    def profile_pack_dir(self, company_id: str, profile_id: str) -> Path:
+        safe_id = safe_resource_id(profile_id, "")
+        if not safe_id:
+            raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        company_dir = self.company_dir(company_id)
+        path = company_dir / "profile-packs" / safe_id
+        resolved_path = path.resolve()
+        try:
+            resolved_path.relative_to(company_dir.resolve())
+        except ValueError as exc:
+            raise ValueError("Profile id is not safe.") from exc
+        return resolved_path
+
     def collection_path(self, company_id: str, collection: str) -> Path:
         if collection not in {"pricing-references", "profiles"}:
             raise ValueError("Unsupported settings collection.")
@@ -5574,10 +5702,53 @@ class CompanyConfigStore:
         return self._read_collection(company_id, "profiles")
 
     def save_profile(self, company_id: str, profile: dict[str, Any]) -> dict[str, Any]:
-        return self._save_item(company_id, "profiles", profile)
+        profile_id = safe_resource_id(profile.get("id") or profile.get("label"), "")
+        if not profile_id:
+            raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        profile_dir = self.profile_pack_dir(company_id, profile_id)
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        pack_assets = profile.get("_pack_assets") if isinstance(profile.get("_pack_assets"), dict) else {}
+        existing_config = load_json_file(profile_dir / "profile.json")
+        layout_filename = clean_text(existing_config.get("quotation_layout"))
+        if layout_filename and not (profile_dir / layout_filename).is_file():
+            layout_filename = ""
+        layout_asset = pack_assets.get("quotation_layout") if isinstance(pack_assets.get("quotation_layout"), dict) else {}
+        if layout_asset:
+            layout_filename = safe_profile_pack_filename(layout_asset.get("filename"), "quotation-layout.xlsx", {".xlsx"})
+            (profile_dir / layout_filename).write_bytes(layout_asset.get("bytes") or b"")
+
+        rules_filename = clean_text(existing_config.get("layout_rules"))
+        if rules_filename and not (profile_dir / rules_filename).is_file():
+            rules_filename = ""
+        rules_asset = pack_assets.get("layout_rules") if isinstance(pack_assets.get("layout_rules"), dict) else {}
+        if rules_asset:
+            rules_filename = safe_profile_pack_filename(rules_asset.get("filename"), "layout-rules.json", {".json"})
+            (profile_dir / rules_filename).write_text(
+                json.dumps(rules_asset.get("json") if isinstance(rules_asset.get("json"), dict) else {}, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+
+        profile_record = {
+            key: copy.deepcopy(value)
+            for key, value in profile.items()
+            if key not in {"_pack_assets", "pack", "profile_pack"}
+        }
+        profile_record["id"] = profile_id
+        profile_record["layout"] = {
+            "has_quotation_layout": bool(layout_filename),
+            "has_layout_rules": bool(rules_filename),
+        }
+        profile_config = company_profile_pack_config(profile_record, layout_filename, rules_filename)
+        (profile_dir / "profile.json").write_text(json.dumps(profile_config, indent=2, sort_keys=True), encoding="utf-8")
+        return self._save_item(company_id, "profiles", profile_record)
 
     def delete_profile(self, company_id: str, profile_id: str) -> bool:
-        return self._delete_item(company_id, "profiles", profile_id)
+        deleted = self._delete_item(company_id, "profiles", profile_id)
+        pack_dir = self.profile_pack_dir(company_id, profile_id)
+        if pack_dir.exists():
+            shutil.rmtree(pack_dir)
+            deleted = True
+        return deleted
 
 
 def company_config_store() -> CompanyConfigStore:
@@ -5904,7 +6075,29 @@ class PricingReferencePack:
         return detail
 
 
+def load_company_profile_pack(profile_id: str | None = None, company_id: str = DEFAULT_COMPANY_ID) -> ProfilePack | None:
+    resolved_id = safe_resource_id(profile_id, "")
+    if not resolved_id:
+        return None
+    store = company_config_store()
+    profiles = store.list_profiles(company_id)
+    profile = next((item for item in profiles if safe_resource_id(item.get("id"), "") == resolved_id), None)
+    if not profile:
+        return None
+    profile_dir = store.profile_pack_dir(company_id, resolved_id)
+    config = load_json_file(profile_dir / "profile.json")
+    if not config:
+        layout_filename = "quotation-layout.xlsx" if (profile_dir / "quotation-layout.xlsx").is_file() else ""
+        rules_filename = "layout-rules.json" if (profile_dir / "layout-rules.json").is_file() else ""
+        config = company_profile_pack_config(profile, layout_filename, rules_filename)
+    profile_id_from_config = safe_resource_id(config.get("id"), resolved_id)
+    return ProfilePack(profile_id_from_config, profile_dir, dict(config), source="company")
+
+
 def load_profile_pack(profile_id: str | None = None) -> ProfilePack:
+    company_pack = load_company_profile_pack(profile_id)
+    if company_pack is not None:
+        return company_pack
     return ProfilePack.resolve(profile_id)
 
 

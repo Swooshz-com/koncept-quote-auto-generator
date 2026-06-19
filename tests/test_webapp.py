@@ -7542,6 +7542,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
         self.assertIn("Load a template, or save/import/export a reusable company profile.", html)
+        self.assertIn('id="layoutTemplateInput"', html)
+        self.assertIn('accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx"', html)
+        self.assertIn("pendingProfilePack", js)
+        self.assertIn("handleLayoutTemplateFileChange", js)
+        self.assertIn("profilePackPayloadForSave()", js)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
@@ -8744,10 +8749,10 @@ function extractFunction(name) {
 }
 
 const DEFAULT_PROFILE_ID = "quote-layout";
-const PROFILE_PRESET_PREFIX = "profile::";
-const COMPANY_PROFILE_PRESET_PREFIX = "company::";
+const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
 const LAST_SELECTION_STORAGE_KEY = "swooshz_last_selection_v1";
-let savedSelection = JSON.stringify({ presetValue: "company::saved-profile" });
+let savedSelection = JSON.stringify({ presetValue: "company:saved-profile" });
 const window = {
   localStorage: {
     getItem(key) { return key === LAST_SELECTION_STORAGE_KEY ? savedSelection : null; },
@@ -8790,22 +8795,103 @@ eval([
 ].map(extractFunction).join("\n"));
 
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "company::saved-profile");
-assert.strictEqual(elements.presetSelect.value, "company::saved-profile");
+assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
+assert.strictEqual(elements.presetSelect.value, "company:saved-profile");
 
-savedSelection = JSON.stringify({ presetValue: "company::missing-profile" });
+savedSelection = JSON.stringify({ presetValue: "company:missing-profile" });
 state.selectedPresetValue = "";
 elements.presetSelect.value = "";
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "profile::default");
-assert.strictEqual(elements.presetSelect.value, "profile::default");
+assert.strictEqual(state.selectedPresetValue, "profile:default");
+assert.strictEqual(elements.presetSelect.value, "profile:default");
 
-savedSelection = JSON.stringify({ presetValue: "profile::trade-show" });
+savedSelection = JSON.stringify({ presetValue: "profile:trade-show" });
 state.selectedPresetValue = "";
 elements.presetSelect.value = "";
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "profile::trade-show");
-assert.strictEqual(elements.presetSelect.value, "profile::trade-show");
+assert.strictEqual(state.selectedPresetValue, "profile:trade-show");
+assert.strictEqual(elements.presetSelect.value, "profile:trade-show");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_generation_profile_id_uses_selected_current_profile_pack(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "";
+const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const state = {
+  profileId: "repo-layout",
+  defaultProfileId: "",
+  selectedPresetValue: "company:custom-layout",
+  profiles: [{
+    id: "repo-layout",
+    label: "Repo Layout",
+    quote_detail_presets: [
+      { id: "default", name: "Default", profile_id: "repo-layout", details: {} },
+      { id: "alt", name: "Alt", profile_id: "alt-layout", details: {} },
+    ],
+  }],
+  companyProfiles: [{ id: "custom-layout", label: "Custom Layout", defaults: { company: { name: "Custom" } } }],
+};
+const elements = { presetSelect: { value: "" } };
+
+eval([
+  "safeId",
+  "neutralizeFormulaText",
+  "safeProfileId",
+  "safeProfileLabel",
+  "profilePresetOptionValue",
+  "companyProfileOptionValue",
+  "currentProfile",
+  "selectedPresetId",
+  "templateProfilePresets",
+  "normalizeCompanyProfile",
+  "companyProfilePresets",
+  "selectedPreset",
+  "resolvedProfileIdForPayload",
+  "generationProfileIdForPayload",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(generationProfileIdForPayload(), "custom-layout");
+
+state.selectedPresetValue = "profile:alt";
+assert.strictEqual(generationProfileIdForPayload(), "alt-layout");
+
+state.selectedPresetValue = "";
+elements.presetSelect.value = "";
+assert.strictEqual(generationProfileIdForPayload(), "repo-layout");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -13494,6 +13580,20 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                     "company_date_label": "Synthetic date:",
                 },
             },
+            "pack": {
+                "quotation_layout": {
+                    "filename": "quotation-layout.xlsx",
+                    "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+                    + base64.b64encode(KONCEPT_LAYOUT.read_bytes()).decode("ascii"),
+                },
+                "layout_rules": {
+                    "filename": "layout-rules.json",
+                    "json": {
+                        "output": {"master_format": "xlsx"},
+                        "custom_layout_fixture": True,
+                    },
+                },
+            },
         })
         pricing_reference = {
             "id": "synthetic-internal-runtime-pricing",
@@ -13512,6 +13612,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             })],
         }
         payload = valid_payload()
+        payload["profile_id"] = company_id
         payload["pricing_reference_id"] = pricing_reference["id"]
         payload["line_items"] = [{
             "section": "Graphics",
@@ -13551,7 +13652,15 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             output_dir = Path(result["output_dir"])
             runtime_catalog_under_job_tmp = runtime_catalog_path.is_relative_to(job_tmp)
             runtime_catalog_avoids_repo_root = str(webapp.pricing_references_root()) not in str(runtime_catalog_path)
-            quotation_exists = (output_dir / "quotation.xlsx").exists()
+            quotation_path = output_dir / "quotation.xlsx"
+            quotation_exists = quotation_path.exists()
+            layout_path = store.company_dir(company_id) / "profile-packs" / company_id / "quotation-layout.xlsx"
+            rules_path = store.company_dir(company_id) / "profile-packs" / company_id / "layout-rules.json"
+            layout_exists = layout_path.is_file()
+            layout_bytes = layout_path.read_bytes() if layout_exists else b""
+            rules_payload = json.loads(rules_path.read_text(encoding="utf-8")) if rules_path.is_file() else {}
+            with zipfile.ZipFile(quotation_path) as zf:
+                workbook_names = set(zf.namelist())
 
         self.assertIn(
             "synthetic-internal-runtime-pricing",
@@ -13568,6 +13677,11 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(brief["signature"]["company_signatory"], "Synthetic Signatory")
         self.assertEqual(brief["line_items"][0]["pricing_keyword"], "synthetic-internal-graphics-row")
         self.assertTrue(quotation_exists)
+        self.assertTrue(layout_exists)
+        self.assertEqual(layout_bytes, KONCEPT_LAYOUT.read_bytes())
+        self.assertEqual(rules_payload["custom_layout_fixture"], True)
+        self.assertIn("xl/styles.xml", workbook_names)
+        self.assertIn("xl/theme/theme1.xml", workbook_names)
         self.assertEqual(result["pricing_matches"][0]["keyword"], "synthetic-internal-graphics-row")
 
     def test_save_pricing_reference_pack_writes_local_reference_files_and_images(self):
