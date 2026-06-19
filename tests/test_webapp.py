@@ -8717,6 +8717,106 @@ assert.strictEqual(resolvedProfileIdForPayload(), "synthetic-exhibition-fixture-
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_current_profile_last_selection_is_used_only_when_available(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "quote-layout";
+const PROFILE_PRESET_PREFIX = "profile::";
+const COMPANY_PROFILE_PRESET_PREFIX = "company::";
+const LAST_SELECTION_STORAGE_KEY = "swooshz_last_selection_v1";
+let savedSelection = JSON.stringify({ presetValue: "company::saved-profile" });
+const window = {
+  localStorage: {
+    getItem(key) { return key === LAST_SELECTION_STORAGE_KEY ? savedSelection : null; },
+  },
+};
+const state = {
+  profileId: "quote-layout",
+  selectedPresetValue: "",
+  profiles: [{
+    id: "quote-layout",
+    label: "Quote Layout",
+    quote_detail_presets: [
+      { id: "default", name: "Default Profile", details: {} },
+      { id: "trade-show", name: "Trade Show", details: {} },
+    ],
+  }],
+  companyProfiles: [{ id: "saved-profile", label: "Saved Profile", defaults: { company: { name: "Saved" } } }],
+};
+const elements = { presetSelect: { value: "", innerHTML: "" } };
+function escapeHtml(value = "") { return String(value); }
+function updatePresetButtons() {}
+
+eval([
+  "safeId",
+  "neutralizeFormulaText",
+  "safeProfileId",
+  "safeProfileLabel",
+  "profilePresetOptionValue",
+  "companyProfileOptionValue",
+  "currentProfile",
+  "templateProfilePresets",
+  "normalizeCompanyProfile",
+  "companyProfilePresets",
+  "defaultProfilePresetId",
+  "defaultPresetOptionValue",
+  "safeLastSelectionJson",
+  "availablePresetValues",
+  "lastSelectedPresetValue",
+  "renderPresetOptions",
+].map(extractFunction).join("\n"));
+
+renderPresetOptions();
+assert.strictEqual(state.selectedPresetValue, "company::saved-profile");
+assert.strictEqual(elements.presetSelect.value, "company::saved-profile");
+
+savedSelection = JSON.stringify({ presetValue: "company::missing-profile" });
+state.selectedPresetValue = "";
+elements.presetSelect.value = "";
+renderPresetOptions();
+assert.strictEqual(state.selectedPresetValue, "profile::default");
+assert.strictEqual(elements.presetSelect.value, "profile::default");
+
+savedSelection = JSON.stringify({ presetValue: "profile::trade-show" });
+state.selectedPresetValue = "";
+elements.presetSelect.value = "";
+renderPresetOptions();
+assert.strictEqual(state.selectedPresetValue, "profile::trade-show");
+assert.strictEqual(elements.presetSelect.value, "profile::trade-show");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_pricing_reference_empty_state_disables_selection_and_next_button(self):
         node = require_node(self)
 
@@ -8748,8 +8848,15 @@ const DEFAULT_PRICING_REFERENCE_ID = "";
 const DEFAULT_TAX_LABEL = "GST";
 const DEFAULT_TAX_RATE = 0.09;
 const DEFAULT_CURRENCY_LABEL = "SGD";
+const LAST_SELECTION_STORAGE_KEY = "swooshz_last_selection_v1";
 const MISSING_PRICING_REFERENCES_MESSAGE = "No pricing references found. Please contact an admin or import a pricing reference in Settings before generating a quote.";
 const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "output"];
+let savedSelection = null;
+const window = {
+  localStorage: {
+    getItem(key) { return key === LAST_SELECTION_STORAGE_KEY ? savedSelection : null; },
+  },
+};
 const state = {
   activeSidePanel: "customer",
   profileId: "",
@@ -8824,6 +8931,8 @@ eval([
   "currentProfile",
   "defaultPricingReference",
   "currentPricingReference",
+  "safeLastSelectionJson",
+  "lastSelectedPricingReference",
   "selectedPricingReferenceTax",
   "selectedPricingReferenceCurrency",
   "taxRatePercentText",
@@ -8845,11 +8954,33 @@ assert.strictEqual(button.textContent, "Next: Quote Company");
 assert.strictEqual(button.disabled, true);
 assert.strictEqual(button["aria-disabled"], "true");
 
-state.pricingReferences = [{ id: "runtime-ref", label: "Runtime Ref", source: "local", tax: { label: "GST", rate: 0.09 }, currency: "SGD" }];
+state.defaultPricingReferenceId = "default-ref";
+state.pricingReferences = [
+  { id: "default-ref", label: "Default Ref", source: "bundled", tax: { label: "GST", rate: 0.09 }, currency: "SGD" },
+  { id: "runtime-ref", label: "Runtime Ref", source: "local", tax: { label: "GST", rate: 0.09 }, currency: "SGD" },
+];
+savedSelection = JSON.stringify({
+  pricingReferenceValue: "local::runtime-ref",
+  pricingReferenceId: "runtime-ref",
+  pricingReferenceSource: "local",
+});
 renderProfileOptions();
 assert.strictEqual(optionSelect.disabled, false);
 assert.strictEqual(state.pricingReferenceId, "runtime-ref");
+assert.strictEqual(state.pricingReferenceSource, "local");
 assert.strictEqual(currentPricingReference().label, "Runtime Ref");
+
+savedSelection = JSON.stringify({
+  pricingReferenceValue: "local::missing-ref",
+  pricingReferenceId: "missing-ref",
+  pricingReferenceSource: "local",
+});
+state.pricingReferenceId = "";
+state.pricingReferenceSource = "";
+renderProfileOptions();
+assert.strictEqual(state.pricingReferenceId, "default-ref");
+assert.strictEqual(state.pricingReferenceSource, "bundled");
+assert.strictEqual(currentPricingReference().label, "Default Ref");
 """
         completed = subprocess.run(
             [node, "-e", script],

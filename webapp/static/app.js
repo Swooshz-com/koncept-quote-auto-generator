@@ -4,6 +4,7 @@ const DEFAULT_PRICING_REFERENCE_ID = "";
 const DEFAULT_SAMPLE_ID = "kent-group";
 const CSRF_HEADER_NAME = "X-Swooshz-CSRF";
 const LEGACY_QUOTE_PRESETS_STORAGE_KEY = "swooshz_quote_detail_presets_v1";
+const LAST_SELECTION_STORAGE_KEY = "swooshz_last_selection_v1";
 const QUOTE_SESSION_STORAGE_KEY = "swooshz_quote_session_v1";
 const QUOTE_SESSION_FILE_DB_NAME = "swooshz_quote_session_files_v1";
 const QUOTE_SESSION_FILE_STORE_NAME = "reference_files";
@@ -798,6 +799,53 @@ function currentPricingReference() {
   return state.pricingReferences.find((reference) => reference.id === pricingReferenceId && (!source || pricingReferenceSelectValue(reference).startsWith(`${source}::`)))
     || state.pricingReferences.find((reference) => reference.id === pricingReferenceId && !source)
     || null;
+}
+
+function safeLastSelectionJson() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LAST_SELECTION_STORAGE_KEY) || "null");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLastSelectionPatch(patch = {}) {
+  try {
+    window.localStorage.setItem(LAST_SELECTION_STORAGE_KEY, JSON.stringify({
+      ...safeLastSelectionJson(),
+      ...patch,
+      version: 1,
+      savedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // Last-used defaults are a convenience only; the quote flow still works without storage.
+  }
+}
+
+function lastSelectedPricingReference() {
+  const saved = safeLastSelectionJson();
+  const savedValue = String(saved.pricingReferenceValue || "").trim();
+  const savedId = String(saved.pricingReferenceId || "").trim();
+  const savedSource = String(saved.pricingReferenceSource || "").trim();
+  return state.pricingReferences.find((reference) => pricingReferenceSelectValue(reference) === savedValue)
+    || state.pricingReferences.find((reference) => (
+      String(reference.id || "").trim() === savedId
+      && (!savedSource || pricingReferenceSelectValue(reference).startsWith(`${savedSource}::`))
+    ))
+    || null;
+}
+
+function persistLastPricingReferenceSelection(reference = currentPricingReference()) {
+  if (!reference) return;
+  const referenceValue = pricingReferenceSelectValue(reference);
+  const selection = pricingReferenceSelectionFromValue(referenceValue);
+  if (!selection.pricingReferenceId) return;
+  saveLastSelectionPatch({
+    pricingReferenceId: selection.pricingReferenceId,
+    pricingReferenceSource: selection.source || "bundled",
+    pricingReferenceValue: referenceValue,
+  });
 }
 
 function resolvedProfileIdForPayload() {
@@ -2197,6 +2245,24 @@ function presetValueFromQuoteDetails(savedDetails = {}) {
   return "";
 }
 
+function availablePresetValues() {
+  return new Set([
+    ...templateProfilePresets().map((preset) => profilePresetOptionValue(preset.id)),
+    ...companyProfilePresets().map((preset) => companyProfileOptionValue(preset.id)),
+  ]);
+}
+
+function lastSelectedPresetValue() {
+  const value = String(safeLastSelectionJson().presetValue || "").trim();
+  return value && availablePresetValues().has(value) ? value : "";
+}
+
+function persistLastProfilePresetSelection(value = state.selectedPresetValue) {
+  const presetValue = String(value || "").trim();
+  if (!presetValue || !availablePresetValues().has(presetValue)) return;
+  saveLastSelectionPatch({ presetValue });
+}
+
 function renderPresetStatus(message = "") {
   if (!elements.presetStatus) return;
   elements.presetStatus.textContent = message || "Load a template, or save/import/export a reusable company profile.";
@@ -2216,7 +2282,7 @@ function renderHeaderLogoPreview() {
 function renderPresetOptions() {
   const builtInPresets = templateProfilePresets();
   const savedPresets = companyProfilePresets();
-  const selectedValue = state.selectedPresetValue || elements.presetSelect.value || "";
+  const selectedValue = state.selectedPresetValue || elements.presetSelect.value || lastSelectedPresetValue() || "";
   const defaultPreset = builtInPresets.find((preset) => preset.id === "default");
   const defaultOption = defaultPreset
     ? `<option value="${escapeHtml(profilePresetOptionValue(defaultPreset.id))}">${escapeHtml(defaultPreset.name)}</option>`
@@ -2233,10 +2299,7 @@ function renderPresetOptions() {
     builtInOptions ? `<optgroup label="Profile Templates">${builtInOptions}</optgroup>` : "",
     savedOptions ? `<optgroup label="Saved Profiles">${savedOptions}</optgroup>` : "",
   ].join("");
-  const availableValues = new Set([
-    ...builtInPresets.map((preset) => profilePresetOptionValue(preset.id)),
-    ...savedPresets.map((preset) => companyProfileOptionValue(preset.id)),
-  ]);
+  const availableValues = availablePresetValues();
   state.selectedPresetValue = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
   elements.presetSelect.value = state.selectedPresetValue;
   updatePresetButtons();
@@ -2344,6 +2407,7 @@ async function saveCurrentPreset() {
       saved,
     ].sort((left, right) => String(left.label || left.id || "").localeCompare(String(right.label || right.id || ""), undefined, { sensitivity: "base" }));
     state.selectedPresetValue = companyProfileOptionValue(saved.id);
+    persistLastProfilePresetSelection(state.selectedPresetValue);
     elements.presetNameInput.value = saved.label || label;
     renderPresetOptions();
     renderPresetStatus(`Saved "${saved.label || label}".`);
@@ -2363,6 +2427,7 @@ function loadSelectedPreset(options = {}) {
     return;
   }
   state.selectedPresetValue = elements.presetSelect.value || presetOptionValue(preset);
+  persistLastProfilePresetSelection(state.selectedPresetValue);
   const details = preset.details || {};
   const clearsLogo = Boolean(details.company && typeof details.company === "object");
   applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
@@ -2376,7 +2441,7 @@ function loadSelectedPreset(options = {}) {
 }
 
 function loadDefaultProfilePreset(options = {}) {
-  const defaultPreset = defaultPresetOptionValue();
+  const defaultPreset = lastSelectedPresetValue() || defaultPresetOptionValue();
   if (!defaultPreset) return;
   state.selectedPresetValue = defaultPreset;
   elements.presetSelect.value = state.selectedPresetValue;
@@ -2707,10 +2772,10 @@ function renderProfileOptions() {
   elements.profileSelect.innerHTML = references.length
     ? references.map(referenceOption).join("")
     : `<option value="">${escapeHtml(MISSING_PRICING_REFERENCES_MESSAGE)}</option>`;
-  const fallbackReference = currentPricingReference() || defaultPricingReference() || references[0] || null;
-  if (fallbackReference) {
-    state.pricingReferenceId = fallbackReference.id || "";
-    state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(fallbackReference)).source;
+  const preferredReference = currentPricingReference() || lastSelectedPricingReference() || defaultPricingReference() || references[0] || null;
+  if (preferredReference) {
+    state.pricingReferenceId = preferredReference.id || "";
+    state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(preferredReference)).source;
   } else {
     state.pricingReferenceId = "";
     state.pricingReferenceSource = "";
@@ -4578,6 +4643,7 @@ async function savePricingReferenceFromModal(event) {
     if (savedReference.id) {
       state.pricingReferenceId = savedReference.id || "";
       state.pricingReferenceSource = pricingReferenceSelectionFromValue(pricingReferenceSelectValue(savedReference)).source;
+      persistLastPricingReferenceSelection(savedReference);
     }
     syncSelectedPricingReference();
     renderProfileOptions();
@@ -4783,6 +4849,7 @@ function handleProfileSelectionChange() {
   state.pricingReferenceId = nextSelection.pricingReferenceId;
   state.pricingReferenceSource = nextSelection.source;
   syncSelectedPricingReference();
+  persistLastPricingReferenceSelection();
   renderProfileOptions();
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? (canStartAnalysis() ? "ready_to_analyze" : "details_review") : "needs_images");
@@ -8277,6 +8344,7 @@ function wireEvents() {
   elements.resetOutputButton.addEventListener("click", resetOutputDraft);
   elements.presetSelect.addEventListener("change", () => {
     state.selectedPresetValue = elements.presetSelect.value || "";
+    persistLastProfilePresetSelection(state.selectedPresetValue);
     updatePresetButtons();
     renderPresetStatus();
     syncControlStates();

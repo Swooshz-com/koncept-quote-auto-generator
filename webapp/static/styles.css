@@ -1854,8 +1854,12 @@ select:focus {
 }
 
 .basis-section-action-spacer {
+  display: inline-grid;
+  align-self: start;
   width: 38px;
-  height: 28px;
+  min-height: 28px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .basis-section-action-button {
@@ -4789,6 +4793,20 @@ body.privacy-page {
 
   .basis-review-grid {
     column-count: 1;
+  }
+
+  .basis-section-heading {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 17px;
+  }
+
+  .basis-section-heading h4 {
+    grid-column: 1 / -1;
+  }
+
+  .basis-section-actions {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 
   .basis-line-row {
