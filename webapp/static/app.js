@@ -27,7 +27,6 @@ const COMPANY_PROFILE_EXPORT_SCHEMA = "swooshz.quote-company-profile.v1";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
 const REFERENCE_FILE_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf,.pdf";
 const MAX_PRICING_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_PROFILE_LAYOUT_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_REFERENCE_IMAGES = 8;
 const DEFAULT_DATE_LABEL = "Date:";
 const DEFAULT_TERMS_HEADING = "Terms & Conditions:";
@@ -300,8 +299,6 @@ const elements = {
   deletePresetButton: qs("#deletePresetButton"),
   importPresetButton: qs("#importPresetButton"),
   importPresetFile: qs("#importPresetFile"),
-  layoutTemplateButton: qs("#layoutTemplateButton"),
-  layoutTemplateInput: qs("#layoutTemplateInput"),
   exportPresetButton: qs("#exportPresetButton"),
   resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
@@ -2281,24 +2278,6 @@ function renderPresetStatus(message = "") {
   elements.presetStatus.textContent = message || "Load a template, or save/import/export a reusable company profile.";
 }
 
-function isProfileLayoutWorkbookFile(file = {}) {
-  const name = String(file.name || "").toLowerCase();
-  const type = String(file.type || "").toLowerCase();
-  return name.endsWith(".xlsx")
-    || type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-}
-
-function defaultProfileLayoutRules() {
-  return {
-    output: {
-      master_format: "xlsx",
-    },
-    layout: {
-      source: "profile-pack",
-    },
-  };
-}
-
 function profilePackPayloadForSave() {
   return state.pendingProfilePack && typeof state.pendingProfilePack === "object"
     ? state.pendingProfilePack
@@ -2313,48 +2292,6 @@ function importedProfilePackPayload(data = {}) {
 
 function clearPendingProfilePack() {
   state.pendingProfilePack = null;
-}
-
-async function handleLayoutTemplateFileChange() {
-  const file = elements.layoutTemplateInput?.files?.[0];
-  if (!file) return;
-  try {
-    if (file.size > MAX_PROFILE_LAYOUT_FILE_BYTES) {
-      renderPresetStatus("Layout workbook is larger than 10 MB.");
-      return;
-    }
-    if (!isProfileLayoutWorkbookFile(file)) {
-      renderPresetStatus("Upload a .xlsx layout workbook.");
-      return;
-    }
-    state.pendingProfilePack = {
-      quotation_layout: {
-        filename: file.name || "quotation-layout.xlsx",
-        data_url: await fileToDataUrl(file),
-      },
-      layout_rules: {
-        filename: "layout-rules.json",
-        json: defaultProfileLayoutRules(),
-      },
-    };
-    renderPresetStatus(`Layout workbook selected: ${file.name}. Save the profile to keep it.`);
-  } catch (error) {
-    renderPresetStatus(genericFailureMessages(error).join(" "));
-  } finally {
-    if (elements.layoutTemplateInput) elements.layoutTemplateInput.value = "";
-    updatePresetButtons();
-  }
-}
-
-function requestLayoutTemplateFile(event) {
-  event?.preventDefault();
-  if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
-  if (!canManageProfiles()) {
-    renderPresetStatus(profileNoAccessReason());
-    updatePresetButtons();
-    return;
-  }
-  elements.layoutTemplateInput?.click();
 }
 
 function renderHeaderLogoPreview() {
@@ -2454,11 +2391,6 @@ function updatePresetButtons() {
   if (elements.importPresetButton) {
     elements.importPresetButton.disabled = busy;
     elements.importPresetButton.setAttribute("aria-disabled", String(elements.importPresetButton.disabled));
-  }
-  if (elements.layoutTemplateButton) {
-    elements.layoutTemplateButton.disabled = !canManage || busy;
-    elements.layoutTemplateButton.title = canManage ? "Attach a quotation-layout.xlsx to this saved profile." : profileNoAccessReason();
-    elements.layoutTemplateButton.setAttribute("aria-disabled", String(elements.layoutTemplateButton.disabled));
   }
   if (elements.exportPresetButton) {
     elements.exportPresetButton.disabled = busy;
@@ -2802,12 +2734,31 @@ function downloadJsonFile(filename, payload) {
   }
 }
 
-function exportCurrentPreset(event) {
+async function fetchCompanyProfileExport(profileId = "") {
+  const safeId = safeProfileId(profileId, "");
+  if (!safeId) {
+    return { ok: false, data: { errors: ["Select a saved profile to export."] } };
+  }
+  return getJson(`/api/settings/profiles/${encodeURIComponent(safeId)}/export.json`);
+}
+
+async function exportCurrentPreset(event) {
   event?.preventDefault();
   if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
   const selected = selectedPreset();
   const label = elements.presetNameInput?.value || selected?.name || elements.quoteCompanyName?.value || "Company Profile";
-  const payload = exportedCompanyProfilePayload(label);
+  let payload = null;
+  if (selected?.source === "company" && !profilePackPayloadForSave()) {
+    renderPresetStatus(`Exporting "${selected.name || selected.id}"...`);
+    const { ok, data } = await fetchCompanyProfileExport(selected.id);
+    if (!ok) {
+      renderPresetStatus(genericFailureMessages(data).join(" "));
+      return;
+    }
+    payload = data;
+  } else {
+    payload = exportedCompanyProfilePayload(label);
+  }
   const filename = `${safeProfileId(payload.profile.label, "company-profile")}.quote-company-profile.json`;
   downloadJsonFile(filename, payload);
   renderPresetStatus(`Exported "${payload.profile.label}".`);
@@ -4517,7 +4468,7 @@ async function downloadPricingReferenceTemplate(event) {
   try {
     const link = document.createElement("a");
     link.href = templateUrl;
-    link.download = "swooshz-pricing-reference-template.xlsx";
+    link.download = "pricing-reference-template.xlsx";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -8479,8 +8430,6 @@ function wireEvents() {
   });
   elements.importPresetButton?.addEventListener("click", requestPresetImport);
   elements.importPresetFile?.addEventListener("change", handlePresetImportFileChange);
-  elements.layoutTemplateButton?.addEventListener("click", requestLayoutTemplateFile);
-  elements.layoutTemplateInput?.addEventListener("change", handleLayoutTemplateFileChange);
   elements.exportPresetButton?.addEventListener("click", exportCurrentPreset);
   elements.clearCustomerButton.addEventListener("click", clearCustomerDetails);
   elements.clearQuoteCompanyButton.addEventListener("click", clearQuoteCompanyDetails);

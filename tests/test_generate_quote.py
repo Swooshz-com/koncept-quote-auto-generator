@@ -18,6 +18,7 @@ QUOTE_GENERATOR_FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "quote-generator"
 KONCEPT_PROFILE = QUOTE_GENERATOR_FIXTURE_ROOT / "profiles" / "synthetic-exhibition-fixture-template"
 KONCEPT_CATALOG = QUOTE_GENERATOR_FIXTURE_ROOT / "pricing-references" / "synthetic-exhibition-fixture-pricing" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
+REPO_DEFAULT_LAYOUT = ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx"
 SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
@@ -475,7 +476,7 @@ def logo_data_url():
     return SANITIZED_LOGO_DATA_URL
 
 
-def generate_layout_workbook(brief_updates=None):
+def generate_layout_workbook(brief_updates=None, layout_template=KONCEPT_LAYOUT):
     brief = {
         "company_identity": "Koncept Image",
         "quote_date": "2026-06-04",
@@ -534,7 +535,7 @@ def generate_layout_workbook(brief_updates=None):
     )
     tmp = tempfile.TemporaryDirectory()
     path = Path(tmp.name) / "quotation.xlsx"
-    quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
+    quote.write_quote_layout_xlsx(layout_template, path, brief, [line])
     return tmp, path
 
 
@@ -835,6 +836,27 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             ],
             [],
         )
+
+    def test_repo_default_layout_template_generates_complete_quote_workbook(self):
+        tmp, path = generate_layout_workbook(layout_template=REPO_DEFAULT_LAYOUT)
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        self.assertEqual(cell_value(sheet, "A6"), "Sample Client")
+        self.assertEqual(cell_value(sheet, "B12"), "Alex Tan")
+        self.assertEqual(cell_value(sheet, "A18"), "Sample Project")
+        self.assertEqual(cell_value(sheet, "A20"), "Pos.")
+        self.assertEqual(cell_value(sheet, "B20"), "Quantity")
+        self.assertEqual(cell_value(sheet, "C20"), "Service")
+        self.assertEqual(cell_value(sheet, "E20"), "Estimate")
+        self.assertEqual(cell_value(sheet, "E21"), "SGD")
+        self.assertEqual(cell_value(sheet, "D27"), "Total")
+        self.assertEqual(cell_value(sheet, "D28"), "GST 9%")
+        self.assertEqual(cell_value(sheet, "D29"), "Total including GST")
+        self.assertEqual(cell_value(sheet, "B32"), "Koncept Image Pte Ltd")
+        self.assertEqual(cell_value(sheet, "B38"), "Director")
 
     def test_generated_workbook_normalizes_arial_style_fonts(self):
         tmp, path = generate_layout_workbook()

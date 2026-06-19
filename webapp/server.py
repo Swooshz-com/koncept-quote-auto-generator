@@ -52,6 +52,10 @@ import pricing_reference_enrichment
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 GENERATOR_PATH = PROJECT_ROOT / "scripts" / "generate_quote.py"
+TEMPLATES_ROOT = PROJECT_ROOT / "templates"
+DEFAULT_QUOTE_LAYOUT_TEMPLATE_DIR = TEMPLATES_ROOT / "quote-layout"
+DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH = DEFAULT_QUOTE_LAYOUT_TEMPLATE_DIR / "quotation-layout.xlsx"
+DEFAULT_LAYOUT_RULES_TEMPLATE_PATH = DEFAULT_QUOTE_LAYOUT_TEMPLATE_DIR / "layout-rules.json"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
@@ -109,11 +113,11 @@ def discovered_default_pricing_reference_id(
     return discovered_reference
 
 
-BUNDLED_DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json", fallback="")
+BUNDLED_DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json", fallback=DEFAULT_QUOTE_COMPANY_PROFILE_ID)
 BUNDLED_DEFAULT_PRICING_REFERENCE_ID = discovered_default_pricing_reference_id(PRICING_REFERENCES_ROOT, PROFILES_ROOT, fallback="")
 DEFAULT_PROFILE_ID = BUNDLED_DEFAULT_PROFILE_ID
 DEFAULT_PRICING_REFERENCE_ID = BUNDLED_DEFAULT_PRICING_REFERENCE_ID
-PRICING_REFERENCE_TEMPLATE_PATH = LOCAL_PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
+PRICING_REFERENCE_TEMPLATE_PATH = TEMPLATES_ROOT / "pricing-reference" / "pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
 DEFAULT_TMP_ROOT = PROJECT_ROOT / "_tmp" / "webapp"
@@ -3435,7 +3439,7 @@ def pricing_reference_template_sheet_xml(
 def generated_pricing_reference_template_xlsx_bytes() -> bytes:
     pricing_rows = [list(PRICING_REFERENCE_TEMPLATE_COLUMNS), *PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS]
     instruction_rows = [
-        ["Swooshz Pricing Reference Import Template"],
+        ["Pricing Reference Import Template"],
         ["Edit or add pricing rows in the Pricing Reference sheet, then upload this workbook in New Pricing Reference."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
         ["section", "Quotation section, for example Services."],
@@ -3485,7 +3489,10 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
 
 
 def pricing_reference_template_xlsx_bytes() -> bytes:
-    return generated_pricing_reference_template_xlsx_bytes()
+    try:
+        return PRICING_REFERENCE_TEMPLATE_PATH.read_bytes()
+    except OSError:
+        return generated_pricing_reference_template_xlsx_bytes()
 
 
 def pricing_reference_export_cell_value(value: Any) -> str:
@@ -4259,6 +4266,55 @@ def normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if pack_assets:
         normalized["_pack_assets"] = pack_assets
     return normalized
+
+
+def profile_pack_asset_export_payload(profile: ProfilePack) -> dict[str, Any]:
+    pack: dict[str, Any] = {}
+    layout_path = profile.quotation_layout_path
+    if layout_path.is_file():
+        content_type = mimetypes.guess_type(str(layout_path))[0] or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        pack["quotation_layout"] = {
+            "filename": "quotation-layout.xlsx",
+            "data_url": f"data:{content_type};base64,{base64.b64encode(layout_path.read_bytes()).decode('ascii')}",
+        }
+    rules_path = profile.layout_rules_path
+    if rules_path.is_file():
+        rules = load_json_file(rules_path)
+        if rules:
+            pack["layout_rules"] = {
+                "filename": "layout-rules.json",
+                "json": rules,
+            }
+    return pack
+
+
+def company_profile_export_payload(profile_id: str, company_id: str = DEFAULT_COMPANY_ID) -> dict[str, Any] | None:
+    safe_id = safe_resource_id(profile_id, "")
+    if not safe_id:
+        return None
+    store = company_config_store()
+    profile = next(
+        (copy.deepcopy(item) for item in store.list_profiles(company_id) if safe_resource_id(item.get("id"), "") == safe_id),
+        None,
+    )
+    if profile is None:
+        return None
+    exported_profile = {
+        "id": safe_id,
+        "label": clean_text(profile.get("label")) or safe_id,
+        "description": clean_text(profile.get("description")),
+        "defaults": copy.deepcopy(profile.get("defaults")) if isinstance(profile.get("defaults"), dict) else {},
+    }
+    payload: dict[str, Any] = {
+        "schema": COMPANY_PROFILE_EXPORT_SCHEMA,
+        "exported_at": utc_timestamp(),
+        "profile": exported_profile,
+    }
+    profile_pack = load_company_profile_pack(safe_id, company_id) or load_profile_pack(safe_id)
+    pack = profile_pack_asset_export_payload(profile_pack)
+    if pack:
+        payload["pack"] = pack
+    return payload
 
 
 def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
@@ -5348,6 +5404,8 @@ def rate_limit_path_key(path: str) -> str:
     normalized_path = urlparse(path).path
     if re.fullmatch(r"/api/settings/pricing-references/[A-Za-z0-9_-]+", normalized_path):
         return "/api/settings/pricing-references/:id"
+    if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+/export\.json", normalized_path):
+        return "/api/settings/profiles/:id"
     if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+", normalized_path):
         return "/api/settings/profiles/:id"
     return normalized_path
@@ -5858,6 +5916,21 @@ def load_json_file(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def default_profile_config(profile_id: str | None = None) -> dict[str, Any]:
+    resolved_id = safe_resource_id(profile_id, DEFAULT_QUOTE_COMPANY_PROFILE_ID) or DEFAULT_QUOTE_COMPANY_PROFILE_ID
+    return {
+        "id": resolved_id,
+        "label": "Default",
+        "description": "Built-in default quotation profile.",
+        "default_quote_detail_preset": "default",
+        "quote_detail_presets": [{
+            "id": "default",
+            "name": "Default",
+            "details": {},
+        }],
+    }
+
+
 @dataclass(frozen=True)
 class ProfilePack:
     """Resolved quotation profile with runtime-safe asset helpers."""
@@ -5879,8 +5952,12 @@ class ProfilePack:
             profile_dir = root / resolved_id
 
         config = load_json_file(profile_dir / "profile.json")
+        if not config and resolved_id == DEFAULT_QUOTE_COMPANY_PROFILE_ID:
+            config = default_profile_config(resolved_id)
         if not config and resolved_id != DEFAULT_PROFILE_ID:
             return cls.resolve(DEFAULT_PROFILE_ID)
+        if not config and resolved_id == DEFAULT_PROFILE_ID:
+            config = default_profile_config(resolved_id)
 
         profile_id_from_config = safe_resource_id(config.get("id"), resolved_id)
         return cls(profile_id_from_config, profile_dir, dict(config))
@@ -5916,11 +5993,17 @@ class ProfilePack:
 
     @property
     def quotation_layout_path(self) -> Path:
-        return self.asset_path("quotation_layout", "quotation-layout.xlsx")
+        path = self.asset_path("quotation_layout", "quotation-layout.xlsx")
+        if path.is_file() or not DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH.is_file():
+            return path
+        return DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH.resolve()
 
     @property
     def layout_rules_path(self) -> Path:
-        return self.asset_path("layout_rules", "layout-rules.json")
+        path = self.asset_path("layout_rules", "layout-rules.json")
+        if path.is_file() or not DEFAULT_LAYOUT_RULES_TEMPLATE_PATH.is_file():
+            return path
+        return DEFAULT_LAYOUT_RULES_TEMPLATE_PATH.resolve()
 
     @property
     def default_quote_basis(self) -> dict[str, Any]:
@@ -5961,7 +6044,7 @@ class ProfilePack:
                 continue
             preset_id = safe_resource_id(raw.get("id"), "")
             details = copy.deepcopy(raw.get("details")) if isinstance(raw.get("details"), dict) else {}
-            if not preset_id or not details:
+            if not preset_id or (not details and preset_id != "default"):
                 continue
             self.resolve_profile_logo(details)
             presets.append(
@@ -6160,17 +6243,20 @@ def profile_prompt_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, s
 
 def list_profiles() -> list[dict[str, Any]]:
     root = profiles_root()
-    if not root.exists():
-        return []
     profiles: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-    for path in sorted(root.iterdir()):
-        if not path.is_dir() or not PROFILE_ID_RE.fullmatch(path.name):
-            continue
-        profile = load_profile_pack(path.name)
-        if profile.config and profile.id not in seen_ids:
-            profiles.append(profile_public_summary(profile))
-            seen_ids.add(profile.id)
+    default_profile = ProfilePack.resolve(DEFAULT_QUOTE_COMPANY_PROFILE_ID)
+    if default_profile.config:
+        profiles.append(profile_public_summary(default_profile))
+        seen_ids.add(default_profile.id)
+    if root.exists():
+        for path in sorted(root.iterdir()):
+            if not path.is_dir() or not PROFILE_ID_RE.fullmatch(path.name):
+                continue
+            profile = load_profile_pack(path.name)
+            if profile.config and profile.id not in seen_ids:
+                profiles.append(profile_public_summary(profile))
+                seen_ids.add(profile.id)
     return profiles
 
 
@@ -10930,6 +11016,20 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             self.send_json({"pricing_reference": detail})
             return
+        profile_export_match = re.fullmatch(r"/api/settings/profiles/([A-Za-z0-9_-]+)/export\.json", path)
+        if profile_export_match:
+            allowed, error = require_permission("canManageProfiles")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            workspace = default_runtime_workspace()
+            payload = company_profile_export_payload(profile_export_match.group(1), workspace["company"]["id"])
+            if not payload:
+                self.send_json({"error": "Not found"}, status=404)
+                return
+            profile_id = safe_segment(clean_text(payload.get("profile", {}).get("id")), "company-profile")
+            self.send_json_download(f"{profile_id}.quote-company-profile.json", payload)
+            return
         if path == "/api/settings/profiles":
             allowed, error = require_permission("canManageProfiles")
             if not allowed:
@@ -11320,6 +11420,19 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_json_download(self, filename: str, payload: dict[str, Any]) -> None:
+        safe_filename = safe_segment(filename, "company-profile.json")
+        if not safe_filename.lower().endswith(".json"):
+            safe_filename = f"{safe_filename}.json"
+        body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_redirect(self, location: str, status: int = 302, extra_headers: list[tuple[str, str]] | None = None) -> None:
         self.send_response(status)
         self.send_header("Location", location)
@@ -11418,7 +11531,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_pricing_reference_template(self) -> None:
-        filename = "swooshz-pricing-reference-template.xlsx"
+        filename = "pricing-reference-template.xlsx"
         body = pricing_reference_template_xlsx_bytes()
         self.send_xlsx_download(filename, body)
 

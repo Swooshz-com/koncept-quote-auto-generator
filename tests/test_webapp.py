@@ -217,6 +217,25 @@ def empty_addressed_cell_refs_from_xlsx(raw: bytes) -> list[str]:
     return refs
 
 
+def missing_ignorable_namespace_prefixes_from_xlsx(path: Path) -> list[str]:
+    missing: list[str] = []
+    with zipfile.ZipFile(path) as zf:
+        for name in sorted(item for item in zf.namelist() if item.endswith(".xml")):
+            raw = zf.read(name).decode("utf-8", errors="replace")
+            match = re.match(r"\s*(?:<\?xml[^>]*>\s*)?<([A-Za-z0-9_:.-]+)\b([^>]*)>", raw)
+            if not match:
+                continue
+            attrs = match.group(2)
+            ignorable = re.search(r'\bmc:Ignorable="([^"]+)"', attrs)
+            if not ignorable:
+                continue
+            declarations = set(re.findall(r'\bxmlns:([A-Za-z0-9_.-]+)="', attrs))
+            for prefix in ignorable.group(1).split():
+                if prefix not in declarations:
+                    missing.append(f"{name}:{prefix}")
+    return missing
+
+
 def excel_col(index: int) -> str:
     result = ""
     index += 1
@@ -3946,6 +3965,9 @@ class WebappServerTest(unittest.TestCase):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
 
+        expected_path = ROOT / "templates" / "pricing-reference" / "pricing-reference-template.xlsx"
+        self.assertEqual(webapp.PRICING_REFERENCE_TEMPLATE_PATH, expected_path)
+        self.assertEqual(raw, expected_path.read_bytes())
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
         self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         self.assertNotIn("aliases", headers)
@@ -3967,7 +3989,7 @@ class WebappServerTest(unittest.TestCase):
             with urllib.request.urlopen(f"{runner.base_url}/api/pricing-reference/template.xlsx", timeout=3) as response:
                 downloaded = response.read()
                 self.assertEqual(response.headers["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                self.assertIn("swooshz-pricing-reference-template.xlsx", response.headers["Content-Disposition"])
+                self.assertIn("pricing-reference-template.xlsx", response.headers["Content-Disposition"])
         self.assertEqual(webapp.rows_from_xlsx_bytes(downloaded)[0], list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
 
     def test_index_response_versions_static_assets_from_file_mtime(self):
@@ -3979,7 +4001,7 @@ class WebappServerTest(unittest.TestCase):
     def test_pricing_reference_template_upload_accepts_seed_rows(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         result = webapp.validate_pricing_reference_upload({
-            "filename": "swooshz-pricing-reference-template.xlsx",
+            "filename": "pricing-reference-template.xlsx",
             "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
             + base64.b64encode(raw).decode("ascii"),
         })
@@ -4180,7 +4202,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(brief["company"]["header_lines"], ["Line one", "Line two", "", "Line four"])
 
-    def test_fresh_runtime_has_no_repo_backed_pricing_reference_defaults(self):
+    def test_fresh_runtime_keeps_portable_default_profile_without_pricing_reference_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             empty_profiles_root = root / "profiles"
@@ -4189,7 +4211,8 @@ class WebappServerTest(unittest.TestCase):
             empty_pricing_root.mkdir()
             store = webapp.CompanyConfigStore(root / "data")
             with (
-                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", "default"),
+                mock.patch.object(webapp, "BUNDLED_DEFAULT_PROFILE_ID", "default"),
                 mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
                 mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root),
                 mock.patch.object(webapp, "pricing_references_root", return_value=empty_pricing_root),
@@ -4197,13 +4220,18 @@ class WebappServerTest(unittest.TestCase):
                 mock.patch.object(webapp, "company_config_store", return_value=store),
             ):
                 profiles = webapp.list_profiles()
+                default_pack = webapp.load_profile_pack("")
                 pricing_references = webapp.list_pricing_references()
                 profile_id = webapp.profile_id_from_payload({})
                 pricing_reference_id = webapp.pricing_reference_id_from_payload({})
 
-        self.assertEqual(profiles, [])
+        self.assertEqual(profiles[0]["id"], "default")
+        self.assertEqual(profiles[0]["label"], "Default")
+        self.assertEqual(profiles[0]["default_quote_detail_preset"], "default")
+        self.assertEqual(profiles[0]["quote_detail_presets"][0]["id"], "default")
+        self.assertEqual(default_pack.quotation_layout_path, ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx")
         self.assertEqual(pricing_references, [])
-        self.assertEqual(profile_id, "")
+        self.assertEqual(profile_id, "default")
         self.assertEqual(pricing_reference_id, "")
 
     def test_generate_job_blocks_when_selected_pricing_reference_is_missing(self):
@@ -4318,6 +4346,22 @@ class WebappServerTest(unittest.TestCase):
             "koncept-header-logo",
         ):
             self.assertNotIn(removed_real_detail, serialized_profile)
+
+    def test_default_profile_pack_uses_repo_placeholder_template_when_profile_layout_missing(self):
+        expected_layout = ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx"
+        expected_rules = ROOT / "templates" / "quote-layout" / "layout-rules.json"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            empty_profiles_root = Path(tmp) / "profiles"
+            empty_profiles_root.mkdir()
+            with mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root):
+                profile_pack = webapp.load_profile_pack("")
+
+        self.assertTrue(expected_layout.is_file())
+        self.assertTrue(expected_rules.is_file())
+        self.assertEqual(missing_ignorable_namespace_prefixes_from_xlsx(expected_layout), [])
+        self.assertEqual(profile_pack.quotation_layout_path, expected_layout)
+        self.assertEqual(profile_pack.layout_rules_path, expected_rules)
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
         raw_sample = json.loads((ROOT / "fixtures" / "samples" / "kent-group" / "sample.json").read_text(encoding="utf-8"))
@@ -7542,10 +7586,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
         self.assertIn("Load a template, or save/import/export a reusable company profile.", html)
-        self.assertIn('id="layoutTemplateInput"', html)
-        self.assertIn('accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx"', html)
+        self.assertNotIn('id="layoutTemplateInput"', html)
+        self.assertNotIn('id="layoutTemplateButton"', html)
         self.assertIn("pendingProfilePack", js)
-        self.assertIn("handleLayoutTemplateFileChange", js)
+        self.assertIn("fetchCompanyProfileExport", js)
+        self.assertNotIn("handleLayoutTemplateFileChange", js)
         self.assertIn("profilePackPayloadForSave()", js)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
@@ -13318,6 +13363,57 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         loaded_profile = next(item for item in settings_body["company_profiles"] if item["id"] == "default-import")
         self.assertEqual(loaded_profile["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
 
+    def test_company_profile_export_endpoint_embeds_saved_layout_pack(self):
+        profile = webapp.normalize_profile_payload({
+            "id": "portable-layout-profile",
+            "label": "Portable Layout Profile",
+            "defaults": {
+                "company": {
+                    "name": "Portable Layout Quote Co Pte Ltd",
+                    "header_details": "Portable Layout Quote Co Pte Ltd\n1 Fixture Road",
+                    "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                },
+            },
+            "pack": {
+                "quotation_layout": {
+                    "filename": "quotation-layout.xlsx",
+                    "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+                    + base64.b64encode(KONCEPT_LAYOUT.read_bytes()).decode("ascii"),
+                },
+                "layout_rules": {
+                    "filename": "layout-rules.json",
+                    "json": json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8")),
+                },
+            },
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            store.save_profile(webapp.DEFAULT_COMPANY_ID, profile)
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        response = urllib.request.urlopen(
+                            f"{runner.base_url}/api/settings/profiles/portable-layout-profile/export.json",
+                            timeout=3,
+                        )
+                        body = json.loads(response.read().decode("utf-8"))
+                        content_type = response.headers["Content-Type"]
+                        disposition = response.headers["Content-Disposition"]
+
+        layout_payload = body["pack"]["quotation_layout"]
+        rules_payload = body["pack"]["layout_rules"]
+        layout_bytes = base64.b64decode(layout_payload["data_url"].split(",", 1)[1])
+        self.assertTrue(content_type.startswith("application/json"))
+        self.assertIn("portable-layout-profile.quote-company-profile.json", disposition)
+        self.assertEqual(body["schema"], webapp.COMPANY_PROFILE_EXPORT_SCHEMA)
+        self.assertEqual(body["profile"]["id"], "portable-layout-profile")
+        self.assertEqual(body["profile"]["defaults"]["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
+        self.assertEqual(layout_payload["filename"], "quotation-layout.xlsx")
+        self.assertEqual(layout_bytes, KONCEPT_LAYOUT.read_bytes())
+        self.assertEqual(rules_payload["filename"], "layout-rules.json")
+        self.assertEqual(rules_payload["json"]["output"]["master_format"], "xlsx")
+
     def test_imported_profile_logo_data_url_is_written_to_generated_xlsx(self):
         imported_profile = webapp.normalize_profile_payload({
             "schema": "swooshz.quote-company-profile.v1",
@@ -14256,7 +14352,8 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             pricing_root.mkdir()
             store = webapp.CompanyConfigStore(root / "data")
             with (
-                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", "default"),
+                mock.patch.object(webapp, "BUNDLED_DEFAULT_PROFILE_ID", "default"),
                 mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
                 mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
                 mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
@@ -14272,9 +14369,11 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(payload["company_id"], webapp.DEFAULT_COMPANY_ID)
         self.assertEqual(workspace["company"]["display_name"], "Quote Generator Workspace")
         self.assertEqual(workspace["workspace"]["slug"], webapp.DEFAULT_COMPANY_ID)
-        self.assertEqual(payload["default_profile_id"], "")
+        self.assertEqual(payload["default_profile_id"], "default")
         self.assertEqual(payload["default_pricing_reference_id"], "")
-        self.assertEqual(payload["profiles"], [])
+        self.assertEqual(payload["profiles"][0]["id"], "default")
+        self.assertEqual(payload["profiles"][0]["label"], "Default")
+        self.assertEqual(payload["profiles"][0]["default_quote_detail_preset"], "default")
         self.assertEqual(payload["pricing_references"], [])
         self.assertEqual(
             workspace["runtime_dependencies"]["quotation_layout"]["source"],
