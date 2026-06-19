@@ -10387,6 +10387,41 @@ def new_error_reference() -> str:
     return f"ERR-{secrets.token_hex(4).upper()}"
 
 
+GENERIC_REFERENCED_FAILURE_MESSAGE = "Failed. Please try again. Contact support if this keeps happening."
+
+
+def generic_referenced_errors(error_reference: str = "") -> list[str]:
+    reference = clean_text(error_reference)
+    if reference:
+        return [f"{GENERIC_REFERENCED_FAILURE_MESSAGE} Reference: {reference}."]
+    return [GENERIC_REFERENCED_FAILURE_MESSAGE]
+
+
+def failed_result_payload(error_reference: str) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "errors": generic_referenced_errors(error_reference),
+        "error_reference": clean_text(error_reference),
+    }
+
+
+def unexpected_error_log_details(error_reference: str, exc: BaseException | None = None, **details: Any) -> dict[str, Any]:
+    log_details: dict[str, Any] = {"error_reference": clean_text(error_reference)}
+    if exc is not None:
+        log_details["error_type"] = type(exc).__name__
+    for key, value in details.items():
+        if value not in (None, "", [], {}):
+            log_details[key] = value
+    return log_details
+
+
+def ai_error_log_details(error_reference: str, exc: BaseException | str, **details: Any) -> dict[str, Any]:
+    return {
+        **unexpected_error_log_details(error_reference, **details),
+        **ai_failure_metadata(exc, error_reference=error_reference),
+    }
+
+
 def public_job(job: dict[str, Any]) -> dict[str, Any]:
     payload = {
         "job_id": job.get("job_id"),
@@ -10419,15 +10454,15 @@ def finish_draft_job(job_id: str, payload: dict[str, Any]) -> None:
         status = "degraded" if result.get("source") == "local" and result.get("warnings") else "completed"
         set_job_state(job_id, status=status, result=result, errors=[])
     except OpenAIAnalysisError as exc:
-        errors = safe_error_messages([str(exc)])
         error_reference = new_error_reference()
-        write_local_log("draft_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
-        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+        result = failed_result_payload(error_reference)
+        write_local_log("draft_failed", ai_error_log_details(error_reference, exc, job_id=job_id))
+        set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
     except Exception as exc:  # pragma: no cover - defensive worker boundary
-        errors = safe_error_messages([str(exc)])
         error_reference = new_error_reference()
-        write_local_log("draft_worker_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
-        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+        result = failed_result_payload(error_reference)
+        write_local_log("draft_worker_failed", unexpected_error_log_details(error_reference, exc, job_id=job_id))
+        set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
 
 
 def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -10437,10 +10472,10 @@ def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
         status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
         set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
     except Exception as exc:  # pragma: no cover - defensive worker boundary
-        errors = safe_error_messages([str(exc)])
         error_reference = new_error_reference()
-        write_local_log("generate_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
-        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+        result = failed_result_payload(error_reference)
+        write_local_log("generate_failed", unexpected_error_log_details(error_reference, exc, job_id=job_id))
+        set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
 
 
 def finish_basis_chat_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -10448,15 +10483,15 @@ def finish_basis_chat_job(job_id: str, payload: dict[str, Any]) -> None:
         result = answer_basis_chat(payload)
         set_job_state(job_id, status="completed", result=result, errors=result.get("warnings") or [])
     except OpenAIAnalysisError as exc:
-        errors = safe_error_messages([str(exc)])
         error_reference = new_error_reference()
-        write_local_log("basis_chat_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
-        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+        result = failed_result_payload(error_reference)
+        write_local_log("basis_chat_failed", ai_error_log_details(error_reference, exc, job_id=job_id))
+        set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
     except Exception as exc:  # pragma: no cover - defensive worker boundary
-        errors = safe_error_messages([str(exc)])
         error_reference = new_error_reference()
-        write_local_log("basis_chat_worker_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
-        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+        result = failed_result_payload(error_reference)
+        write_local_log("basis_chat_worker_failed", unexpected_error_log_details(error_reference, exc, job_id=job_id))
+        set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
 
 
 def run_job_worker(
@@ -10592,17 +10627,27 @@ def run_quote_job(
         status = "needs_confirmation"
     elif completed.returncode != 0:
         status = "failed"
-    errors_for_response = [] if status == "completed" else safe_error_messages(subprocess_error_lines(completed))
+    generator_error_lines = [] if status == "completed" else safe_error_messages(subprocess_error_lines(completed))
+    error_reference = new_error_reference() if status == "failed" else ""
+    errors_for_response = generic_referenced_errors(error_reference) if status == "failed" else generator_error_lines
 
     if status != "completed":
+        log_details: dict[str, Any] = {
+            "job_id": job_id,
+            "status": status,
+            "return_code": completed.returncode,
+        }
+        if status == "failed":
+            log_details.update({
+                "error_reference": error_reference,
+                "error_count": len(generator_error_lines),
+                "failure_kind": "generator_failed",
+            })
+        else:
+            log_details["errors"] = errors_for_response
         write_local_log(
             "generate_needs_review" if status == "needs_confirmation" else "generate_failed",
-            {
-                "job_id": job_id,
-                "status": status,
-                "return_code": completed.returncode,
-                "errors": errors_for_response,
-            },
+            log_details,
         )
 
     result = {
@@ -10614,7 +10659,9 @@ def run_quote_job(
         "export_status": read_export_status(output_dir / "export_status.txt"),
         "errors": errors_for_response,
     }
-    if configured_app_mode() != "deploy":
+    if error_reference:
+        result["error_reference"] = error_reference
+    if configured_app_mode() != "deploy" and status != "failed":
         result.update({
             "stdout": completed.stdout,
             "stderr": completed.stderr,
@@ -10902,20 +10949,20 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                     result = draft_quote_basis(payload)
                     self.send_json(result)
                 except OpenAIAnalysisError as exc:
-                    errors = safe_error_messages([str(exc)])
                     error_reference = new_error_reference()
-                    write_local_log("draft_failed", {"error_reference": error_reference, "errors": errors})
-                    self.send_json({"status": "failed", "errors": errors, "error_reference": error_reference}, status=502)
+                    result = failed_result_payload(error_reference)
+                    write_local_log("draft_failed", ai_error_log_details(error_reference, exc))
+                    self.send_json(result, status=502)
             return
 
         if parsed.path == "/api/generate":
             try:
                 result = run_quote_job(payload)
             except Exception as exc:  # pragma: no cover - defensive HTTP boundary
-                errors = safe_error_messages([str(exc)])
                 error_reference = new_error_reference()
-                write_local_log("generate_failed", {"error_reference": error_reference, "errors": errors})
-                self.send_json({"status": "failed", "errors": errors, "error_reference": error_reference}, status=500)
+                result = failed_result_payload(error_reference)
+                write_local_log("generate_failed", unexpected_error_log_details(error_reference, exc))
+                self.send_json(result, status=500)
                 return
             if result["status"] == "blocked":
                 self.send_json(result, status=400)

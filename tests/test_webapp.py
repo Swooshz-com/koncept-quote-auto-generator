@@ -492,6 +492,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("PDPA", body)
         self.assertIn("PDPA", baseline)
         self.assertIn("GDPR", baseline)
+        self.assertIn("Terms of Use", baseline)
         css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("body.privacy-page {\n  height: auto;\n  min-height: 100vh;\n  overflow: auto;", css)
         self.assertIn(".privacy-section summary::after", css)
@@ -4548,14 +4549,22 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(job["result"]["ai_failed"])
 
     def test_create_draft_job_failed_result_includes_error_reference(self):
-        with mock.patch.object(webapp, "draft_quote_basis", side_effect=webapp.OpenAIAnalysisError("provider exploded")):
-            created = webapp.create_job("draft", valid_payload())
-            job = wait_for_job(created["job_id"])
+        with mock.patch.object(webapp, "write_local_log") as write_log:
+            with mock.patch.object(webapp, "draft_quote_basis", side_effect=webapp.OpenAIAnalysisError("provider exploded")):
+                created = webapp.create_job("draft", valid_payload())
+                job = wait_for_job(created["job_id"])
 
         self.assertEqual(job["status"], "failed")
         self.assertRegex(job["error_reference"], r"^ERR-[0-9A-F]{8}$")
         self.assertEqual(job["result"]["error_reference"], job["error_reference"])
-        self.assertIn("provider exploded", job["errors"][0])
+        self.assertEqual(job["errors"], webapp.generic_referenced_errors(job["error_reference"]))
+        self.assertNotIn("provider exploded", json.dumps(job))
+        write_log.assert_called()
+        self.assertEqual(write_log.call_args.args[0], "draft_failed")
+        log_details = write_log.call_args.args[1]
+        self.assertEqual(log_details["error_reference"], job["error_reference"])
+        self.assertIn("failure_kind", log_details)
+        self.assertNotIn("provider exploded", json.dumps(log_details))
 
     def test_draft_quote_basis_uses_openai_key_from_env_file(self):
         payload = valid_payload()
@@ -7311,7 +7320,7 @@ class WebappServerTest(unittest.TestCase):
             response = json.loads(urllib.request.urlopen(valid, timeout=3).read().decode("utf-8"))
             self.assertEqual(response["status"], "logged")
 
-    def test_run_quote_job_uses_stderr_when_generator_stdout_has_no_errors(self):
+    def test_run_quote_job_failed_response_uses_generic_reference(self):
         completed = mock.Mock(
             returncode=1,
             stdout="",
@@ -7319,16 +7328,28 @@ class WebappServerTest(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            with mock.patch.object(webapp.subprocess, "run", return_value=completed):
-                result = webapp.run_quote_job(
-                    valid_payload(),
-                    output_root=tmp_path / "out",
-                    tmp_root=tmp_path / "jobs",
-                )
+            with mock.patch.object(webapp, "write_local_log") as write_log:
+                with mock.patch.object(webapp.subprocess, "run", return_value=completed):
+                    result = webapp.run_quote_job(
+                        valid_payload(),
+                        output_root=tmp_path / "out",
+                        tmp_root=tmp_path / "jobs",
+                    )
 
         self.assertEqual(result["status"], "failed")
-        self.assertIn("Quote has too many rows for the preserved layout", "\n".join(result["errors"]))
-        self.assertNotIn("Unexpected local runner error", "\n".join(result["errors"]))
+        self.assertRegex(result["error_reference"], r"^ERR-[0-9A-F]{8}$")
+        self.assertEqual(result["errors"], webapp.generic_referenced_errors(result["error_reference"]))
+        self.assertNotIn("Quote has too many rows", json.dumps(result))
+        self.assertNotIn("Traceback", json.dumps(result))
+        self.assertNotIn("stderr", result)
+        self.assertNotIn("brief_path", result)
+        write_log.assert_called()
+        self.assertEqual(write_log.call_args.args[0], "generate_failed")
+        log_details = write_log.call_args.args[1]
+        self.assertEqual(log_details["error_reference"], result["error_reference"])
+        self.assertEqual(log_details["failure_kind"], "generator_failed")
+        self.assertEqual(log_details["error_count"], 1)
+        self.assertNotIn("Quote has too many rows", json.dumps(log_details))
 
     def test_run_quote_job_delegates_to_generator_and_returns_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -8285,8 +8306,12 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         self.assertIn("return { ok, data, aborted: true }", js)
         self.assertIn("isInterruptedJobPoll", js)
         self.assertIn("handleInterruptedJobPoll", js)
+        self.assertIn("fetchFailureLogDetails", js)
+        self.assertIn('reason: "fetch_failed"', js)
         self.assertNotIn("Local server connection failed", js)
         self.assertNotIn("Local server returned a non-JSON response", js)
+        self.assertNotIn("error.message || String(error)", js)
+        self.assertNotIn('message: data.message || "Failed to fetch"', js)
         self.assertIn('window.addEventListener("pagehide", markPageUnloading)', js)
         self.assertIn('window.addEventListener("beforeunload", handleBeforeUnload)', js)
         self.assertIn("pricingReferenceShouldWarnBeforeUnload", js)
@@ -14372,6 +14397,10 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             with mock.patch.object(webapp.subprocess, "run", return_value=completed):
                 result = webapp.run_quote_job(payload, output_root=Path(tmp) / "out", tmp_root=Path(tmp) / "tmp")
         self.assertEqual(result["status"], "failed")
+        self.assertRegex(result["error_reference"], r"^ERR-[0-9A-F]{8}$")
+        self.assertEqual(result["errors"], webapp.generic_referenced_errors(result["error_reference"]))
+        self.assertNotIn("raw out", json.dumps(result))
+        self.assertNotIn("raw err", json.dumps(result))
         self.assertNotIn("stdout", result)
         self.assertNotIn("stderr", result)
         self.assertNotIn("brief_path", result)

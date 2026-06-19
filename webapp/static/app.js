@@ -981,6 +981,10 @@ function genericFailureMessages(data = {}) {
   return [genericFailureMessage(data)];
 }
 
+function fetchFailureLogDetails(url, details = {}) {
+  return { url, reason: "fetch_failed", ...details };
+}
+
 function setAiStatusBanner(tone, title, message, options = {}) {
   if (tone !== "running") stopAnalysisElapsedTimer();
   const elapsedMarkup = options.elapsed
@@ -7257,9 +7261,9 @@ async function resetOutputDraft() {
   syncControlStates();
 }
 
-function postJsonFetchFailure(url, error) {
+function postJsonFetchFailure(url) {
   if (!state.isPageUnloading) {
-    logClientEvent("client_error", { url, message: error.message || String(error) });
+    logClientEvent("client_error", fetchFailureLogDetails(url));
   }
   return {
     ok: false,
@@ -7267,7 +7271,7 @@ function postJsonFetchFailure(url, error) {
       status: "failed",
       fetch_failed: true,
       page_unloading: state.isPageUnloading,
-      message: error.message || String(error),
+      message: "fetch_failed",
       errors: genericFailureMessages(),
     },
     status: 0,
@@ -7338,9 +7342,8 @@ async function getJson(url, options = {}) {
   try {
     response = await fetch(url);
   } catch (error) {
-    const message = error.message || String(error);
     if (!state.isPageUnloading && options.logFetchFailure !== false) {
-      logClientEvent("client_error", { url, message });
+      logClientEvent("client_error", fetchFailureLogDetails(url));
     }
     return {
       ok: false,
@@ -7348,7 +7351,7 @@ async function getJson(url, options = {}) {
         status: "failed",
         fetch_failed: true,
         page_unloading: state.isPageUnloading,
-        message,
+        message: "fetch_failed",
         errors: genericFailureMessages(),
       },
     };
@@ -7394,11 +7397,7 @@ async function pollJob(jobId, onStatus) {
         continue;
       }
       if (data?.fetch_failed) {
-        logClientEvent("client_error", {
-          url,
-          message: data.message || "Failed to fetch",
-          attempts: fetchFailures + 1,
-        });
+        logClientEvent("client_error", fetchFailureLogDetails(url, { attempts: fetchFailures + 1 }));
       }
       return { ok, data };
     }

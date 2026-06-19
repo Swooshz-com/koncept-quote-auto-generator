@@ -18,6 +18,7 @@ This baseline covers:
 
 - Only collect data required to analyze booth images, draft quote basis rows, manage pricing references, and generate quotation files.
 - Show users a privacy notice before production use and keep it accessible from the app shell.
+- Publish reviewed Terms of Use and data-handling/legal notices before external or customer-facing use; do not expose this internal test app publicly until those product-facing legal surfaces are approved.
 - Treat uploaded images, customer details, generated quotations, and pricing references as confidential business data.
 - Do not expose internal cost, markup, hidden pricing reference fields, stack traces, secrets, raw prompts, raw provider errors, request headers, or private file paths in customer-facing UI.
 - Use role-based access control for pricing reference management, profile management, usage records, and support diagnostics.
@@ -45,6 +46,7 @@ This baseline covers:
 ## Production Launch Checklist
 
 - Publish the current privacy notice and link it from the app shell.
+- Publish reviewed Terms of Use and any required data-handling notice or agreement before external customer access.
 - Replace local-only role simulation with authenticated users and durable account/user IDs.
 - Add database-backed user/account data partitioning with row-level access controls.
 - Add privacy-minimized usage/cost logging per user and account, plus an owner/admin usage view for abuse detection, cost control, and billing support.
