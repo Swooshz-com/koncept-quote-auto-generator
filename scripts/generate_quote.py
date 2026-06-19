@@ -607,7 +607,7 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             match = None
             amount = None
         elif status == "matched" or (status == "ambiguous" and allow_ambiguous):
-            amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0))
+            amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0), 2)
             if status == "ambiguous" and allow_ambiguous:
                 status = "matched-from-ambiguous"
         prepared.append(

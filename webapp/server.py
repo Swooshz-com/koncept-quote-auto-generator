@@ -1379,6 +1379,26 @@ def quote_tax_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {"label": label, "rate": normalize_tax_rate(rate_source)}
 
 
+def quote_currency_from_payload(payload: dict[str, Any]) -> str:
+    runtime_reference = runtime_pricing_reference_from_payload(payload)
+    runtime_currency = clean_text(runtime_reference.get("currency")) if runtime_reference else ""
+    if runtime_currency:
+        return normalize_currency_label(runtime_currency)
+
+    reference = pricing_reference_payload(payload)
+    reference_currency = clean_text(reference.get("currency"))
+    if reference_currency:
+        return normalize_currency_label(reference_currency)
+
+    reference_id = pricing_reference_id_from_payload(payload)
+    if reference_id:
+        pack = load_pricing_reference_pack(reference_id, source=pricing_reference_source_from_payload(payload))
+        pack_currency = clean_text(pack.config.get("currency"))
+        if pack_currency:
+            return normalize_currency_label(pack_currency)
+    return DEFAULT_CURRENCY_LABEL
+
+
 def normalize_currency_label(value: Any) -> str:
     text = clean_text(value).upper()
     text = re.sub(r"[^A-Z]", "", text)
@@ -7850,8 +7870,9 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "header_lines": multiline_list(header_source, preserve_blank=True, html_breaks=True),
             "logo_data_url": header_logo,
         },
+        "currency": quote_currency_from_payload(payload),
         "tax": quote_tax_from_payload(payload),
-        "line_items": sort_line_items_by_pricing_reference_order(payload, normalize_line_items_for_quote_basis_review(payload)),
+        "line_items": normalize_line_items_for_final_brief(payload),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
         "terms_heading": clean_text(quote_text.get("terms_heading")),
         "cheque_payee": clean_text(quote_text.get("cheque_payee")),
@@ -9996,6 +10017,18 @@ def normalize_line_items_for_quote_basis_review(payload: dict[str, Any]) -> list
     )
     line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
     line_items = line_items_aligned_to_quote_basis(line_items, sections, catalog_lookup)
+    return sort_line_items_by_pricing_reference_order(payload, line_items)
+
+
+def normalize_line_items_for_final_brief(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    line_items = normalize_line_items(payload)
+    if not line_items:
+        return []
+
+    sections = normalize_quote_basis_sections(payload, pricing_reference_section_names_for_payload(payload))
+    if sections:
+        catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+        line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
     return sort_line_items_by_pricing_reference_order(payload, line_items)
 
 

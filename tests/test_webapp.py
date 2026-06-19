@@ -14860,6 +14860,68 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         brief = webapp.payload_to_brief(payload)
         self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
 
+    def test_payload_to_brief_uses_reviewed_rows_and_pricing_reference_currency(self):
+        payload = valid_payload()
+        payload["pricing_reference"] = {
+            "id": "synthetic-exhibition-fixture-pricing",
+            "source": "bundled",
+            "currency": "EUR",
+            "tax": {"label": "VAT", "rate": 0.2},
+        }
+        payload["quote_basis"] = {}
+        payload["quote_basis_sections"] = [
+            {
+                "id": "project-scope",
+                "title": "Project Scope",
+                "lines": [
+                    {
+                        "id": "scope-footprint",
+                        "tag": "Custom",
+                        "custom_pricing": True,
+                        "text": "Booth footprint is 9.0mW x 10.5mD, with approximately 7.0m overall height for the main overhead feature.",
+                        "quantity": 94.5,
+                        "unit": "sqm",
+                        "confidence_pct": 90,
+                    }
+                ],
+            },
+            {
+                "id": "floor-design",
+                "title": "Floor Design",
+                "lines": [
+                    {
+                        "id": "floor-carpet",
+                        "tag": "Include",
+                        "text": "[ sqm synthetic carpet tile ] - Reviewed carpet line.",
+                        "quantity": 94.5,
+                        "unit": "sqm",
+                        "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
+                        "catalog_description": "sqm synthetic carpet tile",
+                        "pricing_reference_description": "sqm synthetic carpet tile",
+                    }
+                ],
+            },
+        ]
+        payload["line_items"] = [
+            {
+                "section": "Floor Design",
+                "quantity": 94.5,
+                "unit": "sqm",
+                "description": "sqm synthetic carpet tile",
+                "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
+                "catalog_description": "sqm synthetic carpet tile",
+                "pricing_reference_description": "sqm synthetic carpet tile",
+                "source_basis_line_id": "floor-carpet",
+            }
+        ]
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertEqual(brief["currency"], "EUR")
+        self.assertEqual([item["description"] for item in brief["line_items"]], ["sqm synthetic carpet tile"])
+        self.assertNotIn("Project Scope", {item["section"] for item in brief["line_items"]})
+        self.assertFalse(any("Booth footprint" in item["description"] for item in brief["line_items"]))
+
     def test_pricing_reference_source_keeps_local_and_company_references_separate(self):
         local_item = {
             "id": "local-collision-row",

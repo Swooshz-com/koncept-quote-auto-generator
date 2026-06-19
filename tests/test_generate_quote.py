@@ -1141,7 +1141,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIsNotNone(line.matched_price)
         self.assertEqual(line.matched_price.pricing_id, partition_keyword)
         self.assertEqual(line.matched_price.sale_unit_price, 40.25)
-        self.assertEqual(line.amount, 40)
+        self.assertEqual(line.amount, 40.25)
 
     def test_fractional_information_counter_requires_quantity_review(self):
         rows = [
