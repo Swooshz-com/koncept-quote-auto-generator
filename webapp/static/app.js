@@ -2485,7 +2485,9 @@ function loadSelectedPreset(options = {}) {
 }
 
 function loadDefaultProfilePreset(options = {}) {
-  const defaultPreset = lastSelectedPresetValue() || defaultPresetOptionValue();
+  const defaultPreset = options.preferLastSelection === false
+    ? defaultPresetOptionValue()
+    : lastSelectedPresetValue() || defaultPresetOptionValue();
   if (!defaultPreset) return;
   state.selectedPresetValue = defaultPreset;
   elements.presetSelect.value = state.selectedPresetValue;
@@ -2543,9 +2545,9 @@ function clearQuoteCompanyDetails() {
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   updatePresetButtons();
   renderHeaderLogoPreview();
-  loadDefaultProfilePreset({ silent: true });
+  loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
   syncControlStates();
-  renderPresetStatus("Quote-company defaults reset to the selected company preset.");
+  renderPresetStatus("Quote-company defaults reset to the Default profile template.");
 }
 
 function resetImagesDraft() {
@@ -2583,7 +2585,7 @@ function startNewQuote() {
   renderFiles();
   renderProfileOptions();
   renderPresetOptions();
-  loadDefaultProfilePreset({ silent: true });
+  loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
   renderHeaderLogoPreview();
   renderPresetStatus("Started a new quote.");
   setWorkflowStage("needs_images");

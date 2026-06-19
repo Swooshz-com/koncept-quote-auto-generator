@@ -7658,7 +7658,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(">Reset Draft</button>", html)
         self.assertNotIn(">Reset</button>", html)
         self.assertIn('setInputValue(elements.clientName, "")', js)
-        self.assertIn('renderPresetStatus("Quote-company defaults reset to the selected company preset.")', js)
+        self.assertIn('renderPresetStatus("Quote-company defaults reset to the Default profile template.")', js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
         self.assertNotIn('id="topbarStatus"', html)
@@ -7777,6 +7777,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".quote-details-clear-button", css)
         self.assertIn("loadDefaultProfilePreset", js)
         self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
+        self.assertIn("loadDefaultProfilePreset({ silent: true, preferLastSelection: false })", js)
         self.assertIn("function resetImagesDraft", js)
         self.assertIn("state.images = [];", js)
         self.assertIn('id="savePresetButton"', html)
@@ -8890,6 +8891,63 @@ elements.presetSelect.value = "";
 renderPresetOptions();
 assert.strictEqual(state.selectedPresetValue, "profile:trade-show");
 assert.strictEqual(elements.presetSelect.value, "profile:trade-show");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_reset_quote_company_forces_default_profile_template(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = { selectedPresetValue: "" };
+const elements = { presetSelect: { value: "" } };
+const loaded = [];
+function lastSelectedPresetValue() { return "company:saved-profile"; }
+function defaultPresetOptionValue() { return "profile:default"; }
+function loadSelectedPreset(options = {}) { loaded.push({ value: state.selectedPresetValue, options }); }
+
+eval(extractFunction("loadDefaultProfilePreset"));
+
+loadDefaultProfilePreset({ silent: true });
+assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
+assert.strictEqual(elements.presetSelect.value, "company:saved-profile");
+assert.strictEqual(loaded[0].value, "company:saved-profile");
+
+state.selectedPresetValue = "";
+elements.presetSelect.value = "";
+loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
+assert.strictEqual(state.selectedPresetValue, "profile:default");
+assert.strictEqual(elements.presetSelect.value, "profile:default");
+assert.strictEqual(loaded[1].value, "profile:default");
 """
         completed = subprocess.run(
             [node, "-e", script],
