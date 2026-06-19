@@ -8357,26 +8357,17 @@ function wireEvents() {
       return;
     }
     commitActiveOutputEditor();
-    const existingFile = downloadFileIsFresh() ? state.downloadFile : null;
-    showExcelGeneratingModal(existingFile?.url ? {
+    showExcelGeneratingModal({
       eyebrow: "Quotation export",
-      title: "Downloading Excel",
-      message: "Preparing the workbook download.",
-    } : undefined);
+      title: "Regenerating Excel",
+      message: "Building the workbook from the current reviewed rows.",
+    });
     await waitForUiPaint();
-    if (!downloadFileIsFresh()) {
-      try {
-        await handleGenerate();
-        downloadCurrentExcelFile();
-      } finally {
-        hideExcelGeneratingModal();
-      }
-      return;
-    }
     try {
-      downloadCurrentExcelFile(existingFile);
+      await handleGenerate();
+      downloadCurrentExcelFile();
     } finally {
-      window.setTimeout(hideExcelGeneratingModal, 350);
+      hideExcelGeneratingModal();
     }
   });
   document.addEventListener("keydown", (event) => {
