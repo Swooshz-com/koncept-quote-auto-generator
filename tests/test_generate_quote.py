@@ -1409,6 +1409,15 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertTrue(moved)
         self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
 
+    def test_signature_chunk_reserves_gap_before_page_break(self):
+        start_row, moved = quote.layout_chunk_start_row(
+            quote.FIRST_PRINT_PAGE_END_ROW - 7,
+            quote.LayoutChunk("signature", quote.SIGNATURE_BLOCK_HEIGHT),
+        )
+
+        self.assertTrue(moved)
+        self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+
     def test_layout_extends_quote_table_past_preserved_second_page(self):
         brief = {
             "company_identity": "Koncept Image",

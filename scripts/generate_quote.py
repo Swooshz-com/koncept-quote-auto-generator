@@ -115,7 +115,9 @@ CONTINUATION_TABLE_HEADER_OFFSET = 2
 CONTINUATION_CURRENCY_OFFSET = 3
 CONTINUATION_BODY_OFFSET = 5
 TOTAL_BLOCK_HEIGHT = 3
-SIGNATURE_BLOCK_HEIGHT = 8
+SIGNATURE_CONTENT_HEIGHT = 8
+SIGNATURE_BLOCK_PAGE_GUARD_ROWS = 4
+SIGNATURE_BLOCK_HEIGHT = SIGNATURE_CONTENT_HEIGHT + SIGNATURE_BLOCK_PAGE_GUARD_ROWS
 QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT = "18.7"
 QUOTE_LAYOUT_COLUMN_WIDTHS = {
     1: 6.125,
@@ -2638,7 +2640,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "companyDateLabel", clean_text(signature.get("company_date_label"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
-    last_print_row = printable_last_row(root, acceptance_row + 8, manual_pagination_enabled)
+    last_print_row = printable_last_row(root, acceptance_row + SIGNATURE_CONTENT_HEIGHT, manual_pagination_enabled)
     trim_layout_worksheet(root, last_print_row)
     complete_quote_layout_worksheet(root, last_print_row)
     set_manual_page_breaks(root, last_print_row, manual_pagination_enabled)
