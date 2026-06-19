@@ -167,9 +167,11 @@ SECTIONED_WORKBOOK_COL_GST = 8
 SECTIONED_WORKBOOK_COL_MARKUP = 9
 SECTIONED_WORKBOOK_COL_REMARKS = 11
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
-PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
+PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", "row", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
 PRICING_REFERENCE_EXPORT_COLUMNS = (
-    *PRICING_REFERENCE_TEMPLATE_COLUMNS,
+    "id",
+    *PRICING_REFERENCE_REQUIRED_COLUMNS,
+    "remarks",
     "aliases",
     "match_terms",
     "object_families",
@@ -185,6 +187,7 @@ PRICING_REFERENCE_EXPORT_COLUMNS = (
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
         "example-services-standard-coordination",
+        "1",
         "Services",
         "lot standard project coordination",
         "lot",
@@ -194,6 +197,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     ],
     [
         "example-materials-standard-surface-finish",
+        "2",
         "Materials",
         "sqm standard surface finish",
         "sqm",
@@ -203,6 +207,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     ],
     [
         "example-equipment-standard-device-rental",
+        "3",
         "Equipment Rental",
         "nos. standard device rental",
         "nos",
@@ -2366,6 +2371,7 @@ PRICING_REFERENCE_CATEGORY_ORDER_KEYS = (
     "section_number",
 )
 PRICING_REFERENCE_ITEM_ORDER_KEYS = (
+    "row",
     "item_order",
     "item_index",
     "row_order",
@@ -3530,11 +3536,12 @@ def pricing_reference_template_sheet_xml(
         '<cols>'
         + (
             '<col min="1" max="1" width="0" hidden="1" customWidth="1"/>'
-            '<col min="2" max="2" width="24" customWidth="1"/>'
-            '<col min="3" max="3" width="72" customWidth="1"/>'
-            '<col min="4" max="4" width="14" customWidth="1"/>'
-            '<col min="5" max="6" width="18" customWidth="1"/>'
-            '<col min="7" max="7" width="36" customWidth="1"/>'
+            '<col min="2" max="2" width="10" customWidth="1"/>'
+            '<col min="3" max="3" width="24" customWidth="1"/>'
+            '<col min="4" max="4" width="72" customWidth="1"/>'
+            '<col min="5" max="5" width="14" customWidth="1"/>'
+            '<col min="6" max="7" width="18" customWidth="1"/>'
+            '<col min="8" max="8" width="36" customWidth="1"/>'
             if hide_internal_id else
             '<col min="1" max="1" width="72" customWidth="1"/>'
             '<col min="2" max="2" width="72" customWidth="1"/>'
@@ -3564,6 +3571,7 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
         ["Reference info", "Edit Reference name, Currency, Tax label, and Tax rate in the Reference Info sheet."],
         ["Tax rate format", "Use a decimal rate, for example 0.09 for 9% or 0.2 for 20%."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
+        ["row", "Optional display/order number. Rows with lower numbers appear earlier in the imported reference."],
         ["section", "Quotation section, for example Services."],
         ["description", "Customer-facing wording. Catalog-backed quote basis and output rows will use this exactly."],
         ["unit_hint", "Examples: sqm, m length, no, lot, set."],

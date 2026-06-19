@@ -179,6 +179,8 @@ const state = {
   pendingFeedback: "",
   activeSidePanel: "images",
   downloadFile: null,
+  outputRevision: 0,
+  downloadFileRevision: -1,
   pricingMatches: [],
   pricingIssues: [],
   activeJob: null,
@@ -2040,6 +2042,8 @@ function buildSessionSnapshot() {
     lastAnalysisMode: state.lastAnalysisMode,
     activeSidePanel: state.activeSidePanel,
     downloadFile: state.downloadFile,
+    outputRevision: state.outputRevision,
+    downloadFileRevision: state.downloadFileRevision,
     pricingMatches: state.pricingMatches,
     pricingIssues: state.pricingIssues,
     activeJob: state.activeJob,
@@ -2118,6 +2122,11 @@ async function restoreSessionState() {
   state.lastAnalysisMode = normalizeAnalysisMode(saved.lastAnalysisMode || saved.originalAnalysisSnapshot?.analysis_mode);
   state.aiFailed = Boolean(saved.aiFailed || state.draftSource === "local");
   state.downloadFile = saved.downloadFile || null;
+  state.outputRevision = revisionNumber(saved.outputRevision, 0);
+  state.downloadFileRevision = revisionNumber(
+    saved.downloadFileRevision ?? saved.downloadFile?.output_revision,
+    -1
+  );
   state.pricingMatches = Array.isArray(saved.pricingMatches) ? saved.pricingMatches : [];
   state.pricingIssues = [];
   state.activeJob = saved.activeJob && saved.activeJob.id ? saved.activeJob : null;
@@ -4958,6 +4967,7 @@ function clearGeneratedQuoteState() {
   state.outputRows = [];
   state.originalOutputRows = [];
   state.outputErrors = [];
+  state.outputRevision = 0;
   state.analysisFindings = [];
   state.blockingClarificationQuestions = [];
   state.basisConfirmed = false;
@@ -5135,8 +5145,26 @@ function renderMessages(messages = [], tone = "") {
 
 function setDownloadFiles(files = []) {
   const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || files[0] || null;
-  state.downloadFile = excelFile;
+  state.downloadFileRevision = excelFile ? revisionNumber(state.outputRevision, 0) : -1;
+  state.downloadFile = excelFile ? { ...excelFile, output_revision: state.downloadFileRevision } : null;
   updateDownloadButton();
+}
+
+function revisionNumber(value, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.trunc(number);
+}
+
+function markOutputRowsDirty() {
+  state.outputRevision = revisionNumber(state.outputRevision, 0) + 1;
+  setDownloadFiles([]);
+}
+
+function downloadFileIsFresh(file = state.downloadFile) {
+  if (!file?.url) return false;
+  const fileRevision = revisionNumber(state.downloadFileRevision, -1);
+  return fileRevision >= 0 && fileRevision === revisionNumber(state.outputRevision, 0);
 }
 
 function appIsBusy() {
@@ -5159,13 +5187,14 @@ function waitForUiPaint() {
 function updateDownloadButton() {
   if (!elements.sideDownloadButton) return;
   const file = state.downloadFile;
+  const freshFile = downloadFileIsFresh(file) ? file : null;
   const validation = outputRowsValid();
   const enabled = state.activeSidePanel === "output" && validation.valid && !state.isGenerating && !state.isPreparingOutput;
   elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
   elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
   elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
-  elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";
-  elements.sideDownloadButton.download = file?.url ? file.name || "quotation.xlsx" : "";
+  elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";
+  elements.sideDownloadButton.download = freshFile?.url ? freshFile.name || "quotation.xlsx" : "";
   elements.sideDownloadButton.textContent = "Download Excel";
 }
 
@@ -5815,8 +5844,7 @@ function confirmOutputRowDelete() {
   }
   state.outputRows.splice(index, 1);
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
-  setDownloadFiles([]);
+  markOutputRowsDirty();
   hideOutputDeleteModal();
   const validation = outputRowsValid();
   renderPricingMatches(state.outputRows);
@@ -5987,7 +6015,7 @@ function handleOutputRowEdit(event) {
     [field]: input.value,
   });
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
+  markOutputRowsDirty();
   const validation = outputRowsValid();
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
@@ -6012,7 +6040,7 @@ function commitOutputEditor(editor) {
   }
   state.outputRows[index] = recalculateOutputRow(nextRow);
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
+  markOutputRowsDirty();
   const validation = outputRowsValid();
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
@@ -6030,7 +6058,7 @@ function applyOutputIncludedAction(button) {
     display_price: "Included",
   });
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
+  markOutputRowsDirty();
   const validation = outputRowsValid();
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
@@ -6104,6 +6132,12 @@ function handleOutputCellKeydown(event) {
 
 function handleOutputEditorCommit(event) {
   const editor = event.target.closest("[data-output-editor-field]");
+  if (!editor) return;
+  commitOutputEditor(editor);
+}
+
+function commitActiveOutputEditor() {
+  const editor = elements.pricingMatchesBody?.querySelector("[data-output-editor-field]");
   if (!editor) return;
   commitOutputEditor(editor);
 }
@@ -6480,13 +6514,15 @@ function applyPossiblePricingMatch(sectionId, lineIndex, matchIndex) {
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
-  state.downloadFile = null;
   if (Array.isArray(state.outputRows) && state.outputRows.length && Array.isArray(state.lineItems)) {
     refreshOutputRowsFromLineItems();
     state.lineItems = outputRowsToLineItems();
+    markOutputRowsDirty();
     if (typeof renderPricingMatches === "function") renderPricingMatches(state.outputRows);
     if (typeof renderMatchSummary === "function") renderMatchSummary({ pricing_matches: state.outputRows });
     if (typeof renderOutputValidationMessages === "function") renderOutputValidationMessages(outputRowsValid().errors);
+  } else {
+    setDownloadFiles([]);
   }
   updateQuoteBasisCard("edited");
   syncControlStates();
@@ -6512,7 +6548,7 @@ function retagBasisLine(sectionId, lineIndex, nextTag) {
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
-  state.downloadFile = null;
+  markOutputRowsDirty();
   updateQuoteBasisCard("edited");
   syncControlStates();
 }
@@ -6540,7 +6576,7 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
-  state.downloadFile = null;
+  markOutputRowsDirty();
   updateQuoteBasisCard("edited");
   syncControlStates();
 }
@@ -7383,8 +7419,7 @@ async function resetOutputDraft() {
   state.outputRows = snapshotOutputRows(state.originalOutputRows);
   state.lineItems = outputRowsToLineItems();
   state.outputErrors = [];
-  state.downloadFile = null;
-  setDownloadFiles([]);
+  markOutputRowsDirty();
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(outputRowsValid().errors);
@@ -8321,14 +8356,15 @@ function wireEvents() {
       if (!validation.valid) renderOutputValidationMessages(validation.errors);
       return;
     }
-    const existingFile = state.downloadFile;
+    commitActiveOutputEditor();
+    const existingFile = downloadFileIsFresh() ? state.downloadFile : null;
     showExcelGeneratingModal(existingFile?.url ? {
       eyebrow: "Quotation export",
       title: "Downloading Excel",
       message: "Preparing the workbook download.",
     } : undefined);
     await waitForUiPaint();
-    if (!state.downloadFile?.url) {
+    if (!downloadFileIsFresh()) {
       try {
         await handleGenerate();
         downloadCurrentExcelFile();

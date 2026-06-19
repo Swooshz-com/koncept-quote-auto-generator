@@ -3988,8 +3988,14 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn(["Currency", "SGD"], [row for _row_number, row in sheets[1][1]])
         self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         self.assertNotIn("aliases", headers)
+        self.assertIn("row", headers)
         self.assertGreaterEqual(len(rows), 2)
         self.assertTrue(rows[0]["id"].startswith("example-"))
+        self.assertEqual(rows[0]["row"], "1")
+        self.assertIn(
+            ["row", "Optional display/order number. Rows with lower numbers appear earlier in the imported reference."],
+            [row for _row_number, row in sheets[2][1]],
+        )
         template_text = json.dumps(rows, ensure_ascii=False).lower()
         for customer_specific in (
             "synthetic-exhibition-fixture-template",
@@ -4026,6 +4032,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["layout"], "normalized-pricing-reference")
         self.assertEqual(result["rowCount"], len(webapp.PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS))
+        self.assertEqual(
+            [item["item_order"] for item in result["items"]],
+            list(range(1, len(webapp.PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS) + 1)),
+        )
         self.assertTrue(result["canSave"])
         self.assertNotIn("exampleRows", result)
         self.assertNotIn("example", " ".join(result["warnings"]).lower())
@@ -7907,10 +7917,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("min-height: 420px", css)
         self.assertNotIn("min-height: 360px", css)
         self.assertIn("justify-self: center", css)
-        self.assertIn(".output-match-table th,\n.output-match-table td {\n  padding: 8px 8px;\n  min-width: 0;\n  vertical-align: top;", css)
-        self.assertIn(".output-unit-price-content .output-cell-text {\n  display: inline-grid;\n  align-items: start;", css)
-        self.assertIn(".output-row-actions {\n  min-width: 0;\n  vertical-align: top;", css)
-        self.assertIn(".output-delete-button {\n  vertical-align: top;", css)
+        self.assertIn(".output-match-table th,\n.output-match-table td {\n  padding: 8px 8px;\n  min-width: 0;\n  vertical-align: middle;", css)
+        self.assertIn(".output-unit-price-content .output-cell-text {\n  display: inline-grid;\n  align-items: center;", css)
+        self.assertIn(".output-row-actions {\n  min-width: 0;\n  vertical-align: middle;", css)
+        self.assertIn(".output-delete-button {\n  vertical-align: middle;", css)
         self.assertIn(".secondary-button:disabled", css)
         self.assertIn("normalizeTextNewlines", js)
         self.assertIn("buildAiBasisChatResponse", js)
@@ -8326,6 +8336,9 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("await handleGenerate();", js)
         self.assertIn("downloadCurrentExcelFile();", js)
         self.assertIn("await waitForUiPaint();", download_handler)
+        self.assertIn("commitActiveOutputEditor();", download_handler)
+        self.assertIn("const existingFile = downloadFileIsFresh() ? state.downloadFile : null;", download_handler)
+        self.assertIn("if (!downloadFileIsFresh())", download_handler)
         self.assertIn("title: \"Downloading Excel\"", download_handler)
         self.assertIn("downloadCurrentExcelFile(existingFile);", download_handler)
         self.assertIn("window.setTimeout(hideExcelGeneratingModal, 350);", download_handler)
@@ -10064,7 +10077,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('source: "bundled"', js)
         self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
-        self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
+        self.assertIn('elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";', js)
         generate_body = js.split("async function handleGenerate()", 1)[1].split("async function resumeSavedJob", 1)[0]
         review_generate_body = generate_body.split("if (needsPricingReview) {", 1)[1].split("} else {", 1)[0]
         completed_generate_body = generate_body.split("} else {", 1)[-1].split("syncControlStates();", 1)[0]
@@ -10877,6 +10890,7 @@ function renderOutputValidationMessages() {}
 function renderPricingMatches() {}
 function renderMatchSummary() {}
 function syncControlStates() {}
+function markOutputRowsDirty() { state.downloadFile = null; }
 
 applyOutputIncludedAction({ dataset: { outputRow: "0" } });
 assert.strictEqual(state.outputRows[0].price_mode, "Included");
@@ -10901,6 +10915,123 @@ assert.strictEqual(outputCellDisplayValue(state.outputRows[0], "unit_price_overr
 applyOutputIncludedAction({ dataset: { outputRow: "1" } });
 assert.strictEqual(state.outputRows[0].price_mode, "Included");
 assert.strictEqual(state.outputRows[1].price_mode, "Included");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_output_row_edits_invalidate_download_file_before_next_download(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval([
+  "numberOrNull",
+  "unitPriceEditKind",
+  "effectiveOutputUnitPrice",
+  "formatAmount",
+  "recalculateOutputRow",
+  "normalizeUnit",
+  "cleanCustomerQuoteLineText",
+  "pricingReferenceLineText",
+  "orderNumber",
+  "outputRowsToLineItems",
+  "outputRowsValid",
+  "setDownloadFiles",
+  "revisionNumber",
+  "markOutputRowsDirty",
+  "downloadFileIsFresh",
+  "updateDownloadButton",
+  "commitOutputEditor",
+  "hideOutputDeleteModal",
+  "confirmOutputRowDelete",
+].map(extractFunction).join("\n"));
+
+let downloadButtonState = {};
+const elements = {
+  sideDownloadButton: {
+    classList: { toggle(name, enabled) { downloadButtonState[name] = enabled; } },
+    setAttribute(name, value) { downloadButtonState[name] = value; },
+    getAttribute(name) { return downloadButtonState[name]; },
+    tabIndex: 0,
+    href: "",
+    download: "",
+    textContent: "",
+  },
+  outputDeleteModal: { classList: { remove() {} }, hidden: false },
+};
+const state = {
+  activeSidePanel: "output",
+  outputRows: [
+    { section: "A", description: "First", quantity: "1", unit: "lot", price_mode: "Priced", unit_price_override: "10", catalog_unit_price: "", amount: 10 },
+    { section: "B", description: "Second", quantity: "1", unit: "lot", price_mode: "Priced", unit_price_override: "20", catalog_unit_price: "", amount: 20 },
+  ],
+  lineItems: [],
+  downloadFile: null,
+  outputDeleteRowIndex: 1,
+  isGenerating: false,
+  isPreparingOutput: false,
+  outputRevision: 0,
+  downloadFileRevision: -1,
+};
+function renderOutputValidationMessages() {}
+function renderPricingMatches() {}
+function renderMatchSummary() {}
+function syncControlStates() {}
+function appIsBusy() { return false; }
+
+setDownloadFiles([{ url: "/api/jobs/old/files/quotation.xlsx", name: "quotation.xlsx" }]);
+assert.strictEqual(downloadFileIsFresh(), true);
+assert.strictEqual(elements.sideDownloadButton.href, "/api/jobs/old/files/quotation.xlsx");
+
+commitOutputEditor({
+  dataset: { outputEditorField: "quantity", outputRow: "0" },
+  value: "3",
+  isConnected: true,
+});
+assert.strictEqual(state.outputRevision, 1);
+assert.strictEqual(state.downloadFile, null);
+assert.strictEqual(downloadFileIsFresh(), false);
+assert.strictEqual(elements.sideDownloadButton.href, "#");
+assert.strictEqual(elements.sideDownloadButton.download, "");
+
+setDownloadFiles([{ url: "/api/jobs/new/files/quotation.xlsx", name: "quotation.xlsx" }]);
+assert.strictEqual(downloadFileIsFresh(), true);
+confirmOutputRowDelete();
+assert.strictEqual(state.outputRevision, 2);
+assert.strictEqual(state.outputRows.length, 1);
+assert.strictEqual(state.downloadFile, null);
+assert.strictEqual(downloadFileIsFresh(), false);
+assert.strictEqual(elements.sideDownloadButton.href, "#");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -12166,6 +12297,8 @@ function escapeHtml(value = "") {
 }
 function outputPricingSourceLabel() { return "Pricing reference"; }
 function renderAnalysisFindings() { return ""; }
+function setDownloadFiles() { state.downloadFile = null; }
+function markOutputRowsDirty() { state.downloadFile = null; }
 eval([
   "normalizeAnalysisMode",
   "normalizeTextNewlines",
