@@ -170,9 +170,15 @@ Final reports after repo work must include `Instruction sources used` and `MEMOR
 <!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:BEGIN N8N-AGENT-RULES-ADAPTER v1 -->
 ## n8n Agent Rules Adapter
 
-If the task involves n8n workflows, workflow templates, helper scripts, MCP, import/export, live n8n, credentials, or workflow JSON, stop and load `skills/n8n-agent-rules` before planning or editing.
-If that skill or its full rules are unavailable, stop and report the limitation instead of continuing.
-Do not run live n8n, Docker, import/export, sync, activation, execution, publish/unpublish, credential, deployment, or production actions without explicit current-turn approval naming the target and allowed operation.
+For any n8n workflow, node, expression, credential, workflow JSON, import/export, execution, or MCP task, first load the official n8n Skills entry-point meta-skill, currently `using-n8n-skills`.
+If `using-n8n-skills` is unavailable, report that official n8n Skills are not installed or not available in the session instead of pretending they are.
+For Antigravity/AG2, verify official n8n Skills are visible as an Antigravity plugin-scoped install before relying on them: `C:\Users\<user>\.gemini\config\plugins\n8n-skills\skills\using-n8n-skills\SKILL.md` must exist, `plugin.json` should be BOM-less UTF-8 and use Antigravity's multi-skill plugin object shape, and `installed_version.json` should exist beside it.
+If the local safety skill `skills/n8n-agent-rules` is available, load it after the official entry point and follow its full rules before planning or editing n8n material. If that local safety skill or its full rules are unavailable, stop and report the limitation instead of continuing.
+Use official n8n Skills before n8n MCP tools for workflow design, node configuration, expression syntax, SDK/workflow JSON structure, and validation. Discover available n8n MCP tools before relying on validation, build, update, execution, or inspection capabilities.
+Use `n8n_live` only when explicitly asked to inspect or change the real n8n instance.
+Do not create, update, import, export, execute, activate, deactivate, publish, unpublish, archive, delete, or otherwise mutate live n8n resources without explicit current-turn approval naming the target and allowed operation.
+Never put secrets, tokens, credential values, webhook secrets, private keys, `.env` values, or live n8n export payloads into repo files.
+Keep workflows inactive or unpublished by default unless explicitly requested.
 <!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:END N8N-AGENT-RULES-ADAPTER -->
 
 # Swooshz Quote Generator Rules
