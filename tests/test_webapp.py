@@ -10926,6 +10926,69 @@ assert.strictEqual(state.outputRows[1].price_mode, "Included");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_output_validation_messages_are_visible(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = { outputErrors: [] };
+const elements = { pricingReviewMessages: { innerHTML: "" } };
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+eval(extractFunction("renderOutputValidationMessages"));
+
+renderOutputValidationMessages(["Row 2: Unit price is required.", "Row <3>: Quantity must be greater than 0."]);
+assert.deepStrictEqual(state.outputErrors, [
+  "Row 2: Unit price is required.",
+  "Row <3>: Quantity must be greater than 0.",
+]);
+assert.ok(elements.pricingReviewMessages.innerHTML.includes("message warn"));
+assert.ok(elements.pricingReviewMessages.innerHTML.includes("Row 2: Unit price is required."));
+assert.ok(elements.pricingReviewMessages.innerHTML.includes("Row &lt;3&gt;: Quantity must be greater than 0."));
+
+renderOutputValidationMessages([]);
+assert.deepStrictEqual(state.outputErrors, []);
+assert.strictEqual(elements.pricingReviewMessages.innerHTML, "");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_output_row_edits_invalidate_download_file_before_next_download(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
 
@@ -12892,6 +12955,7 @@ eval([
   "basisLineMetadataMergeKey",
   "basisLineCoreMatches",
   "mergeBasisProposalLineMetadata",
+  "reviewBasisProposalSections",
   "applyBasisChatProposal",
 ].map(extractFunction).join("\n"));
 
@@ -12910,6 +12974,16 @@ state.basisChat.proposal = {
       custom_pricing: true,
       custom_confirmed: true,
     }, {
+      id: "db-drawing",
+      tag: "Include",
+      text: "[ no. single line drawing for DB box ]",
+      quantity: 1,
+      unit: "nos",
+      pricing_keyword: "electrical-db-drawing",
+      catalog_description: "no. single line drawing for DB box",
+      pricing_reference_description: "no. single line drawing for DB box",
+      catalog_unit_price: 600,
+    }, {
       id: "custom-counter",
       tag: "Custom",
       text: "Curved reception counter with Kent logo panel, teal trim and illuminated blue plinth.",
@@ -12924,9 +12998,15 @@ applyBasisChatProposal();
 const editedLine = state.quoteBasisSections[0].lines[0];
 assert.strictEqual(editedLine.text.includes("above 5m"), true);
 assert.strictEqual(editedLine.pricing_keyword, undefined);
-const untouchedLine = state.quoteBasisSections[0].lines[1];
+assert.strictEqual(editedLine.tag, "Custom");
+assert.strictEqual(editedLine.custom_confirmed, false);
+const newCatalogLine = state.quoteBasisSections[0].lines[1];
+assert.strictEqual(newCatalogLine.tag, "Confirm");
+assert.strictEqual(newCatalogLine.pricing_keyword, "electrical-db-drawing");
+const untouchedLine = state.quoteBasisSections[0].lines[2];
 assert.strictEqual(untouchedLine.possible_pricing_matches.length, 1);
 assert.strictEqual(untouchedLine.possible_pricing_matches[0].pricing_keyword, "counter-laminated");
+assert.deepStrictEqual(state.outputRows, []);
 assert.strictEqual(state.overlayClosed, true);
 assert.strictEqual(state.synced, true);
 """

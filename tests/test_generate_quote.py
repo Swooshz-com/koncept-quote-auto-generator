@@ -1394,11 +1394,16 @@ class GenerateQuoteRowsTest(unittest.TestCase):
     def test_layout_print_area_trims_trailing_blank_manual_page(self):
         root = ET.Element(f"{NS_MAIN}worksheet")
         ET.SubElement(root, f"{NS_MAIN}sheetData")
-        quote.set_ooxml_cell(root, 183, 1, "payload")
-
-        self.assertEqual(quote.manual_page_break_ids(184), [61, 122, 183])
-        self.assertEqual(quote.printable_last_row(root, 184, True), 183)
-        self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, 184, True)), [61, 122])
+        third_break = quote.CONTINUATION_PAGE_START_ROW + (quote.CONTINUATION_PAGE_HEIGHT * 2) - 1
+        quote.set_ooxml_cell(root, third_break, 1, "payload")
+        expected_breaks = [
+            quote.FIRST_PRINT_PAGE_END_ROW,
+            quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT - 1,
+            third_break,
+        ]
+        self.assertEqual(quote.manual_page_break_ids(third_break + 1), expected_breaks)
+        self.assertEqual(quote.printable_last_row(root, third_break + 1, True), third_break)
+        self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, third_break + 1, True)), expected_breaks[:2])
 
     def test_layout_chunk_moves_to_continuation_body_below_repeated_header(self):
         start_row, moved = quote.layout_chunk_start_row(
@@ -1469,7 +1474,13 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreater(total_row, last_item_row)
         self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
         self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 13}")
-        self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertEqual(
+            row_break_ids(sheet)[:2],
+            [
+                quote.FIRST_PRINT_PAGE_END_ROW,
+                quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT - 1,
+            ],
+        )
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_layout_uses_manual_continuation_pages_with_table_headers_only(self):
@@ -1518,11 +1529,19 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         header_refs = find_cell_refs(sheet, "Pos.")
         title_refs = find_cell_refs(sheet, "RE: Large Generated Booth")
 
-        self.assertEqual(header_refs[:3], ["A20", "A64", "A125"])
+        continuation_header_1 = quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_TABLE_HEADER_OFFSET
+        continuation_header_2 = quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT + quote.CONTINUATION_TABLE_HEADER_OFFSET
+        self.assertEqual(header_refs[:3], ["A20", f"A{continuation_header_1}", f"A{continuation_header_2}"])
         self.assertEqual(title_refs, ["A18"])
-        self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertEqual(
+            row_break_ids(sheet)[:2],
+            [
+                quote.FIRST_PRINT_PAGE_END_ROW,
+                quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT - 1,
+            ],
+        )
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
-        for ref in ("E20", "E21", "E64", "E65"):
+        for ref in ("E20", "E21", f"E{continuation_header_1}", f"E{continuation_header_1 + 1}"):
             self.assertEqual(alignment_for_style(styles, cell_style(sheet, ref)).attrib.get("horizontal"), "right")
 
     def test_layout_keeps_totals_together_on_one_manual_page(self):

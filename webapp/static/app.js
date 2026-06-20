@@ -3756,6 +3756,50 @@ function mergeBasisProposalLineMetadata(nextSections = [], currentSections = [])
   });
 }
 
+function reviewBasisProposalSections(nextSections = [], currentSections = []) {
+  const currentBySectionId = new Map();
+  const currentBySectionTitle = new Map();
+  (Array.isArray(currentSections) ? currentSections : []).forEach((section) => {
+    if (!section || typeof section !== "object") return;
+    const sectionId = String(section.id || "").trim();
+    if (sectionId) currentBySectionId.set(sectionId, section);
+    const titleKey = basisDisplayTitle(section.title || "").toLowerCase();
+    if (titleKey) currentBySectionTitle.set(titleKey, section);
+  });
+  return (Array.isArray(nextSections) ? nextSections : []).map((section) => {
+    const currentSection = currentBySectionId.get(String(section?.id || "").trim())
+      || currentBySectionTitle.get(basisDisplayTitle(section?.title || "").toLowerCase())
+      || null;
+    const currentLines = Array.isArray(currentSection?.lines) ? currentSection.lines : [];
+    const currentByLineKey = new Map();
+    currentLines.forEach((line) => {
+      const key = basisLineMetadataMergeKey(line);
+      if (key) currentByLineKey.set(key, line);
+    });
+    return {
+      ...section,
+      lines: (Array.isArray(section.lines) ? section.lines : []).map((line, index) => {
+        const key = basisLineMetadataMergeKey(line);
+        const currentLine = (key && currentByLineKey.get(key)) || currentLines[index] || null;
+        if (currentLine && basisLineCoreMatches(currentLine, line)) return line;
+        const tag = normalizeBasisTag(line.tag);
+        const customPricing = isCustomPricingBasisLine(line);
+        if (tag === "Include") {
+          return {
+            ...line,
+            tag: customPricing ? "Custom" : "Confirm",
+            ...(customPricing ? { custom_pricing: true, custom_confirmed: false } : {}),
+          };
+        }
+        if (tag === "Custom") {
+          return { ...line, custom_pricing: true, custom_confirmed: false };
+        }
+        return line;
+      }),
+    };
+  });
+}
+
 function normalizeOutputRow(row = {}) {
   const priceMode = row.price_mode === "Included" || String(row.display_price || "").toLowerCase() === "included"
     ? "Included"
@@ -5859,8 +5903,12 @@ function deleteOutputRow(index) {
 
 function renderOutputValidationMessages(errors = state.outputErrors) {
   if (!elements.pricingReviewMessages) return;
-  state.outputErrors = errors;
-  elements.pricingReviewMessages.innerHTML = "";
+  state.outputErrors = Array.isArray(errors)
+    ? errors.map((error) => String(error || "").trim()).filter(Boolean)
+    : [];
+  elements.pricingReviewMessages.innerHTML = state.outputErrors
+    .map((error) => `<div class="message warn">${escapeHtml(error)}</div>`)
+    .join("");
 }
 
 function rowNeedsManualInput(row = {}) {
@@ -7132,16 +7180,21 @@ function applyBasisChatProposal() {
   const proposal = state.basisChat.proposal;
   if (!proposal) return;
   state.basisConfirmed = false;
-  state.quoteBasisSections = mergeBasisProposalLineMetadata(
+  const currentSections = state.quoteBasisSections;
+  const mergedSections = mergeBasisProposalLineMetadata(
     normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quoteBasis || state.quoteBasisSections),
-    state.quoteBasisSections
+    currentSections
   );
+  state.quoteBasisSections = reviewBasisProposalSections(mergedSections, currentSections);
   state.quoteBasis = { ...cloneQuoteBasis(proposal.quoteBasis || state.quoteBasis), ...quoteBasisFromSections(state.quoteBasisSections) };
   state.lineItems = Array.isArray(proposal.lineItems) ? proposal.lineItems.map(normalizeLineItem) : [];
-  state.outputRows = Array.isArray(proposal.outputRows) ? proposal.outputRows.map(normalizeOutputRow) : [];
+  state.outputRows = [];
   state.originalOutputRows = [];
   state.outputErrors = [];
   setDownloadFiles([]);
+  if (typeof renderPricingMatches === "function") renderPricingMatches([]);
+  if (typeof renderMatchSummary === "function") renderMatchSummary({});
+  if (typeof clearPricingReviewMessages === "function") clearPricingReviewMessages();
   updateQuoteBasisCard("edited");
   setSidePanel("basis", { force: true });
   resetBasisChatProposal();
