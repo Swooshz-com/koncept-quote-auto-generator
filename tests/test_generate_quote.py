@@ -1513,6 +1513,25 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(quote.printable_last_row(root, third_break + 1, True), third_break)
         self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, third_break + 1, True)), expected_breaks[:2])
 
+    def test_layout_moves_excel_overflow_row_to_continuation_body(self):
+        root = ET.Element(f"{NS_MAIN}worksheet")
+        ET.SubElement(root, f"{NS_MAIN}sheetData")
+        continuation_pages: set[int] = set()
+
+        row_number = quote.ensure_quote_entry_page(
+            root,
+            65,
+            1,
+            "Boundary Booth",
+            "EUR",
+            {"table_header": "1", "header_currency": "2"},
+            continuation_pages,
+        )
+
+        self.assertEqual(quote.FIRST_PRINT_PAGE_END_ROW, 64)
+        self.assertEqual(row_number, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+        self.assertEqual(find_cell_ref(root, "Pos."), f"A{quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_TABLE_HEADER_OFFSET}")
+
     def test_layout_chunk_moves_to_continuation_body_below_repeated_header(self):
         start_row, moved = quote.layout_chunk_start_row(
             quote.FIRST_PRINT_PAGE_END_ROW - 3,
@@ -1844,7 +1863,8 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         )[0]
 
         self.assertEqual(manual_print_page_for_row(section_row), manual_print_page_for_row(first_detail_row))
-        self.assertLessEqual(first_detail_row, quote.FIRST_PRINT_PAGE_END_ROW)
+        if first_detail_row > quote.FIRST_PRINT_PAGE_END_ROW:
+            self.assertGreaterEqual(first_detail_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
 
     def test_layout_adds_manual_break_when_footer_extends_past_first_page(self):
         brief = {

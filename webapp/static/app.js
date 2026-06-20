@@ -6522,8 +6522,8 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
       </div>
       ${renderAnalysisFindings()}
       ${renderBasisConfirmSummary(sections)}
-      ${dimensionDisplay}
       ${renderBasisTagLegend()}
+      ${dimensionDisplay}
       ${reviewSections.length ? `
         <div class="basis-review-grid">
           ${reviewSections.map((section) => `

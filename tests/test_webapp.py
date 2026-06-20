@@ -8349,6 +8349,7 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
+        self.assertLess(html.index('id="matchSummary"'), html.index('id="pricingReviewMessages"'))
         self.assertIn('setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok")', js)
         self.assertIn('setResultStatus("Needs pricing review", "is-warn")', js)
         self.assertIn("state.downloadFile = excelFile", js)
@@ -12664,6 +12665,8 @@ state.quoteBasisSections = [{
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
 const dimensionBasisHtml = renderQuoteBasisMessage(state.quoteBasis, "edited");
 assert.ok(dimensionBasisHtml.includes("basis-visual-display"));
+assert.ok(dimensionBasisHtml.includes("basis-tag-legend"));
+assert.ok(dimensionBasisHtml.indexOf("basis-tag-legend") < dimensionBasisHtml.indexOf("basis-visual-display"));
 assert.ok(dimensionBasisHtml.includes("Booth size 9m width x 10.5m depth; overall floor area 94.5 sqm"));
 assert.ok(!dimensionBasisHtml.includes('class="basis-line-row'));
 assert.ok(!dimensionBasisHtml.includes('data-basis-line-index="0"'));
@@ -12685,6 +12688,7 @@ state.quoteBasisSections = [{
 }];
 const mixedDimensionBasisHtml = renderQuoteBasisMessage(state.quoteBasis, "edited");
 assert.ok(mixedDimensionBasisHtml.includes("basis-visual-display"));
+assert.ok(mixedDimensionBasisHtml.indexOf("basis-tag-legend") < mixedDimensionBasisHtml.indexOf("basis-visual-display"));
 assert.ok(mixedDimensionBasisHtml.includes("sqm needle punch carpet in colour"));
 assert.ok(mixedDimensionBasisHtml.includes('data-basis-line-index="1"'));
 assert.ok(!mixedDimensionBasisHtml.includes('data-basis-line-index="0"'));
