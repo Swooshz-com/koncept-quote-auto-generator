@@ -621,8 +621,12 @@ h3 {
   min-height: 42px;
 }
 
+.workspace-pane-footer.is-output-step {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .workspace-pane-footer.is-output-step #sideBackButton {
-  grid-column: 1 / -1;
+  grid-column: span 2;
 }
 
 .workspace-pane-footer.is-output-step .workspace-download-button {
