@@ -5305,9 +5305,11 @@ function downloadCurrentExcelFile(file = state.downloadFile) {
 
 function viewCurrentPdfFile(file = state.pdfFile) {
   if (!file?.url) return false;
-  const opened = window.open(file.url, "_blank", "noopener");
+  const opened = window.open(file.url, "_blank");
   if (!opened) {
-    window.location.href = file.url;
+    window.location.assign(file.url);
+  } else {
+    opened.opener = null;
   }
   return true;
 }
@@ -7934,7 +7936,8 @@ async function handleGenerate(options = {}) {
   renderMatchSummary({});
   clearPricingReviewMessages();
   syncControlStates();
-  const started = await startJob("generate", buildPayload({ viewPdf }));
+  const jobType = viewPdf ? "generate_pdf" : "generate";
+  const started = await startJob(jobType, buildPayload({ viewPdf }));
   if (!started.ok) {
     state.isGenerating = false;
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
@@ -7943,13 +7946,13 @@ async function handleGenerate(options = {}) {
     syncControlStates();
     return;
   }
-  state.activeJob = { id: started.data.job_id, type: "generate", viewPdf };
+  state.activeJob = { id: started.data.job_id, type: jobType, viewPdf };
   saveSessionState();
 
   const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
-    handleInterruptedJobPoll("generate");
+    handleInterruptedJobPoll(jobType);
     return;
   }
   state.isGenerating = false;
@@ -7980,13 +7983,22 @@ async function handleGenerate(options = {}) {
     renderMatchSummary(data);
   } else {
     setWorkflowStage("completed");
-    setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok");
-    renderMessages([]);
     clearPricingReviewMessages();
     setSidePanel("output", { force: true });
     setDownloadFiles(data.files || []);
     renderPricingMatches(state.outputRows);
     renderMatchSummary({ pricing_matches: state.outputRows });
+    if (viewPdf && !state.pdfFile) {
+      setResultStatus("PDF unavailable", "is-bad");
+      const pdfStatus = data.export_status?.pdf_status || data.export_status?.pdf_readiness || "";
+      const reason = pdfStatus === "workbook_export_unavailable"
+        ? "Workbook PDF export was unavailable, so no PDF was created."
+        : "The export completed but did not return a PDF file.";
+      renderMessages([`${reason} Download Excel is still available.`], "error");
+    } else {
+      setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok");
+      renderMessages([]);
+    }
   }
   syncControlStates();
   return viewPdf ? Boolean(state.pdfFile) : Boolean(state.downloadFile);
@@ -8047,8 +8059,8 @@ async function resumeSavedJob() {
     return;
   }
 
-  if (activeJob.type === "generate") {
-    const viewPdf = activeJob.viewPdf === true;
+  if (activeJob.type === "generate" || activeJob.type === "generate_pdf") {
+    const viewPdf = activeJob.viewPdf === true || activeJob.type === "generate_pdf";
     state.isGenerating = true;
     state.isAnalysisRunning = false;
     setWorkflowStage("generating");

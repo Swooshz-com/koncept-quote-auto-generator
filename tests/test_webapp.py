@@ -7564,7 +7564,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("buildPayload({ viewPdf })", js)
         self.assertIn("view_pdf: options.viewPdf === true", js)
         self.assertIn("viewCurrentPdfFile", js)
-        self.assertNotIn("startJob(\"generate_pdf\"", js)
+        self.assertIn('const jobType = viewPdf ? "generate_pdf" : "generate";', js)
+        self.assertIn("startJob(jobType, buildPayload({ viewPdf }))", js)
         self.assertIn("quotation.pdf", webapp.DOWNLOADABLE_FILES)
         send_download_source = inspect.getsource(webapp.QuoteRunnerHandler.send_download)
         self.assertIn("Content-Disposition", send_download_source)
@@ -8358,12 +8359,18 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("viewCurrentPdfFile", js)
         self.assertIn("showExcelGeneratingModal", js)
         self.assertIn("hideExcelGeneratingModal", js)
-        self.assertIn('state.activeJob = { id: started.data.job_id, type: "generate", viewPdf };', js)
+        self.assertIn('state.activeJob = { id: started.data.job_id, type: jobType, viewPdf };', js)
+        self.assertIn('const jobType = viewPdf ? "generate_pdf" : "generate";', js)
+        self.assertIn('activeJob.type === "generate" || activeJob.type === "generate_pdf"', js)
         self.assertIn('setResultStatus(viewPdf ? "Checking PDF" : "Checking Excel", "is-warn")', js)
+        self.assertIn('setResultStatus("PDF unavailable", "is-bad")', js)
+        self.assertIn("Download Excel is still available.", js)
         self.assertNotIn("openPendingPdfWindow", js)
         self.assertNotIn("navigatePendingPdfWindow", js)
         self.assertNotIn("closePendingPdfWindow", js)
         self.assertNotIn("about:blank", js)
+        self.assertIn('window.open(file.url, "_blank")', js)
+        self.assertIn("window.location.assign(file.url)", js)
         self.assertIn('workspacePaneFooter: qs(".workspace-pane-footer")', js)
         self.assertIn('workspacePaneFooter.classList.toggle("is-output-step", isOutputStep)', js)
         self.assertIn('elements.sideDownloadButton.addEventListener("click", async (event) => {', js)
@@ -13597,6 +13604,16 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         with mock.patch.object(webapp, "run_quote_job", return_value={"status": "completed", "errors": []}) as run:
             with mock.patch.object(webapp, "set_job_state"):
                 webapp.finish_generate_job("job-pdf-view", payload)
+
+        self.assertEqual(run.call_args.kwargs["job_id"], "job-pdf-view")
+        self.assertEqual(run.call_args.kwargs["pdf_mode"], "workbook")
+
+    def test_generate_pdf_job_uses_workbook_pdf_export(self):
+        payload = valid_payload()
+
+        with mock.patch.object(webapp, "run_quote_job", return_value={"status": "completed", "errors": []}) as run:
+            with mock.patch.object(webapp, "set_job_state"):
+                webapp.finish_generate_pdf_job("job-pdf-view", payload)
 
         self.assertEqual(run.call_args.kwargs["job_id"], "job-pdf-view")
         self.assertEqual(run.call_args.kwargs["pdf_mode"], "workbook")
