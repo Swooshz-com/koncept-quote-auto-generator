@@ -108,13 +108,16 @@ WORKSHEET_CHILD_ORDER = (
     "tableParts",
     "extLst",
 )
-FIRST_PRINT_PAGE_END_ROW = 61
-CONTINUATION_PAGE_START_ROW = 62
+FIRST_PRINT_PAGE_END_ROW = 64
+CONTINUATION_PAGE_START_ROW = 65
 CONTINUATION_PAGE_HEIGHT = 61
 CONTINUATION_TABLE_HEADER_OFFSET = 2
 CONTINUATION_CURRENCY_OFFSET = 3
 CONTINUATION_BODY_OFFSET = 5
 TOTAL_BLOCK_HEIGHT = 3
+SIGNATURE_CONTENT_HEIGHT = 8
+SIGNATURE_BLOCK_PAGE_GUARD_ROWS = 4
+SIGNATURE_BLOCK_HEIGHT = SIGNATURE_CONTENT_HEIGHT + SIGNATURE_BLOCK_PAGE_GUARD_ROWS
 QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT = "18.7"
 QUOTE_LAYOUT_COLUMN_WIDTHS = {
     1: 6.125,
@@ -156,7 +159,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--template", type=Path, required=True, help="Pricing catalog JSON path.")
     parser.add_argument("--layout-template", type=Path, required=True, help="Customer quotation layout XLSX path.")
-    parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
+    parser.add_argument("--pdf-mode", choices=("auto", "workbook", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; workbook exports the generated XLSX only; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
     parser.add_argument("--allow-ambiguous", action="store_true", help="Use the best pricing match even when multiple rows match.")
     return parser.parse_args()
 
@@ -193,6 +196,12 @@ class QuoteLine:
     match_candidates: list[PriceRow]
     price_mode: str = "Priced"
     unit_price_override: float | None = None
+
+
+@dataclass(frozen=True)
+class LayoutChunk:
+    name: str
+    height: int
 
 
 @dataclass
@@ -600,7 +609,7 @@ def prepare_lines(brief: dict[str, Any], price_rows: list[PriceRow], allow_ambig
             match = None
             amount = None
         elif status == "matched" or (status == "ambiguous" and allow_ambiguous):
-            amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0))
+            amount = round((quantity_num or 0.0) * (match.sale_unit_price if match else 0.0), 2)
             if status == "ambiguous" and allow_ambiguous:
                 status = "matched-from-ambiguous"
         prepared.append(
@@ -2101,6 +2110,18 @@ def wrapped_description(description: str, width: int = 58) -> list[str]:
     return textwrap.wrap(description, width=width) or [description]
 
 
+def customer_quote_description(description: str) -> str:
+    text = clean_text(description)
+    match = re.match(r"^\[\s*([\s\S]*?)\s*\](?:\s*-\s*([\s\S]+))?$", text)
+    if not match:
+        return text
+    reference = clean_text(match.group(1))
+    detail = clean_text(match.group(2) or "")
+    if reference and detail:
+        return f"{reference} - {detail}"
+    return reference or text
+
+
 def amount_value(line: QuoteLine) -> str | float | None:
     if line.price_mode == "Included":
         return 0.0
@@ -2169,8 +2190,18 @@ def write_continuation_quote_header(
 
 def quote_entry_height(entry: dict[str, Any]) -> int:
     if entry["kind"] == "section":
-        return 2
-    return max(2, len(entry["description_lines"]) + 1)
+        return 1
+    return max(1, len(entry["description_lines"]))
+
+
+def quote_entry_keep_height(entries: list[dict[str, Any]], index: int) -> int:
+    entry = entries[index]
+    height = quote_entry_height(entry)
+    if entry.get("kind") == "section" and index + 1 < len(entries):
+        next_entry = entries[index + 1]
+        if next_entry.get("kind") != "section":
+            height = 2 + quote_entry_height(next_entry)
+    return height
 
 
 def ensure_quote_entry_page(
@@ -2209,6 +2240,12 @@ def summary_block_start_row(row_number: int, block_height: int) -> int:
         return row_number
     page_start = next_continuation_page_start(row_number)
     return page_start + CONTINUATION_BODY_OFFSET
+
+
+def layout_chunk_start_row(row_number: int, chunk: LayoutChunk) -> tuple[int, bool]:
+    if chunk.height <= 0 or row_number + chunk.height - 1 <= manual_page_end_for_row(row_number):
+        return row_number, False
+    return next_continuation_page_start(row_number) + CONTINUATION_BODY_OFFSET, True
 
 
 def manual_page_break_ids(last_row: int) -> list[int]:
@@ -2340,7 +2377,7 @@ def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = 
             "kind": "item",
             "number": f"{section_number}.{detail_number}",
             "quantity": quantity_text(line),
-            "description_lines": wrapped_description(line.description),
+            "description_lines": wrapped_description(customer_quote_description(line.description)),
             "amount": detail_amount,
         })
     for index, entry in enumerate(entries):
@@ -2496,11 +2533,11 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     entries = render_quote_entries(lines, brief)
     continuation_pages: set[int] = set()
     row_number = 22
-    for entry in entries:
+    for index, entry in enumerate(entries):
         row_number = ensure_quote_entry_page(
             root,
             next_quote_row(row_number),
-            quote_entry_height(entry),
+            quote_entry_keep_height(entries, index),
             clean_text(project.get("title")),
             currency,
             layout_styles,
@@ -2608,7 +2645,12 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
             next_text_row += 1
         last_optional_row = next_text_row - 1
 
-    acceptance_row = last_optional_row + 3 if last_optional_row else next_text_row
+    acceptance_candidate_row = last_optional_row + 3 if last_optional_row else next_text_row
+    acceptance_row, acceptance_moved = layout_chunk_start_row(
+        acceptance_candidate_row,
+        LayoutChunk("acceptance_signature", SIGNATURE_BLOCK_HEIGHT),
+    )
+    manual_pagination_enabled = manual_pagination_enabled or acceptance_moved
     set_ooxml_rich_text_cell(root, acceptance_row, 2, brief_rich_text_cell_runs(brief, "quoteCompanyName", clean_text(acceptance.get("company_name")) or company_name), layout_styles["signature_text"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row, 5, brief_rich_text_cell_runs(brief, "acceptanceText", clean_text(acceptance.get("text"))), layout_styles["signature_text"], **footer_rich_text)
     set_ooxml_cell(root, acceptance_row + 4, 2, "_____________________________", layout_styles["signature_line"])
@@ -2620,7 +2662,9 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "companyDateLabel", clean_text(signature.get("company_date_label"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
-    last_print_row = printable_last_row(root, acceptance_row + 8, manual_pagination_enabled)
+    last_content_row = acceptance_row + SIGNATURE_CONTENT_HEIGHT
+    manual_pagination_enabled = manual_pagination_enabled or last_content_row > FIRST_PRINT_PAGE_END_ROW
+    last_print_row = printable_last_row(root, last_content_row, manual_pagination_enabled)
     trim_layout_worksheet(root, last_print_row)
     complete_quote_layout_worksheet(root, last_print_row)
     set_manual_page_breaks(root, last_print_row, manual_pagination_enabled)
@@ -3022,9 +3066,13 @@ def main() -> int:
         print(f"Quotation layout template not found, writing minimal XLSX fallback: {args.layout_template}")
         write_minimal_xlsx(xlsx_path, rows)
     pdf_status = "skipped"
-    if args.pdf_mode == "none" and pdf_path.exists():
+    if pdf_path.exists():
         pdf_path.unlink()
-    if args.pdf_mode == "auto":
+    if args.pdf_mode == "workbook":
+        pdf_status = export_layout_pdf(xlsx_path, pdf_path) or "workbook_export_unavailable"
+        if pdf_status == "workbook_export_unavailable":
+            print("Workbook PDF export unavailable; no fallback PDF was written.")
+    elif args.pdf_mode == "auto":
         pdf_status = export_layout_pdf(xlsx_path, pdf_path) or ""
         if not pdf_status:
             print("Excel/LibreOffice PDF export unavailable, writing styled PDF fallback.")
@@ -3042,10 +3090,12 @@ def main() -> int:
         pdf_status = "fallback_review_only"
     write_export_status(out_dir / "export_status.txt", pdf_status, args.pdf_mode)
     print(f"Wrote {out_dir / 'quotation.xlsx'}")
-    if args.pdf_mode != "none":
+    if args.pdf_mode != "none" and pdf_path.exists():
         print(f"Wrote {out_dir / 'quotation.pdf'}")
     print(f"Wrote {out_dir / 'pricing_matches.csv'}")
     print(f"PDF export status: {pdf_status}")
+    if args.pdf_mode == "workbook" and pdf_status == "workbook_export_unavailable":
+        return 1
     return 0
 
 

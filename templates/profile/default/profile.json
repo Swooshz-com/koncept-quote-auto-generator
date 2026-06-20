@@ -1,0 +1,13 @@
+{
+  "id": "default",
+  "label": "Default",
+  "description": "Built-in default quotation profile.",
+  "default_quote_detail_preset": "default",
+  "quote_detail_presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "details": {}
+    }
+  ]
+}

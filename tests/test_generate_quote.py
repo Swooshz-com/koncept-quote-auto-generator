@@ -18,6 +18,7 @@ QUOTE_GENERATOR_FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "quote-generator"
 KONCEPT_PROFILE = QUOTE_GENERATOR_FIXTURE_ROOT / "profiles" / "synthetic-exhibition-fixture-template"
 KONCEPT_CATALOG = QUOTE_GENERATOR_FIXTURE_ROOT / "pricing-references" / "synthetic-exhibition-fixture-pricing" / "pricing-catalog.json"
 KONCEPT_LAYOUT = KONCEPT_PROFILE / "quotation-layout.xlsx"
+REPO_DEFAULT_LAYOUT = ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx"
 SANITIZED_LOGO_PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
@@ -465,17 +466,17 @@ def manual_print_page_for_row(row_number):
 
 
 def declared_xml_prefixes(xml_text, root_name):
-    match = re.search(rf"<{root_name}\b[^>]*>", xml_text)
+    match = re.search(rf"<(?:[A-Za-z0-9_.-]+:)?{re.escape(root_name)}\b[^>]*>", xml_text)
     if not match:
         raise AssertionError(f"Could not find <{root_name}> start tag")
-    return set(re.findall(r"\sxmlns:([A-Za-z0-9_]+)=", match.group(0)))
+    return set(re.findall(r"\sxmlns:([A-Za-z0-9_.-]+)=", match.group(0)))
 
 
 def logo_data_url():
     return SANITIZED_LOGO_DATA_URL
 
 
-def generate_layout_workbook(brief_updates=None):
+def generate_layout_workbook(brief_updates=None, layout_template=KONCEPT_LAYOUT):
     brief = {
         "company_identity": "Koncept Image",
         "quote_date": "2026-06-04",
@@ -534,7 +535,7 @@ def generate_layout_workbook(brief_updates=None):
     )
     tmp = tempfile.TemporaryDirectory()
     path = Path(tmp.name) / "quotation.xlsx"
-    quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, [line])
+    quote.write_quote_layout_xlsx(layout_template, path, brief, [line])
     return tmp, path
 
 
@@ -836,6 +837,27 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             [],
         )
 
+    def test_repo_default_layout_template_generates_complete_quote_workbook(self):
+        tmp, path = generate_layout_workbook(layout_template=REPO_DEFAULT_LAYOUT)
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        self.assertEqual(cell_value(sheet, "A6"), "Sample Client")
+        self.assertEqual(cell_value(sheet, "B12"), "Alex Tan")
+        self.assertEqual(cell_value(sheet, "A18"), "Sample Project")
+        self.assertEqual(cell_value(sheet, "A20"), "Pos.")
+        self.assertEqual(cell_value(sheet, "B20"), "Quantity")
+        self.assertEqual(cell_value(sheet, "C20"), "Service")
+        self.assertEqual(cell_value(sheet, "E20"), "Estimate")
+        self.assertEqual(cell_value(sheet, "E21"), "SGD")
+        self.assertEqual(cell_value(sheet, "D27"), "Total")
+        self.assertEqual(cell_value(sheet, "D28"), "GST 9%")
+        self.assertEqual(cell_value(sheet, "D29"), "Total including GST")
+        self.assertEqual(cell_value(sheet, "B32"), "Koncept Image Pte Ltd")
+        self.assertEqual(cell_value(sheet, "B38"), "Director")
+
     def test_generated_workbook_normalizes_arial_style_fonts(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)
@@ -938,6 +960,114 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
             self.assertTrue((out_dir / "quotation.xlsx").exists())
             self.assertFalse(stale_pdf.exists())
+
+    def test_workbook_pdf_mode_exports_generated_xlsx_without_fallback(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [
+                {
+                    "section": "Furniture",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": "Furniture package",
+                    "display_price": "Included",
+                }
+            ],
+        }
+        exported_paths = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            brief_path = tmp_path / "brief.json"
+            out_dir = tmp_path / "out"
+            brief_path.write_text(json.dumps(brief), encoding="utf-8")
+
+            def fake_export(xlsx_path, pdf_path):
+                self.assertTrue(xlsx_path.exists())
+                self.assertEqual(xlsx_path.name, "quotation.xlsx")
+                pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+                exported_paths.append((xlsx_path, pdf_path))
+                return "excel_exported"
+
+            with mock.patch.object(sys, "argv", [
+                "generate_quote.py",
+                "--brief",
+                str(brief_path),
+                "--out",
+                str(out_dir),
+                "--template",
+                str(KONCEPT_CATALOG),
+                "--layout-template",
+                str(KONCEPT_LAYOUT),
+                "--pdf-mode",
+                "workbook",
+            ]), mock.patch.object(quote, "export_layout_pdf", side_effect=fake_export), mock.patch.object(
+                quote, "write_styled_pdf_fallback", side_effect=AssertionError("fallback PDF renderer should not run")
+            ), mock.patch.object(quote, "write_text_pdf", side_effect=AssertionError("text PDF fallback should not run")):
+                self.assertEqual(quote.main(), 0)
+
+            self.assertEqual(len(exported_paths), 1)
+            self.assertTrue((out_dir / "quotation.xlsx").exists())
+            self.assertTrue((out_dir / "quotation.pdf").exists())
+            self.assertIn("pdf_mode=workbook", (out_dir / "export_status.txt").read_text(encoding="utf-8"))
+            self.assertIn("pdf_status=excel_exported", (out_dir / "export_status.txt").read_text(encoding="utf-8"))
+
+    def test_layout_strips_catalog_brackets_from_customer_output_descriptions(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [],
+        }
+        lines = [
+            quote.QuoteLine(
+                section="Hospitality",
+                quantity=4,
+                unit="day",
+                description="[ Coffee / Tea and supplies for 100 people per day ]",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+            quote.QuoteLine(
+                section="Hospitality",
+                quantity=1,
+                unit="lot",
+                description="[ Pantry counter ] - Service counter with lockable storage",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        self.assertTrue(find_cell_ref(sheet, "Coffee / Tea and supplies for 100 people per day"))
+        self.assertTrue(find_cell_ref(sheet, "Pantry counter - Service counter with lockable storage"))
+        self.assertFalse(find_cell_ref(sheet, "[ Coffee / Tea and supplies for 100 people per day ]"))
 
     def test_unresolved_manual_display_placeholder_blocks_quotation_output(self):
         brief = {
@@ -1119,7 +1249,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertIsNotNone(line.matched_price)
         self.assertEqual(line.matched_price.pricing_id, partition_keyword)
         self.assertEqual(line.matched_price.sale_unit_price, 40.25)
-        self.assertEqual(line.amount, 40)
+        self.assertEqual(line.amount, 40.25)
 
     def test_fractional_information_counter_requires_quantity_review(self):
         rows = [
@@ -1372,11 +1502,53 @@ class GenerateQuoteRowsTest(unittest.TestCase):
     def test_layout_print_area_trims_trailing_blank_manual_page(self):
         root = ET.Element(f"{NS_MAIN}worksheet")
         ET.SubElement(root, f"{NS_MAIN}sheetData")
-        quote.set_ooxml_cell(root, 183, 1, "payload")
+        third_break = quote.CONTINUATION_PAGE_START_ROW + (quote.CONTINUATION_PAGE_HEIGHT * 2) - 1
+        quote.set_ooxml_cell(root, third_break, 1, "payload")
+        expected_breaks = [
+            quote.FIRST_PRINT_PAGE_END_ROW,
+            quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT - 1,
+            third_break,
+        ]
+        self.assertEqual(quote.manual_page_break_ids(third_break + 1), expected_breaks)
+        self.assertEqual(quote.printable_last_row(root, third_break + 1, True), third_break)
+        self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, third_break + 1, True)), expected_breaks[:2])
 
-        self.assertEqual(quote.manual_page_break_ids(184), [61, 122, 183])
-        self.assertEqual(quote.printable_last_row(root, 184, True), 183)
-        self.assertEqual(quote.manual_page_break_ids(quote.printable_last_row(root, 184, True)), [61, 122])
+    def test_layout_moves_excel_overflow_row_to_continuation_body(self):
+        root = ET.Element(f"{NS_MAIN}worksheet")
+        ET.SubElement(root, f"{NS_MAIN}sheetData")
+        continuation_pages: set[int] = set()
+
+        row_number = quote.ensure_quote_entry_page(
+            root,
+            65,
+            1,
+            "Boundary Booth",
+            "EUR",
+            {"table_header": "1", "header_currency": "2"},
+            continuation_pages,
+        )
+
+        self.assertEqual(quote.FIRST_PRINT_PAGE_END_ROW, 64)
+        self.assertEqual(row_number, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+        self.assertEqual(find_cell_ref(root, "Pos."), f"A{quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_TABLE_HEADER_OFFSET}")
+
+    def test_layout_chunk_moves_to_continuation_body_below_repeated_header(self):
+        start_row, moved = quote.layout_chunk_start_row(
+            quote.FIRST_PRINT_PAGE_END_ROW - 3,
+            quote.LayoutChunk("signature", quote.SIGNATURE_BLOCK_HEIGHT),
+        )
+
+        self.assertTrue(moved)
+        self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+
+    def test_signature_chunk_reserves_gap_before_page_break(self):
+        start_row, moved = quote.layout_chunk_start_row(
+            quote.FIRST_PRINT_PAGE_END_ROW - 7,
+            quote.LayoutChunk("signature", quote.SIGNATURE_BLOCK_HEIGHT),
+        )
+
+        self.assertTrue(moved)
+        self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
 
     def test_layout_extends_quote_table_past_preserved_second_page(self):
         brief = {
@@ -1429,7 +1601,13 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertGreater(total_row, last_item_row)
         self.assertEqual(cell_value(sheet, f"F{total_row}"), "SGD")
         self.assertEqual(defined_name_text(workbook, "_xlnm.Print_Area"), f"Quotation!$A$1:$I${total_row + 13}")
-        self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertEqual(
+            row_break_ids(sheet)[:2],
+            [
+                quote.FIRST_PRINT_PAGE_END_ROW,
+                quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT - 1,
+            ],
+        )
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_layout_uses_manual_continuation_pages_with_table_headers_only(self):
@@ -1464,7 +1642,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 match_status="matched",
                 match_candidates=[],
             )
-            for index in range(1, 41)
+            for index in range(1, 57)
         ]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "quotation.xlsx"
@@ -1478,11 +1656,19 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         header_refs = find_cell_refs(sheet, "Pos.")
         title_refs = find_cell_refs(sheet, "RE: Large Generated Booth")
 
-        self.assertEqual(header_refs[:3], ["A20", "A64", "A125"])
+        continuation_header_1 = quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_TABLE_HEADER_OFFSET
+        continuation_header_2 = quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT + quote.CONTINUATION_TABLE_HEADER_OFFSET
+        self.assertEqual(header_refs[:3], ["A20", f"A{continuation_header_1}", f"A{continuation_header_2}"])
         self.assertEqual(title_refs, ["A18"])
-        self.assertEqual(row_break_ids(sheet)[:2], [61, 122])
+        self.assertEqual(
+            row_break_ids(sheet)[:2],
+            [
+                quote.FIRST_PRINT_PAGE_END_ROW,
+                quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_PAGE_HEIGHT - 1,
+            ],
+        )
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
-        for ref in ("E20", "E21", "E64", "E65"):
+        for ref in ("E20", "E21", f"E{continuation_header_1}", f"E{continuation_header_1 + 1}"):
             self.assertEqual(alignment_for_style(styles, cell_style(sheet, ref)).attrib.get("horizontal"), "right")
 
     def test_layout_keeps_totals_together_on_one_manual_page(self):
@@ -1534,6 +1720,232 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             {manual_print_page_for_row(total_row), manual_print_page_for_row(gst_row), manual_print_page_for_row(grand_row)},
             {manual_print_page_for_row(total_row)},
         )
+
+    def test_layout_keeps_acceptance_signature_block_together_on_one_manual_page(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Signature Boundary Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "acceptance": {
+                "company_name": "Koncept Image Pte Ltd",
+                "text": "We accept the quotation amount and the terms",
+                "person_label": "Person in charge",
+                "stamp_label": "Company name & stamp",
+                "date_label": "Date:",
+            },
+            "signature": {
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 34)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        acceptance_refs = [
+            find_cell_ref(sheet, "Koncept Image Pte Ltd"),
+            find_cell_ref(sheet, "We accept the quotation amount and the terms"),
+            find_cell_ref(sheet, "Francies Cheng"),
+            find_cell_ref(sheet, "Director"),
+            find_cell_ref(sheet, "Person in charge"),
+            find_cell_ref(sheet, "Company name & stamp"),
+            find_cell_ref(sheet, "_____________________________"),
+            find_cell_ref(sheet, "_____________________________________"),
+        ]
+        acceptance_rows = [quote.parse_cell_ref(ref)[0] for ref in acceptance_refs]
+        acceptance_pages = {manual_print_page_for_row(row) for row in acceptance_rows}
+
+        self.assertEqual(acceptance_pages, {manual_print_page_for_row(acceptance_rows[0])})
+        if acceptance_rows[0] > quote.FIRST_PRINT_PAGE_END_ROW:
+            self.assertGreaterEqual(acceptance_rows[0], quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
+
+    def test_layout_keeps_section_header_with_first_detail_before_page_break(self):
+        brief = {
+            "company_identity": "Synthetic Quote Co",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Section Boundary Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "signature": {
+                "company_signatory": "Alex Tan",
+                "company_title": "Director",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"generated component {index}",
+                pricing_keyword="generated component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 17)
+        ]
+        lines.extend([
+            quote.QuoteLine(
+                section="Logistics and Installation",
+                quantity=1,
+                unit="lot",
+                description="Onsite installation and dismantling for complete custom booth build and rental scope.",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+            quote.QuoteLine(
+                section="Logistics and Installation",
+                quantity=1,
+                unit="lot",
+                description="Transportation and handling for booth build materials, graphics, furniture, AV and rental items.",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+        ])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        section_row = quote.parse_cell_ref(find_cell_ref(sheet, "Logistics and Installation"))[0]
+        first_detail_row = quote.parse_cell_ref(
+            find_cell_ref(sheet, "Onsite installation and dismantling for complete custom")
+        )[0]
+
+        self.assertEqual(manual_print_page_for_row(section_row), manual_print_page_for_row(first_detail_row))
+        if first_detail_row > quote.FIRST_PRINT_PAGE_END_ROW:
+            self.assertGreaterEqual(first_detail_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+
+    def test_layout_adds_manual_break_when_footer_extends_past_first_page(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Footer Boundary Booth",
+            },
+            "line_items": [],
+            "terms_heading": "Terms & Conditions:",
+            "payment_terms": [
+                "70% payment upon confirmation and signing of contract.",
+                "30% balance upon handover before show starts",
+                "All cheques should be crossed and made payable to Koncept Images Pte. Ltd.",
+            ],
+            "notes_heading": "Note:",
+            "standard_notes": [
+                "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
+                "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
+                "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
+                "All designs and dimensions are subject to final site verification.",
+                "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
+                "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
+                "Design and Artwork of the graphics are not included in this contract.",
+                "Cancellation of agreement is subject to 75% of the agreement amount.",
+                "All deposit are non-refundable upon of cancellation of agreement.",
+            ],
+            "acceptance": {
+                "company_name": "Koncept Images Pte. Ltd.",
+                "text": "We accept the quotation amount and the terms",
+                "person_label": "Person in charge",
+                "stamp_label": "Company name & stamp",
+                "date_label": "Date:",
+            },
+            "signature": {
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 3 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 10)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        acceptance_rows = [
+            quote.parse_cell_ref(find_cell_ref(sheet, "Koncept Images Pte. Ltd."))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "We accept the quotation amount and the terms"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "_____________________________"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "Francies Cheng"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "Director"))[0],
+        ]
+        breaks = row_break_ids(sheet)
+
+        self.assertEqual(breaks, [quote.FIRST_PRINT_PAGE_END_ROW])
+        self.assertGreater(acceptance_rows[0], quote.FIRST_PRINT_PAGE_END_ROW)
+        self.assertTrue(all(row > breaks[0] for row in acceptance_rows))
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_empty_terms_and_notes_do_not_insert_default_rows(self):
         tmp, path = generate_layout_workbook()

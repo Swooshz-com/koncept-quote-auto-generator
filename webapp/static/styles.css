@@ -621,6 +621,18 @@ h3 {
   min-height: 42px;
 }
 
+.workspace-pane-footer.is-output-step {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.workspace-pane-footer.is-output-step #sideBackButton {
+  grid-column: span 2;
+}
+
+.workspace-pane-footer.is-output-step .workspace-download-button {
+  width: 100%;
+}
+
 .workspace-download-button {
   text-decoration: none;
 }
@@ -1843,11 +1855,13 @@ select:focus {
   align-items: start;
   gap: 8px;
   margin: 0 0 9px;
+  padding-right: 8px;
 }
 
 .basis-section-actions {
   display: grid;
   grid-template-columns: 32px 32px 38px;
+  align-items: start;
   justify-content: end;
   gap: 5px;
   width: var(--basis-action-width);
@@ -1873,6 +1887,7 @@ select:focus {
   color: #213b5c;
   font-size: 13px;
   font-weight: 850;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -2010,6 +2025,13 @@ select:focus {
 }
 
 .basis-line-include .basis-line-text {
+  color: #0a5b3d;
+  font-weight: 650;
+}
+
+.basis-line-include .basis-line-catalog-reference,
+.basis-line-include .basis-line-catalog-detail,
+.basis-line-include .basis-line-catalog-arrow {
   color: #0a5b3d;
   font-weight: 650;
 }
@@ -2203,9 +2225,11 @@ select:focus {
 
 .basis-line-tool,
 .basis-line-tag-button {
+  display: inline-grid;
+  place-items: center;
   align-self: start;
   width: 32px;
-  min-height: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -2478,7 +2502,7 @@ td input {
 .output-match-table td {
   padding: 8px 8px;
   min-width: 0;
-  vertical-align: top;
+  vertical-align: middle;
   overflow-wrap: anywhere;
   line-height: 1.3;
 }
@@ -2583,7 +2607,7 @@ td input {
 
 .output-unit-price-content .output-cell-text {
   display: inline-grid;
-  align-items: start;
+  align-items: center;
   justify-content: center;
   min-height: 28px;
   min-width: 32px;
@@ -5012,12 +5036,12 @@ body.privacy-page {
 
 .output-row-actions {
   min-width: 0;
-  vertical-align: top;
+  vertical-align: middle;
   text-align: center;
 }
 
 .output-delete-button {
-  vertical-align: top;
+  vertical-align: middle;
   min-height: 30px;
   padding: 0 6px;
   border: 1px solid #fecaca;

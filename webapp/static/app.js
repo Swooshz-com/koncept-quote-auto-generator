@@ -179,6 +179,10 @@ const state = {
   pendingFeedback: "",
   activeSidePanel: "images",
   downloadFile: null,
+  pdfFile: null,
+  outputRevision: 0,
+  downloadFileRevision: -1,
+  pdfFileRevision: -1,
   pricingMatches: [],
   pricingIssues: [],
   activeJob: null,
@@ -205,6 +209,7 @@ const state = {
   profileDeleteError: "",
   profileSaveBusy: false,
   profileDeleteBusy: false,
+  pendingProfilePack: null,
   outputDeleteRowIndex: -1,
   permissions: {
     role: "viewer",
@@ -318,9 +323,11 @@ const elements = {
   outputDeleteText: qs("#outputDeleteText"),
   cancelOutputDeleteButton: qs("#cancelOutputDeleteButton"),
   confirmOutputDeleteButton: qs("#confirmOutputDeleteButton"),
+  workspacePaneFooter: qs(".workspace-pane-footer"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
+  sideViewPdfButton: qs("#sideViewPdfButton"),
   excelGeneratingModal: qs("#excelGeneratingModal"),
   excelGeneratingEyebrow: qs("#excelGeneratingEyebrow"),
   excelGeneratingTitle: qs("#excelGeneratingTitle"),
@@ -852,6 +859,15 @@ function resolvedProfileIdForPayload() {
   return String(state.profileId || state.defaultProfileId || DEFAULT_PROFILE_ID).trim() || DEFAULT_PROFILE_ID;
 }
 
+function generationProfileIdForPayload() {
+  const preset = selectedPreset();
+  if (preset?.source === "company") {
+    return safeProfileId(preset.id, resolvedProfileIdForPayload());
+  }
+  const presetProfileId = String(preset?.profile_id || "").trim();
+  return presetProfileId || resolvedProfileIdForPayload();
+}
+
 function syncSelectedPricingReference() {
   const selectedReference = currentPricingReference();
   if (selectedReference) {
@@ -970,6 +986,18 @@ function errorReferenceFrom(data = {}) {
     || data.result?.errorReference
     || ""
   ).trim();
+}
+
+function newClientErrorReference() {
+  const bytes = new Uint8Array(4);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `ERR-${Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
 function genericFailureMessage(data = {}) {
@@ -2018,6 +2046,10 @@ function buildSessionSnapshot() {
     lastAnalysisMode: state.lastAnalysisMode,
     activeSidePanel: state.activeSidePanel,
     downloadFile: state.downloadFile,
+    pdfFile: state.pdfFile,
+    outputRevision: state.outputRevision,
+    downloadFileRevision: state.downloadFileRevision,
+    pdfFileRevision: state.pdfFileRevision,
     pricingMatches: state.pricingMatches,
     pricingIssues: state.pricingIssues,
     activeJob: state.activeJob,
@@ -2096,6 +2128,16 @@ async function restoreSessionState() {
   state.lastAnalysisMode = normalizeAnalysisMode(saved.lastAnalysisMode || saved.originalAnalysisSnapshot?.analysis_mode);
   state.aiFailed = Boolean(saved.aiFailed || state.draftSource === "local");
   state.downloadFile = saved.downloadFile || null;
+  state.pdfFile = saved.pdfFile || null;
+  state.outputRevision = revisionNumber(saved.outputRevision, 0);
+  state.downloadFileRevision = revisionNumber(
+    saved.downloadFileRevision ?? saved.downloadFile?.output_revision,
+    -1
+  );
+  state.pdfFileRevision = revisionNumber(
+    saved.pdfFileRevision ?? saved.pdfFile?.output_revision,
+    -1
+  );
   state.pricingMatches = Array.isArray(saved.pricingMatches) ? saved.pricingMatches : [];
   state.pricingIssues = [];
   state.activeJob = saved.activeJob && saved.activeJob.id ? saved.activeJob : null;
@@ -2272,6 +2314,22 @@ function renderPresetStatus(message = "") {
   elements.presetStatus.textContent = message || "Load a template, or save/import/export a reusable company profile.";
 }
 
+function profilePackPayloadForSave() {
+  return state.pendingProfilePack && typeof state.pendingProfilePack === "object"
+    ? state.pendingProfilePack
+    : null;
+}
+
+function importedProfilePackPayload(data = {}) {
+  const profile = data.profile && typeof data.profile === "object" ? data.profile : {};
+  const pack = data.pack || data.profile_pack || profile.pack || profile.profile_pack;
+  return pack && typeof pack === "object" ? pack : null;
+}
+
+function clearPendingProfilePack() {
+  state.pendingProfilePack = null;
+}
+
 function renderHeaderLogoPreview() {
   if (!elements.headerLogoPreview) return;
   if (state.headerLogo) {
@@ -2396,6 +2454,10 @@ async function saveCurrentPreset() {
     description: "Saved from the Quote Company panel.",
     defaults: collectQuoteCompanyProfileDetails(),
   };
+  const pendingPack = profilePackPayloadForSave();
+  if (pendingPack) {
+    payload.pack = pendingPack;
+  }
   state.profileSaveBusy = true;
   renderPresetStatus(`Saving "${label}"...`);
   updatePresetButtons();
@@ -2413,6 +2475,7 @@ async function saveCurrentPreset() {
     state.selectedPresetValue = companyProfileOptionValue(saved.id);
     persistLastProfilePresetSelection(state.selectedPresetValue);
     elements.presetNameInput.value = saved.label || label;
+    clearPendingProfilePack();
     renderPresetOptions();
     renderPresetStatus(`Saved "${saved.label || label}".`);
   } catch (error) {
@@ -2432,6 +2495,7 @@ function loadSelectedPreset(options = {}) {
   }
   state.selectedPresetValue = elements.presetSelect.value || presetOptionValue(preset);
   persistLastProfilePresetSelection(state.selectedPresetValue);
+  clearPendingProfilePack();
   const details = preset.details || {};
   const clearsLogo = Boolean(details.company && typeof details.company === "object");
   applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
@@ -2445,7 +2509,9 @@ function loadSelectedPreset(options = {}) {
 }
 
 function loadDefaultProfilePreset(options = {}) {
-  const defaultPreset = lastSelectedPresetValue() || defaultPresetOptionValue();
+  const defaultPreset = options.preferLastSelection === false
+    ? defaultPresetOptionValue()
+    : lastSelectedPresetValue() || defaultPresetOptionValue();
   if (!defaultPreset) return;
   state.selectedPresetValue = defaultPreset;
   elements.presetSelect.value = state.selectedPresetValue;
@@ -2498,13 +2564,14 @@ function clearQuoteCompanyDetails() {
   state.headerLogo = null;
   elements.headerLogoInput.value = "";
   state.selectedPresetValue = "";
+  clearPendingProfilePack();
   clearGeneratedQuoteState();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   updatePresetButtons();
   renderHeaderLogoPreview();
-  loadDefaultProfilePreset({ silent: true });
+  loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
   syncControlStates();
-  renderPresetStatus("Quote-company defaults reset to the selected company preset.");
+  renderPresetStatus("Quote-company defaults reset to the Default profile template.");
 }
 
 function resetImagesDraft() {
@@ -2530,18 +2597,20 @@ function startNewQuote() {
   state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
   state.pendingFeedback = "";
   state.downloadFile = null;
+  state.pdfFile = null;
   elements.imageInput.value = "";
   elements.headerLogoInput.value = "";
   state.selectedPresetValue = "";
   elements.presetSelect.value = "";
   elements.presetNameInput.value = "";
+  clearPendingProfilePack();
   applyQuoteDetails({}, { clearLogo: true });
   applyDefaultQuoteCompanyFields();
   clearGeneratedQuoteState();
   renderFiles();
   renderProfileOptions();
   renderPresetOptions();
-  loadDefaultProfilePreset({ silent: true });
+  loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
   renderHeaderLogoPreview();
   renderPresetStatus("Started a new quote.");
   setWorkflowStage("needs_images");
@@ -2665,7 +2734,7 @@ async function deleteSelectedPreset() {
 
 function exportedCompanyProfilePayload(label = "") {
   const resolvedLabel = safeProfileLabel(label || elements.presetNameInput?.value || elements.quoteCompanyName?.value, "Company Profile");
-  return {
+  const payload = {
     schema: COMPANY_PROFILE_EXPORT_SCHEMA,
     exported_at: new Date().toISOString(),
     workspace: state.workspace && typeof state.workspace === "object" ? {
@@ -2682,10 +2751,19 @@ function exportedCompanyProfilePayload(label = "") {
       defaults: collectQuoteCompanyProfileDetails(),
     },
   };
+  const pendingPack = profilePackPayloadForSave();
+  if (pendingPack) {
+    payload.pack = pendingPack;
+  }
+  return payload;
 }
 
 function downloadJsonFile(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  downloadBlobFile(filename, blob);
+}
+
+function downloadBlobFile(filename, blob) {
   const url = URL.createObjectURL(blob);
   try {
     const link = document.createElement("a");
@@ -2699,12 +2777,69 @@ function downloadJsonFile(filename, payload) {
   }
 }
 
-function exportCurrentPreset(event) {
+function filenameFromContentDisposition(value = "", fallback = "download.json") {
+  const match = String(value || "").match(/filename\*?=(?:UTF-8''|")?([^";]+)"?/i);
+  if (!match) return fallback;
+  try {
+    return decodeURIComponent(match[1]).trim() || fallback;
+  } catch {
+    return match[1].trim() || fallback;
+  }
+}
+
+async function fetchCompanyProfileExport(profileId = "") {
+  const safeId = safeProfileId(profileId, "");
+  if (!safeId) {
+    return { ok: false, data: { errors: ["Select a saved profile to export."] } };
+  }
+  const url = `/api/settings/profiles/${encodeURIComponent(safeId)}/export.json`;
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    const errorReference = newClientErrorReference();
+    if (!state.isPageUnloading) {
+      logClientEvent("client_error", fetchFailureLogDetails(url, { error_reference: errorReference }));
+    }
+    return { ok: false, data: { status: "failed", fetch_failed: true, error_reference: errorReference } };
+  }
+  if (!response.ok) {
+    const data = await jsonFromResponse(response);
+    logClientEvent("server_error", {
+      url,
+      status: response.status,
+      error_reference: errorReferenceFrom(data),
+      errors: data.errors || [],
+    });
+    return { ok: false, data, status: response.status };
+  }
+  const blob = await response.blob();
+  return {
+    ok: true,
+    blob,
+    filename: filenameFromContentDisposition(response.headers.get("Content-Disposition"), `${safeId}.quote-company-profile.json`),
+  };
+}
+
+async function exportCurrentPreset(event) {
   event?.preventDefault();
   if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
   const selected = selectedPreset();
   const label = elements.presetNameInput?.value || selected?.name || elements.quoteCompanyName?.value || "Company Profile";
-  const payload = exportedCompanyProfilePayload(label);
+  let payload = null;
+  if (selected?.source === "company" && !profilePackPayloadForSave()) {
+    renderPresetStatus(`Exporting "${selected.name || selected.id}"...`);
+    const { ok, data, blob, filename } = await fetchCompanyProfileExport(selected.id);
+    if (!ok) {
+      renderPresetStatus(genericFailureMessages(data).join(" "));
+      return;
+    }
+    downloadBlobFile(filename, blob);
+    renderPresetStatus(`Exported "${selected.name || selected.id}".`);
+    return;
+  } else {
+    payload = exportedCompanyProfilePayload(label);
+  }
   const filename = `${safeProfileId(payload.profile.label, "company-profile")}.quote-company-profile.json`;
   downloadJsonFile(filename, payload);
   renderPresetStatus(`Exported "${payload.profile.label}".`);
@@ -2745,9 +2880,11 @@ async function handlePresetImportFileChange() {
     const text = await fileToText(file);
     const data = JSON.parse(text);
     const imported = normalizeImportedCompanyProfile(data, file.name.replace(/\.json$/i, "") || "Imported Company Profile");
+    state.pendingProfilePack = importedProfilePackPayload(data);
     applyQuoteDetails(imported.defaults, { includeLogo: true, clearLogo: true, partial: true });
     if (elements.presetNameInput) elements.presetNameInput.value = imported.label;
-    renderPresetStatus(`Imported "${imported.label}". Review and save it to keep it in this app.`);
+    const layoutCopy = profilePackPayloadForSave()?.quotation_layout ? " Layout workbook included." : "";
+    renderPresetStatus(`Imported "${imported.label}". Review and save it to keep it in this app.${layoutCopy}`);
     clearGeneratedQuoteState();
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
   } catch (error) {
@@ -3631,6 +3768,50 @@ function mergeBasisProposalLineMetadata(nextSections = [], currentSections = [])
   });
 }
 
+function reviewBasisProposalSections(nextSections = [], currentSections = []) {
+  const currentBySectionId = new Map();
+  const currentBySectionTitle = new Map();
+  (Array.isArray(currentSections) ? currentSections : []).forEach((section) => {
+    if (!section || typeof section !== "object") return;
+    const sectionId = String(section.id || "").trim();
+    if (sectionId) currentBySectionId.set(sectionId, section);
+    const titleKey = basisDisplayTitle(section.title || "").toLowerCase();
+    if (titleKey) currentBySectionTitle.set(titleKey, section);
+  });
+  return (Array.isArray(nextSections) ? nextSections : []).map((section) => {
+    const currentSection = currentBySectionId.get(String(section?.id || "").trim())
+      || currentBySectionTitle.get(basisDisplayTitle(section?.title || "").toLowerCase())
+      || null;
+    const currentLines = Array.isArray(currentSection?.lines) ? currentSection.lines : [];
+    const currentByLineKey = new Map();
+    currentLines.forEach((line) => {
+      const key = basisLineMetadataMergeKey(line);
+      if (key) currentByLineKey.set(key, line);
+    });
+    return {
+      ...section,
+      lines: (Array.isArray(section.lines) ? section.lines : []).map((line, index) => {
+        const key = basisLineMetadataMergeKey(line);
+        const currentLine = (key && currentByLineKey.get(key)) || currentLines[index] || null;
+        if (currentLine && basisLineCoreMatches(currentLine, line)) return line;
+        const tag = normalizeBasisTag(line.tag);
+        const customPricing = isCustomPricingBasisLine(line);
+        if (tag === "Include") {
+          return {
+            ...line,
+            tag: customPricing ? "Custom" : "Confirm",
+            ...(customPricing ? { custom_pricing: true, custom_confirmed: false } : {}),
+          };
+        }
+        if (tag === "Custom") {
+          return { ...line, custom_pricing: true, custom_confirmed: false };
+        }
+        return line;
+      }),
+    };
+  });
+}
+
 function normalizeOutputRow(row = {}) {
   const priceMode = row.price_mode === "Included" || String(row.display_price || "").toLowerCase() === "included"
     ? "Included"
@@ -4332,6 +4513,20 @@ function resetPricingReferenceTaxInputs() {
   setPricingReferenceCurrencyControls(DEFAULT_CURRENCY_LABEL);
 }
 
+function applyPricingReferenceImportMetadata(result = {}) {
+  if (!result || typeof result !== "object") return;
+  const suggestedLabel = String(result.suggested_label || result.label || "").trim();
+  if (suggestedLabel && elements.pricingReferenceName && !String(elements.pricingReferenceName.value || "").trim()) {
+    elements.pricingReferenceName.value = neutralizeFormulaText(suggestedLabel);
+  }
+  if (result.tax && typeof result.tax === "object") {
+    setPricingReferenceTaxControls(result.tax);
+  }
+  if (result.currency) {
+    setPricingReferenceCurrencyControls(result.currency);
+  }
+}
+
 async function validatePricingReferenceFile(file) {
   if (!file) return pricingReferenceValidationResult([], [], 0, "");
   if (file.size > MAX_PRICING_REFERENCE_FILE_BYTES) {
@@ -4400,6 +4595,7 @@ async function handlePricingReferenceFileChange() {
   state.pendingPricingReference = result;
   state.pricingReferenceImportBusy = false;
   stopElapsedTimer("pricingReferenceImportElapsed");
+  applyPricingReferenceImportMetadata(result);
   renderPricingReferencePreview(result, { syncCurrencyControls: true, scrollIntoView: true });
 }
 
@@ -4412,7 +4608,7 @@ async function downloadPricingReferenceTemplate(event) {
   try {
     const link = document.createElement("a");
     link.href = templateUrl;
-    link.download = "swooshz-pricing-reference-template.xlsx";
+    link.download = "pricing-reference-template.xlsx";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -4827,6 +5023,7 @@ function clearGeneratedQuoteState() {
   state.outputRows = [];
   state.originalOutputRows = [];
   state.outputErrors = [];
+  state.outputRevision = 0;
   state.analysisFindings = [];
   state.blockingClarificationQuestions = [];
   state.basisConfirmed = false;
@@ -4893,7 +5090,7 @@ function buildPayload(options = {}) {
   syncRichTextSources();
   const generator = currentGenerator();
   const pricingReference = currentPricingReference();
-  const profileId = resolvedProfileIdForPayload();
+  const profileId = generationProfileIdForPayload();
   const includeBoothDimensions = options.includeBoothDimensions !== false;
   const includeDraftContext = options.includeDraftContext !== false;
   const project = {
@@ -4941,6 +5138,7 @@ function buildPayload(options = {}) {
     line_items: includeDraftContext ? (state.outputRows.length ? outputRowsToLineItems(state.outputRows) : state.lineItems) : [],
     analysis_findings: state.analysisFindings,
     blocking_clarification_questions: state.blockingClarificationQuestions,
+    view_pdf: options.viewPdf === true,
     quote_text: {
       terms_heading: elements.termsHeading.value.trim(),
       payment_terms: splitLines(elements.paymentTerms.value),
@@ -4962,7 +5160,7 @@ function buildPayload(options = {}) {
 
 function buildLineItemNormalizePayload() {
   const pricingReference = currentPricingReference();
-  const profileId = resolvedProfileIdForPayload();
+  const profileId = generationProfileIdForPayload();
   return {
     profile_id: profileId,
     pricing_reference_id: pricingReference?.id || state.pricingReferenceId || "",
@@ -5003,9 +5201,36 @@ function renderMessages(messages = [], tone = "") {
 }
 
 function setDownloadFiles(files = []) {
-  const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || files[0] || null;
-  state.downloadFile = excelFile;
+  const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || null;
+  const pdfFile = files.find((file) => /\.pdf$/i.test(file.name || "")) || null;
+  state.downloadFileRevision = excelFile ? revisionNumber(state.outputRevision, 0) : -1;
+  state.pdfFileRevision = pdfFile ? revisionNumber(state.outputRevision, 0) : -1;
+  state.downloadFile = excelFile ? { ...excelFile, output_revision: state.downloadFileRevision } : null;
+  state.pdfFile = pdfFile ? { ...pdfFile, output_revision: state.pdfFileRevision } : null;
   updateDownloadButton();
+}
+
+function revisionNumber(value, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.trunc(number);
+}
+
+function markOutputRowsDirty() {
+  state.outputRevision = revisionNumber(state.outputRevision, 0) + 1;
+  setDownloadFiles([]);
+}
+
+function downloadFileIsFresh(file = state.downloadFile) {
+  if (!file?.url) return false;
+  const fileRevision = revisionNumber(state.downloadFileRevision, -1);
+  return fileRevision >= 0 && fileRevision === revisionNumber(state.outputRevision, 0);
+}
+
+function pdfFileIsFresh(file = state.pdfFile) {
+  if (!file?.url) return false;
+  const fileRevision = revisionNumber(state.pdfFileRevision, -1);
+  return fileRevision >= 0 && fileRevision === revisionNumber(state.outputRevision, 0);
 }
 
 function appIsBusy() {
@@ -5026,16 +5251,26 @@ function waitForUiPaint() {
 }
 
 function updateDownloadButton() {
-  if (!elements.sideDownloadButton) return;
-  const file = state.downloadFile;
+  if (!elements.sideDownloadButton && !elements.sideViewPdfButton) return;
+  const freshFile = downloadFileIsFresh(state.downloadFile) ? state.downloadFile : null;
+  const freshPdfFile = elements.sideViewPdfButton && pdfFileIsFresh(state.pdfFile) ? state.pdfFile : null;
   const validation = outputRowsValid();
   const enabled = state.activeSidePanel === "output" && validation.valid && !state.isGenerating && !state.isPreparingOutput;
-  elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
-  elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
-  elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
-  elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";
-  elements.sideDownloadButton.download = file?.url ? file.name || "quotation.xlsx" : "";
-  elements.sideDownloadButton.textContent = "Download Excel";
+  if (elements.sideDownloadButton) {
+    elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
+    elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
+    elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
+    elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";
+    elements.sideDownloadButton.download = freshFile?.url ? freshFile.name || "quotation.xlsx" : "";
+    elements.sideDownloadButton.textContent = "Download Excel";
+  }
+  if (elements.sideViewPdfButton) {
+    elements.sideViewPdfButton.classList.toggle("is-disabled", !enabled);
+    elements.sideViewPdfButton.setAttribute("aria-disabled", String(!enabled));
+    elements.sideViewPdfButton.tabIndex = enabled ? 0 : -1;
+    elements.sideViewPdfButton.href = enabled && freshPdfFile?.url ? freshPdfFile.url : "#";
+    elements.sideViewPdfButton.textContent = "View PDF";
+  }
 }
 
 function showExcelGeneratingModal(options = {}) {
@@ -5065,6 +5300,23 @@ function downloadCurrentExcelFile(file = state.downloadFile) {
   } catch (error) {
     window.location.href = file.url;
   }
+  return true;
+}
+
+function viewCurrentPdfFile(file = state.pdfFile) {
+  if (!file?.url) return false;
+  const opened = window.open(file.url, "_blank");
+  if (opened) {
+    opened.opener = null;
+    return true;
+  }
+  const link = document.createElement("a");
+  link.href = file.url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
   return true;
 }
 
@@ -5684,8 +5936,7 @@ function confirmOutputRowDelete() {
   }
   state.outputRows.splice(index, 1);
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
-  setDownloadFiles([]);
+  markOutputRowsDirty();
   hideOutputDeleteModal();
   const validation = outputRowsValid();
   renderPricingMatches(state.outputRows);
@@ -5700,8 +5951,12 @@ function deleteOutputRow(index) {
 
 function renderOutputValidationMessages(errors = state.outputErrors) {
   if (!elements.pricingReviewMessages) return;
-  state.outputErrors = errors;
-  elements.pricingReviewMessages.innerHTML = "";
+  state.outputErrors = Array.isArray(errors)
+    ? errors.map((error) => String(error || "").trim()).filter(Boolean)
+    : [];
+  elements.pricingReviewMessages.innerHTML = state.outputErrors
+    .map((error) => `<div class="message warn">${escapeHtml(error)}</div>`)
+    .join("");
 }
 
 function rowNeedsManualInput(row = {}) {
@@ -5856,7 +6111,7 @@ function handleOutputRowEdit(event) {
     [field]: input.value,
   });
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
+  markOutputRowsDirty();
   const validation = outputRowsValid();
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
@@ -5881,7 +6136,7 @@ function commitOutputEditor(editor) {
   }
   state.outputRows[index] = recalculateOutputRow(nextRow);
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
+  markOutputRowsDirty();
   const validation = outputRowsValid();
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
@@ -5899,7 +6154,7 @@ function applyOutputIncludedAction(button) {
     display_price: "Included",
   });
   state.lineItems = outputRowsToLineItems();
-  state.downloadFile = null;
+  markOutputRowsDirty();
   const validation = outputRowsValid();
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
@@ -5973,6 +6228,12 @@ function handleOutputCellKeydown(event) {
 
 function handleOutputEditorCommit(event) {
   const editor = event.target.closest("[data-output-editor-field]");
+  if (!editor) return;
+  commitOutputEditor(editor);
+}
+
+function commitActiveOutputEditor() {
+  const editor = elements.pricingMatchesBody?.querySelector("[data-output-editor-field]");
   if (!editor) return;
   commitOutputEditor(editor);
 }
@@ -6267,8 +6528,8 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
       </div>
       ${renderAnalysisFindings()}
       ${renderBasisConfirmSummary(sections)}
-      ${dimensionDisplay}
       ${renderBasisTagLegend()}
+      ${dimensionDisplay}
       ${reviewSections.length ? `
         <div class="basis-review-grid">
           ${reviewSections.map((section) => `
@@ -6349,13 +6610,15 @@ function applyPossiblePricingMatch(sectionId, lineIndex, matchIndex) {
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
-  state.downloadFile = null;
   if (Array.isArray(state.outputRows) && state.outputRows.length && Array.isArray(state.lineItems)) {
     refreshOutputRowsFromLineItems();
     state.lineItems = outputRowsToLineItems();
+    markOutputRowsDirty();
     if (typeof renderPricingMatches === "function") renderPricingMatches(state.outputRows);
     if (typeof renderMatchSummary === "function") renderMatchSummary({ pricing_matches: state.outputRows });
     if (typeof renderOutputValidationMessages === "function") renderOutputValidationMessages(outputRowsValid().errors);
+  } else {
+    setDownloadFiles([]);
   }
   updateQuoteBasisCard("edited");
   syncControlStates();
@@ -6381,7 +6644,7 @@ function retagBasisLine(sectionId, lineIndex, nextTag) {
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
-  state.downloadFile = null;
+  markOutputRowsDirty();
   updateQuoteBasisCard("edited");
   syncControlStates();
 }
@@ -6409,7 +6672,7 @@ function retagBasisSectionConfirmLines(sectionId, nextTag) {
   state.quoteBasisSections = sections;
   state.quoteBasis = quoteBasisFromSections(sections);
   state.basisConfirmed = false;
-  state.downloadFile = null;
+  markOutputRowsDirty();
   updateQuoteBasisCard("edited");
   syncControlStates();
 }
@@ -6965,16 +7228,21 @@ function applyBasisChatProposal() {
   const proposal = state.basisChat.proposal;
   if (!proposal) return;
   state.basisConfirmed = false;
-  state.quoteBasisSections = mergeBasisProposalLineMetadata(
+  const currentSections = state.quoteBasisSections;
+  const mergedSections = mergeBasisProposalLineMetadata(
     normalizeQuoteBasisSections(proposal.quoteBasisSections || proposal.quoteBasis || state.quoteBasisSections),
-    state.quoteBasisSections
+    currentSections
   );
+  state.quoteBasisSections = reviewBasisProposalSections(mergedSections, currentSections);
   state.quoteBasis = { ...cloneQuoteBasis(proposal.quoteBasis || state.quoteBasis), ...quoteBasisFromSections(state.quoteBasisSections) };
   state.lineItems = Array.isArray(proposal.lineItems) ? proposal.lineItems.map(normalizeLineItem) : [];
-  state.outputRows = Array.isArray(proposal.outputRows) ? proposal.outputRows.map(normalizeOutputRow) : [];
+  state.outputRows = [];
   state.originalOutputRows = [];
   state.outputErrors = [];
   setDownloadFiles([]);
+  if (typeof renderPricingMatches === "function") renderPricingMatches([]);
+  if (typeof renderMatchSummary === "function") renderMatchSummary({});
+  if (typeof clearPricingReviewMessages === "function") clearPricingReviewMessages();
   updateQuoteBasisCard("edited");
   setSidePanel("basis", { force: true });
   resetBasisChatProposal();
@@ -7252,8 +7520,7 @@ async function resetOutputDraft() {
   state.outputRows = snapshotOutputRows(state.originalOutputRows);
   state.lineItems = outputRowsToLineItems();
   state.outputErrors = [];
-  state.downloadFile = null;
-  setDownloadFiles([]);
+  markOutputRowsDirty();
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(outputRowsValid().errors);
@@ -7262,8 +7529,9 @@ async function resetOutputDraft() {
 }
 
 function postJsonFetchFailure(url) {
+  const errorReference = newClientErrorReference();
   if (!state.isPageUnloading) {
-    logClientEvent("client_error", fetchFailureLogDetails(url));
+    logClientEvent("client_error", fetchFailureLogDetails(url, { error_reference: errorReference }));
   }
   return {
     ok: false,
@@ -7272,7 +7540,8 @@ function postJsonFetchFailure(url) {
       fetch_failed: true,
       page_unloading: state.isPageUnloading,
       message: "fetch_failed",
-      errors: genericFailureMessages(),
+      error_reference: errorReference,
+      errors: genericFailureMessages({ error_reference: errorReference }),
     },
     status: 0,
   };
@@ -7342,8 +7611,9 @@ async function getJson(url, options = {}) {
   try {
     response = await fetch(url);
   } catch (error) {
+    const errorReference = newClientErrorReference();
     if (!state.isPageUnloading && options.logFetchFailure !== false) {
-      logClientEvent("client_error", fetchFailureLogDetails(url));
+      logClientEvent("client_error", fetchFailureLogDetails(url, { error_reference: errorReference }));
     }
     return {
       ok: false,
@@ -7352,7 +7622,8 @@ async function getJson(url, options = {}) {
         fetch_failed: true,
         page_unloading: state.isPageUnloading,
         message: "fetch_failed",
-        errors: genericFailureMessages(),
+        error_reference: errorReference,
+        errors: genericFailureMessages({ error_reference: errorReference }),
       },
     };
   }
@@ -7367,7 +7638,12 @@ async function getJson(url, options = {}) {
     };
   }
   if (!response.ok) {
-    logClientEvent("server_error", { url, status: response.status, errors: data.errors || [] });
+    logClientEvent("server_error", {
+      url,
+      status: response.status,
+      error_reference: errorReferenceFrom(data),
+      errors: data.errors || [],
+    });
   }
   return { ok: response.ok, data };
 }
@@ -7397,7 +7673,10 @@ async function pollJob(jobId, onStatus) {
         continue;
       }
       if (data?.fetch_failed) {
-        logClientEvent("client_error", fetchFailureLogDetails(url, { attempts: fetchFailures + 1 }));
+        logClientEvent("client_error", fetchFailureLogDetails(url, {
+          error_reference: errorReferenceFrom(data),
+          attempts: fetchFailures + 1,
+        }));
       }
       return { ok, data };
     }
@@ -7413,15 +7692,16 @@ function isInterruptedJobPoll(polled) {
   return Boolean(polled?.aborted || polled?.data?.fetch_failed);
 }
 
-function handleInterruptedJobPoll(jobType = "draft") {
+function handleInterruptedJobPoll(jobType = "draft", polled = {}) {
+  const data = polled?.data || polled || {};
   if (jobType === "draft") {
     state.isAnalysisRunning = false;
-    showAiFailureBanner();
+    showAiFailureBanner(genericFailureMessage(data));
     setWorkflowStage("analyzing");
   } else {
     state.isGenerating = false;
     setResultStatus("Connection interrupted", "is-warn");
-    renderMessages(genericFailureMessages(), "error");
+    renderMessages(genericFailureMessages(data), "error");
   }
   syncControlStates();
 }
@@ -7523,7 +7803,7 @@ async function handleDraftBasis(options = {}) {
   const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
-    handleInterruptedJobPoll("draft");
+    handleInterruptedJobPoll("draft", polled);
     return;
   }
   state.isAnalysisRunning = false;
@@ -7624,8 +7904,9 @@ async function confirmBasis() {
   }
 }
 
-async function handleGenerate() {
+async function handleGenerate(options = {}) {
   if (state.isGenerating) return;
+  const viewPdf = options.viewPdf === true;
   if (state.activeSidePanel === "output") {
     const validation = outputRowsValid();
     if (!validation.valid) {
@@ -7664,13 +7945,14 @@ async function handleGenerate() {
 
   state.isGenerating = true;
   setWorkflowStage("generating");
-  setResultStatus("Generating Excel", "is-warn");
+  setResultStatus(viewPdf ? "Generating PDF" : "Generating Excel", "is-warn");
   renderMessages([]);
   setDownloadFiles([]);
   renderMatchSummary({});
   clearPricingReviewMessages();
   syncControlStates();
-  const started = await startJob("generate", buildPayload());
+  const jobType = viewPdf ? "generate_pdf" : "generate";
+  const started = await startJob(jobType, buildPayload({ viewPdf }));
   if (!started.ok) {
     state.isGenerating = false;
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
@@ -7679,13 +7961,13 @@ async function handleGenerate() {
     syncControlStates();
     return;
   }
-  state.activeJob = { id: started.data.job_id, type: "generate" };
+  state.activeJob = { id: started.data.job_id, type: jobType, viewPdf };
   saveSessionState();
 
   const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
-    handleInterruptedJobPoll("generate");
+    handleInterruptedJobPoll(jobType, polled);
     return;
   }
   state.isGenerating = false;
@@ -7716,15 +7998,25 @@ async function handleGenerate() {
     renderMatchSummary(data);
   } else {
     setWorkflowStage("completed");
-    setResultStatus("Completed", "is-ok");
-    renderMessages([]);
     clearPricingReviewMessages();
     setSidePanel("output", { force: true });
     setDownloadFiles(data.files || []);
     renderPricingMatches(state.outputRows);
     renderMatchSummary({ pricing_matches: state.outputRows });
+    if (viewPdf && !state.pdfFile) {
+      setResultStatus("PDF unavailable", "is-bad");
+      const pdfStatus = data.export_status?.pdf_status || data.export_status?.pdf_readiness || "";
+      const reason = pdfStatus === "workbook_export_unavailable"
+        ? "Workbook PDF export was unavailable, so no PDF was created."
+        : "The export completed but did not return a PDF file.";
+      renderMessages([`${reason} Download Excel is still available.`], "error");
+    } else {
+      setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok");
+      renderMessages([]);
+    }
   }
   syncControlStates();
+  return viewPdf ? Boolean(state.pdfFile) : Boolean(state.downloadFile);
 }
 
 async function resumeSavedJob() {
@@ -7749,7 +8041,7 @@ async function resumeSavedJob() {
     });
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
-      handleInterruptedJobPoll("draft");
+      handleInterruptedJobPoll("draft", polled);
       return;
     }
     state.isAnalysisRunning = false;
@@ -7782,18 +8074,19 @@ async function resumeSavedJob() {
     return;
   }
 
-  if (activeJob.type === "generate") {
+  if (activeJob.type === "generate" || activeJob.type === "generate_pdf") {
+    const viewPdf = activeJob.viewPdf === true || activeJob.type === "generate_pdf";
     state.isGenerating = true;
     state.isAnalysisRunning = false;
     setWorkflowStage("generating");
-    setResultStatus("Checking Excel", "is-warn");
+    setResultStatus(viewPdf ? "Checking PDF" : "Checking Excel", "is-warn");
     setSidePanel("output", { force: true });
     syncControlStates();
 
     const polled = await pollJob(activeJob.id);
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
-      handleInterruptedJobPoll("generate");
+      handleInterruptedJobPoll(activeJob.type, polled);
       return;
     }
     state.isGenerating = false;
@@ -7822,7 +8115,7 @@ async function resumeSavedJob() {
       setDownloadFiles([]);
     } else {
       setWorkflowStage("completed");
-      setResultStatus("Completed", "is-ok");
+      setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok");
       renderMessages([]);
       clearPricingReviewMessages();
       setSidePanel("output");
@@ -7984,6 +8277,8 @@ function updateSidePanelNav() {
   });
   elements.sideBackButton.disabled = index === 0 || busy;
   elements.sideNextButton.hidden = isOutputStep;
+  if (elements.workspacePaneFooter) elements.workspacePaneFooter.classList.toggle("is-output-step", isOutputStep);
+  if (elements.sideViewPdfButton) elements.sideViewPdfButton.hidden = !isOutputStep;
   elements.sideDownloadButton.hidden = !isOutputStep;
   const nextLabels = {
     images: "Next: Customer",
@@ -8186,26 +8481,39 @@ function wireEvents() {
       if (!validation.valid) renderOutputValidationMessages(validation.errors);
       return;
     }
-    const existingFile = state.downloadFile;
-    showExcelGeneratingModal(existingFile?.url ? {
+    commitActiveOutputEditor();
+    showExcelGeneratingModal({
       eyebrow: "Quotation export",
-      title: "Downloading Excel",
-      message: "Preparing the workbook download.",
-    } : undefined);
+      title: "Regenerating Excel",
+      message: "Building the workbook from the current reviewed rows.",
+    });
     await waitForUiPaint();
-    if (!state.downloadFile?.url) {
-      try {
-        await handleGenerate();
-        downloadCurrentExcelFile();
-      } finally {
-        hideExcelGeneratingModal();
-      }
+    try {
+      await handleGenerate();
+      downloadCurrentExcelFile();
+    } finally {
+      hideExcelGeneratingModal();
+    }
+  });
+  elements.sideViewPdfButton.addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (elements.sideViewPdfButton.getAttribute("aria-disabled") === "true") {
+      const validation = outputRowsValid();
+      if (!validation.valid) renderOutputValidationMessages(validation.errors);
       return;
     }
+    commitActiveOutputEditor();
+    showExcelGeneratingModal({
+      eyebrow: "Quotation export",
+      title: "Generating PDF",
+      message: "Building the workbook first, then opening its PDF export.",
+    });
+    await waitForUiPaint();
     try {
-      downloadCurrentExcelFile(existingFile);
+      const generated = await handleGenerate({ viewPdf: true });
+      if (generated) viewCurrentPdfFile();
     } finally {
-      window.setTimeout(hideExcelGeneratingModal, 350);
+      hideExcelGeneratingModal();
     }
   });
   document.addEventListener("keydown", (event) => {
@@ -8343,6 +8651,7 @@ function wireEvents() {
   elements.resetOutputButton.addEventListener("click", resetOutputDraft);
   elements.presetSelect.addEventListener("change", () => {
     state.selectedPresetValue = elements.presetSelect.value || "";
+    clearPendingProfilePack();
     persistLastProfilePresetSelection(state.selectedPresetValue);
     updatePresetButtons();
     renderPresetStatus();

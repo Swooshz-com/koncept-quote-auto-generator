@@ -52,7 +52,19 @@ import pricing_reference_enrichment
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 GENERATOR_PATH = PROJECT_ROOT / "scripts" / "generate_quote.py"
+TEMPLATES_ROOT = PROJECT_ROOT / "templates"
+DEFAULT_PROFILE_TEMPLATE_DIR = TEMPLATES_ROOT / "profile" / "default"
+DEFAULT_PROFILE_TEMPLATE_PATH = DEFAULT_PROFILE_TEMPLATE_DIR / "profile.json"
+DEFAULT_QUOTE_LAYOUT_TEMPLATE_DIR = TEMPLATES_ROOT / "quote-layout"
+DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH = DEFAULT_QUOTE_LAYOUT_TEMPLATE_DIR / "quotation-layout.xlsx"
+DEFAULT_LAYOUT_RULES_TEMPLATE_PATH = DEFAULT_QUOTE_LAYOUT_TEMPLATE_DIR / "layout-rules.json"
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+PACKAGE_RELATIONSHIPS_XMLNS = "http://schemas.openxmlformats.org/package/2006/relationships"
+NS_PACKAGE_REL = f"{{{PACKAGE_RELATIONSHIPS_XMLNS}}}"
+CUSTOM_XML_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml"
+LAYOUT_RULES_CUSTOM_XML_PATH = "customXml/kqag-layout-rules.xml"
+LAYOUT_RULES_CUSTOM_XML_NAMESPACE = "https://swooshz.com/kqag/layout-rules/v1"
+NS_LAYOUT_RULES = f"{{{LAYOUT_RULES_CUSTOM_XML_NAMESPACE}}}"
 PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
 BUNDLED_PRICING_REFERENCES_ROOT = PROJECT_ROOT / "pricing-references"
@@ -109,11 +121,11 @@ def discovered_default_pricing_reference_id(
     return discovered_reference
 
 
-BUNDLED_DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json", fallback="")
+BUNDLED_DEFAULT_PROFILE_ID = discovered_default_resource_id(PROFILES_ROOT, "profile.json", fallback=DEFAULT_QUOTE_COMPANY_PROFILE_ID)
 BUNDLED_DEFAULT_PRICING_REFERENCE_ID = discovered_default_pricing_reference_id(PRICING_REFERENCES_ROOT, PROFILES_ROOT, fallback="")
 DEFAULT_PROFILE_ID = BUNDLED_DEFAULT_PROFILE_ID
 DEFAULT_PRICING_REFERENCE_ID = BUNDLED_DEFAULT_PRICING_REFERENCE_ID
-PRICING_REFERENCE_TEMPLATE_PATH = LOCAL_PRICING_REFERENCES_ROOT / "_template" / "swooshz-pricing-reference-template.xlsx"
+PRICING_REFERENCE_TEMPLATE_PATH = TEMPLATES_ROOT / "pricing-reference" / "pricing-reference-template.xlsx"
 SAMPLES_ROOT = PROJECT_ROOT / "fixtures" / "samples"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_output" / "webapp"
 DEFAULT_TMP_ROOT = PROJECT_ROOT / "_tmp" / "webapp"
@@ -131,6 +143,8 @@ MAX_RENDERED_PDF_PAGE_BYTES = 1024 * 1024
 PDF_RENDER_TARGET_LONG_EDGE_PX = 1600
 MAX_JOB_REQUEST_BYTES = (((MAX_REFERENCE_IMAGES * max(MAX_IMAGE_BYTES, MAX_PDF_BYTES)) + 2) // 3) * 4 + 2 * 1024 * 1024
 MAX_PRICING_REFERENCE_BYTES = 10 * 1024 * 1024
+MAX_PROFILE_LAYOUT_BYTES = 10 * 1024 * 1024
+MAX_PROFILE_LAYOUT_RULES_BYTES = 256 * 1024
 MAX_PRICING_REFERENCE_ROWS = 500
 MAX_PRICING_REFERENCE_XLSX_ENTRY_BYTES = 8 * 1024 * 1024
 MAX_PRICING_REFERENCE_XLSX_TOTAL_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
@@ -153,9 +167,11 @@ SECTIONED_WORKBOOK_COL_GST = 8
 SECTIONED_WORKBOOK_COL_MARKUP = 9
 SECTIONED_WORKBOOK_COL_REMARKS = 11
 PRICING_REFERENCE_REQUIRED_COLUMNS = ("section", "description", "unit_hint", "internal_cost", "markup_multiplier")
-PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
+PRICING_REFERENCE_TEMPLATE_COLUMNS = ("id", "row", *PRICING_REFERENCE_REQUIRED_COLUMNS, "remarks")
 PRICING_REFERENCE_EXPORT_COLUMNS = (
-    *PRICING_REFERENCE_TEMPLATE_COLUMNS,
+    "id",
+    *PRICING_REFERENCE_REQUIRED_COLUMNS,
+    "remarks",
     "aliases",
     "match_terms",
     "object_families",
@@ -171,6 +187,7 @@ PRICING_REFERENCE_EXPORT_COLUMNS = (
 PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     [
         "example-services-standard-coordination",
+        "1",
         "Services",
         "lot standard project coordination",
         "lot",
@@ -180,6 +197,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     ],
     [
         "example-materials-standard-surface-finish",
+        "2",
         "Materials",
         "sqm standard surface finish",
         "sqm",
@@ -189,6 +207,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     ],
     [
         "example-equipment-standard-device-rental",
+        "3",
         "Equipment Rental",
         "nos. standard device rental",
         "nos",
@@ -197,7 +216,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "example rental row",
     ],
 ]
-DOWNLOADABLE_FILES = {"quotation.xlsx"}
+DOWNLOADABLE_FILES = {"quotation.pdf", "quotation.xlsx"}
 DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
 CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
 CSRF_TOKEN_ENV_NAME = "LOCAL_RUNNER_CSRF_TOKEN"
@@ -260,6 +279,8 @@ ALLOWED_LOG_EVENTS = {
     "openai_draft_failed",
     "ai_pricing_reference_import_timing",
     "ai_pricing_reference_metadata_enrichment_completed",
+    "profile_export_failed",
+    "profile_export_not_found",
     "security_event",
     "server_pricing_reference_import_timing",
     "server_error",
@@ -766,6 +787,8 @@ def log_meaning(event: str, details: dict[str, Any], context: str) -> str:
         meaning = "Quote generation failed. Check details.errors for the generator message."
     elif event == "generate_needs_review":
         meaning = "Quote generation stopped for pricing review. Check details.errors for unmatched or ambiguous catalog pricing that needs operator confirmation."
+    elif event in {"profile_export_failed", "profile_export_not_found"}:
+        meaning = "Profile export failed. Match the browser-visible error reference to this log entry."
     elif event == "draft_blocked":
         meaning = "AI draft analysis was blocked before provider calls, usually because images or required quote details were missing."
     elif event in {
@@ -1354,6 +1377,26 @@ def quote_tax_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     label = normalize_tax_label(tax.get("label") or quote_text.get("tax_label"))
     rate_source = tax.get("rate") if "rate" in tax else quote_text.get("tax_rate")
     return {"label": label, "rate": normalize_tax_rate(rate_source)}
+
+
+def quote_currency_from_payload(payload: dict[str, Any]) -> str:
+    runtime_reference = runtime_pricing_reference_from_payload(payload)
+    runtime_currency = clean_text(runtime_reference.get("currency")) if runtime_reference else ""
+    if runtime_currency:
+        return normalize_currency_label(runtime_currency)
+
+    reference = pricing_reference_payload(payload)
+    reference_currency = clean_text(reference.get("currency"))
+    if reference_currency:
+        return normalize_currency_label(reference_currency)
+
+    reference_id = pricing_reference_id_from_payload(payload)
+    if reference_id:
+        pack = load_pricing_reference_pack(reference_id, source=pricing_reference_source_from_payload(payload))
+        pack_currency = clean_text(pack.config.get("currency"))
+        if pack_currency:
+            return normalize_currency_label(pack_currency)
+    return DEFAULT_CURRENCY_LABEL
 
 
 def normalize_currency_label(value: Any) -> str:
@@ -2348,6 +2391,7 @@ PRICING_REFERENCE_CATEGORY_ORDER_KEYS = (
     "section_number",
 )
 PRICING_REFERENCE_ITEM_ORDER_KEYS = (
+    "row",
     "item_order",
     "item_index",
     "row_order",
@@ -2943,10 +2987,14 @@ def validate_pricing_reference_rows(
 
 
 def first_xlsx_worksheet_name(zf: zipfile.ZipFile) -> str:
-    names = sorted(name for name in zf.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name))
+    names = xlsx_worksheet_names(zf)
     if not names:
         raise ValueError("XLSX workbook does not contain a worksheet.")
     return names[0]
+
+
+def xlsx_worksheet_names(zf: zipfile.ZipFile) -> list[str]:
+    return sorted(name for name in zf.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name))
 
 
 def validate_xlsx_zip_limits(zf: zipfile.ZipFile) -> None:
@@ -3027,11 +3075,7 @@ def xlsx_cell_text(cell: ET.Element, shared_strings: list[str]) -> str:
     return clean_text(raw)
 
 
-def xlsx_rows_with_numbers_from_bytes(raw: bytes) -> list[tuple[int, list[str]]]:
-    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-        validate_xlsx_zip_limits(zf)
-        shared_strings = xlsx_shared_strings(zf)
-        worksheet_xml = read_xlsx_xml_entry(zf, first_xlsx_worksheet_name(zf))
+def xlsx_rows_with_numbers_from_xml(worksheet_xml: bytes, shared_strings: list[str]) -> list[tuple[int, list[str]]]:
     root = ET.fromstring(worksheet_xml)
     rows: list[tuple[int, list[str]]] = []
     max_raw_rows = MAX_PRICING_REFERENCE_ROWS + 200
@@ -3051,6 +3095,28 @@ def xlsx_rows_with_numbers_from_bytes(raw: bytes) -> list[tuple[int, list[str]]]
             if len(rows) >= max_raw_rows:
                 break
     return rows
+
+
+def xlsx_rows_with_numbers_from_bytes(raw: bytes) -> list[tuple[int, list[str]]]:
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        validate_xlsx_zip_limits(zf)
+        shared_strings = xlsx_shared_strings(zf)
+        worksheet_xml = read_xlsx_xml_entry(zf, first_xlsx_worksheet_name(zf))
+    return xlsx_rows_with_numbers_from_xml(worksheet_xml, shared_strings)
+
+
+def xlsx_all_sheets_rows_with_numbers_from_bytes(raw: bytes) -> list[tuple[str, list[tuple[int, list[str]]]]]:
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        validate_xlsx_zip_limits(zf)
+        shared_strings = xlsx_shared_strings(zf)
+        sheet_names = xlsx_worksheet_names(zf)
+        if not sheet_names:
+            raise ValueError("XLSX workbook does not contain a worksheet.")
+        sheets: list[tuple[str, list[tuple[int, list[str]]]]] = []
+        for sheet_name in sheet_names:
+            worksheet_xml = read_xlsx_xml_entry(zf, sheet_name)
+            sheets.append((sheet_name, xlsx_rows_with_numbers_from_xml(worksheet_xml, shared_strings)))
+    return sheets
 
 
 def xlsx_raw_rows_from_bytes(raw: bytes) -> list[list[str]]:
@@ -3359,16 +3425,92 @@ def pricing_reference_import_preview_from_sectioned_workbook(raw: bytes, filenam
     return result
 
 
+def pricing_reference_import_metadata_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", clean_text(value).casefold()).strip()
+
+
+def pricing_reference_import_metadata_from_xlsx(raw: bytes) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    sheets = xlsx_all_sheets_rows_with_numbers_from_bytes(raw)
+
+    def set_if_empty(key: str, value: Any) -> None:
+        text = clean_text(value)
+        if text and not clean_text(metadata.get(key)):
+            metadata[key] = text
+
+    def row_value_after_key(row: list[str]) -> str:
+        for value in row[1:]:
+            text = clean_text(value)
+            if text:
+                return text
+        return ""
+
+    for _sheet_name, rows in sheets:
+        for _row_number, row in rows:
+            if len(row) >= 2:
+                key = pricing_reference_import_metadata_key(row[0])
+                value = row_value_after_key(row)
+                if key in {"reference name", "pricing reference name", "reference label"}:
+                    set_if_empty("label", value)
+                elif key in {"reference id", "pricing reference id"}:
+                    set_if_empty("id", value)
+                elif key in {"currency", "currency code"}:
+                    set_if_empty("currency", normalize_currency_label(value))
+                elif key in {"tax label", "tax"}:
+                    set_if_empty("tax_label", normalize_tax_label(value))
+                elif key in {"tax rate", "tax rate percent", "tax percentage"}:
+                    set_if_empty("tax_rate", str(normalize_tax_rate(value, DEFAULT_TAX_RATE)))
+
+    for _sheet_name, rows in sheets:
+        for index, (_row_number, row) in enumerate(rows):
+            header_indexes = {
+                pricing_reference_import_metadata_key(value): column_index
+                for column_index, value in enumerate(row)
+                if clean_text(value)
+            }
+            wanted = {"currency", "tax label", "tax rate"}
+            if not wanted.intersection(header_indexes):
+                continue
+            for _next_row_number, next_row in rows[index + 1:index + 20]:
+                if not any(clean_text(value) for value in next_row):
+                    continue
+                currency_index = header_indexes.get("currency")
+                tax_label_index = header_indexes.get("tax label")
+                tax_rate_index = header_indexes.get("tax rate")
+                if currency_index is not None and currency_index < len(next_row):
+                    set_if_empty("currency", normalize_currency_label(next_row[currency_index]))
+                if tax_label_index is not None and tax_label_index < len(next_row):
+                    set_if_empty("tax_label", normalize_tax_label(next_row[tax_label_index]))
+                if tax_rate_index is not None and tax_rate_index < len(next_row):
+                    set_if_empty("tax_rate", str(normalize_tax_rate(next_row[tax_rate_index], DEFAULT_TAX_RATE)))
+                break
+
+    label = clean_text(metadata.get("label")) or clean_text(metadata.get("id"))
+    result: dict[str, Any] = {}
+    if label:
+        result["label"] = sanitize_formula_text(label)
+    currency = normalize_currency_label(metadata.get("currency")) if clean_text(metadata.get("currency")) else ""
+    if currency:
+        result["currency"] = currency
+    if clean_text(metadata.get("tax_label")) or clean_text(metadata.get("tax_rate")):
+        result["tax"] = {
+            "label": normalize_tax_label(metadata.get("tax_label")),
+            "rate": normalize_tax_rate(metadata.get("tax_rate"), DEFAULT_TAX_RATE),
+        }
+    return result
+
+
 def xlsx_rows_for_ai(raw: bytes) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for row_number, values in xlsx_rows_with_numbers_from_bytes(raw):
-        non_empty_cells = {
-            xlsx_col_name(index): clean_text(value)
-            for index, value in enumerate(values)
-            if clean_text(value)
-        }
-        if non_empty_cells:
-            rows.append({"row_index": row_number, "non_empty_cells": non_empty_cells})
+    for sheet_index, (_sheet_name, sheet_rows) in enumerate(xlsx_all_sheets_rows_with_numbers_from_bytes(raw), start=1):
+        for row_number, values in sheet_rows:
+            non_empty_cells = {
+                xlsx_col_name(index): clean_text(value)
+                for index, value in enumerate(values)
+                if clean_text(value)
+            }
+            if non_empty_cells:
+                rows.append({"sheet": f"sheet{sheet_index}", "row_index": row_number, "non_empty_cells": non_empty_cells})
     return rows
 
 
@@ -3414,11 +3556,12 @@ def pricing_reference_template_sheet_xml(
         '<cols>'
         + (
             '<col min="1" max="1" width="0" hidden="1" customWidth="1"/>'
-            '<col min="2" max="2" width="24" customWidth="1"/>'
-            '<col min="3" max="3" width="72" customWidth="1"/>'
-            '<col min="4" max="4" width="14" customWidth="1"/>'
-            '<col min="5" max="6" width="18" customWidth="1"/>'
-            '<col min="7" max="7" width="36" customWidth="1"/>'
+            '<col min="2" max="2" width="10" customWidth="1"/>'
+            '<col min="3" max="3" width="24" customWidth="1"/>'
+            '<col min="4" max="4" width="72" customWidth="1"/>'
+            '<col min="5" max="5" width="14" customWidth="1"/>'
+            '<col min="6" max="7" width="18" customWidth="1"/>'
+            '<col min="8" max="8" width="36" customWidth="1"/>'
             if hide_internal_id else
             '<col min="1" max="1" width="72" customWidth="1"/>'
             '<col min="2" max="2" width="72" customWidth="1"/>'
@@ -3432,10 +3575,23 @@ def pricing_reference_template_sheet_xml(
 
 def generated_pricing_reference_template_xlsx_bytes() -> bytes:
     pricing_rows = [list(PRICING_REFERENCE_TEMPLATE_COLUMNS), *PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS]
+    reference_info_rows = [
+        ["Swooshz Pricing Reference Info"],
+        ["Reference ID", ""],
+        ["Reference name", ""],
+        ["Description", ""],
+        ["Currency", DEFAULT_CURRENCY_LABEL],
+        ["Tax label", DEFAULT_TAX_LABEL],
+        ["Tax rate", f"{DEFAULT_TAX_RATE:g}"],
+        ["Import note", "Edit these values, then upload this workbook through Pricing Reference Settings > Import."],
+    ]
     instruction_rows = [
-        ["Swooshz Pricing Reference Import Template"],
+        ["Pricing Reference Import Template"],
         ["Edit or add pricing rows in the Pricing Reference sheet, then upload this workbook in New Pricing Reference."],
+        ["Reference info", "Edit Reference name, Currency, Tax label, and Tax rate in the Reference Info sheet."],
+        ["Tax rate format", "Use a decimal rate, for example 0.09 for 9% or 0.2 for 20%."],
         ["Required columns", ", ".join(PRICING_REFERENCE_REQUIRED_COLUMNS)],
+        ["row", "Optional display/order number. Rows with lower numbers appear earlier in the imported reference."],
         ["section", "Quotation section, for example Services."],
         ["description", "Customer-facing wording. Catalog-backed quote basis and output rows will use this exactly."],
         ["unit_hint", "Examples: sqm, m length, no, lot, set."],
@@ -3443,16 +3599,24 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
         ["markup_multiplier", "Number only, for example 1.5."],
         ["remarks", "Optional. Internal matching/search notes; separate multiple values with semicolon. AI-generated aliases are added during import."],
     ]
+    sheets = [
+        ("Pricing Reference", pricing_rows),
+        ("Reference Info", reference_info_rows),
+        ("Instructions", instruction_rows),
+    ]
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        sheet_overrides = "".join(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            for index, _sheet in enumerate(sheets, start=1)
+        )
         zf.writestr("[Content_Types].xml", (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             '<Default Extension="xml" ContentType="application/xml"/>'
             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            f'{sheet_overrides}'
             '</Types>'
         ))
         zf.writestr("_rels/.rels", (
@@ -3466,24 +3630,34 @@ def generated_pricing_reference_template_xlsx_bytes() -> bytes:
             '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
             '<sheets>'
-            '<sheet name="Pricing Reference" sheetId="1" r:id="rId1"/>'
-            '<sheet name="Instructions" sheetId="2" r:id="rId2"/>'
-            '</sheets></workbook>'
+            + "".join(
+                f'<sheet name="{xml_escape(sheet_name)}" sheetId="{index}" r:id="rId{index}"/>'
+                for index, (sheet_name, _rows) in enumerate(sheets, start=1)
+            )
+            + '</sheets></workbook>'
         ))
         zf.writestr("xl/_rels/workbook.xml.rels", (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'
-            '</Relationships>'
+            + "".join(
+                f'<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
+                for index, _sheet in enumerate(sheets, start=1)
+            )
+            + '</Relationships>'
         ))
-        zf.writestr("xl/worksheets/sheet1.xml", pricing_reference_template_sheet_xml(pricing_rows, hide_internal_id=True))
-        zf.writestr("xl/worksheets/sheet2.xml", pricing_reference_template_sheet_xml(instruction_rows))
+        for index, (_sheet_name, rows) in enumerate(sheets, start=1):
+            zf.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                pricing_reference_template_sheet_xml(rows, hide_internal_id=(index == 1)),
+            )
     return buffer.getvalue()
 
 
 def pricing_reference_template_xlsx_bytes() -> bytes:
-    return generated_pricing_reference_template_xlsx_bytes()
+    try:
+        return PRICING_REFERENCE_TEMPLATE_PATH.read_bytes()
+    except OSError:
+        return generated_pricing_reference_template_xlsx_bytes()
 
 
 def pricing_reference_export_cell_value(value: Any) -> str:
@@ -3829,6 +4003,190 @@ def sanitize_profile_defaults(value: Any) -> dict[str, Any]:
     return sanitized if isinstance(sanitized, dict) else {}
 
 
+def safe_profile_pack_filename(value: Any, fallback: str, allowed_suffixes: set[str]) -> str:
+    name = Path(clean_text(value) or fallback).name
+    suffix = Path(name).suffix.lower()
+    if suffix not in allowed_suffixes:
+        return fallback
+    safe_stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(name).stem).strip("-")[:80]
+    return f"{safe_stem or Path(fallback).stem}{suffix}"
+
+
+def validate_profile_layout_xlsx(raw: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            names = set(zf.namelist())
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Quotation layout must be a valid .xlsx workbook.") from exc
+    if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+        raise ValueError("Quotation layout must be a valid .xlsx workbook.")
+
+
+def normalize_profile_layout_rules_payload(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    rules_value: Any
+    if isinstance(value.get("json"), dict):
+        rules_value = value.get("json")
+    elif isinstance(value.get("data"), dict):
+        rules_value = value.get("data")
+    elif clean_text(value.get("data_url")):
+        raw = decode_data_url_bytes(value.get("data_url"), MAX_PROFILE_LAYOUT_RULES_BYTES)
+        try:
+            rules_value = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Layout rules must be valid JSON.") from exc
+    else:
+        rules_value = {
+            key: item
+            for key, item in value.items()
+            if key not in {"filename", "name"}
+        }
+    sanitized = sanitize_profile_default_value(rules_value)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
+def layout_rules_custom_xml_bytes(rules: dict[str, Any]) -> bytes:
+    root = ET.Element(f"{NS_LAYOUT_RULES}layoutRules", {"schema": "swooshz.quote-layout-rules.v1"})
+    json_node = ET.SubElement(root, f"{NS_LAYOUT_RULES}json")
+    json_node.text = json.dumps(
+        normalize_profile_layout_rules_payload(rules),
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def parse_layout_rules_custom_xml(raw: bytes) -> dict[str, Any]:
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return {}
+    if root.tag not in {f"{NS_LAYOUT_RULES}layoutRules", "layoutRules"}:
+        return {}
+    json_node = root.find(f"{NS_LAYOUT_RULES}json")
+    if json_node is None:
+        json_node = root.find("json")
+    if json_node is None or not clean_text(json_node.text):
+        return {}
+    try:
+        parsed = json.loads(json_node.text or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return normalize_profile_layout_rules_payload(parsed)
+
+
+def embedded_layout_rules_from_xlsx_bytes(raw: bytes) -> dict[str, Any]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            names = zf.namelist()
+            preferred = [LAYOUT_RULES_CUSTOM_XML_PATH] if LAYOUT_RULES_CUSTOM_XML_PATH in names else []
+            candidates = preferred + [
+                name
+                for name in names
+                if name.startswith("customXml/") and name.endswith(".xml") and name not in preferred
+            ]
+            for name in candidates:
+                rules = parse_layout_rules_custom_xml(zf.read(name))
+                if rules:
+                    return rules
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return {}
+    return {}
+
+
+def embedded_layout_rules_from_xlsx_path(path: Path) -> dict[str, Any]:
+    try:
+        return embedded_layout_rules_from_xlsx_bytes(path.read_bytes())
+    except OSError:
+        return {}
+
+
+def ensure_layout_rules_relationship(parts: dict[str, bytes]) -> None:
+    raw = parts.get("_rels/.rels")
+    root = ET.fromstring(raw) if raw else ET.Element(f"{NS_PACKAGE_REL}Relationships")
+    target = LAYOUT_RULES_CUSTOM_XML_PATH
+    for relationship in root.findall(f"{NS_PACKAGE_REL}Relationship"):
+        if relationship.attrib.get("Type") == CUSTOM_XML_REL_TYPE and relationship.attrib.get("Target") == target:
+            parts["_rels/.rels"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+            return
+    used_ids = {
+        clean_text(relationship.attrib.get("Id"))
+        for relationship in root.findall(f"{NS_PACKAGE_REL}Relationship")
+    }
+    index = 1
+    rel_id = "rIdKqagLayoutRules"
+    while rel_id in used_ids:
+        index += 1
+        rel_id = f"rIdKqagLayoutRules{index}"
+    ET.SubElement(
+        root,
+        f"{NS_PACKAGE_REL}Relationship",
+        {"Id": rel_id, "Type": CUSTOM_XML_REL_TYPE, "Target": target},
+    )
+    parts["_rels/.rels"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def xlsx_bytes_with_embedded_layout_rules(raw: bytes, rules: dict[str, Any]) -> bytes:
+    validate_profile_layout_xlsx(raw)
+    normalized_rules = normalize_profile_layout_rules_payload(rules)
+    if not normalized_rules:
+        return raw
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        parts = {name: zf.read(name) for name in zf.namelist()}
+    parts[LAYOUT_RULES_CUSTOM_XML_PATH] = layout_rules_custom_xml_bytes(normalized_rules)
+    ensure_layout_rules_relationship(parts)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in parts.items():
+            zf.writestr(name, content)
+    return buffer.getvalue()
+
+
+def default_layout_rules_payload() -> dict[str, Any]:
+    rules = embedded_layout_rules_from_xlsx_path(DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH)
+    if rules:
+        return rules
+    return normalize_profile_layout_rules_payload(load_json_file(DEFAULT_LAYOUT_RULES_TEMPLATE_PATH))
+
+
+def profile_pack_payload_from_profile(profile_payload: dict[str, Any], source_payload: dict[str, Any]) -> dict[str, Any]:
+    for candidate in (
+        profile_payload.get("pack"),
+        profile_payload.get("profile_pack"),
+        source_payload.get("pack"),
+        source_payload.get("profile_pack"),
+    ):
+        if isinstance(candidate, dict):
+            return candidate
+    return {}
+
+
+def normalize_profile_pack_assets(profile_payload: dict[str, Any], source_payload: dict[str, Any]) -> dict[str, Any]:
+    pack = profile_pack_payload_from_profile(profile_payload, source_payload)
+    if not pack:
+        return {}
+    assets: dict[str, Any] = {}
+    rules = pack.get("layout_rules") if isinstance(pack.get("layout_rules"), dict) else {}
+    rules_payload = normalize_profile_layout_rules_payload(rules) if rules else {}
+    layout = pack.get("quotation_layout") if isinstance(pack.get("quotation_layout"), dict) else {}
+    if layout:
+        raw = decode_data_url_bytes(layout.get("data_url"), MAX_PROFILE_LAYOUT_BYTES)
+        validate_profile_layout_xlsx(raw)
+        if rules_payload:
+            raw = xlsx_bytes_with_embedded_layout_rules(raw, rules_payload)
+        elif not embedded_layout_rules_from_xlsx_bytes(raw):
+            default_rules = default_layout_rules_payload()
+            if default_rules:
+                raw = xlsx_bytes_with_embedded_layout_rules(raw, default_rules)
+        assets["quotation_layout"] = {
+            "filename": safe_profile_pack_filename(layout.get("filename") or layout.get("name"), "quotation-layout.xlsx", {".xlsx"}),
+            "bytes": raw,
+        }
+    return assets
+
+
 def normalize_pricing_reference_payload(payload: dict[str, Any]) -> dict[str, Any]:
     reference_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
     if not reference_id:
@@ -4156,7 +4514,11 @@ def delete_pricing_reference_pack(reference_id: str, source: str = "local") -> b
 
 def profile_payload_from_export(payload: dict[str, Any]) -> dict[str, Any]:
     if clean_text(payload.get("schema")) == COMPANY_PROFILE_EXPORT_SCHEMA and isinstance(payload.get("profile"), dict):
-        return payload["profile"]
+        profile = copy.deepcopy(payload["profile"])
+        for key in ("pack", "profile_pack"):
+            if isinstance(payload.get(key), dict) and not isinstance(profile.get(key), dict):
+                profile[key] = payload[key]
+        return profile
     return payload
 
 
@@ -4165,13 +4527,65 @@ def normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
     profile_id = safe_resource_id(profile_payload.get("id") or profile_payload.get("label"), "")
     if not profile_id:
         raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
-    return {
+    normalized = {
         "id": profile_id,
         "label": sanitize_formula_text(profile_payload.get("label")) or profile_id,
         "description": sanitize_formula_text(profile_payload.get("description")),
         "defaults": sanitize_profile_defaults(profile_payload.get("defaults")),
         "saved_at": utc_timestamp(),
     }
+    pack_assets = normalize_profile_pack_assets(profile_payload, payload)
+    if pack_assets:
+        normalized["_pack_assets"] = pack_assets
+    return normalized
+
+
+def profile_pack_asset_export_payload(profile: ProfilePack) -> dict[str, Any]:
+    pack: dict[str, Any] = {}
+    layout_path = profile.quotation_layout_path
+    if layout_path.is_file():
+        content_type = mimetypes.guess_type(str(layout_path))[0] or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        raw = layout_path.read_bytes()
+        rules = embedded_layout_rules_from_xlsx_bytes(raw)
+        if not rules:
+            rules_path = profile.layout_rules_path
+            rules = load_json_file(rules_path) if rules_path.is_file() else default_layout_rules_payload()
+            if rules:
+                raw = xlsx_bytes_with_embedded_layout_rules(raw, rules)
+        pack["quotation_layout"] = {
+            "filename": "quotation-layout.xlsx",
+            "data_url": f"data:{content_type};base64,{base64.b64encode(raw).decode('ascii')}",
+        }
+    return pack
+
+
+def company_profile_export_payload(profile_id: str, company_id: str = DEFAULT_COMPANY_ID) -> dict[str, Any] | None:
+    safe_id = safe_resource_id(profile_id, "")
+    if not safe_id:
+        return None
+    store = company_config_store()
+    profile = next(
+        (copy.deepcopy(item) for item in store.list_profiles(company_id) if safe_resource_id(item.get("id"), "") == safe_id),
+        None,
+    )
+    if profile is None:
+        return None
+    exported_profile = {
+        "id": safe_id,
+        "label": clean_text(profile.get("label")) or safe_id,
+        "description": clean_text(profile.get("description")),
+        "defaults": copy.deepcopy(profile.get("defaults")) if isinstance(profile.get("defaults"), dict) else {},
+    }
+    payload: dict[str, Any] = {
+        "schema": COMPANY_PROFILE_EXPORT_SCHEMA,
+        "exported_at": utc_timestamp(),
+        "profile": exported_profile,
+    }
+    profile_pack = load_company_profile_pack(safe_id, company_id) or load_profile_pack(safe_id)
+    pack = profile_pack_asset_export_payload(profile_pack)
+    if pack:
+        payload["pack"] = pack
+    return payload
 
 
 def require_permission(permission: str) -> tuple[bool, dict[str, Any]]:
@@ -5092,6 +5506,7 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     tax = normalized_tax_config(payload.get("tax"))
     currency = normalize_currency_label(payload.get("currency"))
+    detected_metadata: dict[str, Any] = {}
     result: dict[str, Any] | None = None
     route = "unsupported"
     used_ai = False
@@ -5111,14 +5526,17 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
                     raw = decode_data_url_bytes(payload.get("data_url"), MAX_PRICING_REFERENCE_BYTES)
                     timings_ms["decode_upload"] = elapsed_milliseconds(decode_started_at)
                     if extension == "xlsx":
+                        detected_metadata = pricing_reference_import_metadata_from_xlsx(raw)
                         sectioned_started_at = time.perf_counter()
                         sectioned_workbook_result = pricing_reference_import_preview_from_sectioned_workbook(raw, filename)
                         timings_ms["sectioned_workbook_parse"] = elapsed_milliseconds(sectioned_started_at)
                         if sectioned_workbook_result.get("canSave") or (sectioned_workbook_result.get("rowCount") and not sectioned_workbook_result.get("missing")):
                             route = "sectioned_workbook"
                             result = sectioned_workbook_result
-                            result["tax"] = tax
-                            result["currency"] = clean_text(result.get("currency")) or currency
+                            if clean_text(detected_metadata.get("label")):
+                                result["suggested_label"] = detected_metadata["label"]
+                            result["tax"] = normalized_tax_config(detected_metadata.get("tax")) if isinstance(detected_metadata.get("tax"), dict) else tax
+                            result["currency"] = clean_text(detected_metadata.get("currency")) or clean_text(result.get("currency")) or currency
                             result["saved"] = False
                             return result
                     context_started_at = time.perf_counter()
@@ -5162,8 +5580,11 @@ def pricing_reference_import_preview(payload: dict[str, Any]) -> dict[str, Any]:
             result = pricing_reference_validation_result([], [], 0, filename) | {
                 "errors": ["Upload a .xlsx, .csv, or .md pricing reference file."],
             }
-        result["tax"] = tax
-        result["currency"] = normalize_currency_label(result.get("currency") or currency)
+        if clean_text(detected_metadata.get("label")) and not clean_text(result.get("suggested_label")):
+            result["suggested_label"] = detected_metadata["label"]
+        result_tax = result.get("tax") if isinstance(result.get("tax"), dict) else detected_metadata.get("tax") if isinstance(detected_metadata.get("tax"), dict) else tax
+        result["tax"] = normalized_tax_config(result_tax)
+        result["currency"] = normalize_currency_label(detected_metadata.get("currency") or result.get("currency") or currency)
         result["saved"] = False
         return result
     finally:
@@ -5203,6 +5624,14 @@ def validate_pricing_reference_upload(payload: dict[str, Any]) -> dict[str, Any]
         normalized_result = validate_pricing_reference_rows(rows, headers, filename)
         normalized_result["layout"] = "normalized-pricing-reference"
         normalized_result["currency"] = detect_currency_from_rows(headers, rows) or DEFAULT_CURRENCY_LABEL
+        if extension == "xlsx":
+            metadata = pricing_reference_import_metadata_from_xlsx(raw)
+            if clean_text(metadata.get("label")):
+                normalized_result["suggested_label"] = metadata["label"]
+            if isinstance(metadata.get("tax"), dict):
+                normalized_result["tax"] = normalized_tax_config(metadata["tax"])
+            if clean_text(metadata.get("currency")):
+                normalized_result["currency"] = normalize_currency_label(metadata["currency"])
         if normalized_result["errors"] and normalized_result["missing"]:
             normalized_result["errors"].append(
                 "Workbook layout was not recognized as a normalized pricing reference. Use the New Pricing Reference import flow with AI enabled for messy files, or download the optional template for clean manual entry."
@@ -5261,6 +5690,8 @@ def rate_limit_path_key(path: str) -> str:
     normalized_path = urlparse(path).path
     if re.fullmatch(r"/api/settings/pricing-references/[A-Za-z0-9_-]+", normalized_path):
         return "/api/settings/pricing-references/:id"
+    if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+/export\.json", normalized_path):
+        return "/api/settings/profiles/:id"
     if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+", normalized_path):
         return "/api/settings/profiles/:id"
     return normalized_path
@@ -5357,7 +5788,7 @@ def default_runtime_workspace() -> dict[str, Any]:
                 "profile_id": DEFAULT_PROFILE_ID,
             },
             "layout_rules": {
-                "source": "profile-pack",
+                "source": "embedded-profile-layout",
                 "profile_id": DEFAULT_PROFILE_ID,
             },
             "pricing_reference": {
@@ -5453,6 +5884,34 @@ def payload_with_workspace_quote_profile_defaults(payload: dict[str, Any]) -> di
     return resolved
 
 
+def company_profile_pack_config(profile: dict[str, Any], layout_filename: str = "", rules_filename: str = "") -> dict[str, Any]:
+    profile_id = safe_resource_id(profile.get("id") or profile.get("label"), "")
+    label = clean_text(profile.get("label")) or profile_id or "Company Profile"
+    defaults = copy.deepcopy(profile.get("defaults")) if isinstance(profile.get("defaults"), dict) else {}
+    config: dict[str, Any] = {
+        "id": profile_id,
+        "label": label,
+        "description": clean_text(profile.get("description")),
+        "default_quote_detail_preset": "default" if defaults else "",
+        "quote_detail_presets": [],
+        "saved_at": clean_text(profile.get("saved_at")) or utc_timestamp(),
+    }
+    default_pricing_reference = safe_resource_id(profile.get("default_pricing_reference"), "")
+    if default_pricing_reference:
+        config["default_pricing_reference"] = default_pricing_reference
+    if defaults:
+        config["quote_detail_presets"] = [{
+            "id": "default",
+            "name": label,
+            "details": defaults,
+        }]
+    if layout_filename:
+        config["quotation_layout"] = layout_filename
+    if rules_filename:
+        config["layout_rules"] = rules_filename
+    return config
+
+
 def normalized_tax_config(value: Any | None = None) -> dict[str, Any]:
     tax = value if isinstance(value, dict) else {}
     return {"label": normalize_tax_label(tax.get("label")), "rate": normalize_tax_rate(tax.get("rate"), DEFAULT_TAX_RATE)}
@@ -5522,6 +5981,19 @@ class CompanyConfigStore:
             raise ValueError("Company id is not safe.") from exc
         return resolved_path
 
+    def profile_pack_dir(self, company_id: str, profile_id: str) -> Path:
+        safe_id = safe_resource_id(profile_id, "")
+        if not safe_id:
+            raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        company_dir = self.company_dir(company_id)
+        path = company_dir / "profile-packs" / safe_id
+        resolved_path = path.resolve()
+        try:
+            resolved_path.relative_to(company_dir.resolve())
+        except ValueError as exc:
+            raise ValueError("Profile id is not safe.") from exc
+        return resolved_path
+
     def collection_path(self, company_id: str, collection: str) -> Path:
         if collection not in {"pricing-references", "profiles"}:
             raise ValueError("Unsupported settings collection.")
@@ -5574,10 +6046,42 @@ class CompanyConfigStore:
         return self._read_collection(company_id, "profiles")
 
     def save_profile(self, company_id: str, profile: dict[str, Any]) -> dict[str, Any]:
-        return self._save_item(company_id, "profiles", profile)
+        profile_id = safe_resource_id(profile.get("id") or profile.get("label"), "")
+        if not profile_id:
+            raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        profile_dir = self.profile_pack_dir(company_id, profile_id)
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        pack_assets = profile.get("_pack_assets") if isinstance(profile.get("_pack_assets"), dict) else {}
+        existing_config = load_json_file(profile_dir / "profile.json")
+        layout_filename = clean_text(existing_config.get("quotation_layout"))
+        if layout_filename and not (profile_dir / layout_filename).is_file():
+            layout_filename = ""
+        layout_asset = pack_assets.get("quotation_layout") if isinstance(pack_assets.get("quotation_layout"), dict) else {}
+        if layout_asset:
+            layout_filename = safe_profile_pack_filename(layout_asset.get("filename"), "quotation-layout.xlsx", {".xlsx"})
+            (profile_dir / layout_filename).write_bytes(layout_asset.get("bytes") or b"")
+
+        profile_record = {
+            key: copy.deepcopy(value)
+            for key, value in profile.items()
+            if key not in {"_pack_assets", "pack", "profile_pack"}
+        }
+        profile_record["id"] = profile_id
+        profile_record["layout"] = {
+            "has_quotation_layout": bool(layout_filename),
+            "rules_source": "embedded-workbook" if layout_filename else "",
+        }
+        profile_config = company_profile_pack_config(profile_record, layout_filename, "")
+        (profile_dir / "profile.json").write_text(json.dumps(profile_config, indent=2, sort_keys=True), encoding="utf-8")
+        return self._save_item(company_id, "profiles", profile_record)
 
     def delete_profile(self, company_id: str, profile_id: str) -> bool:
-        return self._delete_item(company_id, "profiles", profile_id)
+        deleted = self._delete_item(company_id, "profiles", profile_id)
+        pack_dir = self.profile_pack_dir(company_id, profile_id)
+        if pack_dir.exists():
+            shutil.rmtree(pack_dir)
+            deleted = True
+        return deleted
 
 
 def company_config_store() -> CompanyConfigStore:
@@ -5682,9 +6186,36 @@ def pricing_catalog_path_for_payload(payload: dict[str, Any], job_tmp: Path) -> 
 def load_json_file(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def load_default_profile_template_config(profile_id: str) -> dict[str, Any]:
+    config = load_json_file(DEFAULT_PROFILE_TEMPLATE_PATH)
+    if not config:
+        return {}
+    config = copy.deepcopy(config)
+    config["id"] = safe_resource_id(config.get("id"), profile_id) or profile_id
+    return config
+
+
+def default_profile_config(profile_id: str | None = None) -> dict[str, Any]:
+    resolved_id = safe_resource_id(profile_id, DEFAULT_QUOTE_COMPANY_PROFILE_ID) or DEFAULT_QUOTE_COMPANY_PROFILE_ID
+    template_config = load_default_profile_template_config(resolved_id)
+    if template_config:
+        return template_config
+    return {
+        "id": resolved_id,
+        "label": "Default",
+        "description": "Built-in default quotation profile.",
+        "default_quote_detail_preset": "default",
+        "quote_detail_presets": [{
+            "id": "default",
+            "name": "Default",
+            "details": {},
+        }],
+    }
 
 
 @dataclass(frozen=True)
@@ -5708,8 +6239,12 @@ class ProfilePack:
             profile_dir = root / resolved_id
 
         config = load_json_file(profile_dir / "profile.json")
+        if not config and resolved_id == DEFAULT_QUOTE_COMPANY_PROFILE_ID:
+            config = default_profile_config(resolved_id)
         if not config and resolved_id != DEFAULT_PROFILE_ID:
             return cls.resolve(DEFAULT_PROFILE_ID)
+        if not config and resolved_id == DEFAULT_PROFILE_ID:
+            config = default_profile_config(resolved_id)
 
         profile_id_from_config = safe_resource_id(config.get("id"), resolved_id)
         return cls(profile_id_from_config, profile_dir, dict(config))
@@ -5745,11 +6280,20 @@ class ProfilePack:
 
     @property
     def quotation_layout_path(self) -> Path:
-        return self.asset_path("quotation_layout", "quotation-layout.xlsx")
+        path = self.asset_path("quotation_layout", "quotation-layout.xlsx")
+        if path.is_file() or not DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH.is_file():
+            return path
+        return DEFAULT_QUOTE_LAYOUT_TEMPLATE_PATH.resolve()
 
     @property
     def layout_rules_path(self) -> Path:
-        return self.asset_path("layout_rules", "layout-rules.json")
+        layout_path = self.quotation_layout_path
+        if layout_path.is_file() and embedded_layout_rules_from_xlsx_path(layout_path):
+            return layout_path
+        path = self.asset_path("layout_rules", "layout-rules.json")
+        if path.is_file():
+            return path
+        return layout_path
 
     @property
     def default_quote_basis(self) -> dict[str, Any]:
@@ -5790,7 +6334,7 @@ class ProfilePack:
                 continue
             preset_id = safe_resource_id(raw.get("id"), "")
             details = copy.deepcopy(raw.get("details")) if isinstance(raw.get("details"), dict) else {}
-            if not preset_id or not details:
+            if not preset_id or (not details and preset_id != "default"):
                 continue
             self.resolve_profile_logo(details)
             presets.append(
@@ -5904,7 +6448,29 @@ class PricingReferencePack:
         return detail
 
 
+def load_company_profile_pack(profile_id: str | None = None, company_id: str = DEFAULT_COMPANY_ID) -> ProfilePack | None:
+    resolved_id = safe_resource_id(profile_id, "")
+    if not resolved_id:
+        return None
+    store = company_config_store()
+    profiles = store.list_profiles(company_id)
+    profile = next((item for item in profiles if safe_resource_id(item.get("id"), "") == resolved_id), None)
+    if not profile:
+        return None
+    profile_dir = store.profile_pack_dir(company_id, resolved_id)
+    config = load_json_file(profile_dir / "profile.json")
+    if not config:
+        layout_filename = "quotation-layout.xlsx" if (profile_dir / "quotation-layout.xlsx").is_file() else ""
+        rules_filename = "layout-rules.json" if (profile_dir / "layout-rules.json").is_file() else ""
+        config = company_profile_pack_config(profile, layout_filename, rules_filename)
+    profile_id_from_config = safe_resource_id(config.get("id"), resolved_id)
+    return ProfilePack(profile_id_from_config, profile_dir, dict(config), source="company")
+
+
 def load_profile_pack(profile_id: str | None = None) -> ProfilePack:
+    company_pack = load_company_profile_pack(profile_id)
+    if company_pack is not None:
+        return company_pack
     return ProfilePack.resolve(profile_id)
 
 
@@ -5967,17 +6533,20 @@ def profile_prompt_summary(profile: ProfilePack | dict[str, Any]) -> dict[str, s
 
 def list_profiles() -> list[dict[str, Any]]:
     root = profiles_root()
-    if not root.exists():
-        return []
     profiles: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-    for path in sorted(root.iterdir()):
-        if not path.is_dir() or not PROFILE_ID_RE.fullmatch(path.name):
-            continue
-        profile = load_profile_pack(path.name)
-        if profile.config and profile.id not in seen_ids:
-            profiles.append(profile_public_summary(profile))
-            seen_ids.add(profile.id)
+    default_profile = ProfilePack.resolve(DEFAULT_QUOTE_COMPANY_PROFILE_ID)
+    if default_profile.config:
+        profiles.append(profile_public_summary(default_profile))
+        seen_ids.add(default_profile.id)
+    if root.exists():
+        for path in sorted(root.iterdir()):
+            if not path.is_dir() or not PROFILE_ID_RE.fullmatch(path.name):
+                continue
+            profile = load_profile_pack(path.name)
+            if profile.config and profile.id not in seen_ids:
+                profiles.append(profile_public_summary(profile))
+                seen_ids.add(profile.id)
     return profiles
 
 
@@ -7301,8 +7870,9 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "header_lines": multiline_list(header_source, preserve_blank=True, html_breaks=True),
             "logo_data_url": header_logo,
         },
+        "currency": quote_currency_from_payload(payload),
         "tax": quote_tax_from_payload(payload),
-        "line_items": sort_line_items_by_pricing_reference_order(payload, normalize_line_items_for_quote_basis_review(payload)),
+        "line_items": normalize_line_items_for_final_brief(payload),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
         "terms_heading": clean_text(quote_text.get("terms_heading")),
         "cheque_payee": clean_text(quote_text.get("cheque_payee")),
@@ -9450,6 +10020,18 @@ def normalize_line_items_for_quote_basis_review(payload: dict[str, Any]) -> list
     return sort_line_items_by_pricing_reference_order(payload, line_items)
 
 
+def normalize_line_items_for_final_brief(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    line_items = normalize_line_items(payload)
+    if not line_items:
+        return []
+
+    sections = normalize_quote_basis_sections(payload, pricing_reference_section_names_for_payload(payload))
+    if sections:
+        catalog_lookup = pricing_catalog_runtime_lookup_for_payload(payload, profile_id_from_payload(payload))
+        line_items = line_items_with_resolved_basis_catalog(line_items, sections, catalog_lookup)
+    return sort_line_items_by_pricing_reference_order(payload, line_items)
+
+
 def replacement_line_sections(payload: dict[str, Any], replacement_line: Any) -> list[dict[str, Any]]:
     sections = normalize_quote_basis_sections(payload, pricing_reference_section_names_for_payload(payload))
     if not sections:
@@ -10467,7 +11049,8 @@ def finish_draft_job(job_id: str, payload: dict[str, Any]) -> None:
 
 def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
     try:
-        result = run_quote_job(payload, job_id=job_id)
+        pdf_mode = "workbook" if payload_requests_pdf_view(payload) else "none"
+        result = run_quote_job(payload, job_id=job_id, pdf_mode=pdf_mode)
         status_map = {"needs_confirmation": "needs_review"}
         status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
         set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
@@ -10476,6 +11059,26 @@ def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
         result = failed_result_payload(error_reference)
         write_local_log("generate_failed", unexpected_error_log_details(error_reference, exc, job_id=job_id))
         set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
+
+
+def payload_requests_pdf_view(payload: dict[str, Any]) -> bool:
+    value = payload.get("view_pdf")
+    if isinstance(value, bool):
+        return value
+    return clean_text(value).lower() in {"1", "true", "yes", "workbook"}
+
+
+def finish_generate_pdf_job(job_id: str, payload: dict[str, Any]) -> None:
+    try:
+        result = run_quote_job(payload, job_id=job_id, pdf_mode="workbook")
+        status_map = {"needs_confirmation": "needs_review"}
+        status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
+        set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
+    except Exception as exc:  # pragma: no cover - defensive worker boundary
+        errors = safe_error_messages([str(exc)])
+        error_reference = new_error_reference()
+        write_local_log("generate_pdf_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
+        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
 
 
 def finish_basis_chat_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -10511,8 +11114,8 @@ def create_job(
     ai_tracking_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_type = clean_text(job_type).lower()
-    if normalized_type not in {"draft", "generate", "basis_chat"}:
-        return {"status": "blocked", "errors": ["Job type must be draft, basis_chat, or generate."]}
+    if normalized_type not in {"draft", "generate", "generate_pdf", "basis_chat"}:
+        return {"status": "blocked", "errors": ["Job type must be draft, basis_chat, generate, or generate_pdf."]}
     if not image_entries(payload):
         return {"status": "blocked", "errors": [MISSING_IMAGES_MESSAGE]}
     image_error = image_limit_error(payload)
@@ -10550,6 +11153,7 @@ def create_job(
         "draft": finish_draft_job,
         "basis_chat": finish_basis_chat_job,
         "generate": finish_generate_job,
+        "generate_pdf": finish_generate_pdf_job,
     }[normalized_type]
     thread = threading.Thread(
         target=run_job_worker,
@@ -10573,6 +11177,7 @@ def run_quote_job(
     output_root: Path | None = None,
     tmp_root: Path | None = None,
     job_id: str | None = None,
+    pdf_mode: str = "none",
 ) -> dict[str, Any]:
     payload = payload_with_workspace_quote_profile_defaults(payload)
     errors = validate_generation_payload(payload)
@@ -10586,6 +11191,9 @@ def run_quote_job(
     output_dir = output_root / job_id
     job_tmp.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
+    normalized_pdf_mode = clean_text(pdf_mode).lower()
+    if normalized_pdf_mode not in {"none", "workbook"}:
+        normalized_pdf_mode = "none"
 
     profile = load_profile_pack(profile_id_from_payload(payload))
     pricing_catalog_path = pricing_catalog_path_for_payload(payload, job_tmp)
@@ -10613,6 +11221,8 @@ def run_quote_job(
         str(layout_template_path),
         "--allow-ambiguous",
     ]
+    if normalized_pdf_mode != "none":
+        command.extend(["--pdf-mode", normalized_pdf_mode])
 
     completed = subprocess.run(
         command,
@@ -10657,6 +11267,7 @@ def run_quote_job(
         "files": output_files(job_id, output_dir),
         "pricing_matches": read_pricing_matches(output_dir / "pricing_matches.csv"),
         "export_status": read_export_status(output_dir / "export_status.txt"),
+        "pdf_mode": normalized_pdf_mode,
         "errors": errors_for_response,
     }
     if error_reference:
@@ -10783,6 +11394,37 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "Not found"}, status=404)
                 return
             self.send_json({"pricing_reference": detail})
+            return
+        profile_export_match = re.fullmatch(r"/api/settings/profiles/([A-Za-z0-9_-]+)/export\.json", path)
+        if profile_export_match:
+            allowed, error = require_permission("canManageProfiles")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            workspace = default_runtime_workspace()
+            profile_id = profile_export_match.group(1)
+            try:
+                payload = company_profile_export_payload(profile_id, workspace["company"]["id"])
+            except Exception as exc:  # pragma: no cover - defensive HTTP boundary
+                error_reference = new_error_reference()
+                write_local_log("profile_export_failed", {
+                    "error_reference": error_reference,
+                    "profile_id": safe_resource_id(profile_id, ""),
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                self.send_json({"status": "failed", "errors": ["Profile export failed."], "error_reference": error_reference}, status=500)
+                return
+            if not payload:
+                error_reference = new_error_reference()
+                write_local_log("profile_export_not_found", {
+                    "error_reference": error_reference,
+                    "profile_id": safe_resource_id(profile_id, ""),
+                    "company_id": workspace["company"]["id"],
+                })
+                self.send_json({"status": "failed", "errors": ["Profile export failed."], "error_reference": error_reference}, status=404)
+                return
+            export_profile_id = safe_segment(clean_text(payload.get("profile", {}).get("id")), "company-profile")
+            self.send_json_download(f"{export_profile_id}.quote-company-profile.json", payload)
             return
         if path == "/api/settings/profiles":
             allowed, error = require_permission("canManageProfiles")
@@ -11174,6 +11816,19 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_json_download(self, filename: str, payload: dict[str, Any]) -> None:
+        safe_filename = safe_segment(filename, "company-profile.json")
+        if not safe_filename.lower().endswith(".json"):
+            safe_filename = f"{safe_filename}.json"
+        body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_redirect(self, location: str, status: int = 302, extra_headers: list[tuple[str, str]] | None = None) -> None:
         self.send_response(status)
         self.send_header("Location", location)
@@ -11253,7 +11908,8 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         body = resolved.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        disposition = "inline" if filename == "quotation.pdf" else "attachment"
+        self.send_header("Content-Disposition", f'{disposition}; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.send_security_headers()
         self.end_headers()
@@ -11272,7 +11928,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_pricing_reference_template(self) -> None:
-        filename = "swooshz-pricing-reference-template.xlsx"
+        filename = "pricing-reference-template.xlsx"
         body = pricing_reference_template_xlsx_bytes()
         self.send_xlsx_download(filename, body)
 

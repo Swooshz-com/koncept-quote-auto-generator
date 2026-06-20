@@ -4,6 +4,7 @@ import unittest
 import base64
 import hashlib
 import html
+import inspect
 import io
 import json
 import os
@@ -166,7 +167,7 @@ def xlsx_with_single_cell(cell_ref: str, value: str = "section", *, shared_strin
     return buffer.getvalue()
 
 
-def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
+def xlsx_sheet_xml(rows: list[list[object | None]]) -> str:
     def cell_xml(row_number: int, col_number: int, value: object | None) -> str:
         if value in (None, ""):
             return ""
@@ -179,15 +180,26 @@ def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
     for row_number, row in enumerate(rows, start=1):
         cells = "".join(cell_xml(row_number, col_number, value) for col_number, value in enumerate(row))
         sheet_rows.append(f'<row r="{row_number}">{cells}</row>')
-    worksheet = (
+    return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
         f"<sheetData>{''.join(sheet_rows)}</sheetData>"
         "</worksheet>"
     )
+
+
+def xlsx_with_rows(rows: list[list[object | None]]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
-        zf.writestr("xl/worksheets/sheet1.xml", worksheet)
+        zf.writestr("xl/worksheets/sheet1.xml", xlsx_sheet_xml(rows))
+    return buffer.getvalue()
+
+
+def xlsx_with_sheet_rows(sheets: list[list[list[object | None]]]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for sheet_index, rows in enumerate(sheets, start=1):
+            zf.writestr(f"xl/worksheets/sheet{sheet_index}.xml", xlsx_sheet_xml(rows))
     return buffer.getvalue()
 
 
@@ -215,6 +227,25 @@ def empty_addressed_cell_refs_from_xlsx(raw: bytes) -> list[str]:
                 if cell_node.attrib.get("r") and not has_content:
                     refs.append(f"{name}!{cell_node.attrib['r']}")
     return refs
+
+
+def missing_ignorable_namespace_prefixes_from_xlsx(path: Path) -> list[str]:
+    missing: list[str] = []
+    with zipfile.ZipFile(path) as zf:
+        for name in sorted(item for item in zf.namelist() if item.endswith(".xml")):
+            raw = zf.read(name).decode("utf-8", errors="replace")
+            match = re.match(r"\s*(?:<\?xml[^>]*>\s*)?<([A-Za-z0-9_:.-]+)\b([^>]*)>", raw)
+            if not match:
+                continue
+            attrs = match.group(2)
+            ignorable = re.search(r'\bmc:Ignorable="([^"]+)"', attrs)
+            if not ignorable:
+                continue
+            declarations = set(re.findall(r'\bxmlns:([A-Za-z0-9_.-]+)="', attrs))
+            for prefix in ignorable.group(1).split():
+                if prefix not in declarations:
+                    missing.append(f"{name}:{prefix}")
+    return missing
 
 
 def excel_col(index: int) -> str:
@@ -3946,12 +3977,27 @@ class WebappServerTest(unittest.TestCase):
     def test_pricing_reference_template_download_uses_normalized_columns(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         headers, rows = webapp.rows_from_xlsx_bytes(raw)
+        sheets = webapp.xlsx_all_sheets_rows_with_numbers_from_bytes(raw)
 
+        expected_path = ROOT / "templates" / "pricing-reference" / "pricing-reference-template.xlsx"
+        self.assertEqual(webapp.PRICING_REFERENCE_TEMPLATE_PATH, expected_path)
+        self.assertEqual(raw, expected_path.read_bytes())
         self.assertEqual(headers, list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
+        self.assertEqual(sheets[1][1][0][1], ["Swooshz Pricing Reference Info"])
+        self.assertIn(["Reference name", ""], [row for _row_number, row in sheets[1][1]])
+        self.assertIn(["Tax label", "GST"], [row for _row_number, row in sheets[1][1]])
+        self.assertIn(["Tax rate", "0.09"], [row for _row_number, row in sheets[1][1]])
+        self.assertIn(["Currency", "SGD"], [row for _row_number, row in sheets[1][1]])
         self.assertEqual(empty_addressed_cell_refs_from_xlsx(raw), [])
         self.assertNotIn("aliases", headers)
+        self.assertIn("row", headers)
         self.assertGreaterEqual(len(rows), 2)
         self.assertTrue(rows[0]["id"].startswith("example-"))
+        self.assertEqual(rows[0]["row"], "1")
+        self.assertIn(
+            ["row", "Optional display/order number. Rows with lower numbers appear earlier in the imported reference."],
+            [row for _row_number, row in sheets[2][1]],
+        )
         template_text = json.dumps(rows, ensure_ascii=False).lower()
         for customer_specific in (
             "synthetic-exhibition-fixture-template",
@@ -3968,7 +4014,7 @@ class WebappServerTest(unittest.TestCase):
             with urllib.request.urlopen(f"{runner.base_url}/api/pricing-reference/template.xlsx", timeout=3) as response:
                 downloaded = response.read()
                 self.assertEqual(response.headers["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                self.assertIn("swooshz-pricing-reference-template.xlsx", response.headers["Content-Disposition"])
+                self.assertIn("pricing-reference-template.xlsx", response.headers["Content-Disposition"])
         self.assertEqual(webapp.rows_from_xlsx_bytes(downloaded)[0], list(webapp.PRICING_REFERENCE_TEMPLATE_COLUMNS))
 
     def test_index_response_versions_static_assets_from_file_mtime(self):
@@ -3980,7 +4026,7 @@ class WebappServerTest(unittest.TestCase):
     def test_pricing_reference_template_upload_accepts_seed_rows(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         result = webapp.validate_pricing_reference_upload({
-            "filename": "swooshz-pricing-reference-template.xlsx",
+            "filename": "pricing-reference-template.xlsx",
             "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
             + base64.b64encode(raw).decode("ascii"),
         })
@@ -3988,6 +4034,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["layout"], "normalized-pricing-reference")
         self.assertEqual(result["rowCount"], len(webapp.PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS))
+        self.assertEqual(
+            [item["item_order"] for item in result["items"]],
+            list(range(1, len(webapp.PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS) + 1)),
+        )
         self.assertTrue(result["canSave"])
         self.assertNotIn("exampleRows", result)
         self.assertNotIn("example", " ".join(result["warnings"]).lower())
@@ -4044,6 +4094,8 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("chair rental", rows[0]["match_terms"])
         self.assertEqual(result["errors"], [])
         self.assertTrue(result["canSave"])
+        self.assertEqual(result["suggested_label"], "Export Ref")
+        self.assertEqual(result["tax"], {"label": "GST", "rate": 0.09})
         self.assertEqual(result["currency"], "USD")
         self.assertEqual(result["items"][0]["description"], "nos. White chair rental")
         self.assertIn("chair rental", result["items"][0]["match_terms"])
@@ -4053,6 +4105,53 @@ class WebappServerTest(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             self.assertIn("xl/drawings/drawing1.xml", zf.namelist())
             self.assertTrue(any(name.startswith("xl/media/") for name in zf.namelist()))
+
+    def test_pricing_reference_import_metadata_prefers_reference_info_over_item_rows(self):
+        first_sheet = [
+            list(webapp.PRICING_REFERENCE_EXPORT_COLUMNS),
+            [
+                "item-row",
+                "Services",
+                "lot imported service",
+                "lot",
+                100,
+                1.2,
+                "",
+                "",
+                "",
+                "",
+                1,
+                1,
+                "",
+                "",
+                "",
+                "SGD",
+                "GST",
+                0.09,
+            ],
+        ]
+        reference_info = [
+            ["Swooshz Pricing Reference Export"],
+            ["Reference name", "Imported VAT Reference"],
+            ["Currency", "USD"],
+            ["Tax label", "VAT"],
+            ["Tax rate", 0.2],
+        ]
+        raw = xlsx_with_sheet_rows([first_sheet, reference_info])
+
+        metadata = webapp.pricing_reference_import_metadata_from_xlsx(raw)
+        result = webapp.validate_pricing_reference_upload({
+            "filename": "imported-vat-reference.xlsx",
+            "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+            + base64.b64encode(raw).decode("ascii"),
+        })
+
+        self.assertEqual(metadata["label"], "Imported VAT Reference")
+        self.assertEqual(metadata["currency"], "USD")
+        self.assertEqual(metadata["tax"], {"label": "VAT", "rate": 0.2})
+        self.assertEqual(result["suggested_label"], "Imported VAT Reference")
+        self.assertEqual(result["currency"], "USD")
+        self.assertEqual(result["tax"], {"label": "VAT", "rate": 0.2})
 
     def test_non_template_pricing_reference_upload_is_rejected(self):
         raw = minimal_pricing_reference_xlsx(["old_id", "description", "unit_hint", "internal_cost", "markup_multiplier", "aliases"])
@@ -4087,7 +4186,16 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("invalid cell reference", " ".join(result["errors"]))
 
     def test_xlsx_rows_for_ai_uses_real_excel_column_labels(self):
-        raw = minimal_pricing_reference_xlsx(["section", "description", "unit_hint"])
+        raw = xlsx_with_sheet_rows([
+            [
+                ["section", "description", "unit_hint"],
+                ["Structures", "White painted walling", "sqm"],
+            ],
+            [
+                ["Reference name", "Imported Export Ref"],
+                ["Currency", "USD"],
+            ],
+        ])
 
         rows = webapp.xlsx_rows_for_ai(raw)
 
@@ -4095,10 +4203,15 @@ class WebappServerTest(unittest.TestCase):
             rows[0]["non_empty_cells"],
             {"A": "section", "B": "description", "C": "unit_hint"},
         )
+        self.assertEqual(rows[0]["sheet"], "sheet1")
         self.assertEqual(
             rows[1]["non_empty_cells"],
             {"A": "Structures", "B": "White painted walling", "C": "sqm"},
         )
+        self.assertEqual(rows[1]["sheet"], "sheet1")
+        self.assertEqual(rows[2]["sheet"], "sheet2")
+        self.assertEqual(rows[2]["non_empty_cells"], {"A": "Reference name", "B": "Imported Export Ref"})
+        self.assertEqual(rows[3]["non_empty_cells"], {"A": "Currency", "B": "USD"})
 
     def test_xlsx_pricing_reference_rejects_large_uncompressed_xml(self):
         shared_strings = (
@@ -4181,7 +4294,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(brief["company"]["header_lines"], ["Line one", "Line two", "", "Line four"])
 
-    def test_fresh_runtime_has_no_repo_backed_pricing_reference_defaults(self):
+    def test_fresh_runtime_keeps_portable_default_profile_without_pricing_reference_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             empty_profiles_root = root / "profiles"
@@ -4190,7 +4303,8 @@ class WebappServerTest(unittest.TestCase):
             empty_pricing_root.mkdir()
             store = webapp.CompanyConfigStore(root / "data")
             with (
-                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", "default"),
+                mock.patch.object(webapp, "BUNDLED_DEFAULT_PROFILE_ID", "default"),
                 mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
                 mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root),
                 mock.patch.object(webapp, "pricing_references_root", return_value=empty_pricing_root),
@@ -4198,13 +4312,20 @@ class WebappServerTest(unittest.TestCase):
                 mock.patch.object(webapp, "company_config_store", return_value=store),
             ):
                 profiles = webapp.list_profiles()
+                default_pack = webapp.load_profile_pack("")
                 pricing_references = webapp.list_pricing_references()
                 profile_id = webapp.profile_id_from_payload({})
                 pricing_reference_id = webapp.pricing_reference_id_from_payload({})
 
-        self.assertEqual(profiles, [])
+        self.assertEqual(profiles[0]["id"], "default")
+        self.assertEqual(profiles[0]["label"], "Default")
+        self.assertEqual(profiles[0]["default_quote_detail_preset"], "default")
+        self.assertEqual(profiles[0]["quote_detail_presets"][0]["id"], "default")
+        self.assertTrue((ROOT / "templates" / "profile" / "default" / "profile.json").is_file())
+        self.assertEqual(default_pack.quotation_layout_path, ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx")
+        self.assertEqual(webapp.embedded_layout_rules_from_xlsx_path(default_pack.quotation_layout_path)["output"]["master_format"], "xlsx")
         self.assertEqual(pricing_references, [])
-        self.assertEqual(profile_id, "")
+        self.assertEqual(profile_id, "default")
         self.assertEqual(pricing_reference_id, "")
 
     def test_generate_job_blocks_when_selected_pricing_reference_is_missing(self):
@@ -4319,6 +4440,21 @@ class WebappServerTest(unittest.TestCase):
             "koncept-header-logo",
         ):
             self.assertNotIn(removed_real_detail, serialized_profile)
+
+    def test_default_profile_pack_uses_repo_placeholder_template_when_profile_layout_missing(self):
+        expected_layout = ROOT / "templates" / "quote-layout" / "quotation-layout.xlsx"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            empty_profiles_root = Path(tmp) / "profiles"
+            empty_profiles_root.mkdir()
+            with mock.patch.object(webapp, "profiles_root", return_value=empty_profiles_root):
+                profile_pack = webapp.load_profile_pack("")
+
+        self.assertTrue(expected_layout.is_file())
+        self.assertEqual(missing_ignorable_namespace_prefixes_from_xlsx(expected_layout), [])
+        self.assertEqual(profile_pack.quotation_layout_path, expected_layout)
+        self.assertEqual(profile_pack.layout_rules_path, expected_layout)
+        self.assertEqual(webapp.default_layout_rules_payload()["template"]["workbook"], "quotation-layout.xlsx")
 
     def test_sample_fixture_loads_details_and_images_without_pricing_source(self):
         raw_sample = json.loads((ROOT / "fixtures" / "samples" / "kent-group" / "sample.json").read_text(encoding="utf-8"))
@@ -7436,16 +7572,40 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
-    def test_static_webapp_does_not_offer_pdf_export(self):
+    def test_static_webapp_offers_on_demand_pdf_view(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertNotIn('id="pdfMode"', html)
-        self.assertNotIn("pdf_mode", js)
+        self.assertIn('id="sideViewPdfButton"', html)
+        self.assertIn("View PDF", html)
+        self.assertIn("pdfFile", js)
+        self.assertIn("buildPayload({ viewPdf })", js)
+        self.assertIn("view_pdf: options.viewPdf === true", js)
+        self.assertIn("viewCurrentPdfFile", js)
+        self.assertIn('const jobType = viewPdf ? "generate_pdf" : "generate";', js)
+        self.assertIn("startJob(jobType, buildPayload({ viewPdf }))", js)
+        self.assertIn("quotation.pdf", webapp.DOWNLOADABLE_FILES)
+        send_download_source = inspect.getsource(webapp.QuoteRunnerHandler.send_download)
+        self.assertIn("Content-Disposition", send_download_source)
+        self.assertIn("inline", send_download_source)
+        self.assertNotIn("pdf_mode:", js)
         self.assertNotIn("pdfMode", js)
-        self.assertNotIn("quotation.pdf", webapp.DOWNLOADABLE_FILES)
+
+    def test_output_files_includes_generated_pdf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "job-pdf"
+            out.mkdir()
+            (out / "quotation.xlsx").write_bytes(b"xlsx")
+            (out / "quotation.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+            files = webapp.output_files("job-pdf", out)
+
+        self.assertEqual([item["name"] for item in files], ["quotation.pdf", "quotation.xlsx"])
+        self.assertEqual(files[0]["url"], "/api/jobs/job-pdf/files/quotation.pdf")
+        self.assertEqual(files[1]["url"], "/api/jobs/job-pdf/files/quotation.xlsx")
 
     def test_static_webapp_exposes_dynamic_quote_fields_and_analysis_controls(self):
         static_dir = ROOT / "webapp" / "static"
@@ -7563,6 +7723,18 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
         self.assertIn("Load a template, or save/import/export a reusable company profile.", html)
+        self.assertNotIn('id="layoutTemplateInput"', html)
+        self.assertNotIn('id="layoutTemplateButton"', html)
+        self.assertIn("pendingProfilePack", js)
+        self.assertIn("fetchCompanyProfileExport", js)
+        self.assertIn("downloadBlobFile", js)
+        self.assertIn("newClientErrorReference", js)
+        self.assertIn("error_reference", js)
+        self.assertIn("applyPricingReferenceImportMetadata", js)
+        self.assertIn("setPricingReferenceTaxControls(result.tax)", js)
+        self.assertIn("setPricingReferenceCurrencyControls(result.currency)", js)
+        self.assertNotIn("handleLayoutTemplateFileChange", js)
+        self.assertIn("profilePackPayloadForSave()", js)
         self.assertNotIn("Company presets are loaded from repo profile templates for now. Database-backed saving can be enabled later.", html)
         self.assertNotIn("Default preset already applied.", html)
         self.assertNotIn("preset-skip-note", html)
@@ -7595,7 +7767,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(">Reset Draft</button>", html)
         self.assertNotIn(">Reset</button>", html)
         self.assertIn('setInputValue(elements.clientName, "")', js)
-        self.assertIn('renderPresetStatus("Quote-company defaults reset to the selected company preset.")', js)
+        self.assertIn('renderPresetStatus("Quote-company defaults reset to the Default profile template.")', js)
         self.assertNotIn("resetQuoteDetailsToDefaultPreset", js)
         self.assertLess(html.index('id="presetSelect"'), html.index('id="presetNameInput"'))
         self.assertNotIn('id="topbarStatus"', html)
@@ -7714,6 +7886,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".quote-details-clear-button", css)
         self.assertIn("loadDefaultProfilePreset", js)
         self.assertIn("loadDefaultProfilePreset({ silent: true })", js)
+        self.assertIn("loadDefaultProfilePreset({ silent: true, preferLastSelection: false })", js)
         self.assertIn("function resetImagesDraft", js)
         self.assertIn("state.images = [];", js)
         self.assertIn('id="savePresetButton"', html)
@@ -7790,10 +7963,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("min-height: 420px", css)
         self.assertNotIn("min-height: 360px", css)
         self.assertIn("justify-self: center", css)
-        self.assertIn(".output-match-table th,\n.output-match-table td {\n  padding: 8px 8px;\n  min-width: 0;\n  vertical-align: top;", css)
-        self.assertIn(".output-unit-price-content .output-cell-text {\n  display: inline-grid;\n  align-items: start;", css)
-        self.assertIn(".output-row-actions {\n  min-width: 0;\n  vertical-align: top;", css)
-        self.assertIn(".output-delete-button {\n  vertical-align: top;", css)
+        self.assertIn(".output-match-table th,\n.output-match-table td {\n  padding: 8px 8px;\n  min-width: 0;\n  vertical-align: middle;", css)
+        self.assertIn(".output-unit-price-content .output-cell-text {\n  display: inline-grid;\n  align-items: center;", css)
+        self.assertIn(".output-row-actions {\n  min-width: 0;\n  vertical-align: middle;", css)
+        self.assertIn(".output-delete-button {\n  vertical-align: middle;", css)
         self.assertIn(".secondary-button:disabled", css)
         self.assertIn("normalizeTextNewlines", js)
         self.assertIn("buildAiBasisChatResponse", js)
@@ -8191,28 +8364,62 @@ assert.strictEqual(canStartAnalysis(), true);
 
         self.assertIn('id="assistantOutput"', html)
         self.assertIn('id="sideDownloadButton"', html)
+        self.assertIn('id="sideViewPdfButton"', html)
+        self.assertIn('class="primary-button workspace-download-button is-disabled" id="sideViewPdfButton"', html)
         self.assertIn('id="excelGeneratingModal"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
-        self.assertIn('setResultStatus("Completed", "is-ok")', js)
+        self.assertLess(html.index('id="matchSummary"'), html.index('id="pricingReviewMessages"'))
+        self.assertIn('setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok")', js)
         self.assertIn('setResultStatus("Needs pricing review", "is-warn")', js)
         self.assertIn("state.downloadFile = excelFile", js)
+        self.assertIn("state.pdfFile = pdfFile", js)
         self.assertIn("setDownloadFiles", js)
         self.assertIn("updateDownloadButton", js)
         self.assertIn("downloadCurrentExcelFile", js)
+        self.assertIn("viewCurrentPdfFile", js)
         self.assertIn("showExcelGeneratingModal", js)
         self.assertIn("hideExcelGeneratingModal", js)
+        self.assertIn('state.activeJob = { id: started.data.job_id, type: jobType, viewPdf };', js)
+        self.assertIn('const jobType = viewPdf ? "generate_pdf" : "generate";', js)
+        self.assertIn('activeJob.type === "generate" || activeJob.type === "generate_pdf"', js)
+        self.assertIn('setResultStatus(viewPdf ? "Checking PDF" : "Checking Excel", "is-warn")', js)
+        self.assertIn('setResultStatus("PDF unavailable", "is-bad")', js)
+        self.assertIn("Download Excel is still available.", js)
+        self.assertNotIn("openPendingPdfWindow", js)
+        self.assertNotIn("navigatePendingPdfWindow", js)
+        self.assertNotIn("closePendingPdfWindow", js)
+        self.assertNotIn("about:blank", js)
+        self.assertIn('window.open(file.url, "_blank")', js)
+        self.assertNotIn("window.location.assign(file.url)", js)
+        self.assertIn('link.target = "_blank";', js)
+        self.assertIn('link.rel = "noopener";', js)
+        self.assertIn('workspacePaneFooter: qs(".workspace-pane-footer")', js)
+        self.assertIn('workspacePaneFooter.classList.toggle("is-output-step", isOutputStep)', js)
         self.assertIn('elements.sideDownloadButton.addEventListener("click", async (event) => {', js)
-        download_handler = js.split('elements.sideDownloadButton.addEventListener("click", async (event) => {', 1)[1].split("  });", 1)[0]
+        self.assertIn('elements.sideViewPdfButton.addEventListener("click", async (event) => {', js)
+        download_handler = js.split('elements.sideDownloadButton.addEventListener("click", async (event) => {', 1)[1].split('  document.addEventListener("keydown"', 1)[0]
+        pdf_handler = js.split('elements.sideViewPdfButton.addEventListener("click", async (event) => {', 1)[1].split('  document.addEventListener("keydown"', 1)[0]
         self.assertIn("event.preventDefault();", download_handler)
         self.assertIn("await handleGenerate();", js)
         self.assertIn("downloadCurrentExcelFile();", js)
         self.assertIn("await waitForUiPaint();", download_handler)
-        self.assertIn("title: \"Downloading Excel\"", download_handler)
-        self.assertIn("downloadCurrentExcelFile(existingFile);", download_handler)
-        self.assertIn("window.setTimeout(hideExcelGeneratingModal, 350);", download_handler)
+        self.assertIn("commitActiveOutputEditor();", download_handler)
+        self.assertIn("title: \"Regenerating Excel\"", download_handler)
+        self.assertIn("await handleGenerate();", download_handler)
+        self.assertIn("downloadCurrentExcelFile();", download_handler)
         self.assertIn("hideExcelGeneratingModal();", download_handler)
+        self.assertIn("await handleGenerate({ viewPdf: true });", pdf_handler)
+        self.assertIn("viewCurrentPdfFile();", pdf_handler)
+        self.assertLess(pdf_handler.index("await handleGenerate({ viewPdf: true });"), pdf_handler.index("viewCurrentPdfFile();"))
+        self.assertIn("title: \"Generating PDF\"", pdf_handler)
+        self.assertIn(".workspace-pane-footer.is-output-step {\n  grid-template-columns: repeat(4, minmax(0, 1fr));", css)
+        self.assertIn(".workspace-pane-footer.is-output-step #sideBackButton", css)
+        self.assertIn("grid-column: span 2;", css)
+        self.assertIn(".basis-line-include .basis-line-catalog-reference", css)
+        self.assertNotIn("existingFile", download_handler)
+        self.assertNotIn("downloadFileIsFresh()", download_handler)
         self.assertIn(".excel-generating-panel", css)
         self.assertNotIn('pricing: ["Pricing", "Price Review", "Catalog matches', js)
         self.assertIn('output: ["Output", "Editable Pricing", "Review quotation rows', js)
@@ -8301,11 +8508,16 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         self.assertIn("Contact support if this keeps happening", js)
         self.assertIn("isPageUnloading", js)
         self.assertIn("page_unloading", js)
+        self.assertIn('fetchFailureLogDetails(url, { error_reference: errorReference })', js)
+        self.assertIn("errors: genericFailureMessages({ error_reference: errorReference })", js)
         self.assertIn("maxFetchFailures = 4", js)
         self.assertIn('getJson(url, { logFetchFailure: false })', js)
         self.assertIn("return { ok, data, aborted: true }", js)
         self.assertIn("isInterruptedJobPoll", js)
         self.assertIn("handleInterruptedJobPoll", js)
+        self.assertIn('handleInterruptedJobPoll("draft", polled)', js)
+        self.assertIn("showAiFailureBanner(genericFailureMessage(data))", js)
+        self.assertIn('renderMessages(genericFailureMessages(data), "error")', js)
         self.assertIn("fetchFailureLogDetails", js)
         self.assertIn('reason: "fetch_failed"', js)
         self.assertNotIn("Local server connection failed", js)
@@ -8315,6 +8527,69 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         self.assertIn('window.addEventListener("pagehide", markPageUnloading)', js)
         self.assertIn('window.addEventListener("beforeunload", handleBeforeUnload)', js)
         self.assertIn("pricingReferenceShouldWarnBeforeUnload", js)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const GENERIC_FAILURE_MESSAGE = "Failed. Please try again. Contact support if this keeps happening.";
+let bannerMessage = "";
+let renderedMessages = [];
+let workflowStage = "";
+let synced = false;
+const state = { isAnalysisRunning: true, isGenerating: true };
+function showAiFailureBanner(message) { bannerMessage = message; }
+function setWorkflowStage(stage) { workflowStage = stage; }
+function setResultStatus() {}
+function renderMessages(messages) { renderedMessages = messages; }
+function syncControlStates() { synced = true; }
+
+eval([
+  "errorReferenceFrom",
+  "genericFailureMessage",
+  "genericFailureMessages",
+  "handleInterruptedJobPoll",
+].map(extractFunction).join("\n"));
+
+const failedPoll = { data: { fetch_failed: true, error_reference: "ERR-1234ABCD" } };
+handleInterruptedJobPoll("draft", failedPoll);
+assert.strictEqual(bannerMessage, "Failed. Please try again. Contact support if this keeps happening. Reference: ERR-1234ABCD.");
+assert.strictEqual(workflowStage, "analyzing");
+assert.strictEqual(state.isAnalysisRunning, false);
+handleInterruptedJobPoll("generate_pdf", failedPoll);
+assert.deepStrictEqual(renderedMessages, ["Failed. Please try again. Contact support if this keeps happening. Reference: ERR-1234ABCD."]);
+assert.strictEqual(state.isGenerating, false);
+assert.strictEqual(synced, true);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_match_summary_counts_only_exact_catalog_matches_as_confident(self):
         static_dir = ROOT / "webapp" / "static"
@@ -8769,10 +9044,10 @@ function extractFunction(name) {
 }
 
 const DEFAULT_PROFILE_ID = "quote-layout";
-const PROFILE_PRESET_PREFIX = "profile::";
-const COMPANY_PROFILE_PRESET_PREFIX = "company::";
+const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
 const LAST_SELECTION_STORAGE_KEY = "swooshz_last_selection_v1";
-let savedSelection = JSON.stringify({ presetValue: "company::saved-profile" });
+let savedSelection = JSON.stringify({ presetValue: "company:saved-profile" });
 const window = {
   localStorage: {
     getItem(key) { return key === LAST_SELECTION_STORAGE_KEY ? savedSelection : null; },
@@ -8815,22 +9090,160 @@ eval([
 ].map(extractFunction).join("\n"));
 
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "company::saved-profile");
-assert.strictEqual(elements.presetSelect.value, "company::saved-profile");
+assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
+assert.strictEqual(elements.presetSelect.value, "company:saved-profile");
 
-savedSelection = JSON.stringify({ presetValue: "company::missing-profile" });
+savedSelection = JSON.stringify({ presetValue: "company:missing-profile" });
 state.selectedPresetValue = "";
 elements.presetSelect.value = "";
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "profile::default");
-assert.strictEqual(elements.presetSelect.value, "profile::default");
+assert.strictEqual(state.selectedPresetValue, "profile:default");
+assert.strictEqual(elements.presetSelect.value, "profile:default");
 
-savedSelection = JSON.stringify({ presetValue: "profile::trade-show" });
+savedSelection = JSON.stringify({ presetValue: "profile:trade-show" });
 state.selectedPresetValue = "";
 elements.presetSelect.value = "";
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "profile::trade-show");
-assert.strictEqual(elements.presetSelect.value, "profile::trade-show");
+assert.strictEqual(state.selectedPresetValue, "profile:trade-show");
+assert.strictEqual(elements.presetSelect.value, "profile:trade-show");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_reset_quote_company_forces_default_profile_template(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = { selectedPresetValue: "" };
+const elements = { presetSelect: { value: "" } };
+const loaded = [];
+function lastSelectedPresetValue() { return "company:saved-profile"; }
+function defaultPresetOptionValue() { return "profile:default"; }
+function loadSelectedPreset(options = {}) { loaded.push({ value: state.selectedPresetValue, options }); }
+
+eval(extractFunction("loadDefaultProfilePreset"));
+
+loadDefaultProfilePreset({ silent: true });
+assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
+assert.strictEqual(elements.presetSelect.value, "company:saved-profile");
+assert.strictEqual(loaded[0].value, "company:saved-profile");
+
+state.selectedPresetValue = "";
+elements.presetSelect.value = "";
+loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
+assert.strictEqual(state.selectedPresetValue, "profile:default");
+assert.strictEqual(elements.presetSelect.value, "profile:default");
+assert.strictEqual(loaded[1].value, "profile:default");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_generation_profile_id_uses_selected_current_profile_pack(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_PROFILE_ID = "";
+const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const state = {
+  profileId: "repo-layout",
+  defaultProfileId: "",
+  selectedPresetValue: "company:custom-layout",
+  profiles: [{
+    id: "repo-layout",
+    label: "Repo Layout",
+    quote_detail_presets: [
+      { id: "default", name: "Default", profile_id: "repo-layout", details: {} },
+      { id: "alt", name: "Alt", profile_id: "alt-layout", details: {} },
+    ],
+  }],
+  companyProfiles: [{ id: "custom-layout", label: "Custom Layout", defaults: { company: { name: "Custom" } } }],
+};
+const elements = { presetSelect: { value: "" } };
+
+eval([
+  "safeId",
+  "neutralizeFormulaText",
+  "safeProfileId",
+  "safeProfileLabel",
+  "profilePresetOptionValue",
+  "companyProfileOptionValue",
+  "currentProfile",
+  "selectedPresetId",
+  "templateProfilePresets",
+  "normalizeCompanyProfile",
+  "companyProfilePresets",
+  "selectedPreset",
+  "resolvedProfileIdForPayload",
+  "generationProfileIdForPayload",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(generationProfileIdForPayload(), "custom-layout");
+
+state.selectedPresetValue = "profile:alt";
+assert.strictEqual(generationProfileIdForPayload(), "alt-layout");
+
+state.selectedPresetValue = "";
+elements.presetSelect.value = "";
+assert.strictEqual(generationProfileIdForPayload(), "repo-layout");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -9813,8 +10226,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('source: "bundled"', js)
         self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
-        self.assertIn('elements.sideDownloadButton.href = enabled && file?.url ? file.url : "#";', js)
-        generate_body = js.split("async function handleGenerate()", 1)[1].split("async function resumeSavedJob", 1)[0]
+        self.assertIn('elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";', js)
+        generate_body = js.split("async function handleGenerate(options = {})", 1)[1].split("async function resumeSavedJob", 1)[0]
         review_generate_body = generate_body.split("if (needsPricingReview) {", 1)[1].split("} else {", 1)[0]
         completed_generate_body = generate_body.split("} else {", 1)[-1].split("syncControlStates();", 1)[0]
         self.assertIn('renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });', review_generate_body)
@@ -10626,6 +11039,7 @@ function renderOutputValidationMessages() {}
 function renderPricingMatches() {}
 function renderMatchSummary() {}
 function syncControlStates() {}
+function markOutputRowsDirty() { state.downloadFile = null; }
 
 applyOutputIncludedAction({ dataset: { outputRow: "0" } });
 assert.strictEqual(state.outputRows[0].price_mode, "Included");
@@ -10650,6 +11064,186 @@ assert.strictEqual(outputCellDisplayValue(state.outputRows[0], "unit_price_overr
 applyOutputIncludedAction({ dataset: { outputRow: "1" } });
 assert.strictEqual(state.outputRows[0].price_mode, "Included");
 assert.strictEqual(state.outputRows[1].price_mode, "Included");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_output_validation_messages_are_visible(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = { outputErrors: [] };
+const elements = { pricingReviewMessages: { innerHTML: "" } };
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+eval(extractFunction("renderOutputValidationMessages"));
+
+renderOutputValidationMessages(["Row 2: Unit price is required.", "Row <3>: Quantity must be greater than 0."]);
+assert.deepStrictEqual(state.outputErrors, [
+  "Row 2: Unit price is required.",
+  "Row <3>: Quantity must be greater than 0.",
+]);
+assert.ok(elements.pricingReviewMessages.innerHTML.includes("message warn"));
+assert.ok(elements.pricingReviewMessages.innerHTML.includes("Row 2: Unit price is required."));
+assert.ok(elements.pricingReviewMessages.innerHTML.includes("Row &lt;3&gt;: Quantity must be greater than 0."));
+
+renderOutputValidationMessages([]);
+assert.deepStrictEqual(state.outputErrors, []);
+assert.strictEqual(elements.pricingReviewMessages.innerHTML, "");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_output_row_edits_invalidate_download_file_before_next_download(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+eval([
+  "numberOrNull",
+  "unitPriceEditKind",
+  "effectiveOutputUnitPrice",
+  "formatAmount",
+  "recalculateOutputRow",
+  "normalizeUnit",
+  "cleanCustomerQuoteLineText",
+  "pricingReferenceLineText",
+  "orderNumber",
+  "outputRowsToLineItems",
+  "outputRowsValid",
+  "setDownloadFiles",
+  "revisionNumber",
+  "markOutputRowsDirty",
+  "downloadFileIsFresh",
+  "updateDownloadButton",
+  "commitOutputEditor",
+  "hideOutputDeleteModal",
+  "confirmOutputRowDelete",
+].map(extractFunction).join("\n"));
+
+let downloadButtonState = {};
+const elements = {
+  sideDownloadButton: {
+    classList: { toggle(name, enabled) { downloadButtonState[name] = enabled; } },
+    setAttribute(name, value) { downloadButtonState[name] = value; },
+    getAttribute(name) { return downloadButtonState[name]; },
+    tabIndex: 0,
+    href: "",
+    download: "",
+    textContent: "",
+  },
+  outputDeleteModal: { classList: { remove() {} }, hidden: false },
+};
+const state = {
+  activeSidePanel: "output",
+  outputRows: [
+    { section: "A", description: "First", quantity: "1", unit: "lot", price_mode: "Priced", unit_price_override: "10", catalog_unit_price: "", amount: 10 },
+    { section: "B", description: "Second", quantity: "1", unit: "lot", price_mode: "Priced", unit_price_override: "20", catalog_unit_price: "", amount: 20 },
+  ],
+  lineItems: [],
+  downloadFile: null,
+  outputDeleteRowIndex: 1,
+  isGenerating: false,
+  isPreparingOutput: false,
+  outputRevision: 0,
+  downloadFileRevision: -1,
+};
+function renderOutputValidationMessages() {}
+function renderPricingMatches() {}
+function renderMatchSummary() {}
+function syncControlStates() {}
+function appIsBusy() { return false; }
+
+setDownloadFiles([{ url: "/api/jobs/old/files/quotation.xlsx", name: "quotation.xlsx" }]);
+assert.strictEqual(downloadFileIsFresh(), true);
+assert.strictEqual(elements.sideDownloadButton.href, "/api/jobs/old/files/quotation.xlsx");
+
+commitOutputEditor({
+  dataset: { outputEditorField: "quantity", outputRow: "0" },
+  value: "3",
+  isConnected: true,
+});
+assert.strictEqual(state.outputRevision, 1);
+assert.strictEqual(state.downloadFile, null);
+assert.strictEqual(downloadFileIsFresh(), false);
+assert.strictEqual(elements.sideDownloadButton.href, "#");
+assert.strictEqual(elements.sideDownloadButton.download, "");
+
+setDownloadFiles([{ url: "/api/jobs/new/files/quotation.xlsx", name: "quotation.xlsx" }]);
+assert.strictEqual(downloadFileIsFresh(), true);
+confirmOutputRowDelete();
+assert.strictEqual(state.outputRevision, 2);
+assert.strictEqual(state.outputRows.length, 1);
+assert.strictEqual(state.downloadFile, null);
+assert.strictEqual(downloadFileIsFresh(), false);
+assert.strictEqual(elements.sideDownloadButton.href, "#");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -11915,6 +12509,8 @@ function escapeHtml(value = "") {
 }
 function outputPricingSourceLabel() { return "Pricing reference"; }
 function renderAnalysisFindings() { return ""; }
+function setDownloadFiles() { state.downloadFile = null; }
+function markOutputRowsDirty() { state.downloadFile = null; }
 eval([
   "normalizeAnalysisMode",
   "normalizeTextNewlines",
@@ -12096,6 +12692,8 @@ state.quoteBasisSections = [{
 assert.strictEqual(basisConfirmBlockReason(state.quoteBasisSections), "");
 const dimensionBasisHtml = renderQuoteBasisMessage(state.quoteBasis, "edited");
 assert.ok(dimensionBasisHtml.includes("basis-visual-display"));
+assert.ok(dimensionBasisHtml.includes("basis-tag-legend"));
+assert.ok(dimensionBasisHtml.indexOf("basis-tag-legend") < dimensionBasisHtml.indexOf("basis-visual-display"));
 assert.ok(dimensionBasisHtml.includes("Booth size 9m width x 10.5m depth; overall floor area 94.5 sqm"));
 assert.ok(!dimensionBasisHtml.includes('class="basis-line-row'));
 assert.ok(!dimensionBasisHtml.includes('data-basis-line-index="0"'));
@@ -12117,6 +12715,7 @@ state.quoteBasisSections = [{
 }];
 const mixedDimensionBasisHtml = renderQuoteBasisMessage(state.quoteBasis, "edited");
 assert.ok(mixedDimensionBasisHtml.includes("basis-visual-display"));
+assert.ok(mixedDimensionBasisHtml.indexOf("basis-tag-legend") < mixedDimensionBasisHtml.indexOf("basis-visual-display"));
 assert.ok(mixedDimensionBasisHtml.includes("sqm needle punch carpet in colour"));
 assert.ok(mixedDimensionBasisHtml.includes('data-basis-line-index="1"'));
 assert.ok(!mixedDimensionBasisHtml.includes('data-basis-line-index="0"'));
@@ -12508,6 +13107,7 @@ eval([
   "basisLineMetadataMergeKey",
   "basisLineCoreMatches",
   "mergeBasisProposalLineMetadata",
+  "reviewBasisProposalSections",
   "applyBasisChatProposal",
 ].map(extractFunction).join("\n"));
 
@@ -12526,6 +13126,16 @@ state.basisChat.proposal = {
       custom_pricing: true,
       custom_confirmed: true,
     }, {
+      id: "db-drawing",
+      tag: "Include",
+      text: "[ no. single line drawing for DB box ]",
+      quantity: 1,
+      unit: "nos",
+      pricing_keyword: "electrical-db-drawing",
+      catalog_description: "no. single line drawing for DB box",
+      pricing_reference_description: "no. single line drawing for DB box",
+      catalog_unit_price: 600,
+    }, {
       id: "custom-counter",
       tag: "Custom",
       text: "Curved reception counter with Kent logo panel, teal trim and illuminated blue plinth.",
@@ -12540,9 +13150,15 @@ applyBasisChatProposal();
 const editedLine = state.quoteBasisSections[0].lines[0];
 assert.strictEqual(editedLine.text.includes("above 5m"), true);
 assert.strictEqual(editedLine.pricing_keyword, undefined);
-const untouchedLine = state.quoteBasisSections[0].lines[1];
+assert.strictEqual(editedLine.tag, "Custom");
+assert.strictEqual(editedLine.custom_confirmed, false);
+const newCatalogLine = state.quoteBasisSections[0].lines[1];
+assert.strictEqual(newCatalogLine.tag, "Confirm");
+assert.strictEqual(newCatalogLine.pricing_keyword, "electrical-db-drawing");
+const untouchedLine = state.quoteBasisSections[0].lines[2];
 assert.strictEqual(untouchedLine.possible_pricing_matches.length, 1);
 assert.strictEqual(untouchedLine.possible_pricing_matches[0].pricing_keyword, "counter-laminated");
+assert.deepStrictEqual(state.outputRows, []);
 assert.strictEqual(state.overlayClosed, true);
 assert.strictEqual(state.synced, true);
 """
@@ -13030,7 +13646,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertNotIn("refreshLineItemsFromServer", reset_body)
         self.assertNotIn("refreshOutputRowsFromLineItems", reset_body)
 
-    def test_run_quote_job_never_passes_pdf_mode_to_generator(self):
+    def test_run_quote_job_never_passes_payload_pdf_mode_to_generator(self):
         payload = valid_payload()
         payload["pdf_mode"] = "auto"
 
@@ -13056,6 +13672,50 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertIn(str(KONCEPT_LAYOUT), command)
         self.assertNotIn("--pdf-mode", command)
         self.assertNotIn("quotation.pdf", command)
+
+    def test_run_quote_job_can_generate_pdf_on_explicit_workbook_view_mode(self):
+        payload = valid_payload()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = webapp.subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Wrote quotation.xlsx\nWrote quotation.pdf\nPDF export status: excel_exported\n",
+                stderr="",
+            )
+            with mock.patch.object(webapp.subprocess, "run", return_value=completed) as run:
+                result = webapp.run_quote_job(
+                    payload,
+                    output_root=Path(tmp) / "out",
+                    tmp_root=Path(tmp) / "tmp",
+                    pdf_mode="workbook",
+                )
+
+        command = run.call_args.args[0]
+        self.assertEqual(result["status"], "completed")
+        self.assertIn("--pdf-mode", command)
+        self.assertIn("workbook", command)
+
+    def test_generate_job_uses_view_pdf_flag_for_workbook_pdf_export(self):
+        payload = valid_payload()
+        payload["view_pdf"] = True
+
+        with mock.patch.object(webapp, "run_quote_job", return_value={"status": "completed", "errors": []}) as run:
+            with mock.patch.object(webapp, "set_job_state"):
+                webapp.finish_generate_job("job-pdf-view", payload)
+
+        self.assertEqual(run.call_args.kwargs["job_id"], "job-pdf-view")
+        self.assertEqual(run.call_args.kwargs["pdf_mode"], "workbook")
+
+    def test_generate_pdf_job_uses_workbook_pdf_export(self):
+        payload = valid_payload()
+
+        with mock.patch.object(webapp, "run_quote_job", return_value={"status": "completed", "errors": []}) as run:
+            with mock.patch.object(webapp, "set_job_state"):
+                webapp.finish_generate_pdf_job("job-pdf-view", payload)
+
+        self.assertEqual(run.call_args.kwargs["job_id"], "job-pdf-view")
+        self.assertEqual(run.call_args.kwargs["pdf_mode"], "workbook")
 
     def test_company_config_store_safely_persists_company_references(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -13101,7 +13761,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(dependencies["quote_company_profile"]["store"], "profiles")
         self.assertEqual(dependencies["logo"]["source"], "quote-company-profile")
         self.assertEqual(dependencies["quotation_layout"]["source"], "profile-pack")
-        self.assertEqual(dependencies["layout_rules"]["source"], "profile-pack")
+        self.assertEqual(dependencies["layout_rules"]["source"], "embedded-profile-layout")
         self.assertEqual(dependencies["pricing_reference"]["source"], "selected-runtime-reference")
         self.assertNotIn("asset_packs", runtime)
 
@@ -13256,6 +13916,84 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(stored_profiles["items"][0]["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
         loaded_profile = next(item for item in settings_body["company_profiles"] if item["id"] == "default-import")
         self.assertEqual(loaded_profile["defaults"]["company"]["logo_data_url"], "data:image/png;base64,ZmFrZS1sb2dvLWltcG9ydA==")
+
+    def test_company_profile_export_endpoint_embeds_saved_layout_pack(self):
+        profile = webapp.normalize_profile_payload({
+            "id": "portable-layout-profile",
+            "label": "Portable Layout Profile",
+            "defaults": {
+                "company": {
+                    "name": "Portable Layout Quote Co Pte Ltd",
+                    "header_details": "Portable Layout Quote Co Pte Ltd\n1 Fixture Road",
+                    "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                },
+            },
+            "pack": {
+                "quotation_layout": {
+                    "filename": "quotation-layout.xlsx",
+                    "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+                    + base64.b64encode(KONCEPT_LAYOUT.read_bytes()).decode("ascii"),
+                },
+                "layout_rules": {
+                    "filename": "layout-rules.json",
+                    "json": json.loads(KONCEPT_LAYOUT_RULES.read_text(encoding="utf-8")),
+                },
+            },
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp))
+            store.save_profile(webapp.DEFAULT_COMPANY_ID, profile)
+            with mock.patch.object(webapp, "company_config_store", return_value=store):
+                with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False):
+                    with LocalRunnerServer() as runner:
+                        response = urllib.request.urlopen(
+                            f"{runner.base_url}/api/settings/profiles/portable-layout-profile/export.json",
+                            timeout=3,
+                        )
+                        body = json.loads(response.read().decode("utf-8"))
+                        content_type = response.headers["Content-Type"]
+                        disposition = response.headers["Content-Disposition"]
+
+        layout_payload = body["pack"]["quotation_layout"]
+        layout_bytes = base64.b64decode(layout_payload["data_url"].split(",", 1)[1])
+        self.assertTrue(content_type.startswith("application/json"))
+        self.assertIn("portable-layout-profile.quote-company-profile.json", disposition)
+        self.assertEqual(body["schema"], webapp.COMPANY_PROFILE_EXPORT_SCHEMA)
+        self.assertEqual(body["profile"]["id"], "portable-layout-profile")
+        self.assertEqual(body["profile"]["defaults"]["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
+        self.assertEqual(layout_payload["filename"], "quotation-layout.xlsx")
+        self.assertNotIn("layout_rules", body["pack"])
+        embedded_rules = webapp.embedded_layout_rules_from_xlsx_bytes(layout_bytes)
+        self.assertEqual(embedded_rules["output"]["master_format"], "xlsx")
+
+    def test_company_profile_export_failure_returns_reference_and_logs_generic_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = webapp.CompanyConfigStore(Path(tmp) / "data")
+            log_root = Path(tmp) / "logs"
+            with (
+                mock.patch.object(webapp, "company_config_store", return_value=store),
+                mock.patch.object(webapp, "configured_log_root", return_value=log_root),
+                mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "admin"}, clear=False),
+            ):
+                with LocalRunnerServer() as runner:
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(
+                            f"{runner.base_url}/api/settings/profiles/missing-profile/export.json",
+                            timeout=3,
+                        )
+                    body = json.loads(error.exception.read().decode("utf-8"))
+
+            log_path = next((log_root / "app").glob("*.jsonl"))
+            log_records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(error.exception.code, 404)
+        self.assertEqual(body["status"], "failed")
+        self.assertEqual(body["errors"], ["Profile export failed."])
+        self.assertRegex(body["error_reference"], r"^ERR-[0-9A-F]{8}$")
+        self.assertEqual(log_records[-1]["event"], "profile_export_not_found")
+        self.assertEqual(log_records[-1]["details"]["error_reference"], body["error_reference"])
+        self.assertIn("Match the browser-visible error reference", log_records[-1]["meaning"])
 
     def test_imported_profile_logo_data_url_is_written_to_generated_xlsx(self):
         imported_profile = webapp.normalize_profile_payload({
@@ -13508,15 +14246,53 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
                     "name": "Synthetic Internal Workspace Pte Ltd",
                     "header_details": "Synthetic Internal Workspace Pte Ltd\n1 Synthetic Way",
                     "logo_data_url": SANITIZED_LOGO_DATA_URL,
+                    "logo_name": "synthetic-logo.png",
+                    "logo_type": "image/png",
                 },
                 "quote_text": {
+                    "terms_heading": "Synthetic terms heading:",
                     "payment_terms": ["Synthetic payment term."],
                     "cheque_payee": "Synthetic Internal Workspace Pte Ltd",
+                    "notes_heading": "Synthetic notes heading:",
+                    "standard_notes": ["Synthetic standard note."],
+                    "acceptance_text": "Synthetic acceptance text.",
+                    "person_label": "Synthetic person label",
+                    "stamp_label": "Synthetic stamp label",
+                    "date_label": "Synthetic date label",
                 },
                 "signature": {
                     "company_signatory": "Synthetic Signatory",
                     "company_title": "Synthetic Title",
                     "company_date_label": "Synthetic date:",
+                },
+                "rich_text": {
+                    "headerDetails": "<div><strong>Synthetic Internal Workspace Pte Ltd</strong></div><div>1 Synthetic Way</div>",
+                    "quoteCompanyName": "<div>Synthetic Internal Workspace Pte Ltd</div>",
+                    "termsHeading": "<div><strong>Synthetic terms heading:</strong></div>",
+                    "paymentTerms": "<div>Synthetic payment term.</div>",
+                    "notesHeading": "<div><strong>Synthetic notes heading:</strong></div>",
+                    "standardNotes": "<div>Synthetic standard note.</div>",
+                    "acceptanceText": "<div>Synthetic acceptance text.</div>",
+                    "companySignatory": "<div>Synthetic Signatory</div>",
+                    "companyTitle": "<div>Synthetic Title</div>",
+                    "companyDateLabel": "<div>Synthetic date:</div>",
+                    "personLabel": "<div>Synthetic person label</div>",
+                    "stampLabel": "<div>Synthetic stamp label</div>",
+                    "dateLabel": "<div>Synthetic date label</div>",
+                },
+            },
+            "pack": {
+                "quotation_layout": {
+                    "filename": "quotation-layout.xlsx",
+                    "data_url": "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"
+                    + base64.b64encode(KONCEPT_LAYOUT.read_bytes()).decode("ascii"),
+                },
+                "layout_rules": {
+                    "filename": "layout-rules.json",
+                    "json": {
+                        "output": {"master_format": "xlsx"},
+                        "custom_layout_fixture": True,
+                    },
                 },
             },
         })
@@ -13537,6 +14313,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             })],
         }
         payload = valid_payload()
+        payload["profile_id"] = company_id
         payload["pricing_reference_id"] = pricing_reference["id"]
         payload["line_items"] = [{
             "section": "Graphics",
@@ -13557,7 +14334,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             store = webapp.CompanyConfigStore(root / "data")
-            store.save_profile(company_id, profile)
+            saved_profile = store.save_profile(company_id, profile)
             saved_reference = store.save_pricing_reference(company_id, pricing_reference)
             payload["pricing_reference"] = webapp.public_company_pricing_reference(saved_reference)
             with mock.patch.object(webapp, "company_config_store", return_value=store):
@@ -13576,7 +14353,15 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             output_dir = Path(result["output_dir"])
             runtime_catalog_under_job_tmp = runtime_catalog_path.is_relative_to(job_tmp)
             runtime_catalog_avoids_repo_root = str(webapp.pricing_references_root()) not in str(runtime_catalog_path)
-            quotation_exists = (output_dir / "quotation.xlsx").exists()
+            quotation_path = output_dir / "quotation.xlsx"
+            quotation_exists = quotation_path.exists()
+            layout_path = store.company_dir(company_id) / "profile-packs" / company_id / "quotation-layout.xlsx"
+            rules_path = store.company_dir(company_id) / "profile-packs" / company_id / "layout-rules.json"
+            layout_exists = layout_path.is_file()
+            layout_bytes = layout_path.read_bytes() if layout_exists else b""
+            rules_payload = webapp.embedded_layout_rules_from_xlsx_bytes(layout_bytes) if layout_exists else {}
+            with zipfile.ZipFile(quotation_path) as zf:
+                workbook_names = set(zf.namelist())
 
         self.assertIn(
             "synthetic-internal-runtime-pricing",
@@ -13591,8 +14376,16 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(brief["company"]["logo_data_url"], SANITIZED_LOGO_DATA_URL)
         self.assertEqual(brief["payment_terms"], ["Synthetic payment term."])
         self.assertEqual(brief["signature"]["company_signatory"], "Synthetic Signatory")
+        self.assertEqual(saved_profile["defaults"]["company"]["logo_name"], "synthetic-logo.png")
+        self.assertIn("rich_text", saved_profile["defaults"])
+        self.assertIn("terms_heading", saved_profile["defaults"]["quote_text"])
         self.assertEqual(brief["line_items"][0]["pricing_keyword"], "synthetic-internal-graphics-row")
         self.assertTrue(quotation_exists)
+        self.assertTrue(layout_exists)
+        self.assertFalse(rules_path.exists())
+        self.assertEqual(rules_payload["custom_layout_fixture"], True)
+        self.assertIn("xl/styles.xml", workbook_names)
+        self.assertIn("xl/theme/theme1.xml", workbook_names)
         self.assertEqual(result["pricing_matches"][0]["keyword"], "synthetic-internal-graphics-row")
 
     def test_save_pricing_reference_pack_writes_local_reference_files_and_images(self):
@@ -14140,7 +14933,8 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             pricing_root.mkdir()
             store = webapp.CompanyConfigStore(root / "data")
             with (
-                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
+                mock.patch.object(webapp, "DEFAULT_PROFILE_ID", "default"),
+                mock.patch.object(webapp, "BUNDLED_DEFAULT_PROFILE_ID", "default"),
                 mock.patch.object(webapp, "DEFAULT_PRICING_REFERENCE_ID", ""),
                 mock.patch.object(webapp, "profiles_root", return_value=profiles_root),
                 mock.patch.object(webapp, "pricing_references_root", return_value=pricing_root),
@@ -14156,9 +14950,11 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(payload["company_id"], webapp.DEFAULT_COMPANY_ID)
         self.assertEqual(workspace["company"]["display_name"], "Quote Generator Workspace")
         self.assertEqual(workspace["workspace"]["slug"], webapp.DEFAULT_COMPANY_ID)
-        self.assertEqual(payload["default_profile_id"], "")
+        self.assertEqual(payload["default_profile_id"], "default")
         self.assertEqual(payload["default_pricing_reference_id"], "")
-        self.assertEqual(payload["profiles"], [])
+        self.assertEqual(payload["profiles"][0]["id"], "default")
+        self.assertEqual(payload["profiles"][0]["label"], "Default")
+        self.assertEqual(payload["profiles"][0]["default_quote_detail_preset"], "default")
         self.assertEqual(payload["pricing_references"], [])
         self.assertEqual(
             workspace["runtime_dependencies"]["quotation_layout"]["source"],
@@ -14339,6 +15135,68 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         payload["pricing_reference"] = {"id": "company-vat", "source": "company", "tax": {"label": "VAT", "rate": 0.2}}
         brief = webapp.payload_to_brief(payload)
         self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
+
+    def test_payload_to_brief_uses_reviewed_rows_and_pricing_reference_currency(self):
+        payload = valid_payload()
+        payload["pricing_reference"] = {
+            "id": "synthetic-exhibition-fixture-pricing",
+            "source": "bundled",
+            "currency": "EUR",
+            "tax": {"label": "VAT", "rate": 0.2},
+        }
+        payload["quote_basis"] = {}
+        payload["quote_basis_sections"] = [
+            {
+                "id": "project-scope",
+                "title": "Project Scope",
+                "lines": [
+                    {
+                        "id": "scope-footprint",
+                        "tag": "Custom",
+                        "custom_pricing": True,
+                        "text": "Booth footprint is 9.0mW x 10.5mD, with approximately 7.0m overall height for the main overhead feature.",
+                        "quantity": 94.5,
+                        "unit": "sqm",
+                        "confidence_pct": 90,
+                    }
+                ],
+            },
+            {
+                "id": "floor-design",
+                "title": "Floor Design",
+                "lines": [
+                    {
+                        "id": "floor-carpet",
+                        "tag": "Include",
+                        "text": "[ sqm synthetic carpet tile ] - Reviewed carpet line.",
+                        "quantity": 94.5,
+                        "unit": "sqm",
+                        "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
+                        "catalog_description": "sqm synthetic carpet tile",
+                        "pricing_reference_description": "sqm synthetic carpet tile",
+                    }
+                ],
+            },
+        ]
+        payload["line_items"] = [
+            {
+                "section": "Floor Design",
+                "quantity": 94.5,
+                "unit": "sqm",
+                "description": "sqm synthetic carpet tile",
+                "pricing_keyword": "synthetic-floors-synthetic-carpet-tile",
+                "catalog_description": "sqm synthetic carpet tile",
+                "pricing_reference_description": "sqm synthetic carpet tile",
+                "source_basis_line_id": "floor-carpet",
+            }
+        ]
+
+        brief = webapp.payload_to_brief(payload)
+
+        self.assertEqual(brief["currency"], "EUR")
+        self.assertEqual([item["description"] for item in brief["line_items"]], ["sqm synthetic carpet tile"])
+        self.assertNotIn("Project Scope", {item["section"] for item in brief["line_items"]})
+        self.assertFalse(any("Booth footprint" in item["description"] for item in brief["line_items"]))
 
     def test_pricing_reference_source_keeps_local_and_company_references_separate(self):
         local_item = {
