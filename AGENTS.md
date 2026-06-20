@@ -165,10 +165,19 @@ For long tasks, give short progress updates at meaningful checkpoints. Do not na
 After making changes, report files changed, what changed, validation run and exact result, generated-output status when applicable, remaining risks or manual checks, PR link if opened or updated, and CI/status if checked or why inaccessible.
 
 Final reports after repo work must include `Instruction sources used` and `MEMORY.md changed: Yes/No`. If `MEMORY.md` changed, explain what durable repo-specific context was added or updated, why it qualifies as durable project memory, and why it does not belong better in canonical docs, source files, validation, or local instruction files.
-<!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/ai-coding-agent-execution.md:END GLOBAL-AGENTS.MD-TEMPLATE -->
+<!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/ai-coding-agent-execution.md:END GLOBAL-AGENTS.MD-TEMPLATE v1 -->
 
 <!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:BEGIN N8N-AGENT-RULES-ADAPTER v1 -->
 ## n8n Agent Rules Adapter
+
+If the task involves n8n workflows, workflow templates, helper scripts, MCP, import/export, live n8n, credentials, or workflow JSON, stop and load `skills/n8n-agent-rules` before planning or editing.
+If that skill or its full rules are unavailable, stop and report the limitation instead of continuing.
+Do not run live n8n, Docker, import/export, sync, activation, execution, publish/unpublish, credential, deployment, or production actions without explicit current-turn approval naming the target and allowed operation.
+<!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:END N8N-AGENT-RULES-ADAPTER v1 -->
+
+## n8n Official Skills And AG2 Addendum
+
+This repo-specific addendum refines the managed n8n adapter above.
 
 For any n8n workflow, node, expression, credential, workflow JSON, import/export, execution, or MCP task, first load the official n8n Skills entry-point meta-skill, currently `using-n8n-skills`.
 If `using-n8n-skills` is unavailable, report that official n8n Skills are not installed or not available in the session instead of pretending they are.
@@ -179,7 +188,6 @@ Use `n8n_live` only when explicitly asked to inspect or change the real n8n inst
 Do not create, update, import, export, execute, activate, deactivate, publish, unpublish, archive, delete, or otherwise mutate live n8n resources without explicit current-turn approval naming the target and allowed operation.
 Never put secrets, tokens, credential values, webhook secrets, private keys, `.env` values, or live n8n export payloads into repo files.
 Keep workflows inactive or unpublished by default unless explicitly requested.
-<!-- AI-AGENT-TOOLKIT:_projects/development/ai-coding-agent-rules/_main/_partials/n8n-agent-rules-adapter.md:END N8N-AGENT-RULES-ADAPTER -->
 
 # Swooshz Quote Generator Rules
 
