@@ -7523,8 +7523,9 @@ async function resetOutputDraft() {
 }
 
 function postJsonFetchFailure(url) {
+  const errorReference = newClientErrorReference();
   if (!state.isPageUnloading) {
-    logClientEvent("client_error", fetchFailureLogDetails(url));
+    logClientEvent("client_error", fetchFailureLogDetails(url, { error_reference: errorReference }));
   }
   return {
     ok: false,
@@ -7533,7 +7534,8 @@ function postJsonFetchFailure(url) {
       fetch_failed: true,
       page_unloading: state.isPageUnloading,
       message: "fetch_failed",
-      errors: genericFailureMessages(),
+      error_reference: errorReference,
+      errors: genericFailureMessages({ error_reference: errorReference }),
     },
     status: 0,
   };
@@ -7603,8 +7605,9 @@ async function getJson(url, options = {}) {
   try {
     response = await fetch(url);
   } catch (error) {
+    const errorReference = newClientErrorReference();
     if (!state.isPageUnloading && options.logFetchFailure !== false) {
-      logClientEvent("client_error", fetchFailureLogDetails(url));
+      logClientEvent("client_error", fetchFailureLogDetails(url, { error_reference: errorReference }));
     }
     return {
       ok: false,
@@ -7613,7 +7616,8 @@ async function getJson(url, options = {}) {
         fetch_failed: true,
         page_unloading: state.isPageUnloading,
         message: "fetch_failed",
-        errors: genericFailureMessages(),
+        error_reference: errorReference,
+        errors: genericFailureMessages({ error_reference: errorReference }),
       },
     };
   }
@@ -7628,7 +7632,12 @@ async function getJson(url, options = {}) {
     };
   }
   if (!response.ok) {
-    logClientEvent("server_error", { url, status: response.status, errors: data.errors || [] });
+    logClientEvent("server_error", {
+      url,
+      status: response.status,
+      error_reference: errorReferenceFrom(data),
+      errors: data.errors || [],
+    });
   }
   return { ok: response.ok, data };
 }
@@ -7661,6 +7670,7 @@ async function pollJob(jobId, onStatus) {
         logClientEvent("client_error", {
           url,
           message: data.message || "Failed to fetch",
+          error_reference: errorReferenceFrom(data),
           attempts: fetchFailures + 1,
         });
       }
@@ -7678,15 +7688,16 @@ function isInterruptedJobPoll(polled) {
   return Boolean(polled?.aborted || polled?.data?.fetch_failed);
 }
 
-function handleInterruptedJobPoll(jobType = "draft") {
+function handleInterruptedJobPoll(jobType = "draft", polled = {}) {
+  const data = polled?.data || polled || {};
   if (jobType === "draft") {
     state.isAnalysisRunning = false;
-    showAiFailureBanner();
+    showAiFailureBanner(genericFailureMessage(data));
     setWorkflowStage("analyzing");
   } else {
     state.isGenerating = false;
     setResultStatus("Connection interrupted", "is-warn");
-    renderMessages(genericFailureMessages(), "error");
+    renderMessages(genericFailureMessages(data), "error");
   }
   syncControlStates();
 }
@@ -7788,7 +7799,7 @@ async function handleDraftBasis(options = {}) {
   const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
-    handleInterruptedJobPoll("draft");
+    handleInterruptedJobPoll("draft", polled);
     return;
   }
   state.isAnalysisRunning = false;
@@ -7952,7 +7963,7 @@ async function handleGenerate(options = {}) {
   const polled = await pollJob(started.data.job_id);
   if (polled.aborted) return;
   if (isInterruptedJobPoll(polled)) {
-    handleInterruptedJobPoll(jobType);
+    handleInterruptedJobPoll(jobType, polled);
     return;
   }
   state.isGenerating = false;
@@ -8026,7 +8037,7 @@ async function resumeSavedJob() {
     });
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
-      handleInterruptedJobPoll("draft");
+      handleInterruptedJobPoll("draft", polled);
       return;
     }
     state.isAnalysisRunning = false;
@@ -8071,7 +8082,7 @@ async function resumeSavedJob() {
     const polled = await pollJob(activeJob.id);
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
-      handleInterruptedJobPoll(activeJob.type);
+      handleInterruptedJobPoll(activeJob.type, polled);
       return;
     }
     state.isGenerating = false;

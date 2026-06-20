@@ -8484,16 +8484,84 @@ assert.strictEqual(downloadCurrentExcelFile({}), false);
         self.assertIn("Contact support if this keeps happening", js)
         self.assertIn("isPageUnloading", js)
         self.assertIn("page_unloading", js)
+        self.assertIn('fetchFailureLogDetails(url, { error_reference: errorReference })', js)
+        self.assertIn("errors: genericFailureMessages({ error_reference: errorReference })", js)
         self.assertIn("maxFetchFailures = 4", js)
         self.assertIn('getJson(url, { logFetchFailure: false })', js)
         self.assertIn("return { ok, data, aborted: true }", js)
         self.assertIn("isInterruptedJobPoll", js)
         self.assertIn("handleInterruptedJobPoll", js)
+        self.assertIn('handleInterruptedJobPoll("draft", polled)', js)
+        self.assertIn("showAiFailureBanner(genericFailureMessage(data))", js)
+        self.assertIn('renderMessages(genericFailureMessages(data), "error")', js)
         self.assertNotIn("Local server connection failed", js)
         self.assertNotIn("Local server returned a non-JSON response", js)
         self.assertIn('window.addEventListener("pagehide", markPageUnloading)', js)
         self.assertIn('window.addEventListener("beforeunload", handleBeforeUnload)', js)
         self.assertIn("pricingReferenceShouldWarnBeforeUnload", js)
+
+        node = require_node(self)
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const GENERIC_FAILURE_MESSAGE = "Failed. Please try again. Contact support if this keeps happening.";
+let bannerMessage = "";
+let renderedMessages = [];
+let workflowStage = "";
+let synced = false;
+const state = { isAnalysisRunning: true, isGenerating: true };
+function showAiFailureBanner(message) { bannerMessage = message; }
+function setWorkflowStage(stage) { workflowStage = stage; }
+function setResultStatus() {}
+function renderMessages(messages) { renderedMessages = messages; }
+function syncControlStates() { synced = true; }
+
+eval([
+  "errorReferenceFrom",
+  "genericFailureMessage",
+  "genericFailureMessages",
+  "handleInterruptedJobPoll",
+].map(extractFunction).join("\n"));
+
+const failedPoll = { data: { fetch_failed: true, error_reference: "ERR-1234ABCD" } };
+handleInterruptedJobPoll("draft", failedPoll);
+assert.strictEqual(bannerMessage, "Failed. Please try again. Contact support if this keeps happening. Reference: ERR-1234ABCD.");
+assert.strictEqual(workflowStage, "analyzing");
+assert.strictEqual(state.isAnalysisRunning, false);
+handleInterruptedJobPoll("generate_pdf", failedPoll);
+assert.deepStrictEqual(renderedMessages, ["Failed. Please try again. Contact support if this keeps happening. Reference: ERR-1234ABCD."]);
+assert.strictEqual(state.isGenerating, false);
+assert.strictEqual(synced, true);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_match_summary_counts_only_exact_catalog_matches_as_confident(self):
         static_dir = ROOT / "webapp" / "static"
