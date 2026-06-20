@@ -5312,46 +5312,6 @@ function viewCurrentPdfFile(file = state.pdfFile) {
   return true;
 }
 
-function openPendingPdfWindow() {
-  try {
-    const opened = window.open("about:blank", "_blank");
-    if (opened) {
-      try {
-        opened.opener = null;
-        opened.document.title = "Generating PDF";
-        opened.document.body.textContent = "Generating PDF...";
-      } catch (error) {
-        // Cross-window access can be blocked by the browser; the tab handle is still useful.
-      }
-    }
-    return opened;
-  } catch (error) {
-    return null;
-  }
-}
-
-function closePendingPdfWindow(opened) {
-  if (!opened || opened.closed) return;
-  try {
-    opened.close();
-  } catch (error) {
-    // Ignore browser-specific close failures for tabs we could not control.
-  }
-}
-
-function navigatePendingPdfWindow(opened, file = state.pdfFile) {
-  if (!file?.url) return false;
-  if (opened && !opened.closed) {
-    try {
-      opened.location.href = file.url;
-      return true;
-    } catch (error) {
-      // Fall back to opening below if the browser blocks navigation on the handle.
-    }
-  }
-  return viewCurrentPdfFile(file);
-}
-
 function pricingMatchStatus(row = {}) {
   const status = typeof row === "string" ? row : row.status;
   return String(status || "").trim().toLowerCase();
@@ -8516,8 +8476,6 @@ function wireEvents() {
       return;
     }
     commitActiveOutputEditor();
-    const pendingPdfWindow = openPendingPdfWindow();
-    let pdfOpened = false;
     showExcelGeneratingModal({
       eyebrow: "Quotation export",
       title: "Generating PDF",
@@ -8526,9 +8484,8 @@ function wireEvents() {
     await waitForUiPaint();
     try {
       const generated = await handleGenerate({ viewPdf: true });
-      if (generated) pdfOpened = navigatePendingPdfWindow(pendingPdfWindow);
+      if (generated) viewCurrentPdfFile();
     } finally {
-      if (!pdfOpened) closePendingPdfWindow(pendingPdfWindow);
       hideExcelGeneratingModal();
     }
   });
