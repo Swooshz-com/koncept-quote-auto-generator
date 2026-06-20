@@ -961,6 +961,64 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             self.assertTrue((out_dir / "quotation.xlsx").exists())
             self.assertFalse(stale_pdf.exists())
 
+    def test_workbook_pdf_mode_exports_generated_xlsx_without_fallback(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [
+                {
+                    "section": "Furniture",
+                    "quantity": 1,
+                    "unit": "lot",
+                    "description": "Furniture package",
+                    "display_price": "Included",
+                }
+            ],
+        }
+        exported_paths = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            brief_path = tmp_path / "brief.json"
+            out_dir = tmp_path / "out"
+            brief_path.write_text(json.dumps(brief), encoding="utf-8")
+
+            def fake_export(xlsx_path, pdf_path):
+                self.assertTrue(xlsx_path.exists())
+                self.assertEqual(xlsx_path.name, "quotation.xlsx")
+                pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+                exported_paths.append((xlsx_path, pdf_path))
+                return "excel_exported"
+
+            with mock.patch.object(sys, "argv", [
+                "generate_quote.py",
+                "--brief",
+                str(brief_path),
+                "--out",
+                str(out_dir),
+                "--template",
+                str(KONCEPT_CATALOG),
+                "--layout-template",
+                str(KONCEPT_LAYOUT),
+                "--pdf-mode",
+                "workbook",
+            ]), mock.patch.object(quote, "export_layout_pdf", side_effect=fake_export), mock.patch.object(
+                quote, "write_styled_pdf_fallback", side_effect=AssertionError("fallback PDF renderer should not run")
+            ), mock.patch.object(quote, "write_text_pdf", side_effect=AssertionError("text PDF fallback should not run")):
+                self.assertEqual(quote.main(), 0)
+
+            self.assertEqual(len(exported_paths), 1)
+            self.assertTrue((out_dir / "quotation.xlsx").exists())
+            self.assertTrue((out_dir / "quotation.pdf").exists())
+            self.assertIn("pdf_mode=workbook", (out_dir / "export_status.txt").read_text(encoding="utf-8"))
+            self.assertIn("pdf_status=excel_exported", (out_dir / "export_status.txt").read_text(encoding="utf-8"))
+
     def test_unresolved_manual_display_placeholder_blocks_quotation_output(self):
         brief = {
             "company_identity": "Koncept Image",
@@ -1515,7 +1573,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
                 match_status="matched",
                 match_candidates=[],
             )
-            for index in range(1, 41)
+            for index in range(1, 57)
         ]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "quotation.xlsx"
@@ -1661,6 +1719,82 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         if acceptance_rows[0] > quote.FIRST_PRINT_PAGE_END_ROW:
             self.assertGreaterEqual(acceptance_rows[0], quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
+
+    def test_layout_keeps_section_header_with_first_detail_before_page_break(self):
+        brief = {
+            "company_identity": "Synthetic Quote Co",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Section Boundary Booth",
+            },
+            "line_items": [],
+            "payment_terms": [],
+            "signature": {
+                "company_signatory": "Alex Tan",
+                "company_title": "Director",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 4 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"generated component {index}",
+                pricing_keyword="generated component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 17)
+        ]
+        lines.extend([
+            quote.QuoteLine(
+                section="Logistics and Installation",
+                quantity=1,
+                unit="lot",
+                description="Onsite installation and dismantling for complete custom booth build and rental scope.",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+            quote.QuoteLine(
+                section="Logistics and Installation",
+                quantity=1,
+                unit="lot",
+                description="Transportation and handling for booth build materials, graphics, furniture, AV and rental items.",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+        ])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        section_row = quote.parse_cell_ref(find_cell_ref(sheet, "Logistics and Installation"))[0]
+        first_detail_row = quote.parse_cell_ref(
+            find_cell_ref(sheet, "Onsite installation and dismantling for complete custom")
+        )[0]
+
+        self.assertEqual(manual_print_page_for_row(section_row), manual_print_page_for_row(first_detail_row))
+        self.assertLessEqual(first_detail_row, quote.FIRST_PRINT_PAGE_END_ROW)
 
     def test_layout_adds_manual_break_when_footer_extends_past_first_page(self):
         brief = {

@@ -108,8 +108,8 @@ WORKSHEET_CHILD_ORDER = (
     "tableParts",
     "extLst",
 )
-FIRST_PRINT_PAGE_END_ROW = 63
-CONTINUATION_PAGE_START_ROW = 64
+FIRST_PRINT_PAGE_END_ROW = 66
+CONTINUATION_PAGE_START_ROW = 67
 CONTINUATION_PAGE_HEIGHT = 61
 CONTINUATION_TABLE_HEADER_OFFSET = 2
 CONTINUATION_CURRENCY_OFFSET = 3
@@ -159,7 +159,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--template", type=Path, required=True, help="Pricing catalog JSON path.")
     parser.add_argument("--layout-template", type=Path, required=True, help="Customer quotation layout XLSX path.")
-    parser.add_argument("--pdf-mode", choices=("auto", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
+    parser.add_argument("--pdf-mode", choices=("auto", "workbook", "styled", "text", "none"), default="none", help="Optional PDF export mode. Defaults to none; workbook exports the generated XLSX only; auto tries Excel/LibreOffice then styled fallback, styled skips external PDF export, text writes a simple fallback.")
     parser.add_argument("--allow-ambiguous", action="store_true", help="Use the best pricing match even when multiple rows match.")
     return parser.parse_args()
 
@@ -2178,8 +2178,18 @@ def write_continuation_quote_header(
 
 def quote_entry_height(entry: dict[str, Any]) -> int:
     if entry["kind"] == "section":
-        return 2
-    return max(2, len(entry["description_lines"]) + 1)
+        return 1
+    return max(1, len(entry["description_lines"]))
+
+
+def quote_entry_keep_height(entries: list[dict[str, Any]], index: int) -> int:
+    entry = entries[index]
+    height = quote_entry_height(entry)
+    if entry.get("kind") == "section" and index + 1 < len(entries):
+        next_entry = entries[index + 1]
+        if next_entry.get("kind") != "section":
+            height = 2 + quote_entry_height(next_entry)
+    return height
 
 
 def ensure_quote_entry_page(
@@ -2511,11 +2521,11 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     entries = render_quote_entries(lines, brief)
     continuation_pages: set[int] = set()
     row_number = 22
-    for entry in entries:
+    for index, entry in enumerate(entries):
         row_number = ensure_quote_entry_page(
             root,
             next_quote_row(row_number),
-            quote_entry_height(entry),
+            quote_entry_keep_height(entries, index),
             clean_text(project.get("title")),
             currency,
             layout_styles,
@@ -3044,9 +3054,13 @@ def main() -> int:
         print(f"Quotation layout template not found, writing minimal XLSX fallback: {args.layout_template}")
         write_minimal_xlsx(xlsx_path, rows)
     pdf_status = "skipped"
-    if args.pdf_mode == "none" and pdf_path.exists():
+    if pdf_path.exists():
         pdf_path.unlink()
-    if args.pdf_mode == "auto":
+    if args.pdf_mode == "workbook":
+        pdf_status = export_layout_pdf(xlsx_path, pdf_path) or "workbook_export_unavailable"
+        if pdf_status == "workbook_export_unavailable":
+            print("Workbook PDF export unavailable; no fallback PDF was written.")
+    elif args.pdf_mode == "auto":
         pdf_status = export_layout_pdf(xlsx_path, pdf_path) or ""
         if not pdf_status:
             print("Excel/LibreOffice PDF export unavailable, writing styled PDF fallback.")
@@ -3064,10 +3078,12 @@ def main() -> int:
         pdf_status = "fallback_review_only"
     write_export_status(out_dir / "export_status.txt", pdf_status, args.pdf_mode)
     print(f"Wrote {out_dir / 'quotation.xlsx'}")
-    if args.pdf_mode != "none":
+    if args.pdf_mode != "none" and pdf_path.exists():
         print(f"Wrote {out_dir / 'quotation.pdf'}")
     print(f"Wrote {out_dir / 'pricing_matches.csv'}")
     print(f"PDF export status: {pdf_status}")
+    if args.pdf_mode == "workbook" and pdf_status == "workbook_export_unavailable":
+        return 1
     return 0
 
 

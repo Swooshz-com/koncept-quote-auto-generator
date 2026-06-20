@@ -216,7 +216,7 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
         "example rental row",
     ],
 ]
-DOWNLOADABLE_FILES = {"quotation.xlsx"}
+DOWNLOADABLE_FILES = {"quotation.pdf", "quotation.xlsx"}
 DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
 CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
 CSRF_TOKEN_ENV_NAME = "LOCAL_RUNNER_CSRF_TOKEN"
@@ -11025,6 +11025,19 @@ def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
         set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
 
 
+def finish_generate_pdf_job(job_id: str, payload: dict[str, Any]) -> None:
+    try:
+        result = run_quote_job(payload, job_id=job_id, pdf_mode="workbook")
+        status_map = {"needs_confirmation": "needs_review"}
+        status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
+        set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
+    except Exception as exc:  # pragma: no cover - defensive worker boundary
+        errors = safe_error_messages([str(exc)])
+        error_reference = new_error_reference()
+        write_local_log("generate_pdf_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
+        set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+
+
 def finish_basis_chat_job(job_id: str, payload: dict[str, Any]) -> None:
     try:
         result = answer_basis_chat(payload)
@@ -11058,8 +11071,8 @@ def create_job(
     ai_tracking_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_type = clean_text(job_type).lower()
-    if normalized_type not in {"draft", "generate", "basis_chat"}:
-        return {"status": "blocked", "errors": ["Job type must be draft, basis_chat, or generate."]}
+    if normalized_type not in {"draft", "generate", "generate_pdf", "basis_chat"}:
+        return {"status": "blocked", "errors": ["Job type must be draft, basis_chat, generate, or generate_pdf."]}
     if not image_entries(payload):
         return {"status": "blocked", "errors": [MISSING_IMAGES_MESSAGE]}
     image_error = image_limit_error(payload)
@@ -11097,6 +11110,7 @@ def create_job(
         "draft": finish_draft_job,
         "basis_chat": finish_basis_chat_job,
         "generate": finish_generate_job,
+        "generate_pdf": finish_generate_pdf_job,
     }[normalized_type]
     thread = threading.Thread(
         target=run_job_worker,
@@ -11120,6 +11134,7 @@ def run_quote_job(
     output_root: Path | None = None,
     tmp_root: Path | None = None,
     job_id: str | None = None,
+    pdf_mode: str = "none",
 ) -> dict[str, Any]:
     payload = payload_with_workspace_quote_profile_defaults(payload)
     errors = validate_generation_payload(payload)
@@ -11133,6 +11148,9 @@ def run_quote_job(
     output_dir = output_root / job_id
     job_tmp.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
+    normalized_pdf_mode = clean_text(pdf_mode).lower()
+    if normalized_pdf_mode not in {"none", "workbook"}:
+        normalized_pdf_mode = "none"
 
     profile = load_profile_pack(profile_id_from_payload(payload))
     pricing_catalog_path = pricing_catalog_path_for_payload(payload, job_tmp)
@@ -11160,6 +11178,8 @@ def run_quote_job(
         str(layout_template_path),
         "--allow-ambiguous",
     ]
+    if normalized_pdf_mode != "none":
+        command.extend(["--pdf-mode", normalized_pdf_mode])
 
     completed = subprocess.run(
         command,
@@ -11194,6 +11214,7 @@ def run_quote_job(
         "files": output_files(job_id, output_dir),
         "pricing_matches": read_pricing_matches(output_dir / "pricing_matches.csv"),
         "export_status": read_export_status(output_dir / "export_status.txt"),
+        "pdf_mode": normalized_pdf_mode,
         "errors": errors_for_response,
     }
     if configured_app_mode() != "deploy":
@@ -11832,7 +11853,8 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         body = resolved.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        disposition = "inline" if filename == "quotation.pdf" else "attachment"
+        self.send_header("Content-Disposition", f'{disposition}; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.send_security_headers()
         self.end_headers()

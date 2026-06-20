@@ -4,6 +4,7 @@ import unittest
 import base64
 import hashlib
 import html
+import inspect
 import io
 import json
 import os
@@ -7550,16 +7551,37 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
-    def test_static_webapp_does_not_offer_pdf_export(self):
+    def test_static_webapp_offers_on_demand_pdf_view(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertNotIn('id="pdfMode"', html)
-        self.assertNotIn("pdf_mode", js)
+        self.assertIn('id="sideViewPdfButton"', html)
+        self.assertIn("View PDF", html)
+        self.assertIn("pdfFile", js)
+        self.assertIn("startJob(\"generate_pdf\"", js)
+        self.assertIn("viewCurrentPdfFile", js)
+        self.assertIn("quotation.pdf", webapp.DOWNLOADABLE_FILES)
+        send_download_source = inspect.getsource(webapp.QuoteRunnerHandler.send_download)
+        self.assertIn("Content-Disposition", send_download_source)
+        self.assertIn("inline", send_download_source)
+        self.assertNotIn("pdf_mode:", js)
         self.assertNotIn("pdfMode", js)
-        self.assertNotIn("quotation.pdf", webapp.DOWNLOADABLE_FILES)
+
+    def test_output_files_includes_generated_pdf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "job-pdf"
+            out.mkdir()
+            (out / "quotation.xlsx").write_bytes(b"xlsx")
+            (out / "quotation.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+            files = webapp.output_files("job-pdf", out)
+
+        self.assertEqual([item["name"] for item in files], ["quotation.pdf", "quotation.xlsx"])
+        self.assertEqual(files[0]["url"], "/api/jobs/job-pdf/files/quotation.pdf")
+        self.assertEqual(files[1]["url"], "/api/jobs/job-pdf/files/quotation.xlsx")
 
     def test_static_webapp_exposes_dynamic_quote_fields_and_analysis_controls(self):
         static_dir = ROOT / "webapp" / "static"
@@ -8318,6 +8340,7 @@ assert.strictEqual(canStartAnalysis(), true);
 
         self.assertIn('id="assistantOutput"', html)
         self.assertIn('id="sideDownloadButton"', html)
+        self.assertIn('id="sideViewPdfButton"', html)
         self.assertIn('id="excelGeneratingModal"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
@@ -8325,13 +8348,17 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn('setResultStatus("Completed", "is-ok")', js)
         self.assertIn('setResultStatus("Needs pricing review", "is-warn")', js)
         self.assertIn("state.downloadFile = excelFile", js)
+        self.assertIn("state.pdfFile = pdfFile", js)
         self.assertIn("setDownloadFiles", js)
         self.assertIn("updateDownloadButton", js)
         self.assertIn("downloadCurrentExcelFile", js)
+        self.assertIn("viewCurrentPdfFile", js)
         self.assertIn("showExcelGeneratingModal", js)
         self.assertIn("hideExcelGeneratingModal", js)
         self.assertIn('elements.sideDownloadButton.addEventListener("click", async (event) => {', js)
+        self.assertIn('elements.sideViewPdfButton.addEventListener("click", async (event) => {', js)
         download_handler = js.split('elements.sideDownloadButton.addEventListener("click", async (event) => {', 1)[1].split('  document.addEventListener("keydown"', 1)[0]
+        pdf_handler = js.split('elements.sideViewPdfButton.addEventListener("click", async (event) => {', 1)[1].split('  document.addEventListener("keydown"', 1)[0]
         self.assertIn("event.preventDefault();", download_handler)
         self.assertIn("await handleGenerate();", js)
         self.assertIn("downloadCurrentExcelFile();", js)
@@ -8341,6 +8368,9 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("await handleGenerate();", download_handler)
         self.assertIn("downloadCurrentExcelFile();", download_handler)
         self.assertIn("hideExcelGeneratingModal();", download_handler)
+        self.assertIn("await handleGeneratePdf();", pdf_handler)
+        self.assertIn("viewCurrentPdfFile();", pdf_handler)
+        self.assertIn("title: \"Generating PDF\"", pdf_handler)
         self.assertNotIn("existingFile", download_handler)
         self.assertNotIn("downloadFileIsFresh()", download_handler)
         self.assertIn(".excel-generating-panel", css)
@@ -13494,7 +13524,7 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertNotIn("refreshLineItemsFromServer", reset_body)
         self.assertNotIn("refreshOutputRowsFromLineItems", reset_body)
 
-    def test_run_quote_job_never_passes_pdf_mode_to_generator(self):
+    def test_run_quote_job_never_passes_payload_pdf_mode_to_generator(self):
         payload = valid_payload()
         payload["pdf_mode"] = "auto"
 
@@ -13520,6 +13550,29 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertIn(str(KONCEPT_LAYOUT), command)
         self.assertNotIn("--pdf-mode", command)
         self.assertNotIn("quotation.pdf", command)
+
+    def test_run_quote_job_can_generate_pdf_on_explicit_workbook_view_mode(self):
+        payload = valid_payload()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = webapp.subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="Wrote quotation.xlsx\nWrote quotation.pdf\nPDF export status: excel_exported\n",
+                stderr="",
+            )
+            with mock.patch.object(webapp.subprocess, "run", return_value=completed) as run:
+                result = webapp.run_quote_job(
+                    payload,
+                    output_root=Path(tmp) / "out",
+                    tmp_root=Path(tmp) / "tmp",
+                    pdf_mode="workbook",
+                )
+
+        command = run.call_args.args[0]
+        self.assertEqual(result["status"], "completed")
+        self.assertIn("--pdf-mode", command)
+        self.assertIn("workbook", command)
 
     def test_company_config_store_safely_persists_company_references(self):
         with tempfile.TemporaryDirectory() as tmp:

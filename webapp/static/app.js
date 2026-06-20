@@ -179,8 +179,10 @@ const state = {
   pendingFeedback: "",
   activeSidePanel: "images",
   downloadFile: null,
+  pdfFile: null,
   outputRevision: 0,
   downloadFileRevision: -1,
+  pdfFileRevision: -1,
   pricingMatches: [],
   pricingIssues: [],
   activeJob: null,
@@ -324,6 +326,7 @@ const elements = {
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
   sideDownloadButton: qs("#sideDownloadButton"),
+  sideViewPdfButton: qs("#sideViewPdfButton"),
   excelGeneratingModal: qs("#excelGeneratingModal"),
   excelGeneratingEyebrow: qs("#excelGeneratingEyebrow"),
   excelGeneratingTitle: qs("#excelGeneratingTitle"),
@@ -2042,8 +2045,10 @@ function buildSessionSnapshot() {
     lastAnalysisMode: state.lastAnalysisMode,
     activeSidePanel: state.activeSidePanel,
     downloadFile: state.downloadFile,
+    pdfFile: state.pdfFile,
     outputRevision: state.outputRevision,
     downloadFileRevision: state.downloadFileRevision,
+    pdfFileRevision: state.pdfFileRevision,
     pricingMatches: state.pricingMatches,
     pricingIssues: state.pricingIssues,
     activeJob: state.activeJob,
@@ -2122,9 +2127,14 @@ async function restoreSessionState() {
   state.lastAnalysisMode = normalizeAnalysisMode(saved.lastAnalysisMode || saved.originalAnalysisSnapshot?.analysis_mode);
   state.aiFailed = Boolean(saved.aiFailed || state.draftSource === "local");
   state.downloadFile = saved.downloadFile || null;
+  state.pdfFile = saved.pdfFile || null;
   state.outputRevision = revisionNumber(saved.outputRevision, 0);
   state.downloadFileRevision = revisionNumber(
     saved.downloadFileRevision ?? saved.downloadFile?.output_revision,
+    -1
+  );
+  state.pdfFileRevision = revisionNumber(
+    saved.pdfFileRevision ?? saved.pdfFile?.output_revision,
     -1
   );
   state.pricingMatches = Array.isArray(saved.pricingMatches) ? saved.pricingMatches : [];
@@ -2586,6 +2596,7 @@ function startNewQuote() {
   state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
   state.pendingFeedback = "";
   state.downloadFile = null;
+  state.pdfFile = null;
   elements.imageInput.value = "";
   elements.headerLogoInput.value = "";
   state.selectedPresetValue = "";
@@ -5188,9 +5199,12 @@ function renderMessages(messages = [], tone = "") {
 }
 
 function setDownloadFiles(files = []) {
-  const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || files[0] || null;
+  const excelFile = files.find((file) => /\.xlsx$/i.test(file.name || "")) || null;
+  const pdfFile = files.find((file) => /\.pdf$/i.test(file.name || "")) || null;
   state.downloadFileRevision = excelFile ? revisionNumber(state.outputRevision, 0) : -1;
+  state.pdfFileRevision = pdfFile ? revisionNumber(state.outputRevision, 0) : -1;
   state.downloadFile = excelFile ? { ...excelFile, output_revision: state.downloadFileRevision } : null;
+  state.pdfFile = pdfFile ? { ...pdfFile, output_revision: state.pdfFileRevision } : null;
   updateDownloadButton();
 }
 
@@ -5208,6 +5222,12 @@ function markOutputRowsDirty() {
 function downloadFileIsFresh(file = state.downloadFile) {
   if (!file?.url) return false;
   const fileRevision = revisionNumber(state.downloadFileRevision, -1);
+  return fileRevision >= 0 && fileRevision === revisionNumber(state.outputRevision, 0);
+}
+
+function pdfFileIsFresh(file = state.pdfFile) {
+  if (!file?.url) return false;
+  const fileRevision = revisionNumber(state.pdfFileRevision, -1);
   return fileRevision >= 0 && fileRevision === revisionNumber(state.outputRevision, 0);
 }
 
@@ -5229,17 +5249,26 @@ function waitForUiPaint() {
 }
 
 function updateDownloadButton() {
-  if (!elements.sideDownloadButton) return;
-  const file = state.downloadFile;
-  const freshFile = downloadFileIsFresh(file) ? file : null;
+  if (!elements.sideDownloadButton && !elements.sideViewPdfButton) return;
+  const freshFile = downloadFileIsFresh(state.downloadFile) ? state.downloadFile : null;
+  const freshPdfFile = elements.sideViewPdfButton && pdfFileIsFresh(state.pdfFile) ? state.pdfFile : null;
   const validation = outputRowsValid();
   const enabled = state.activeSidePanel === "output" && validation.valid && !state.isGenerating && !state.isPreparingOutput;
-  elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
-  elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
-  elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
-  elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";
-  elements.sideDownloadButton.download = freshFile?.url ? freshFile.name || "quotation.xlsx" : "";
-  elements.sideDownloadButton.textContent = "Download Excel";
+  if (elements.sideDownloadButton) {
+    elements.sideDownloadButton.classList.toggle("is-disabled", !enabled);
+    elements.sideDownloadButton.setAttribute("aria-disabled", String(!enabled));
+    elements.sideDownloadButton.tabIndex = enabled ? 0 : -1;
+    elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";
+    elements.sideDownloadButton.download = freshFile?.url ? freshFile.name || "quotation.xlsx" : "";
+    elements.sideDownloadButton.textContent = "Download Excel";
+  }
+  if (elements.sideViewPdfButton) {
+    elements.sideViewPdfButton.classList.toggle("is-disabled", !enabled);
+    elements.sideViewPdfButton.setAttribute("aria-disabled", String(!enabled));
+    elements.sideViewPdfButton.tabIndex = enabled ? 0 : -1;
+    elements.sideViewPdfButton.href = enabled && freshPdfFile?.url ? freshPdfFile.url : "#";
+    elements.sideViewPdfButton.textContent = "View PDF";
+  }
 }
 
 function showExcelGeneratingModal(options = {}) {
@@ -5267,6 +5296,15 @@ function downloadCurrentExcelFile(file = state.downloadFile) {
     link.click();
     link.remove();
   } catch (error) {
+    window.location.href = file.url;
+  }
+  return true;
+}
+
+function viewCurrentPdfFile(file = state.pdfFile) {
+  if (!file?.url) return false;
+  const opened = window.open(file.url, "_blank", "noopener");
+  if (!opened) {
     window.location.href = file.url;
   }
   return true;
@@ -7950,6 +7988,112 @@ async function handleGenerate() {
   syncControlStates();
 }
 
+async function handleGeneratePdf() {
+  if (state.isGenerating) return;
+  if (state.activeSidePanel === "output") {
+    const validation = outputRowsValid();
+    if (!validation.valid) {
+      renderOutputValidationMessages(validation.errors);
+      setResultStatus("Output needs review", "is-warn");
+      syncControlStates();
+      return;
+    }
+    state.lineItems = outputRowsToLineItems();
+  }
+  if (!state.basisConfirmed) {
+    if (hasSubmittedQuoteBasis()) {
+      setWorkflowStage("basis_review");
+      setSidePanel("basis", { force: true });
+    }
+    syncControlStates();
+    return;
+  }
+  if (state.aiFailed) {
+    setWorkflowStage("basis_review");
+    showAiFailureBanner();
+    syncControlStates();
+    return;
+  }
+  const missing = missingDetailFields();
+  if (missing.length) {
+    setWorkflowStage("details_review");
+    setDetailsDrawer(true);
+    syncControlStates();
+    return;
+  }
+  if (!state.lineItems.length) {
+    setWorkflowStage("basis_review");
+    return;
+  }
+
+  state.isGenerating = true;
+  setWorkflowStage("generating");
+  setResultStatus("Generating PDF", "is-warn");
+  renderMessages([]);
+  setDownloadFiles([]);
+  renderMatchSummary({});
+  clearPricingReviewMessages();
+  syncControlStates();
+  const started = await startJob("generate_pdf", buildPayload());
+  if (!started.ok) {
+    state.isGenerating = false;
+    setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
+    setResultStatus(started.data.status || "Failed", "is-bad");
+    renderMessages(started.data.status === "blocked" ? (started.data.errors || ["PDF generation blocked."]) : genericFailureMessages(started.data), "error");
+    syncControlStates();
+    return;
+  }
+  state.activeJob = { id: started.data.job_id, type: "generate_pdf" };
+  saveSessionState();
+
+  const polled = await pollJob(started.data.job_id);
+  if (polled.aborted) return;
+  if (isInterruptedJobPoll(polled)) {
+    handleInterruptedJobPoll("generate_pdf");
+    return;
+  }
+  state.isGenerating = false;
+  state.activeJob = null;
+
+  const data = polled.data.result || polled.data || {};
+  if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
+    setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
+    setResultStatus(data.status || "Failed", "is-bad");
+    const blocked = polled.data.status === "blocked" || data.status === "blocked";
+    renderMessages(blocked ? (data.errors || ["PDF generation blocked."]) : genericFailureMessages(data || polled.data), "error");
+    if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+    renderMatchSummary(data);
+    syncControlStates();
+    return;
+  }
+
+  const needsPricingReview = polled.data.status === "needs_review"
+    || data.status === "needs_confirmation";
+  let generatedPdf = false;
+  if (needsPricingReview) {
+    setWorkflowStage("completed");
+    setResultStatus("Needs pricing review", "is-warn");
+    renderMessages([]);
+    clearPricingReviewMessages();
+    setSidePanel("output", { force: true });
+    setDownloadFiles([]);
+    if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
+    renderMatchSummary(data);
+  } else {
+    setWorkflowStage("completed");
+    setResultStatus("PDF ready", "is-ok");
+    renderMessages([]);
+    clearPricingReviewMessages();
+    setSidePanel("output", { force: true });
+    setDownloadFiles(data.files || []);
+    renderPricingMatches(state.outputRows);
+    renderMatchSummary({ pricing_matches: state.outputRows });
+    generatedPdf = Boolean(state.pdfFile);
+  }
+  syncControlStates();
+  return generatedPdf;
+}
+
 async function resumeSavedJob() {
   const activeJob = state.activeJob;
   if (!activeJob || !activeJob.id) return;
@@ -8005,18 +8149,19 @@ async function resumeSavedJob() {
     return;
   }
 
-  if (activeJob.type === "generate") {
+  if (activeJob.type === "generate" || activeJob.type === "generate_pdf") {
+    const isPdfJob = activeJob.type === "generate_pdf";
     state.isGenerating = true;
     state.isAnalysisRunning = false;
     setWorkflowStage("generating");
-    setResultStatus("Checking Excel", "is-warn");
+    setResultStatus(isPdfJob ? "Checking PDF" : "Checking Excel", "is-warn");
     setSidePanel("output", { force: true });
     syncControlStates();
 
     const polled = await pollJob(activeJob.id);
     if (polled.aborted) return;
     if (isInterruptedJobPoll(polled)) {
-      handleInterruptedJobPoll("generate");
+      handleInterruptedJobPoll(activeJob.type);
       return;
     }
     state.isGenerating = false;
@@ -8045,7 +8190,7 @@ async function resumeSavedJob() {
       setDownloadFiles([]);
     } else {
       setWorkflowStage("completed");
-      setResultStatus("Completed", "is-ok");
+      setResultStatus(isPdfJob ? "PDF ready" : "Completed", "is-ok");
       renderMessages([]);
       clearPricingReviewMessages();
       setSidePanel("output");
@@ -8207,6 +8352,7 @@ function updateSidePanelNav() {
   });
   elements.sideBackButton.disabled = index === 0 || busy;
   elements.sideNextButton.hidden = isOutputStep;
+  if (elements.sideViewPdfButton) elements.sideViewPdfButton.hidden = !isOutputStep;
   elements.sideDownloadButton.hidden = !isOutputStep;
   const nextLabels = {
     images: "Next: Customer",
@@ -8419,6 +8565,27 @@ function wireEvents() {
     try {
       await handleGenerate();
       downloadCurrentExcelFile();
+    } finally {
+      hideExcelGeneratingModal();
+    }
+  });
+  elements.sideViewPdfButton.addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (elements.sideViewPdfButton.getAttribute("aria-disabled") === "true") {
+      const validation = outputRowsValid();
+      if (!validation.valid) renderOutputValidationMessages(validation.errors);
+      return;
+    }
+    commitActiveOutputEditor();
+    showExcelGeneratingModal({
+      eyebrow: "Quotation export",
+      title: "Generating PDF",
+      message: "Building the workbook first, then opening its PDF export.",
+    });
+    await waitForUiPaint();
+    try {
+      const generated = await handleGeneratePdf();
+      if (generated) viewCurrentPdfFile();
     } finally {
       hideExcelGeneratingModal();
     }
