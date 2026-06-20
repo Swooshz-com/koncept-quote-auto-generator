@@ -1643,6 +1643,87 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             self.assertGreaterEqual(acceptance_rows[0], quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
         self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
+    def test_layout_adds_manual_break_when_footer_extends_past_first_page(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Footer Boundary Booth",
+            },
+            "line_items": [],
+            "terms_heading": "Terms & Conditions:",
+            "payment_terms": [
+                "70% payment upon confirmation and signing of contract.",
+                "30% balance upon handover before show starts",
+                "All cheques should be crossed and made payable to Koncept Images Pte. Ltd.",
+            ],
+            "notes_heading": "Note:",
+            "standard_notes": [
+                "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
+                "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
+                "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
+                "All designs and dimensions are subject to final site verification.",
+                "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
+                "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
+                "Design and Artwork of the graphics are not included in this contract.",
+                "Cancellation of agreement is subject to 75% of the agreement amount.",
+                "All deposit are non-refundable upon of cancellation of agreement.",
+            ],
+            "acceptance": {
+                "company_name": "Koncept Images Pte. Ltd.",
+                "text": "We accept the quotation amount and the terms",
+                "person_label": "Person in charge",
+                "stamp_label": "Company name & stamp",
+                "date_label": "Date:",
+            },
+            "signature": {
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 3 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 10)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        acceptance_rows = [
+            quote.parse_cell_ref(find_cell_ref(sheet, "Koncept Images Pte. Ltd."))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "We accept the quotation amount and the terms"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "_____________________________"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "Francies Cheng"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "Director"))[0],
+        ]
+        breaks = row_break_ids(sheet)
+
+        self.assertEqual(breaks, [quote.FIRST_PRINT_PAGE_END_ROW])
+        self.assertGreater(acceptance_rows[0], quote.FIRST_PRINT_PAGE_END_ROW)
+        self.assertTrue(all(row > breaks[0] for row in acceptance_rows))
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
+
     def test_empty_terms_and_notes_do_not_insert_default_rows(self):
         tmp, path = generate_layout_workbook()
         self.addCleanup(tmp.cleanup)

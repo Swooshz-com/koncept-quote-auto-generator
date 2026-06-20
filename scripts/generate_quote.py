@@ -2640,7 +2640,9 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 2, brief_rich_text_cell_runs(brief, "companyDateLabel", clean_text(signature.get("company_date_label"))), layout_styles["signature_line"], **footer_rich_text)
     set_ooxml_rich_text_cell(root, acceptance_row + 7, 5, brief_rich_text_cell_runs(brief, "dateLabel", clean_text(acceptance.get("date_label"))), layout_styles["signature_line"], **footer_rich_text)
 
-    last_print_row = printable_last_row(root, acceptance_row + SIGNATURE_CONTENT_HEIGHT, manual_pagination_enabled)
+    last_content_row = acceptance_row + SIGNATURE_CONTENT_HEIGHT
+    manual_pagination_enabled = manual_pagination_enabled or last_content_row > FIRST_PRINT_PAGE_END_ROW
+    last_print_row = printable_last_row(root, last_content_row, manual_pagination_enabled)
     trim_layout_worksheet(root, last_print_row)
     complete_quote_layout_worksheet(root, last_print_row)
     set_manual_page_breaks(root, last_print_row, manual_pagination_enabled)
