@@ -7673,12 +7673,10 @@ async function pollJob(jobId, onStatus) {
         continue;
       }
       if (data?.fetch_failed) {
-        logClientEvent("client_error", {
-          url,
-          message: data.message || "Failed to fetch",
+        logClientEvent("client_error", fetchFailureLogDetails(url, {
           error_reference: errorReferenceFrom(data),
           attempts: fetchFailures + 1,
-        });
+        }));
       }
       return { ok, data };
     }

@@ -83,6 +83,16 @@ Do not treat previous approval as approval for a new risky action. Words like `c
 
 Never introduce secrets, credentials, tokens, private keys, `.env` values, or private values into repo files.
 
+## Application Error, Logging, And Privacy Defaults
+
+When touching product frontend/backend behavior, preserve privacy-safe diagnostics without turning root instructions into a full policy manual.
+
+- Show generic user-facing errors with a support-safe traceable reference; do not expose internals or private payloads in UI.
+- Store the same event/request-specific reference in server logs or the approved logging backend so support can trace the failure.
+- Keep logs privacy-minimized; do not log raw prompts, uploads, model responses, secrets, auth headers, cookies, payment data, private connector data, private files, or unnecessary PII.
+- Do not add broad fallbacks or backwards compatibility by default. Ask the user first; if approved, keep the path narrow, visible, logged, tested, and documented with a removal or review condition.
+- For detailed frontend, backend, privacy, AI observability, and legal-page requirements, route to the relevant frontend/backend/privacy/observability skills and reference docs.
+
 ## User Action Questions
 
 When asking the user to choose, approve, confirm, provide a target path, decide whether to continue, or answer any other action-blocking question, make the full question sentence bold.
@@ -167,6 +177,9 @@ Do not run live n8n, Docker, import/export, sync, activation, execution, publish
 
 # Swooshz Quote Generator Rules
 
+- This repository is the internal Koncept Images Pte Ltd quote generator module. The current priority is internal team test-readiness, not deployment, auth, billing, public launch, or production platform integration.
+- Do not implement Hostinger, Coolify, Docker deployment, Supabase schema, Stripe, production auth/OIDC, a real credit ledger, public exposure, real customer accounts, or secrets in this repo.
+- Do not commit real company or bank data, private/customer data, real exported profile JSON, embedded real logos, generated local outputs, or sensitive fixtures.
 - SAQG/KQAG solution UI is complete and final. Do not change visible UI, layout, DOM, CSS, workflow placement, cards, tabs, buttons, modals, spacing, component hierarchy, or visual status components unless the user explicitly approves UI work in the current turn. Text-only wording changes and backend/data mapping are allowed when scoped. If UI files are touched without explicit UI approval, the PR must fail/reject itself unless the change is text-only wording or invisible data serialization.
 - Require booth/render images before preparing or generating a quote. If images are missing, ask exactly: `Please upload the booth render images first so I can analyze the design and prepare the quote.`
 - Do not generate a quote from a text-only item list, and do not ask the user to create, edit, inspect, or approve an internal generator brief file.
