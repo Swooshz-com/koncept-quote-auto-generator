@@ -2110,6 +2110,18 @@ def wrapped_description(description: str, width: int = 58) -> list[str]:
     return textwrap.wrap(description, width=width) or [description]
 
 
+def customer_quote_description(description: str) -> str:
+    text = clean_text(description)
+    match = re.match(r"^\[\s*([\s\S]*?)\s*\](?:\s*-\s*([\s\S]+))?$", text)
+    if not match:
+        return text
+    reference = clean_text(match.group(1))
+    detail = clean_text(match.group(2) or "")
+    if reference and detail:
+        return f"{reference} - {detail}"
+    return reference or text
+
+
 def amount_value(line: QuoteLine) -> str | float | None:
     if line.price_mode == "Included":
         return 0.0
@@ -2365,7 +2377,7 @@ def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = 
             "kind": "item",
             "number": f"{section_number}.{detail_number}",
             "quantity": quantity_text(line),
-            "description_lines": wrapped_description(line.description),
+            "description_lines": wrapped_description(customer_quote_description(line.description)),
             "amount": detail_amount,
         })
     for index, entry in enumerate(entries):

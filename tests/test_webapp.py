@@ -7561,8 +7561,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('id="sideViewPdfButton"', html)
         self.assertIn("View PDF", html)
         self.assertIn("pdfFile", js)
-        self.assertIn("startJob(\"generate_pdf\"", js)
+        self.assertIn("buildPayload({ viewPdf })", js)
+        self.assertIn("view_pdf: options.viewPdf === true", js)
         self.assertIn("viewCurrentPdfFile", js)
+        self.assertNotIn("startJob(\"generate_pdf\"", js)
         self.assertIn("quotation.pdf", webapp.DOWNLOADABLE_FILES)
         send_download_source = inspect.getsource(webapp.QuoteRunnerHandler.send_download)
         self.assertIn("Content-Disposition", send_download_source)
@@ -8341,11 +8343,12 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn('id="assistantOutput"', html)
         self.assertIn('id="sideDownloadButton"', html)
         self.assertIn('id="sideViewPdfButton"', html)
+        self.assertIn('class="primary-button workspace-download-button is-disabled" id="sideViewPdfButton"', html)
         self.assertIn('id="excelGeneratingModal"', html)
         self.assertIn('id="matchSummary"', html)
         self.assertIn('id="pricingMatchesBody"', html)
         self.assertIn('id="pricingReviewMessages"', html)
-        self.assertIn('setResultStatus("Completed", "is-ok")', js)
+        self.assertIn('setResultStatus(viewPdf ? "PDF ready" : "Completed", "is-ok")', js)
         self.assertIn('setResultStatus("Needs pricing review", "is-warn")', js)
         self.assertIn("state.downloadFile = excelFile", js)
         self.assertIn("state.pdfFile = pdfFile", js)
@@ -8355,6 +8358,10 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("viewCurrentPdfFile", js)
         self.assertIn("showExcelGeneratingModal", js)
         self.assertIn("hideExcelGeneratingModal", js)
+        self.assertIn('state.activeJob = { id: started.data.job_id, type: "generate", viewPdf };', js)
+        self.assertIn('setResultStatus(viewPdf ? "Checking PDF" : "Checking Excel", "is-warn")', js)
+        self.assertIn('workspacePaneFooter: qs(".workspace-pane-footer")', js)
+        self.assertIn('workspacePaneFooter.classList.toggle("is-output-step", isOutputStep)', js)
         self.assertIn('elements.sideDownloadButton.addEventListener("click", async (event) => {', js)
         self.assertIn('elements.sideViewPdfButton.addEventListener("click", async (event) => {', js)
         download_handler = js.split('elements.sideDownloadButton.addEventListener("click", async (event) => {', 1)[1].split('  document.addEventListener("keydown"', 1)[0]
@@ -8368,9 +8375,11 @@ assert.strictEqual(canStartAnalysis(), true);
         self.assertIn("await handleGenerate();", download_handler)
         self.assertIn("downloadCurrentExcelFile();", download_handler)
         self.assertIn("hideExcelGeneratingModal();", download_handler)
-        self.assertIn("await handleGeneratePdf();", pdf_handler)
+        self.assertIn("await handleGenerate({ viewPdf: true });", pdf_handler)
         self.assertIn("viewCurrentPdfFile();", pdf_handler)
         self.assertIn("title: \"Generating PDF\"", pdf_handler)
+        self.assertIn(".workspace-pane-footer.is-output-step #sideBackButton", css)
+        self.assertIn(".basis-line-include .basis-line-catalog-reference", css)
         self.assertNotIn("existingFile", download_handler)
         self.assertNotIn("downloadFileIsFresh()", download_handler)
         self.assertIn(".excel-generating-panel", css)
@@ -10108,7 +10117,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn('source: state.pricingReferenceSource || "bundled"', js)
         self.assertIn("Download Excel", js)
         self.assertIn('elements.sideDownloadButton.href = enabled && freshFile?.url ? freshFile.url : "#";', js)
-        generate_body = js.split("async function handleGenerate()", 1)[1].split("async function resumeSavedJob", 1)[0]
+        generate_body = js.split("async function handleGenerate(options = {})", 1)[1].split("async function resumeSavedJob", 1)[0]
         review_generate_body = generate_body.split("if (needsPricingReview) {", 1)[1].split("} else {", 1)[0]
         completed_generate_body = generate_body.split("} else {", 1)[-1].split("syncControlStates();", 1)[0]
         self.assertIn('renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });', review_generate_body)
@@ -13573,6 +13582,17 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         self.assertEqual(result["status"], "completed")
         self.assertIn("--pdf-mode", command)
         self.assertIn("workbook", command)
+
+    def test_generate_job_uses_view_pdf_flag_for_workbook_pdf_export(self):
+        payload = valid_payload()
+        payload["view_pdf"] = True
+
+        with mock.patch.object(webapp, "run_quote_job", return_value={"status": "completed", "errors": []}) as run:
+            with mock.patch.object(webapp, "set_job_state"):
+                webapp.finish_generate_job("job-pdf-view", payload)
+
+        self.assertEqual(run.call_args.kwargs["job_id"], "job-pdf-view")
+        self.assertEqual(run.call_args.kwargs["pdf_mode"], "workbook")
 
     def test_company_config_store_safely_persists_company_references(self):
         with tempfile.TemporaryDirectory() as tmp:

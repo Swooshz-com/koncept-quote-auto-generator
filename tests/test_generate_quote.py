@@ -1019,6 +1019,56 @@ class GenerateQuoteRowsTest(unittest.TestCase):
             self.assertIn("pdf_mode=workbook", (out_dir / "export_status.txt").read_text(encoding="utf-8"))
             self.assertIn("pdf_status=excel_exported", (out_dir / "export_status.txt").read_text(encoding="utf-8"))
 
+    def test_layout_strips_catalog_brackets_from_customer_output_descriptions(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [],
+        }
+        lines = [
+            quote.QuoteLine(
+                section="Hospitality",
+                quantity=4,
+                unit="day",
+                description="[ Coffee / Tea and supplies for 100 people per day ]",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+            quote.QuoteLine(
+                section="Hospitality",
+                quantity=1,
+                unit="lot",
+                description="[ Pantry counter ] - Service counter with lockable storage",
+                pricing_keyword="",
+                display_price="Included",
+                matched_price=None,
+                amount=0,
+                match_status="included",
+                match_candidates=[],
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+
+        self.assertTrue(find_cell_ref(sheet, "Coffee / Tea and supplies for 100 people per day"))
+        self.assertTrue(find_cell_ref(sheet, "Pantry counter - Service counter with lockable storage"))
+        self.assertFalse(find_cell_ref(sheet, "[ Coffee / Tea and supplies for 100 people per day ]"))
+
     def test_unresolved_manual_display_placeholder_blocks_quotation_output(self):
         brief = {
             "company_identity": "Koncept Image",

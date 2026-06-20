@@ -11014,7 +11014,8 @@ def finish_draft_job(job_id: str, payload: dict[str, Any]) -> None:
 
 def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
     try:
-        result = run_quote_job(payload, job_id=job_id)
+        pdf_mode = "workbook" if payload_requests_pdf_view(payload) else "none"
+        result = run_quote_job(payload, job_id=job_id, pdf_mode=pdf_mode)
         status_map = {"needs_confirmation": "needs_review"}
         status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
         set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
@@ -11023,6 +11024,13 @@ def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
         error_reference = new_error_reference()
         write_local_log("generate_failed", {"job_id": job_id, "error_reference": error_reference, "errors": errors})
         set_job_state(job_id, status="failed", result={"status": "failed", "errors": errors, "error_reference": error_reference}, errors=errors, error_reference=error_reference)
+
+
+def payload_requests_pdf_view(payload: dict[str, Any]) -> bool:
+    value = payload.get("view_pdf")
+    if isinstance(value, bool):
+        return value
+    return clean_text(value).lower() in {"1", "true", "yes", "workbook"}
 
 
 def finish_generate_pdf_job(job_id: str, payload: dict[str, Any]) -> None:

@@ -621,6 +621,14 @@ h3 {
   min-height: 42px;
 }
 
+.workspace-pane-footer.is-output-step #sideBackButton {
+  grid-column: 1 / -1;
+}
+
+.workspace-pane-footer.is-output-step .workspace-download-button {
+  width: 100%;
+}
+
 .workspace-download-button {
   text-decoration: none;
 }
@@ -2013,6 +2021,13 @@ select:focus {
 }
 
 .basis-line-include .basis-line-text {
+  color: #0a5b3d;
+  font-weight: 650;
+}
+
+.basis-line-include .basis-line-catalog-reference,
+.basis-line-include .basis-line-catalog-detail,
+.basis-line-include .basis-line-catalog-arrow {
   color: #0a5b3d;
   font-weight: 650;
 }
