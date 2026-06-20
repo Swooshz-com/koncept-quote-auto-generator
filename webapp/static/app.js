@@ -5306,11 +5306,17 @@ function downloadCurrentExcelFile(file = state.downloadFile) {
 function viewCurrentPdfFile(file = state.pdfFile) {
   if (!file?.url) return false;
   const opened = window.open(file.url, "_blank");
-  if (!opened) {
-    window.location.assign(file.url);
-  } else {
+  if (opened) {
     opened.opener = null;
+    return true;
   }
+  const link = document.createElement("a");
+  link.href = file.url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
   return true;
 }
 
