@@ -9271,6 +9271,145 @@ assert.strictEqual(generationProfileIdForPayload(), "repo-layout");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_profile_import_auto_saves_imported_profile(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const COMPANY_PROFILE_EXPORT_SCHEMA = "swooshz.quote-company-profile.v1";
+const importedFile = {
+  name: "Imported Layout.json",
+  text: JSON.stringify({
+    schema: COMPANY_PROFILE_EXPORT_SCHEMA,
+    profile: {
+      id: "imported-layout",
+      label: "Imported Layout",
+      description: "Imported layout profile.",
+      defaults: {
+        company: { name: "Imported Layout Co" },
+        quote_text: { payment_terms: ["Imported terms."] },
+      },
+    },
+    pack: {
+      quotation_layout: { filename: "quotation-layout.xlsx", data_url: "data:application/octet-stream;base64,ZmFrZQ==" },
+    },
+  }),
+};
+const state = {
+  images: [],
+  profileSaveBusy: false,
+  profileDeleteBusy: false,
+  pendingProfilePack: null,
+  companyProfiles: [],
+  selectedPresetValue: "",
+};
+const elements = {
+  importPresetFile: { files: [importedFile], value: "C:\\fakepath\\Imported Layout.json" },
+  presetNameInput: { value: "" },
+};
+const posted = [];
+const statuses = [];
+let appliedDefaults = null;
+let clearedGeneratedState = false;
+let workflowStage = "";
+let renderedOptions = 0;
+let persistedSelection = "";
+let buttonUpdates = 0;
+let syncedControls = 0;
+
+function neutralizeFormulaText(value = "") { return String(value || ""); }
+function fileToText(file) { return Promise.resolve(file.text); }
+function applyQuoteDetails(defaults) { appliedDefaults = defaults; }
+function renderPresetStatus(message = "") { statuses.push(message); }
+function clearGeneratedQuoteState() { clearedGeneratedState = true; }
+function setWorkflowStage(stage) { workflowStage = stage; }
+function updatePresetButtons() { buttonUpdates += 1; }
+function syncControlStates() { syncedControls += 1; }
+function renderPresetOptions() { renderedOptions += 1; }
+function persistLastProfilePresetSelection(value) { persistedSelection = value; }
+function appIsBusy() { return false; }
+function genericFailureMessages(value) { return value?.errors || ["Failed."]; }
+async function postJson(url, payload) {
+  posted.push({ url, payload });
+  return { ok: true, data: { profile: { ...payload, saved_at: "2026-06-21T00:00:00Z" } } };
+}
+
+eval([
+  "safeId",
+  "safeProfileId",
+  "safeProfileLabel",
+  "companyProfileOptionValue",
+  "normalizeCompanyProfile",
+  "profilePackPayloadForSave",
+  "importedProfilePackPayload",
+  "clearPendingProfilePack",
+  "normalizeImportedCompanyProfile",
+  "handlePresetImportFileChange",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  await handlePresetImportFileChange();
+
+  assert.strictEqual(posted.length, 1);
+  assert.strictEqual(posted[0].url, "/api/settings/profiles");
+  assert.strictEqual(posted[0].payload.id, "imported-layout");
+  assert.strictEqual(posted[0].payload.label, "Imported Layout");
+  assert.strictEqual(posted[0].payload.defaults.company.name, "Imported Layout Co");
+  assert.strictEqual(posted[0].payload.pack.quotation_layout.filename, "quotation-layout.xlsx");
+  assert.strictEqual(state.companyProfiles.length, 1);
+  assert.strictEqual(state.companyProfiles[0].id, "imported-layout");
+  assert.strictEqual(state.selectedPresetValue, "company:imported-layout");
+  assert.strictEqual(persistedSelection, "company:imported-layout");
+  assert.strictEqual(state.pendingProfilePack, null);
+  assert.strictEqual(elements.presetNameInput.value, "Imported Layout");
+  assert.strictEqual(elements.importPresetFile.value, "");
+  assert.deepStrictEqual(appliedDefaults.quote_text.payment_terms, ["Imported terms."]);
+  assert.strictEqual(clearedGeneratedState, true);
+  assert.strictEqual(workflowStage, "needs_images");
+  assert.ok(renderedOptions >= 1);
+  assert.ok(buttonUpdates >= 1);
+  assert.ok(syncedControls >= 1);
+  assert.ok(statuses.some((message) => message.includes('Imported and saved "Imported Layout".')));
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_pricing_reference_empty_state_disables_selection_and_next_button(self):
         node = require_node(self)
 

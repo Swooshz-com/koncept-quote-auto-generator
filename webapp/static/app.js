@@ -2880,16 +2880,45 @@ async function handlePresetImportFileChange() {
     const text = await fileToText(file);
     const data = JSON.parse(text);
     const imported = normalizeImportedCompanyProfile(data, file.name.replace(/\.json$/i, "") || "Imported Company Profile");
-    state.pendingProfilePack = importedProfilePackPayload(data);
+    const importedPack = importedProfilePackPayload(data);
+    state.pendingProfilePack = importedPack;
     applyQuoteDetails(imported.defaults, { includeLogo: true, clearLogo: true, partial: true });
     if (elements.presetNameInput) elements.presetNameInput.value = imported.label;
-    const layoutCopy = profilePackPayloadForSave()?.quotation_layout ? " Layout workbook included." : "";
-    renderPresetStatus(`Imported "${imported.label}". Review and save it to keep it in this app.${layoutCopy}`);
     clearGeneratedQuoteState();
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
+    const layoutCopy = importedPack?.quotation_layout ? " Layout workbook included." : "";
+    const payload = {
+      id: imported.id,
+      label: imported.label,
+      description: imported.description || "Imported company profile.",
+      defaults: imported.defaults,
+    };
+    if (importedPack) {
+      payload.pack = importedPack;
+    }
+    state.profileSaveBusy = true;
+    renderPresetStatus(`Importing and saving "${imported.label}"...${layoutCopy}`);
+    updatePresetButtons();
+    const { ok, data: saveData } = await postJson("/api/settings/profiles", payload);
+    if (!ok) {
+      renderPresetStatus(`${genericFailureMessages(saveData).join(" ")} Imported "${imported.label}" is loaded but not saved.${layoutCopy}`);
+      return;
+    }
+    const saved = normalizeCompanyProfile(saveData.profile || payload);
+    state.companyProfiles = [
+      ...state.companyProfiles.filter((profile) => safeProfileId(profile.id || profile.label, "") !== saved.id),
+      saved,
+    ].sort((left, right) => String(left.label || left.id || "").localeCompare(String(right.label || right.id || ""), undefined, { sensitivity: "base" }));
+    state.selectedPresetValue = companyProfileOptionValue(saved.id);
+    persistLastProfilePresetSelection(state.selectedPresetValue);
+    if (elements.presetNameInput) elements.presetNameInput.value = saved.label || imported.label;
+    clearPendingProfilePack();
+    renderPresetOptions();
+    renderPresetStatus(`Imported and saved "${saved.label || imported.label}".${layoutCopy}`);
   } catch (error) {
     renderPresetStatus(error?.message || "Could not import that company profile JSON.");
   } finally {
+    state.profileSaveBusy = false;
     if (elements.importPresetFile) elements.importPresetFile.value = "";
     updatePresetButtons();
     syncControlStates();
