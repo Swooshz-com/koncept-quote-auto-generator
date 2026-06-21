@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=48">
+    <link rel="stylesheet" href="/static/styles.css?v=49">
   </head>
   <body>
     <div class="app-shell">
@@ -20,6 +20,7 @@
         </div>
         <div class="topbar-controls">
           <a class="topbar-action topbar-link-action" href="/privacy" target="_blank" rel="noopener">Privacy</a>
+          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Back to dashboard" hidden>Dashboard</button>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -33,7 +34,131 @@
 
       <div class="workspace quote-workspace">
         <main class="panels">
-          <section class="panel is-active quote-shell" id="panel-analysis" data-panel-id="analysis">
+          <section class="panel quote-dashboard-panel is-active" id="quoteDashboardPanel" data-panel-id="dashboard">
+            <div class="quote-dashboard">
+              <section class="dashboard-hero" aria-labelledby="quoteDashboardTitle">
+                <div>
+                  <p class="workspace-pane-eyebrow">Local Quote History</p>
+                  <h2 id="quoteDashboardTitle">Past Quote Sessions</h2>
+                  <p class="workspace-pane-subtitle">Sessions saved in the active local runtime.</p>
+                </div>
+                <button class="primary-button" type="button" id="dashboardNewQuoteButton">
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path d="M12 5v14"></path>
+                    <path d="M5 12h14"></path>
+                  </svg>
+                  <span>New Quote</span>
+                </button>
+              </section>
+
+              <section class="dashboard-summary-grid" aria-label="Quote session summary">
+                <article class="dashboard-summary-card">
+                  <span class="stat-card-icon blue" aria-hidden="true">Q</span>
+                  <div>
+                    <strong id="dashboardTotalSessions">0</strong>
+                    <span>Total sessions</span>
+                  </div>
+                </article>
+                <article class="dashboard-summary-card">
+                  <span class="stat-card-icon green" aria-hidden="true">#</span>
+                  <div>
+                    <strong id="dashboardGeneratedSessions">0</strong>
+                    <span>Generated</span>
+                  </div>
+                </article>
+                <article class="dashboard-summary-card">
+                  <span class="stat-card-icon blue" aria-hidden="true">X</span>
+                  <div>
+                    <strong id="dashboardExportedSessions">0</strong>
+                    <span>Exports ready</span>
+                  </div>
+                </article>
+                <article class="dashboard-summary-card">
+                  <span class="stat-card-icon red" aria-hidden="true">!</span>
+                  <div>
+                    <strong id="dashboardMissingSessions">0</strong>
+                    <span>Missing files</span>
+                  </div>
+                </article>
+              </section>
+
+              <div class="dashboard-content-grid">
+                <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
+                  <div class="dashboard-card-header">
+                    <div>
+                      <h3 id="dashboardSessionsTitle">Recent Quotes</h3>
+                      <p class="settings-note" id="dashboardSessionCount">Loading sessions...</p>
+                    </div>
+                    <div class="dashboard-controls">
+                      <label class="compact-control">
+                        Status
+                        <select id="dashboardStatusFilter">
+                          <option value="all">All statuses</option>
+                          <option value="draft">Draft</option>
+                          <option value="generated">Generated</option>
+                          <option value="exported">Exported</option>
+                          <option value="missing">Missing files</option>
+                        </select>
+                      </label>
+                      <label class="compact-control dashboard-search-control">
+                        Search
+                        <input id="dashboardSearchInput" type="search" autocomplete="off" placeholder="Customer, project, reference">
+                      </label>
+                    </div>
+                  </div>
+                  <div class="dashboard-empty-state" id="dashboardEmptyState" hidden>
+                    <strong>No quote sessions yet</strong>
+                    <p>Start a new quote to create the first local session.</p>
+                  </div>
+                  <div class="dashboard-empty-state dashboard-error-state" id="dashboardErrorState" hidden>
+                    <strong>Quote sessions unavailable</strong>
+                    <p id="dashboardErrorText">Failed. Please try again. Contact support if this keeps happening.</p>
+                  </div>
+                  <div class="dashboard-table-wrap" id="dashboardTableWrap">
+                    <table class="dashboard-session-table">
+                      <thead>
+                        <tr>
+                          <th>Customer / Project</th>
+                          <th>Created</th>
+                          <th>Last Export</th>
+                          <th>Profile</th>
+                          <th>Pricing Reference</th>
+                          <th>Currency / Tax</th>
+                          <th>Grand Total</th>
+                          <th>Status</th>
+                          <th>Exports</th>
+                        </tr>
+                      </thead>
+                      <tbody id="dashboardSessionsBody"></tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <aside class="dashboard-start-card" aria-labelledby="dashboardStartTitle">
+                  <div class="dashboard-start-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <path d="M7 3h7l5 5v13H7V3Z"></path>
+                      <path d="M14 3v5h5"></path>
+                      <path d="M10 13h6"></path>
+                      <path d="M10 17h4"></path>
+                    </svg>
+                  </div>
+                  <h3 id="dashboardStartTitle">Start a New Quote</h3>
+                  <button class="primary-button" type="button" id="dashboardSideNewQuoteButton">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                      <path d="M12 5v14"></path>
+                      <path d="M5 12h14"></path>
+                    </svg>
+                    <span>New Quote</span>
+                  </button>
+                  <button class="secondary-button" type="button" id="dashboardContinueQuoteButton" hidden>Continue Current Quote</button>
+                  <button class="secondary-button" type="button" id="dashboardRefreshButton">Refresh Sessions</button>
+                </aside>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel quote-shell" id="panel-analysis" data-panel-id="analysis">
             <nav class="command-rail" aria-label="Quote workspace panels">
               <button class="rail-button is-active" type="button" data-side-panel="images">
                 <span class="rail-icon" aria-hidden="true">
@@ -941,6 +1066,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=61"></script>
+    <script src="/static/app.js?v=62"></script>
   </body>
 </html>

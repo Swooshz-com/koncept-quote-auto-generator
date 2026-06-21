@@ -27,6 +27,7 @@ const options = {
 
 const baseUrl = `http://${options.host}:${options.port}`;
 const outputDir = path.join(root, "_output", "playwright");
+const quoteDataRoot = path.join(root, "_tmp", "playwright-quote-data");
 
 function pythonCommand() {
   if (process.env.PYTHON) return process.env.PYTHON;
@@ -60,7 +61,7 @@ function startServer() {
     ["webapp/server.py", "--host", options.host, "--port", String(options.port)],
     {
       cwd: root,
-      env: { ...process.env, APP_MODE: "local" },
+      env: { ...process.env, APP_MODE: "local", QUOTE_DATA_ROOT: process.env.QUOTE_DATA_ROOT || quoteDataRoot },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -91,6 +92,33 @@ async function screenshot(page, name) {
 }
 
 async function installMockProfiles(page) {
+  await page.route("**/api/settings/pricing-references/synthetic-exhibition-fixture-pricing**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        pricing_reference: {
+          id: "synthetic-exhibition-fixture-pricing",
+          label: "Synthetic Exhibition Fixture Pricing",
+          description: "Test-only pricing reference for the Playwright smoke.",
+          source: "local",
+          schema_version: 1,
+          currency: "SGD",
+          tax: { label: "GST", rate: 0.09 },
+          item_count: 1,
+          items: [{
+            id: "synthetic-floor-needle-punch-carpet",
+            section: "Floor Design",
+            description: "Needle punch carpet in colour",
+            unit_hint: "sqm",
+            internal_cost: 10,
+            markup_multiplier: 1.5,
+            remarks: "Synthetic smoke fixture row",
+          }],
+        },
+      }),
+    });
+  });
   await page.route("**/api/profiles", async (route) => {
     await route.fulfill({
       status: 200,
@@ -158,15 +186,24 @@ async function main() {
   const browser = await chromium.launch({ headless: !options.headed });
   const page = await browser.newPage({ viewport: { width: 1365, height: 768 } });
   const consoleProblems = [];
+  const networkProblems = [];
   page.on("console", (message) => {
     if (["error", "warning"].includes(message.type())) consoleProblems.push(`${message.type()}: ${message.text()}`);
   });
   page.on("pageerror", (error) => consoleProblems.push(`pageerror: ${error.message}`));
+  page.on("response", (response) => {
+    if (response.status() >= 400) networkProblems.push(`${response.status()} ${response.url()}`);
+  });
 
   try {
     await installMockProfiles(page);
-    await page.goto(baseUrl, { waitUntil: "networkidle" });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
+    const dashboardShot = await screenshot(page, "dashboard.png");
+    await page.locator("#dashboardNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
+    await page.locator("#dashboardNewQuoteButton").click();
     await page.locator("#imageIntake").waitFor({ state: "visible" });
     const homeShot = await screenshot(page, "home.png");
 
@@ -180,8 +217,11 @@ async function main() {
     if (samplePresetValue !== "profile:synthetic-fixture-default") {
       throw new Error(`Expected sample to select the synthetic fixture preset, found ${samplePresetValue}.`);
     }
-    await page.reload({ waitUntil: "networkidle" });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
+    await page.locator("#dashboardContinueQuoteButton:not([hidden])").waitFor({ timeout: 15000 });
+    await page.locator("#dashboardContinueQuoteButton").click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
@@ -292,6 +332,7 @@ async function main() {
       url: page.url(),
       screenshots: [homeShot, customerPricingShot, customerShot].filter(Boolean),
       consoleProblems,
+      networkProblems,
     }, null, 2));
   } finally {
     await browser.close();

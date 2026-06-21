@@ -153,6 +153,12 @@ const state = {
   images: [],
   headerLogo: null,
   workflowStage: "needs_images",
+  activeAppView: "dashboard",
+  quoteSessionId: "",
+  quoteSessions: [],
+  quoteSessionLoadError: "",
+  dashboardStatusFilter: "all",
+  dashboardSearch: "",
   quoteBasis: { ...EMPTY_BASIS },
   quoteBasisSections: [],
   lineItems: [],
@@ -259,6 +265,25 @@ const elements = {
   imageInput: qs("#imageInput"),
   imageUploadStatus: qs("#imageUploadStatus"),
   fileList: qs("#fileList"),
+  quoteDashboardPanel: qs("#quoteDashboardPanel"),
+  quoteFlowPanel: qs("#panel-analysis"),
+  dashboardNewQuoteButton: qs("#dashboardNewQuoteButton"),
+  dashboardSideNewQuoteButton: qs("#dashboardSideNewQuoteButton"),
+  dashboardContinueQuoteButton: qs("#dashboardContinueQuoteButton"),
+  dashboardRefreshButton: qs("#dashboardRefreshButton"),
+  backToDashboardButton: qs("#backToDashboardButton"),
+  dashboardStatusFilter: qs("#dashboardStatusFilter"),
+  dashboardSearchInput: qs("#dashboardSearchInput"),
+  dashboardSessionsBody: qs("#dashboardSessionsBody"),
+  dashboardSessionCount: qs("#dashboardSessionCount"),
+  dashboardEmptyState: qs("#dashboardEmptyState"),
+  dashboardErrorState: qs("#dashboardErrorState"),
+  dashboardErrorText: qs("#dashboardErrorText"),
+  dashboardTableWrap: qs("#dashboardTableWrap"),
+  dashboardTotalSessions: qs("#dashboardTotalSessions"),
+  dashboardGeneratedSessions: qs("#dashboardGeneratedSessions"),
+  dashboardExportedSessions: qs("#dashboardExportedSessions"),
+  dashboardMissingSessions: qs("#dashboardMissingSessions"),
   newQuoteButton: qs("#newQuoteButton"),
   sideWorkspace: qs("#sideWorkspace"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
@@ -506,6 +531,11 @@ function safeId(value = "", fallback = "item") {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || fallback;
+}
+
+function safeQuoteSessionId(value = "") {
+  const text = String(value || "").trim();
+  return /^quote-[A-Za-z0-9_-]{3,64}$/.test(text) ? text : "";
 }
 
 function safeProfileId(value = "", fallback = "company-profile") {
@@ -2093,6 +2123,7 @@ function buildSessionSnapshot() {
     pricingReferenceId: state.pricingReferenceId,
     pricingReferenceSource: state.pricingReferenceSource,
     selectedPresetValue: state.selectedPresetValue,
+    quoteSessionId: state.quoteSessionId,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES).map(sessionImageMetadata),
     quoteDetails: collectQuoteDetails(),
     workflowStage: state.workflowStage,
@@ -2173,6 +2204,7 @@ async function restoreSessionState() {
   state.profileId = saved.profileId || "";
   state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
   state.pricingReferenceSource = saved.pricingReferenceSource || "";
+  state.quoteSessionId = safeQuoteSessionId(saved.quoteSessionId || "");
   state.selectedPresetValue = lastSelectedPresetValue() || presetValueFromQuoteDetails(saved.quoteDetails || {});
   syncSelectedPricingReference();
   renderProfileOptions();
@@ -3082,9 +3114,10 @@ function resetImagesDraft() {
   syncControlStates();
 }
 
-function startNewQuote() {
+async function startNewQuote() {
   if (appIsBusy()) return;
   clearSessionState();
+  state.quoteSessionId = "";
   state.profileId = "";
   state.pricingReferenceId = "";
   state.pricingReferenceSource = "";
@@ -3112,6 +3145,9 @@ function startNewQuote() {
   renderPresetStatus("Started a new quote.");
   setWorkflowStage("needs_images");
   setSidePanel("images", { force: true });
+  showQuoteFlow();
+  syncControlStates();
+  await saveCurrentQuoteSession({ quoteGenerated: false });
   syncControlStates();
 }
 
@@ -5633,6 +5669,9 @@ function buildPayload(options = {}) {
       tax: pricingReference.tax || selectedPricingReferenceTax(),
       currency: selectedPricingReferenceCurrency(),
     } : { id: state.pricingReferenceId || "", source: state.pricingReferenceSource || "bundled", tax: selectedPricingReferenceTax(), currency: selectedPricingReferenceCurrency() },
+    quote_session: currentQuoteSessionPayload({
+      quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length),
+    }),
     analysis_mode: normalizeAnalysisMode(options.analysisMode || state.pendingAnalysisMode),
     generator_label: generator.label,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES),
@@ -8176,6 +8215,296 @@ async function getJson(url, options = {}) {
   return { ok: response.ok, data };
 }
 
+function dashboardNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(String(value).replaceAll(",", "").trim());
+  return Number.isFinite(number) ? number : null;
+}
+
+function dashboardTimestampMs(value = "") {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatDashboardDateTime(value = "") {
+  const timestamp = dashboardTimestampMs(value);
+  if (!timestamp) return "-";
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function formatDashboardMoney(session = {}) {
+  const commercials = session.commercials || {};
+  const total = dashboardNumberOrNull(commercials.grand_total);
+  if (total === null) return "-";
+  const currency = String(commercials.currency || DEFAULT_CURRENCY_LABEL).trim() || DEFAULT_CURRENCY_LABEL;
+  return `${currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function dashboardCommercialsFromState() {
+  const tax = collectTaxDetails();
+  const stats = matchSummaryStats(state.outputRows);
+  const hasConfirmedTotal = state.outputRows.length > 0 && !stats.totalPending;
+  const subtotal = hasConfirmedTotal ? stats.total : null;
+  const taxRate = Number(tax.rate ?? DEFAULT_TAX_RATE);
+  const taxAmount = subtotal === null || !Number.isFinite(taxRate) ? null : subtotal * taxRate;
+  return {
+    currency: selectedPricingReferenceCurrency(),
+    tax_label: tax.label || DEFAULT_TAX_LABEL,
+    tax_rate: Number.isFinite(taxRate) ? taxRate : DEFAULT_TAX_RATE,
+    subtotal,
+    tax_amount: taxAmount,
+    grand_total: subtotal === null || taxAmount === null ? null : subtotal + taxAmount,
+  };
+}
+
+function currentQuoteSessionPayload(options = {}) {
+  const details = collectQuoteDetails();
+  const selectedProfile = selectedPreset();
+  const selectedReference = currentPricingReference();
+  const profile = currentProfile();
+  const quoteGenerated = Boolean(options.quoteGenerated ?? (state.basisConfirmed || state.outputRows.length));
+  return {
+    session_id: safeQuoteSessionId(options.sessionId || state.quoteSessionId || ""),
+    customer_summary: {
+      customer_name: details.client?.name || "",
+      project_name: details.project?.title || "",
+      event_or_project_date: details.quote_date || "",
+    },
+    quote_company_profile: {
+      id: safeProfileId(generationProfileIdForPayload(), ""),
+      display_name: selectedProfile?.name || profile?.label || details.company?.name || "",
+    },
+    pricing_reference: {
+      id: selectedReference?.id || state.pricingReferenceId || "",
+      display_name: selectedReference?.label || "",
+    },
+    commercials: dashboardCommercialsFromState(),
+    status: {
+      quote_generated: quoteGenerated,
+    },
+  };
+}
+
+async function saveCurrentQuoteSession(options = {}) {
+  const payload = currentQuoteSessionPayload(options);
+  const { ok, data } = await postJson("/api/quote-sessions", payload);
+  if (!ok) {
+    state.quoteSessionLoadError = genericFailureMessage(data);
+    return null;
+  }
+  const session = data.quote_session || {};
+  state.quoteSessionId = safeQuoteSessionId(session.session_id || payload.session_id);
+  return session;
+}
+
+async function ensureQuoteSession(options = {}) {
+  if (safeQuoteSessionId(state.quoteSessionId)) return state.quoteSessionId;
+  const session = await saveCurrentQuoteSession(options);
+  return safeQuoteSessionId(session?.session_id || state.quoteSessionId);
+}
+
+function hasCurrentQuoteDraft() {
+  return Boolean(
+    safeQuoteSessionId(state.quoteSessionId)
+    || state.images.length
+    || state.lineItems.length
+    || state.outputRows.length
+    || state.basisConfirmed
+    || state.workflowStage !== "needs_images"
+  );
+}
+
+function showQuoteFlow() {
+  state.activeAppView = "quote";
+  elements.quoteDashboardPanel?.classList.remove("is-active");
+  elements.quoteFlowPanel?.classList.add("is-active");
+  if (elements.backToDashboardButton) elements.backToDashboardButton.hidden = false;
+  syncControlStates();
+}
+
+function continueCurrentQuote() {
+  if (appIsBusy() || !hasCurrentQuoteDraft()) return;
+  showQuoteFlow();
+}
+
+function showDashboard(options = {}) {
+  state.activeAppView = "dashboard";
+  elements.quoteFlowPanel?.classList.remove("is-active");
+  elements.quoteDashboardPanel?.classList.add("is-active");
+  if (elements.backToDashboardButton) elements.backToDashboardButton.hidden = true;
+  syncControlStates();
+  if (options.load !== false) {
+    loadQuoteDashboard();
+  }
+}
+
+async function returnToDashboard() {
+  if (appIsBusy()) return;
+  await saveCurrentQuoteSession({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
+  showDashboard();
+}
+
+async function loadQuoteDashboard() {
+  if (!elements.quoteDashboardPanel) return;
+  state.quoteSessionLoadError = "";
+  const { ok, data } = await getJson("/api/quote-sessions", { logFetchFailure: false });
+  if (!ok) {
+    state.quoteSessions = [];
+    state.quoteSessionLoadError = genericFailureMessage(data);
+  } else {
+    state.quoteSessions = Array.isArray(data.quote_sessions) ? data.quote_sessions : [];
+  }
+  renderQuoteDashboard();
+}
+
+function quoteSessionExport(session = {}, kind = "xlsx") {
+  const exports = session.exports && typeof session.exports === "object" ? session.exports : {};
+  const item = exports[kind] && typeof exports[kind] === "object" ? exports[kind] : {};
+  return item;
+}
+
+function quoteSessionHasMissingExport(session = {}) {
+  return ["xlsx", "pdf"].some((kind) => Boolean(quoteSessionExport(session, kind).missing));
+}
+
+function quoteSessionHasAvailableExport(session = {}) {
+  return ["xlsx", "pdf"].some((kind) => Boolean(quoteSessionExport(session, kind).exists));
+}
+
+function quoteSessionStatus(session = {}) {
+  if (quoteSessionHasMissingExport(session)) return { key: "missing", label: "Missing files", className: "is-missing" };
+  if (quoteSessionHasAvailableExport(session)) return { key: "exported", label: "Exported", className: "is-exported" };
+  if (session.status?.quote_generated) return { key: "generated", label: "Generated", className: "is-generated" };
+  return { key: "draft", label: "Draft", className: "is-draft" };
+}
+
+function dashboardSessionSearchText(session = {}) {
+  return [
+    session.customer_summary?.customer_name,
+    session.customer_summary?.project_name,
+    session.quote_company_profile?.display_name,
+    session.pricing_reference?.display_name,
+    session.commercials?.currency,
+    quoteSessionStatus(session).label,
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+}
+
+function filteredDashboardSessions() {
+  const statusFilter = state.dashboardStatusFilter || "all";
+  const search = String(state.dashboardSearch || "").trim().toLowerCase();
+  return state.quoteSessions.filter((session) => {
+    const status = quoteSessionStatus(session).key;
+    if (statusFilter !== "all" && status !== statusFilter) return false;
+    if (search && !dashboardSessionSearchText(session).includes(search)) return false;
+    return true;
+  });
+}
+
+function updateDashboardSummary() {
+  const sessions = state.quoteSessions;
+  const generated = sessions.filter((session) => session.status?.quote_generated).length;
+  const exported = sessions.filter(quoteSessionHasAvailableExport).length;
+  const missing = sessions.filter(quoteSessionHasMissingExport).length;
+  if (elements.dashboardTotalSessions) elements.dashboardTotalSessions.textContent = String(sessions.length);
+  if (elements.dashboardGeneratedSessions) elements.dashboardGeneratedSessions.textContent = String(generated);
+  if (elements.dashboardExportedSessions) elements.dashboardExportedSessions.textContent = String(exported);
+  if (elements.dashboardMissingSessions) elements.dashboardMissingSessions.textContent = String(missing);
+}
+
+function dashboardLastExportText(session = {}) {
+  const times = ["xlsx", "pdf"]
+    .map((kind) => dashboardTimestampMs(quoteSessionExport(session, kind).created_at))
+    .filter(Boolean)
+    .sort((left, right) => right - left);
+  return times.length ? formatDashboardDateTime(new Date(times[0]).toISOString()) : "-";
+}
+
+function dashboardTaxText(session = {}) {
+  const commercials = session.commercials || {};
+  const currency = String(commercials.currency || DEFAULT_CURRENCY_LABEL).trim() || DEFAULT_CURRENCY_LABEL;
+  const label = String(commercials.tax_label || DEFAULT_TAX_LABEL).trim() || DEFAULT_TAX_LABEL;
+  const rate = Number(commercials.tax_rate ?? DEFAULT_TAX_RATE);
+  const rateText = Number.isFinite(rate) ? `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "";
+  return `${currency} / ${label}${rateText ? ` ${rateText}` : ""}`;
+}
+
+function dashboardExportMarkup(session = {}, kind = "xlsx", label = "XLSX") {
+  const exportInfo = quoteSessionExport(session, kind);
+  if (exportInfo.exists && exportInfo.url) {
+    return `<a class="dashboard-export-link" href="${escapeHtml(exportInfo.url)}" download>${escapeHtml(label)}</a>`;
+  }
+  if (exportInfo.missing) {
+    return `<span class="dashboard-export-missing" title="${escapeHtml(label)} unavailable">Missing</span>`;
+  }
+  return `<span class="dashboard-export-missing">${escapeHtml(label)}</span>`;
+}
+
+function dashboardSessionRow(session = {}) {
+  const status = quoteSessionStatus(session);
+  const customer = session.customer_summary?.customer_name || "Untitled customer";
+  const project = session.customer_summary?.project_name || "Untitled quote";
+  const profile = session.quote_company_profile?.display_name || "Quote Company Profile";
+  const pricing = session.pricing_reference?.display_name || "Pricing Reference";
+  return `
+    <tr>
+      <td>
+        <div class="dashboard-customer-cell">
+          <strong>${escapeHtml(customer)}</strong>
+          <span>${escapeHtml(project)}</span>
+          <span>Session: ${escapeHtml(session.session_id || "")}</span>
+        </div>
+      </td>
+      <td>${escapeHtml(formatDashboardDateTime(session.created_at))}</td>
+      <td>${escapeHtml(dashboardLastExportText(session))}</td>
+      <td>${escapeHtml(profile)}</td>
+      <td>${escapeHtml(pricing)}</td>
+      <td>${escapeHtml(dashboardTaxText(session))}</td>
+      <td><span class="dashboard-money">${escapeHtml(formatDashboardMoney(session))}</span></td>
+      <td><span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span></td>
+      <td>
+        <div class="dashboard-export-actions">
+          ${dashboardExportMarkup(session, "xlsx", "XLSX")}
+          ${dashboardExportMarkup(session, "pdf", "PDF")}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderQuoteDashboard() {
+  updateDashboardSummary();
+  const filtered = filteredDashboardSessions();
+  const hasError = Boolean(state.quoteSessionLoadError);
+  const hasSessions = state.quoteSessions.length > 0;
+  const hasRows = filtered.length > 0;
+  if (elements.dashboardSessionCount) {
+    elements.dashboardSessionCount.textContent = hasError
+      ? "Sessions could not be loaded."
+      : hasSessions
+        ? `Showing ${filtered.length} of ${state.quoteSessions.length} session${state.quoteSessions.length === 1 ? "" : "s"}.`
+        : "No saved sessions in this local runtime.";
+  }
+  if (elements.dashboardErrorState) elements.dashboardErrorState.hidden = !hasError;
+  if (elements.dashboardErrorText) elements.dashboardErrorText.textContent = state.quoteSessionLoadError || GENERIC_FAILURE_MESSAGE;
+  if (elements.dashboardEmptyState) {
+    elements.dashboardEmptyState.hidden = hasError || hasRows;
+    const strong = elements.dashboardEmptyState.querySelector("strong");
+    const detail = elements.dashboardEmptyState.querySelector("p");
+    if (strong) strong.textContent = hasSessions ? "No matching quote sessions" : "No quote sessions yet";
+    if (detail) detail.textContent = hasSessions ? "Adjust the filter or search terms." : "Start a new quote to create the first local session.";
+  }
+  if (elements.dashboardTableWrap) elements.dashboardTableWrap.hidden = hasError || !hasRows;
+  if (elements.dashboardSessionsBody) {
+    elements.dashboardSessionsBody.innerHTML = filtered.map(dashboardSessionRow).join("");
+  }
+}
+
 function delay(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -8258,6 +8587,19 @@ function syncControlStates() {
   const busy = appIsBusy();
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
+  [elements.dashboardNewQuoteButton, elements.dashboardSideNewQuoteButton, elements.dashboardContinueQuoteButton, elements.dashboardRefreshButton, elements.backToDashboardButton]
+    .filter(Boolean)
+    .forEach((button) => {
+      button.disabled = busy;
+      button.setAttribute("aria-disabled", String(busy));
+      button.title = busy ? appBusyTitle() : "";
+    });
+  if (elements.backToDashboardButton) {
+    elements.backToDashboardButton.hidden = state.activeAppView !== "quote";
+  }
+  if (elements.dashboardContinueQuoteButton) {
+    elements.dashboardContinueQuoteButton.hidden = !hasCurrentQuoteDraft();
+  }
   if (elements.settingsButton) {
     const canManage = canManagePricingReferences();
     elements.settingsButton.hidden = false;
@@ -8304,6 +8646,7 @@ async function handleDraftBasis(options = {}) {
   clearBasisReviewSurface();
   setSidePanel("basis", { force: true });
   syncControlStates();
+  await ensureQuoteSession({ quoteGenerated: false });
 
   const started = await startJob("draft", buildPayload({
     analysisMode,
@@ -8420,6 +8763,7 @@ async function confirmBasis() {
     state.originalOutputRows = snapshotOutputRows(state.outputRows);
     state.lineItems = outputRowsToLineItems();
     setWorkflowStage("completed");
+    await saveCurrentQuoteSession({ quoteGenerated: true });
     renderPricingMatches(state.outputRows);
     renderMatchSummary({ pricing_matches: state.outputRows });
     setResultStatus(refreshed ? "Ready for pricing review" : "Pricing refresh unavailable", "is-warn");
@@ -8479,6 +8823,7 @@ async function handleGenerate(options = {}) {
   renderMatchSummary({});
   clearPricingReviewMessages();
   syncControlStates();
+  await ensureQuoteSession({ quoteGenerated: true });
   const jobType = viewPdf ? "generate_pdf" : "generate";
   const started = await startJob(jobType, buildPayload({ viewPdf }));
   if (!started.ok) {
@@ -8502,6 +8847,9 @@ async function handleGenerate(options = {}) {
   state.activeJob = null;
 
   const data = polled.data.result || polled.data || {};
+  if (data.quote_session?.session_id) {
+    state.quoteSessionId = safeQuoteSessionId(data.quote_session.session_id) || state.quoteSessionId;
+  }
   if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
     setWorkflowStage(state.activeSidePanel === "output" ? "completed" : "details_review");
     setResultStatus(data.status || "Failed", "is-bad");
@@ -8621,6 +8969,9 @@ async function resumeSavedJob() {
     state.activeJob = null;
 
     const data = polled.data.result || polled.data || {};
+    if (data.quote_session?.session_id) {
+      state.quoteSessionId = safeQuoteSessionId(data.quote_session.session_id) || state.quoteSessionId;
+    }
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status) || data.status === "blocked" || data.status === "failed") {
       setWorkflowStage("details_review");
       setResultStatus(data.status || "Failed", "is-bad");
@@ -9120,6 +9471,19 @@ function wireEvents() {
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
+  elements.dashboardNewQuoteButton?.addEventListener("click", startNewQuote);
+  elements.dashboardSideNewQuoteButton?.addEventListener("click", startNewQuote);
+  elements.dashboardContinueQuoteButton?.addEventListener("click", continueCurrentQuote);
+  elements.dashboardRefreshButton?.addEventListener("click", loadQuoteDashboard);
+  elements.backToDashboardButton?.addEventListener("click", returnToDashboard);
+  elements.dashboardStatusFilter?.addEventListener("change", () => {
+    state.dashboardStatusFilter = elements.dashboardStatusFilter.value || "all";
+    renderQuoteDashboard();
+  });
+  elements.dashboardSearchInput?.addEventListener("input", () => {
+    state.dashboardSearch = elements.dashboardSearchInput.value || "";
+    renderQuoteDashboard();
+  });
   elements.settingsButton?.addEventListener("click", openSettingsModal);
   elements.profileSelect.addEventListener("change", handleProfileSelectionChange);
   elements.newPricingReferenceButton?.addEventListener("click", openPricingReferenceModal);
@@ -9374,12 +9738,15 @@ async function boot() {
     await initializeSession();
     await loadProfiles();
     await setInitialValues();
+    showDashboard({ load: false });
     checkHealth();
   } finally {
     state.isBooting = false;
     syncControlStates();
   }
   await resumeSavedJob();
+  showDashboard({ load: false });
+  await loadQuoteDashboard();
 }
 
 boot();
