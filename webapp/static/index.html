@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=49">
+    <link rel="stylesheet" href="/static/styles.css?v=50">
   </head>
   <body>
     <div class="app-shell">
@@ -20,7 +20,7 @@
         </div>
         <div class="topbar-controls">
           <a class="topbar-action topbar-link-action" href="/privacy" target="_blank" rel="noopener">Privacy</a>
-          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Back to dashboard" hidden>Dashboard</button>
+          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Back to dashboard" hidden>Back to Dashboard</button>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -114,24 +114,7 @@
                     <strong>Quote sessions unavailable</strong>
                     <p id="dashboardErrorText">Failed. Please try again. Contact support if this keeps happening.</p>
                   </div>
-                  <div class="dashboard-table-wrap" id="dashboardTableWrap">
-                    <table class="dashboard-session-table">
-                      <thead>
-                        <tr>
-                          <th>Customer / Project</th>
-                          <th>Created</th>
-                          <th>Last Export</th>
-                          <th>Profile</th>
-                          <th>Pricing Reference</th>
-                          <th>Currency / Tax</th>
-                          <th>Grand Total</th>
-                          <th>Status</th>
-                          <th>Exports</th>
-                        </tr>
-                      </thead>
-                      <tbody id="dashboardSessionsBody"></tbody>
-                    </table>
-                  </div>
+                  <div class="dashboard-session-list" id="dashboardSessionsList" aria-live="polite"></div>
                 </section>
 
                 <aside class="dashboard-start-card" aria-labelledby="dashboardStartTitle">
@@ -151,7 +134,6 @@
                     </svg>
                     <span>New Quote</span>
                   </button>
-                  <button class="secondary-button" type="button" id="dashboardContinueQuoteButton" hidden>Continue Current Quote</button>
                   <button class="secondary-button" type="button" id="dashboardRefreshButton">Refresh Sessions</button>
                 </aside>
               </div>
@@ -1066,6 +1048,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=62"></script>
+    <script src="/static/app.js?v=63"></script>
   </body>
 </html>

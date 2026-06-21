@@ -7767,6 +7767,74 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                         urllib.request.urlopen(f"{runner.base_url}/api/quote-sessions/quote-api/download/xlsx", timeout=3)
                     self.assertEqual(error.exception.code, 404)
 
+    def test_quote_session_delete_endpoint_rejects_invalid_ids_without_path_leakage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_root = Path(tmp) / "data"
+            with mock.patch.object(webapp, "configured_data_root", return_value=data_root):
+                with LocalRunnerServer() as runner:
+                    session_response = json.loads(
+                        urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8")
+                    )
+                    headers = {
+                        "Origin": runner.base_url,
+                        session_response["csrf_header"]: session_response["csrf_token"],
+                    }
+                    for path in (
+                        "/api/quote-sessions/bad..id",
+                        "/api/quote-sessions/..%2Fsecret",
+                    ):
+                        with self.subTest(path=path):
+                            request = urllib.request.Request(
+                                f"{runner.base_url}{path}",
+                                method="DELETE",
+                                headers=headers,
+                            )
+                            with self.assertRaises(urllib.error.HTTPError) as error:
+                                urllib.request.urlopen(request, timeout=3)
+                            body = error.exception.read().decode("utf-8")
+                            self.assertEqual(error.exception.code, 404)
+                            self.assertNotIn(str(data_root), body)
+                            self.assertNotIn(str(Path(tmp)), body)
+
+    def test_quote_session_delete_endpoint_removes_only_intended_session_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_root = Path(tmp) / "data"
+            outside_marker = data_root / "outside.txt"
+            with mock.patch.object(webapp, "configured_data_root", return_value=data_root):
+                delete_payload = valid_payload()
+                delete_payload["quote_session"] = {"session_id": "quote-delete"}
+                keep_payload = valid_payload()
+                keep_payload["quote_session"] = {"session_id": "quote-keep"}
+                webapp.create_or_update_quote_session(delete_payload)
+                webapp.create_or_update_quote_session(keep_payload)
+                delete_exports = webapp.quote_session_export_dir("quote-delete")
+                delete_exports.mkdir(parents=True, exist_ok=True)
+                (delete_exports / "quotation.xlsx").write_bytes(b"xlsx")
+                outside_marker.parent.mkdir(parents=True, exist_ok=True)
+                outside_marker.write_text("keep", encoding="utf-8")
+
+                with LocalRunnerServer() as runner:
+                    session_response = json.loads(
+                        urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8")
+                    )
+                    request = urllib.request.Request(
+                        f"{runner.base_url}/api/quote-sessions/quote-delete",
+                        method="DELETE",
+                        headers={
+                            "Origin": runner.base_url,
+                            session_response["csrf_header"]: session_response["csrf_token"],
+                        },
+                    )
+                    response = json.loads(urllib.request.urlopen(request, timeout=3).read().decode("utf-8"))
+
+                response_text = json.dumps(response)
+                self.assertEqual(response["status"], "deleted")
+                self.assertFalse((data_root / "quote-sessions" / "quote-delete").exists())
+                self.assertTrue((data_root / "quote-sessions" / "quote-keep" / "quote-session.json").is_file())
+                self.assertEqual(outside_marker.read_text(encoding="utf-8"), "keep")
+                self.assertNotIn(str(data_root), response_text)
+                self.assertNotIn(str(Path(tmp)), response_text)
+
     def test_static_webapp_adds_quote_dashboard_without_replacing_quote_flow(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
@@ -7774,19 +7842,38 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertIn('id="quoteDashboardPanel"', html)
-        self.assertIn('id="dashboardSessionsBody"', html)
+        self.assertIn('id="dashboardSessionsList"', html)
         self.assertIn('id="dashboardNewQuoteButton"', html)
-        self.assertIn('id="dashboardContinueQuoteButton"', html)
         self.assertIn('id="backToDashboardButton"', html)
+        self.assertIn('>Back to Dashboard<', html)
+        self.assertNotIn('id="dashboardContinueQuoteButton"', html)
+        self.assertNotIn("Continue Current Quote", html)
         self.assertIn('class="panel quote-dashboard-panel is-active"', html)
         self.assertIn('class="panel quote-shell"', html)
         self.assertIn("quote-dashboard-panel", css)
-        self.assertIn("dashboard-session-table", css)
+        self.assertIn("dashboard-session-list", css)
+        self.assertNotIn("dashboard-session-table", css)
         self.assertIn("showDashboard", js)
         self.assertIn("showQuoteFlow", js)
-        self.assertIn("continueCurrentQuote", js)
         self.assertIn("loadQuoteDashboard", js)
         self.assertIn("/api/quote-sessions", js)
+
+    def test_static_dashboard_session_cards_use_contextual_delete_and_continue_actions(self):
+        static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("dashboardContinueQuoteButton", html)
+        self.assertIn("dashboardSessionCanResume", js)
+        self.assertIn("Continue draft", js)
+        self.assertIn('data-dashboard-action="continue"', js)
+        self.assertIn('data-dashboard-action="delete"', js)
+        self.assertIn("Delete this local quote session? This removes its saved dashboard record and local exported files if present. This cannot be undone.", js)
+        self.assertIn("window.confirm", js)
+        self.assertIn('method: "DELETE"', js)
+        delete_body = js.split("async function deleteQuoteSession", 1)[1].split("function renderQuoteDashboard", 1)[0]
+        self.assertIn("await loadQuoteDashboard()", delete_body)
+        self.assertNotIn("error.message", delete_body)
 
     def test_static_webapp_exposes_dynamic_quote_fields_and_analysis_controls(self):
         static_dir = ROOT / "webapp" / "static"

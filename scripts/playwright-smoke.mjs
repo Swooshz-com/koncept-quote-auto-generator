@@ -220,8 +220,8 @@ async function main() {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
-    await page.locator("#dashboardContinueQuoteButton:not([hidden])").waitFor({ timeout: 15000 });
-    await page.locator("#dashboardContinueQuoteButton").click();
+    await page.locator('[data-dashboard-action="continue"]', { hasText: "Continue draft" }).waitFor({ timeout: 15000 });
+    await page.locator('[data-dashboard-action="continue"]', { hasText: "Continue draft" }).click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
@@ -326,6 +326,23 @@ async function main() {
     if (!bodyText.includes("Upload") || !bodyText.includes("Customer") || !bodyText.includes("Quote date")) {
       throw new Error("Rendered page did not include the expected workspace text.");
     }
+
+    await page.setViewportSize({ width: 1365, height: 768 });
+    await page.locator("#backToDashboardButton", { hasText: "Back to Dashboard" }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#backToDashboardButton").click();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+    const resumableCard = page.locator(".dashboard-session-card", { has: page.locator('[data-dashboard-action="continue"]') }).first();
+    await resumableCard.waitFor({ state: "visible", timeout: 15000 });
+    let deleteConfirmMessage = "";
+    page.once("dialog", async (dialog) => {
+      deleteConfirmMessage = dialog.message();
+      await dialog.accept();
+    });
+    await resumableCard.locator('[data-dashboard-action="delete"]').click();
+    if (deleteConfirmMessage !== "Delete this local quote session? This removes its saved dashboard record and local exported files if present. This cannot be undone.") {
+      throw new Error(`Unexpected delete confirmation copy: ${deleteConfirmMessage}`);
+    }
+    await page.locator('[data-dashboard-action="continue"]').waitFor({ state: "detached", timeout: 15000 });
 
     console.log(JSON.stringify({
       status: "ok",

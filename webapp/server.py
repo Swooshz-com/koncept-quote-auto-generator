@@ -264,6 +264,7 @@ POST_RATE_LIMITS = {
     "/api/settings/profiles": 30,
     "/api/settings/profiles/:id": 30,
     "/api/quote-sessions": 30,
+    "/api/quote-sessions/:id": 30,
     "/api/log": 180,
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
@@ -5702,6 +5703,8 @@ def rate_limit_path_key(path: str) -> str:
     normalized_path = urlparse(path).path
     if re.fullmatch(r"/api/settings/pricing-references/[A-Za-z0-9_-]+", normalized_path):
         return "/api/settings/pricing-references/:id"
+    if re.fullmatch(r"/api/quote-sessions/[A-Za-z0-9_-]+", normalized_path):
+        return "/api/quote-sessions/:id"
     if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+/export\.json", normalized_path):
         return "/api/settings/profiles/:id"
     if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+", normalized_path):
@@ -11225,6 +11228,22 @@ def list_quote_sessions() -> list[dict[str, Any]]:
     )
 
 
+def delete_quote_session(session_id: str) -> bool:
+    safe_id = safe_quote_session_id(session_id, "")
+    if not safe_id:
+        return False
+    root = quote_sessions_root().resolve()
+    session_dir = quote_session_dir(safe_id)
+    try:
+        session_dir.relative_to(root)
+    except ValueError:
+        return False
+    if session_dir.name != safe_id or not session_dir.exists() or not session_dir.is_dir():
+        return False
+    shutil.rmtree(session_dir)
+    return True
+
+
 def file_data_url(path: Path) -> str:
     content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
     return f"data:{content_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
@@ -12008,6 +12027,26 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if self.block_unauthenticated_request(parsed.path):
             return
         if self.block_unsafe_post(parsed.path):
+            return
+        quote_session_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", parsed.path)
+        if quote_session_match:
+            allowed, error = require_permission("canGenerateQuote")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            try:
+                deleted = delete_quote_session(quote_session_match.group(1))
+            except Exception as exc:  # pragma: no cover - defensive HTTP boundary
+                error_reference = new_error_reference()
+                write_local_log("server_error", {
+                    "error_reference": error_reference,
+                    "reason": "quote_session_delete_failed",
+                    "session_id": safe_quote_session_id(quote_session_match.group(1), ""),
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                self.send_json({"status": "failed", "errors": safe_error_messages([f"Unexpected local runner error. Reference: {error_reference}."])}, status=500)
+                return
+            self.send_json({"status": "deleted" if deleted else "not_found"}, status=200 if deleted else 404)
             return
         pricing_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", parsed.path)
         if pricing_match:
