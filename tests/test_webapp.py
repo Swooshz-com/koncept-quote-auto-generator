@@ -9808,6 +9808,8 @@ const elements = {
     disabled: false,
     hidden: false,
     textContent: "",
+    focused: false,
+    focus() { this.focused = true; },
     setAttribute(name, value) { this[name] = value; },
   },
 };
@@ -9830,6 +9832,9 @@ eval([
   "selectedPreset",
   "canManageProfiles",
   "profileNoAccessReason",
+  "buttonCanAcceptClick",
+  "focusActionButton",
+  "queueActionButtonFocus",
   "updatePresetSourceBadge",
   "setButtonLabel",
   "updatePresetButtons",
@@ -9869,6 +9874,7 @@ assert.strictEqual(elements.profileDeleteText.textContent, "This removes the sav
 assert.strictEqual(elements.confirmProfileDeleteButton.hidden, false);
 assert.strictEqual(elements.confirmProfileDeleteButton.textContent, "Delete");
 assert.strictEqual(elements.cancelProfileDeleteButton.textContent, "Cancel");
+assert.strictEqual(elements.confirmProfileDeleteButton.focused, true);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -10169,7 +10175,12 @@ const elements = {
     focus() { this.focused = true; },
     setAttribute(name, value) { this[name] = value; },
   },
-  confirmProfileOverwriteButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  confirmProfileOverwriteButton: {
+    disabled: false,
+    focused: false,
+    focus() { this.focused = true; },
+    setAttribute(name, value) { this[name] = value; },
+  },
 };
 const posted = [];
 const statuses = [];
@@ -10203,6 +10214,9 @@ eval([
   "companyProfileOptionValue",
   "normalizeCompanyProfile",
   "canManageProfiles",
+  "buttonCanAcceptClick",
+  "focusActionButton",
+  "queueActionButtonFocus",
   "profilePackPayloadForSave",
   "clearPendingProfilePack",
   "hideProfileOverwriteModal",
@@ -10227,7 +10241,8 @@ eval([
   assert.strictEqual(overwriteStrong.textContent, 'A profile named "Existing Profile" already exists.');
   assert.match(overwriteDetail.textContent, /saved profile settings will be replaced/i);
   assert.strictEqual(state.profileOverwriteConfirmOptions.existingProfile.id, "legacy-profile-id");
-  assert.strictEqual(elements.cancelProfileOverwriteButton.focused, true);
+  assert.strictEqual(elements.cancelProfileOverwriteButton.focused, false);
+  assert.strictEqual(elements.confirmProfileOverwriteButton.focused, true);
   assert.strictEqual(elements.profileNameModal.hidden, false);
 
   hideProfileOverwriteModal({ focusInput: true });
