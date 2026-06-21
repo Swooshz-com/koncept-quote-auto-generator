@@ -4,6 +4,7 @@ import unittest
 import base64
 import hashlib
 import html
+import http.client
 import inspect
 import io
 import json
@@ -5565,6 +5566,21 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(urlopen.call_count, 1)
         sleep.assert_not_called()
         self.assertIn("network timeout", str(error.exception))
+
+    def test_openai_remote_disconnect_is_reported_as_connection_error(self):
+        disconnect = http.client.RemoteDisconnected("Remote end closed connection without response")
+
+        with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=disconnect) as urlopen:
+            with mock.patch.object(webapp.time, "sleep") as sleep:
+                with self.assertRaises(webapp.OpenAIAnalysisError) as error:
+                    webapp.request_openai_quote_basis(valid_payload(), "sk-test-redacted")
+
+        self.assertEqual(urlopen.call_count, 1)
+        sleep.assert_not_called()
+        message = str(error.exception)
+        self.assertIn("OpenAI analysis failed due to connection error", message)
+        self.assertIn("Remote end closed connection without response", message)
+        self.assertNotIn("sk-test-redacted", message)
 
     def test_basis_chat_prompt_requires_structured_ai_response(self):
         payload = valid_payload()

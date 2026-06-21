@@ -16,6 +16,7 @@ import csv
 import datetime as dt
 import hashlib
 import hmac
+import http.client
 import http.cookies
 import io
 import json
@@ -386,6 +387,7 @@ DEEPSEEK_PRICING_IMPORT_MAX_OUTPUT_TOKENS = 8000
 DEEPSEEK_PRICING_METADATA_MAX_OUTPUT_TOKENS = 12000
 OPENAI_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TRANSIENT_OPENAI_HTTP_CODES = {408, 500, 502, 503, 504}
+PROVIDER_CONNECTION_EXCEPTIONS = (urllib.error.URLError, TimeoutError, http.client.RemoteDisconnected)
 MAX_PROMPT_CATALOG_ROWS = 180
 MAX_PROMPT_CATALOG_CHARS = 120000
 MAX_PROMPT_CATALOG_DESCRIPTION_CHARS = 180
@@ -4998,7 +5000,7 @@ def request_deepseek_chat_completion_json_data(
                 time.sleep(retry_delays[attempt])
                 continue
             raise OpenAIAnalysisError(provider_http_error_message("DeepSeek", exc)) from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except PROVIDER_CONNECTION_EXCEPTIONS as exc:
             if attempt < len(retry_delays) and is_transient_openai_error(exc):
                 time.sleep(retry_delays[attempt])
                 continue
@@ -5037,7 +5039,7 @@ def request_openai_pricing_catalog_import(source_name: str, content: Any, tax: d
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         raise OpenAIAnalysisError(openai_http_error_message(exc)) from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+    except PROVIDER_CONNECTION_EXCEPTIONS as exc:
         raise OpenAIAnalysisError(provider_connection_error_message("OpenAI", exc)) from exc
     return parse_json_object(response_output_text(data))
 
@@ -5054,7 +5056,7 @@ def request_openai_pricing_catalog_metadata(source_name: str, items: list[dict[s
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         raise OpenAIAnalysisError(openai_http_error_message(exc)) from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+    except PROVIDER_CONNECTION_EXCEPTIONS as exc:
         raise OpenAIAnalysisError(provider_connection_error_message("OpenAI", exc)) from exc
     return parse_json_object(response_output_text(data))
 
@@ -10343,7 +10345,7 @@ def request_openai_quote_basis(payload: dict[str, Any], api_key: str) -> dict[st
                 time.sleep(retry_delays[attempt])
                 continue
             raise OpenAIAnalysisError(openai_http_error_message(exc)) from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except PROVIDER_CONNECTION_EXCEPTIONS as exc:
             if attempt < len(retry_delays) and is_transient_openai_error(exc):
                 time.sleep(retry_delays[attempt])
                 continue
@@ -10380,7 +10382,7 @@ def request_openai_basis_chat_with_model(payload: dict[str, Any], api_key: str, 
                 time.sleep(retry_delays[attempt])
                 continue
             raise OpenAIAnalysisError(openai_http_error_message(exc)) from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except PROVIDER_CONNECTION_EXCEPTIONS as exc:
             if attempt < len(retry_delays) and is_transient_openai_error(exc):
                 time.sleep(retry_delays[attempt])
                 continue
