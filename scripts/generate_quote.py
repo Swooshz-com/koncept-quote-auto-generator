@@ -1599,8 +1599,8 @@ def normalize_arial_style_fonts(styles_root: ET.Element) -> None:
 def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     styles_root = ET.fromstring(parts["xl/styles.xml"])
     normalize_arial_style_fonts(styles_root)
-    total_border = append_border(styles_root, top="thin")
-    grand_border = append_border(styles_root, top="thin", bottom="double")
+    total_border = append_border(styles_root, top="medium")
+    grand_border = append_border(styles_root, top="medium", bottom="double")
     regular_amount_font = ensure_regular_font_for_style(styles_root, "5")
     bold_amount_font = ensure_regular_font_for_style(styles_root, "5", bold=True)
     small_heading_font = ensure_font_for_style(styles_root, "37", font_name="Calibri", font_size="10")

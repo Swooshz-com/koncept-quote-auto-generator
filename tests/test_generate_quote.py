@@ -1394,7 +1394,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         for ref in ("D27", "E27", "F27"):
             border = border_for_style(styles, cell_style(sheet, ref))
-            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
+            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "medium")
 
         for ref in ("D28", "E28", "F28"):
             border = border_for_style(styles, cell_style(sheet, ref))
@@ -1403,7 +1403,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         for ref in ("D29", "E29", "F29"):
             border = border_for_style(styles, cell_style(sheet, ref))
-            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
+            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "medium")
             self.assertEqual(border.find(f"{NS_MAIN}bottom").attrib.get("style"), "double")
 
         cols = sheet.find(f"{NS_MAIN}cols")
