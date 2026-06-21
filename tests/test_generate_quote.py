@@ -1394,7 +1394,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         for ref in ("D27", "E27", "F27"):
             border = border_for_style(styles, cell_style(sheet, ref))
-            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
+            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "medium")
 
         for ref in ("D28", "E28", "F28"):
             border = border_for_style(styles, cell_style(sheet, ref))
@@ -1403,7 +1403,7 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         for ref in ("D29", "E29", "F29"):
             border = border_for_style(styles, cell_style(sheet, ref))
-            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "thin")
+            self.assertEqual(border.find(f"{NS_MAIN}top").attrib.get("style"), "medium")
             self.assertEqual(border.find(f"{NS_MAIN}bottom").attrib.get("style"), "double")
 
         cols = sheet.find(f"{NS_MAIN}cols")
@@ -1541,14 +1541,14 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertTrue(moved)
         self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
 
-    def test_signature_chunk_reserves_gap_before_page_break(self):
+    def test_signature_chunk_can_use_remaining_first_page_rows(self):
         start_row, moved = quote.layout_chunk_start_row(
             quote.FIRST_PRINT_PAGE_END_ROW - 7,
             quote.LayoutChunk("signature", quote.SIGNATURE_BLOCK_HEIGHT),
         )
 
-        self.assertTrue(moved)
-        self.assertEqual(start_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+        self.assertFalse(moved)
+        self.assertEqual(start_row, quote.FIRST_PRINT_PAGE_END_ROW - 7)
 
     def test_layout_extends_quote_table_past_preserved_second_page(self):
         brief = {
@@ -1865,6 +1865,86 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(manual_print_page_for_row(section_row), manual_print_page_for_row(first_detail_row))
         if first_detail_row > quote.FIRST_PRINT_PAGE_END_ROW:
             self.assertGreaterEqual(first_detail_row, quote.CONTINUATION_PAGE_START_ROW + quote.CONTINUATION_BODY_OFFSET)
+
+    def test_layout_keeps_footer_signature_on_first_page_when_visible_rows_fit(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Footer Fit Booth",
+            },
+            "line_items": [],
+            "terms_heading": "Terms & Conditions:",
+            "payment_terms": [
+                "70% payment upon confirmation and signing of contract.",
+                "30% balance upon handover before show starts",
+                "All cheques should be crossed and made payable to Koncept Images Pte. Ltd.",
+            ],
+            "notes_heading": "Note:",
+            "standard_notes": [
+                "The above contract does not include application fees to any relevant authorities and electrical connection fees.",
+                "Any changes in design during the progress of work will delay completion schedule and it shall be deemed at the cost of the Client.",
+                "Any changes agreed upon after the confirmation of contract or during the work in progress shall be deemed as Additional Orders.",
+                "All designs and dimensions are subject to final site verification.",
+                "For production purpose, quotation must be confirmed minimum 20 working days before date of event",
+                "20% surcharge will be implied on the graphic cost, if the graphic files are not received latest by five working days before build up date.",
+                "Design and Artwork of the graphics are not included in this contract.",
+                "Cancellation of agreement is subject to 75% of the agreement amount.",
+                "All deposit are non-refundable upon of cancellation of agreement.",
+            ],
+            "acceptance": {
+                "company_name": "Koncept Images Pte. Ltd.",
+                "text": "We accept the quotation amount and the terms",
+                "person_label": "Person in charge",
+                "stamp_label": "Company name & stamp",
+                "date_label": "Date:",
+            },
+            "signature": {
+                "company_signatory": "Francies Cheng",
+                "company_title": "Director",
+                "company_date_label": "Date:",
+            },
+        }
+        price = quote.PriceRow(1, "Generated", "generated booth component", "lot", 100, 1.09, 1, "")
+        lines = [
+            quote.QuoteLine(
+                section=f"Generated Section {(index - 1) // 3 + 1}",
+                quantity=1,
+                unit="lot",
+                description=f"Generated booth component {index}",
+                pricing_keyword="generated booth component",
+                display_price="",
+                matched_price=price,
+                amount=100,
+                match_status="matched",
+                match_candidates=[],
+            )
+            for index in range(1, 5)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quotation.xlsx"
+            quote.write_quote_layout_xlsx(KONCEPT_LAYOUT, path, brief, lines)
+
+            with zipfile.ZipFile(path) as zf:
+                sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+                workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+
+        acceptance_rows = [
+            quote.parse_cell_ref(find_cell_ref(sheet, "Koncept Images Pte. Ltd."))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "We accept the quotation amount and the terms"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "_____________________________"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "Francies Cheng"))[0],
+            quote.parse_cell_ref(find_cell_ref(sheet, "Director"))[0],
+        ]
+
+        self.assertEqual(find_cell_ref(sheet, "All deposit are non-refundable upon of cancellation of agreement."), "B54")
+        self.assertTrue(all(row <= quote.FIRST_PRINT_PAGE_END_ROW for row in acceptance_rows))
+        self.assertEqual(row_break_ids(sheet), [])
+        self.assertTrue(no_trailing_blank_print_page(sheet, workbook))
 
     def test_layout_adds_manual_break_when_footer_extends_past_first_page(self):
         brief = {

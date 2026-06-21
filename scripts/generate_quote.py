@@ -116,7 +116,7 @@ CONTINUATION_CURRENCY_OFFSET = 3
 CONTINUATION_BODY_OFFSET = 5
 TOTAL_BLOCK_HEIGHT = 3
 SIGNATURE_CONTENT_HEIGHT = 8
-SIGNATURE_BLOCK_PAGE_GUARD_ROWS = 4
+SIGNATURE_BLOCK_PAGE_GUARD_ROWS = 0
 SIGNATURE_BLOCK_HEIGHT = SIGNATURE_CONTENT_HEIGHT + SIGNATURE_BLOCK_PAGE_GUARD_ROWS
 QUOTE_LAYOUT_DEFAULT_ROW_HEIGHT = "18.7"
 QUOTE_LAYOUT_COLUMN_WIDTHS = {
@@ -1599,8 +1599,8 @@ def normalize_arial_style_fonts(styles_root: ET.Element) -> None:
 def add_quote_layout_styles(parts: dict[str, bytes]) -> dict[str, str]:
     styles_root = ET.fromstring(parts["xl/styles.xml"])
     normalize_arial_style_fonts(styles_root)
-    total_border = append_border(styles_root, top="thin")
-    grand_border = append_border(styles_root, top="thin", bottom="double")
+    total_border = append_border(styles_root, top="medium")
+    grand_border = append_border(styles_root, top="medium", bottom="double")
     regular_amount_font = ensure_regular_font_for_style(styles_root, "5")
     bold_amount_font = ensure_regular_font_for_style(styles_root, "5", bold=True)
     small_heading_font = ensure_font_for_style(styles_root, "37", font_name="Calibri", font_size="10")

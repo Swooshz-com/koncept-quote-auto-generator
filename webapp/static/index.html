@@ -141,8 +141,8 @@
                         <select id="profileSelect"></select>
                       </label>
                       <span class="pricing-reference-pill-row" aria-label="Selected pricing reference currency and tax">
-                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceCurrency">SGD</span>
-                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceTax">GST 9%</span>
+                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceCurrency" data-pricing-reference-currency>SGD</span>
+                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
                       </span>
                     </div>
                   </div>
@@ -248,74 +248,82 @@
                 <div class="company-preset-panel">
                   <div class="company-preset-copy">
                     <div class="company-preset-heading">
-                      <h3>Select Profile</h3>
+                      <h3>Quote Company Profile</h3>
                       <span class="company-preset-source-badge">Profile template</span>
                     </div>
-                    <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
+                    <p class="settings-note" id="presetStatus">Currently active: Default</p>
                   </div>
-                  <div class="company-preset-controls">
+                  <div class="company-preset-controls quote-setup-profile-controls">
                     <div class="company-preset-control-group company-preset-card company-preset-profile-card">
-                      <label class="compact-control">
-                        Current Profile
-                        <select id="presetSelect"></select>
-                      </label>
-                      <div class="settings-button-row">
-                        <button class="secondary-button danger-button" type="button" id="deletePresetButton">
+                      <div class="company-preset-fields">
+                        <label class="compact-control">
+                          Current Profile
+                          <select id="presetSelect"></select>
+                        </label>
+                      </div>
+                      <div class="company-preset-action-panel" aria-label="Profile controls">
+                        <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+                        <button class="primary-button" type="button" id="loadPresetButton">
                           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M4 7h16"></path>
-                            <path d="M10 11v6"></path>
-                            <path d="M14 11v6"></path>
-                            <path d="M6 7l1 14h10l1-14"></path>
-                            <path d="M9 7V4h6v3"></path>
-                          </svg>
-                          <span>Delete</span>
-                        </button>
-                        <button class="primary-button profile-load-button" type="button" id="loadPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M4 20h16"></path>
-                            <path d="M12 4v12"></path>
-                            <path d="m7 11 5 5 5-5"></path>
+                            <path d="M12 5v10"></path>
+                            <path d="m8 11 4 4 4-4"></path>
+                            <path d="M5 19h14"></path>
                           </svg>
                           <span>Load</span>
                         </button>
-                      </div>
-                    </div>
-                    <div class="company-preset-control-group company-preset-card company-preset-save-card">
-                      <label class="compact-control preset-save-name">
-                        Reusable Profile Name
-                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
-                      </label>
-                      <div class="settings-button-row company-preset-file-actions">
-                        <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
-                        <button class="secondary-button" type="button" id="exportPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 20V9"></path>
-                            <path d="m7 14 5-5 5 5"></path>
-                            <path d="M5 4h14"></path>
-                          </svg>
-                          <span>Export</span>
-                        </button>
-                        <button class="secondary-button" type="button" id="importPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 4v11"></path>
-                            <path d="m7 10 5 5 5-5"></path>
-                            <path d="M5 20h14"></path>
-                          </svg>
-                          <span>Import</span>
-                        </button>
-                        <button class="primary-button" type="button" id="savePresetButton">
+                        <button class="secondary-button" type="button" id="savePresetButton">
                           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
                             <polyline points="17 21 17 13 7 13 7 21"></polyline>
                             <polyline points="7 3 7 8 15 8"></polyline>
                           </svg>
-                          <span>Save</span>
+                          <span>Save New</span>
                         </button>
+                        <div class="company-preset-more">
+                          <button class="secondary-button company-preset-more-button" type="button" id="profileActionsMenuButton" aria-haspopup="true" aria-expanded="false" aria-controls="presetActionsMenu">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                              <path d="M12 5h.01"></path>
+                              <path d="M12 12h.01"></path>
+                              <path d="M12 19h.01"></path>
+                            </svg>
+                            <span>More Actions</span>
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                              <path d="m6 9 6 6 6-6"></path>
+                            </svg>
+                          </button>
+                          <div class="company-preset-menu" id="presetActionsMenu" role="menu" aria-label="Profile more actions" hidden>
+                            <button class="secondary-button company-preset-menu-item" type="button" id="exportPresetButton" role="menuitem">
+                              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path d="M12 20V9"></path>
+                                <path d="m7 14 5-5 5 5"></path>
+                                <path d="M5 4h14"></path>
+                              </svg>
+                              <span>Export Profile</span>
+                            </button>
+                            <button class="secondary-button company-preset-menu-item" type="button" id="importPresetButton" role="menuitem">
+                              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path d="M12 4v11"></path>
+                                <path d="m7 10 5 5 5-5"></path>
+                                <path d="M5 20h14"></path>
+                              </svg>
+                              <span>Import Profile</span>
+                            </button>
+                            <button class="secondary-button danger-button company-preset-menu-item" type="button" id="deletePresetButton" role="menuitem">
+                              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                <path d="M4 7h16"></path>
+                                <path d="M10 11v6"></path>
+                                <path d="M14 11v6"></path>
+                                <path d="M6 7l1 14h10l1-14"></path>
+                                <path d="M9 7V4h6v3"></path>
+                              </svg>
+                              <span>Delete Profile</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-
                 <div class="section-band first-band quote-form-section">
                   <h3>Company header</h3>
                   <div class="form-grid compact">
@@ -535,8 +543,30 @@
                       <p>Review quotation rows, resolve pricing, and download Excel.</p>
                     </div>
                     <div class="quote-basis-source output-source">
-                      <span id="outputSourceLabel">Source: Pricing reference</span>
-                      <strong id="outputTotalLines">Total approved lines: 0</strong>
+                      <span class="pricing-reference-source-line" aria-label="Selected pricing reference context">
+                        <strong class="pricing-reference-source-name" id="outputSourceLabel">Pricing reference</strong>
+                        <span class="pricing-reference-context-pills" aria-label="Selected pricing reference currency and tax">
+                          <span class="pricing-reference-divider" aria-hidden="true"></span>
+                          <span class="pricing-reference-meta-item">
+                            <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                              <path d="M4 7h15a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a3 3 0 0 1 3-3h11"></path>
+                              <path d="M16 13h.01"></path>
+                              <path d="M7 7l9-3"></path>
+                            </svg>
+                            <span id="outputPricingReferenceCurrency" data-pricing-reference-currency>SGD</span>
+                          </span>
+                          <span class="pricing-reference-divider" aria-hidden="true"></span>
+                          <span class="pricing-reference-meta-item">
+                            <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                              <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"></path>
+                              <path d="M7.5 7.5h.01"></path>
+                            </svg>
+                            <span id="outputPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
+                          </span>
+                        </span>
+                        <span class="pricing-reference-divider" aria-hidden="true"></span>
+                        <span class="pricing-reference-line-count" id="outputTotalLines"><strong>0</strong> approved lines</span>
+                      </span>
                     </div>
                   </div>
                   <div class="message-list" id="messageList"></div>
@@ -660,7 +690,7 @@
               <section class="pricing-reference-mode-panel pricing-reference-manage-panel" id="pricingReferenceManagePanel" role="tabpanel" aria-labelledby="pricingReferenceManageTab" data-pricing-reference-mode-panel="manage">
                 <section class="pricing-reference-upload-field pricing-reference-delete-section" id="pricingReferenceDeleteSection">
                   <span class="pricing-reference-field-title">Existing local references</span>
-                  <span class="settings-note">Select a local pricing reference pack to review and edit its pricing rows. Delete saved local packs that are no longer needed. Default profile references are protected.</span>
+                  <span class="settings-note">Select a local pricing reference pack to review and edit its pricing rows.<br>Delete saved local packs that are no longer needed.</span>
                   <div class="pricing-reference-delete-controls">
                     <label class="compact-control">
                       Pricing reference
@@ -694,7 +724,7 @@
               <section class="pricing-reference-mode-panel pricing-reference-import-panel" id="pricingReferenceImportPanel" role="tabpanel" aria-labelledby="pricingReferenceImportTab" data-pricing-reference-mode-panel="import" hidden>
                 <label class="pricing-reference-upload-field">
                   <span class="pricing-reference-field-title">Pricing catalog upload</span>
-                  <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md). Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
+                  <span class="settings-note">Upload a pricing catalog file (.xlsx, .csv, or .md).<br>Messy files are expected: AI will populate the pricing reference rows and aliases for review before saving.</span>
                   <span class="file-picker-control">
                     <input id="pricingReferenceFile" type="file" accept=".xlsx,.csv,.md">
                     <span class="secondary-button file-picker-button">Choose File</span>
@@ -795,15 +825,85 @@
         <section class="modal-panel profile-delete-panel">
           <header class="modal-header">
             <div>
-              <span class="basis-chat-eyebrow">Saved Profile</span>
+              <span class="basis-chat-eyebrow">Delete Profile</span>
               <h3 id="profileDeleteTitle">Delete saved profile?</h3>
             </div>
           </header>
-          <p id="profileDeleteText">This removes the saved company profile from this local app.</p>
-          <p class="profile-delete-error" id="profileDeleteError" hidden></p>
+          <div class="profile-delete-body">
+            <div class="profile-delete-warning" id="profileDeleteText">
+              <strong>This removes the saved company profile.</strong>
+              <span>Quote details already filled from it are not changed.</span>
+            </div>
+            <p class="profile-delete-error" id="profileDeleteError" hidden></p>
+          </div>
           <div class="modal-actions profile-delete-actions">
             <button class="secondary-button" type="button" id="cancelProfileDeleteButton">Cancel</button>
             <button class="secondary-button danger-button" type="button" id="confirmProfileDeleteButton">Delete</button>
+          </div>
+        </section>
+      </div>
+      <div class="modal-overlay profile-name-modal" id="profileNameModal" role="dialog" aria-modal="true" aria-labelledby="profileNameTitle" hidden>
+        <div class="modal-backdrop" data-profile-name-close></div>
+        <section class="modal-panel profile-name-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow" id="profileNameEyebrow">Saved Profile</span>
+              <h3 id="profileNameTitle">Save company profile</h3>
+            </div>
+          </header>
+          <div class="profile-name-body">
+            <p id="profileNameText">Name this reusable quote company profile.</p>
+            <label class="compact-control">
+              Profile name
+              <input id="profileNameInput" type="text" autocomplete="off" aria-describedby="profileNameError">
+            </label>
+            <p class="profile-delete-error" id="profileNameError" hidden></p>
+          </div>
+          <div class="modal-actions profile-name-actions">
+            <button class="secondary-button" type="button" id="cancelProfileNameButton">Cancel</button>
+            <button class="primary-button" type="button" id="confirmProfileNameButton">Save</button>
+          </div>
+        </section>
+      </div>
+      <div class="modal-overlay profile-load-modal" id="profileLoadModal" role="dialog" aria-modal="true" aria-labelledby="profileLoadTitle" hidden>
+        <div class="modal-backdrop" data-profile-load-close></div>
+        <section class="modal-panel profile-load-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Load Profile</span>
+              <h3 id="profileLoadTitle">Load selected profile?</h3>
+            </div>
+          </header>
+          <div class="profile-load-body">
+            <div class="profile-load-warning" id="profileLoadText">
+              <strong>This will replace the current quote company fields.</strong>
+              <span>Unsaved edits in this section will be overwritten by the selected profile defaults.</span>
+            </div>
+          </div>
+          <div class="modal-actions profile-load-actions">
+            <button class="secondary-button" type="button" id="cancelProfileLoadButton">Cancel</button>
+            <button class="primary-button" type="button" id="confirmProfileLoadButton">Load</button>
+          </div>
+        </section>
+      </div>
+      <div class="modal-overlay profile-overwrite-modal" id="profileOverwriteModal" role="dialog" aria-modal="true" aria-labelledby="profileOverwriteTitle" hidden>
+        <div class="modal-backdrop" data-profile-overwrite-close></div>
+        <section class="modal-panel profile-overwrite-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Overwrite Profile</span>
+              <h3 id="profileOverwriteTitle">Overwrite saved profile?</h3>
+            </div>
+          </header>
+          <div class="profile-overwrite-body">
+            <div class="profile-overwrite-warning" id="profileOverwriteText">
+              <strong>A profile with this name already exists.</strong>
+              <span>Saving will replace that profile's saved quote company defaults.</span>
+            </div>
+          </div>
+          <div class="modal-actions profile-overwrite-actions">
+            <button class="secondary-button" type="button" id="cancelProfileOverwriteButton">Cancel</button>
+            <button class="primary-button" type="button" id="confirmProfileOverwriteButton">Overwrite</button>
           </div>
         </section>
       </div>

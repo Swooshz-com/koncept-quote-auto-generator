@@ -231,8 +231,8 @@ async function main() {
     if (!profileSelectBox || profileSelectBox.width < 200) {
       throw new Error("Pricing reference dropdown is unexpectedly narrow.");
     }
-    if (Math.abs(profileSelectBox.width - presetSelectBox.width) > 1) {
-      throw new Error(`Pricing reference dropdown width ${profileSelectBox.width} did not match company preset width ${presetSelectBox.width}.`);
+    if (presetSelectBox.width > profileSelectBox.width) {
+      throw new Error(`Company preset dropdown width ${presetSelectBox.width} should stay no wider than pricing reference dropdown width ${profileSelectBox.width}.`);
     }
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
     await page.locator("#settingsButton").click();
@@ -242,6 +242,8 @@ async function main() {
     await page.locator("#pricingReferenceModal").waitFor({ state: "hidden" });
     await page.locator("#quoteDate").waitFor({ state: "visible" });
     const dateBoldButton = page.locator('[data-date-format-command="bold"]');
+    await page.locator("#quoteDate").focus();
+    await dateBoldButton.waitFor({ state: "visible" });
     await dateBoldButton.click();
     if ((await dateBoldButton.getAttribute("aria-pressed")) !== "true") {
       throw new Error("Quote date bold formatting did not toggle on.");
@@ -259,6 +261,25 @@ async function main() {
     const viewport = page.viewportSize();
     if (!footerBox || !viewport || footerBox.y + footerBox.height > viewport.height + 1) {
       throw new Error("Workspace footer is not inside the current viewport.");
+    }
+
+    await page.setViewportSize({ width: 520, height: 720 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const mobileScrollExtent = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+    if (mobileScrollExtent < 80) {
+      throw new Error(`Mobile layout did not create enough page scroll distance: ${mobileScrollExtent}.`);
+    }
+    const scrollPaneBox = await page.locator(".workspace-pane-scroll").boundingBox();
+    if (!scrollPaneBox) {
+      throw new Error("Workspace scroll pane was not visible in mobile layout.");
+    }
+    const mobileScrollBefore = await page.evaluate(() => window.scrollY);
+    await page.mouse.move(scrollPaneBox.x + scrollPaneBox.width / 2, scrollPaneBox.y + Math.min(scrollPaneBox.height / 2, 260));
+    await page.mouse.wheel(0, 520);
+    await page.waitForTimeout(100);
+    const mobileScrollAfter = await page.evaluate(() => window.scrollY);
+    if (mobileScrollAfter <= mobileScrollBefore + 10) {
+      throw new Error(`Mobile page did not scroll when wheel started inside the workspace pane: ${mobileScrollBefore} -> ${mobileScrollAfter}.`);
     }
 
     const bodyText = await page.locator("body").innerText();
