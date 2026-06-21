@@ -9190,6 +9190,121 @@ assert.strictEqual(loaded[1].value, "profile:default");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_default_profile_load_reapplies_default_quote_company_fields(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const state = {
+  selectedPresetValue: "profile:default",
+  profiles: [{
+    id: "default",
+    label: "Default",
+    quote_detail_presets: [
+      { id: "default", name: "Default", details: {} },
+    ],
+  }],
+  companyProfiles: [],
+  images: [],
+};
+const elements = {
+  presetSelect: { value: "profile:default" },
+  presetNameInput: { value: "Custom profile name" },
+  headerDetails: { value: "Custom header" },
+  paymentTerms: { value: "Custom payment" },
+  standardNotes: { value: "Custom notes" },
+  quoteCompanyName: { value: "Custom company" },
+  companySignatory: { value: "Custom signatory" },
+  companyTitle: { value: "Custom title" },
+  headerLogoInput: { value: "C:\\fakepath\\logo.png" },
+};
+let appliedDefaults = false;
+let appliedDetails = null;
+let appliedOptions = null;
+let clearedPendingPack = false;
+let clearedGeneratedState = false;
+let workflowStage = "";
+let statusMessage = "";
+
+function neutralizeFormulaText(value = "") { return String(value || ""); }
+function setInputValue(element, value = "") { if (element) element.value = value; }
+function persistLastProfilePresetSelection() {}
+function clearPendingProfilePack() { clearedPendingPack = true; }
+function applyQuoteDetails(details, options) { appliedDetails = details; appliedOptions = options; }
+function applyDefaultQuoteCompanyFields() { appliedDefaults = true; }
+function renderHeaderLogoPreview() {}
+function clearGeneratedQuoteState() { clearedGeneratedState = true; }
+function setWorkflowStage(stage) { workflowStage = stage; }
+function syncControlStates() {}
+function renderPresetStatus(message = "") { statusMessage = message; }
+
+eval([
+  "safeId",
+  "safeProfileId",
+  "safeProfileLabel",
+  "profilePresetOptionValue",
+  "companyProfileOptionValue",
+  "selectedPresetId",
+  "templateProfilePresets",
+  "normalizeCompanyProfile",
+  "companyProfilePresets",
+  "presetOptionValue",
+  "selectedPreset",
+  "loadSelectedPreset",
+].map(extractFunction).join("\n"));
+
+loadSelectedPreset();
+
+assert.strictEqual(state.selectedPresetValue, "profile:default");
+assert.strictEqual(clearedPendingPack, true);
+assert.deepStrictEqual(appliedDetails, {});
+assert.deepStrictEqual(appliedOptions, { includeLogo: true, clearLogo: false, partial: true });
+assert.strictEqual(appliedDefaults, true);
+assert.strictEqual(elements.presetNameInput.value, "");
+assert.strictEqual(elements.headerDetails.value, "");
+assert.strictEqual(elements.paymentTerms.value, "");
+assert.strictEqual(elements.standardNotes.value, "");
+assert.strictEqual(elements.quoteCompanyName.value, "");
+assert.strictEqual(elements.companySignatory.value, "");
+assert.strictEqual(elements.companyTitle.value, "");
+assert.strictEqual(elements.headerLogoInput.value, "");
+assert.strictEqual(clearedGeneratedState, true);
+assert.strictEqual(workflowStage, "needs_images");
+assert.strictEqual(statusMessage, 'Loaded "Default".');
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_generation_profile_id_uses_selected_current_profile_pack(self):
         node = require_node(self)
 

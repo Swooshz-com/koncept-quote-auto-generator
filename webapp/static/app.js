@@ -2497,8 +2497,26 @@ function loadSelectedPreset(options = {}) {
   persistLastProfilePresetSelection(state.selectedPresetValue);
   clearPendingProfilePack();
   const details = preset.details || {};
+  const emptyDefaultProfilePreset = preset.source === "profile"
+    && preset.id === "default"
+    && details
+    && typeof details === "object"
+    && !Object.keys(details).length;
   const clearsLogo = Boolean(details.company && typeof details.company === "object");
   applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
+  if (emptyDefaultProfilePreset) {
+    elements.presetNameInput.value = "";
+    setInputValue(elements.headerDetails, "");
+    setInputValue(elements.paymentTerms, "");
+    setInputValue(elements.standardNotes, "");
+    setInputValue(elements.quoteCompanyName, "");
+    setInputValue(elements.companySignatory, "");
+    setInputValue(elements.companyTitle, "");
+    state.headerLogo = null;
+    if (elements.headerLogoInput) elements.headerLogoInput.value = "";
+    applyDefaultQuoteCompanyFields();
+    renderHeaderLogoPreview();
+  }
   if (preset.source === "company" && elements.presetNameInput) {
     elements.presetNameInput.value = preset.name || preset.id || "";
   }
