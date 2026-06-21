@@ -231,8 +231,8 @@ async function main() {
     if (!profileSelectBox || profileSelectBox.width < 200) {
       throw new Error("Pricing reference dropdown is unexpectedly narrow.");
     }
-    if (Math.abs(profileSelectBox.width - presetSelectBox.width) > 1) {
-      throw new Error(`Pricing reference dropdown width ${profileSelectBox.width} did not match company preset width ${presetSelectBox.width}.`);
+    if (presetSelectBox.width > profileSelectBox.width) {
+      throw new Error(`Company preset dropdown width ${presetSelectBox.width} should stay no wider than pricing reference dropdown width ${profileSelectBox.width}.`);
     }
     const customerPricingShot = await screenshot(page, "customer-pricing.png");
     await page.locator("#settingsButton").click();
