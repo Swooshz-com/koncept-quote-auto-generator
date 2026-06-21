@@ -1457,9 +1457,24 @@ function selectedPricingReferenceTaxText() {
 
 function pricingReferenceContextPillsHtml() {
   return `
-    <span class="pricing-reference-pill-row pricing-reference-context-pills" aria-label="Selected pricing reference currency and tax">
-      <span class="tax-badge pricing-reference-pill" data-pricing-reference-currency>${escapeHtml(selectedPricingReferenceCurrency())}</span>
-      <span class="tax-badge pricing-reference-pill" data-pricing-reference-tax>${escapeHtml(selectedPricingReferenceTaxText())}</span>
+    <span class="pricing-reference-context-pills" aria-label="Selected pricing reference currency and tax">
+      <span class="pricing-reference-divider" aria-hidden="true"></span>
+      <span class="pricing-reference-meta-item">
+        <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="M4 7h15a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a3 3 0 0 1 3-3h11"></path>
+          <path d="M16 13h.01"></path>
+          <path d="M7 7l9-3"></path>
+        </svg>
+        <span data-pricing-reference-currency>${escapeHtml(selectedPricingReferenceCurrency())}</span>
+      </span>
+      <span class="pricing-reference-divider" aria-hidden="true"></span>
+      <span class="pricing-reference-meta-item">
+        <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"></path>
+          <path d="M7.5 7.5h.01"></path>
+        </svg>
+        <span data-pricing-reference-tax>${escapeHtml(selectedPricingReferenceTaxText())}</span>
+      </span>
     </span>
   `;
 }
@@ -6492,7 +6507,7 @@ function updateOutputHeader(rows = state.outputRows) {
   }
   syncPricingReferenceContextPills();
   if (elements.outputTotalLines) {
-    elements.outputTotalLines.textContent = `${safeRows.length} approved line${safeRows.length === 1 ? "" : "s"}`;
+    elements.outputTotalLines.innerHTML = `<strong>${safeRows.length}</strong> approved line${safeRows.length === 1 ? "" : "s"}`;
   }
 }
 
@@ -6998,11 +7013,12 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <p>${aiFailed ? GENERIC_FAILURE_MESSAGE : "Please review the AI takeoff and revise individual lines where needed."}</p>
         </div>
         <div class="quote-basis-source">
-          <span class="pricing-reference-source-line">
+          <span class="pricing-reference-source-line" aria-label="Selected pricing reference context">
             <strong class="pricing-reference-source-name">${aiFailed ? "Local fallback only" : escapeHtml(outputPricingSourceLabel())}</strong>
             ${aiFailed ? "" : pricingReferenceContextPillsHtml()}
+            <span class="pricing-reference-divider" aria-hidden="true"></span>
+            <span class="pricing-reference-line-count"><strong>${reviewLineCount}</strong> review line${reviewLineCount === 1 ? "" : "s"}</span>
           </span>
-          <strong>${escapeHtml(`${reviewLineCount} review line${reviewLineCount === 1 ? "" : "s"}`)}</strong>
         </div>
       </div>
       ${renderAnalysisFindings()}
