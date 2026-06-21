@@ -206,6 +206,7 @@ const state = {
   pricingReferenceDeleteError: "",
   pricingReferenceDeleteBusy: false,
   profileDeleteConfirmId: "",
+  profileDeleteReadOnlyName: "",
   profileDeleteError: "",
   profileSaveBusy: false,
   profileDeleteBusy: false,
@@ -2401,11 +2402,27 @@ function updatePresetButtons() {
     elements.loadPresetButton.setAttribute("aria-disabled", String(elements.loadPresetButton.disabled));
   }
   if (elements.deletePresetButton) {
-    const canDelete = canManage && preset?.source === "company";
-    const reason = !canManage ? profileNoAccessReason() : preset?.source === "company" ? "" : "Profile templates are read-only.";
-    elements.deletePresetButton.disabled = !canDelete || busy;
+    const hasPreset = Boolean(preset);
+    const canOpenDeletePrompt = canManage && hasPreset;
+    const canDelete = canOpenDeletePrompt && preset?.source === "company";
+    const readOnlyPrompt = canOpenDeletePrompt && !canDelete && !busy;
+    const reason = !canManage
+      ? profileNoAccessReason()
+      : !hasPreset
+        ? "Choose a profile first."
+        : preset?.source === "company"
+          ? ""
+          : "Profile templates are read-only.";
+    elements.deletePresetButton.disabled = !canOpenDeletePrompt || busy;
     elements.deletePresetButton.title = busy ? "Profile operation is still running." : reason || "Delete this saved company profile.";
     elements.deletePresetButton.setAttribute("aria-disabled", String(elements.deletePresetButton.disabled));
+    if (elements.deletePresetButton.dataset) {
+      if (readOnlyPrompt) {
+        elements.deletePresetButton.dataset.profileDeleteReadonly = "true";
+      } else {
+        delete elements.deletePresetButton.dataset.profileDeleteReadonly;
+      }
+    }
   }
   if (elements.savePresetButton) {
     const name = String(elements.presetNameInput?.value || "").trim();
@@ -2645,6 +2662,7 @@ function profileDeleteConfirmPreset() {
 function hideProfileDeleteModal(options = {}) {
   if (state.profileDeleteBusy && !options.force) return;
   state.profileDeleteConfirmId = "";
+  state.profileDeleteReadOnlyName = "";
   state.profileDeleteError = "";
   if (elements.profileDeleteModal) {
     elements.profileDeleteModal.classList.remove("is-open");
@@ -2660,19 +2678,23 @@ function renderProfileDeleteModal() {
   const modal = elements.profileDeleteModal;
   if (!modal) return;
   const preset = profileDeleteConfirmPreset();
-  if (!preset) {
+  const readOnlyLabel = safeProfileLabel(state.profileDeleteReadOnlyName, "");
+  if (!preset && !readOnlyLabel) {
     modal.classList.remove("is-open");
     modal.hidden = true;
     return;
   }
-  const label = preset.name || preset.id || "this saved profile";
+  const label = preset?.name || preset?.id || readOnlyLabel || "this profile";
+  const isReadOnlyNotice = !preset && Boolean(readOnlyLabel);
   modal.hidden = false;
   modal.classList.add("is-open");
   if (elements.profileDeleteTitle) {
-    elements.profileDeleteTitle.textContent = `Delete "${label}"?`;
+    elements.profileDeleteTitle.textContent = isReadOnlyNotice ? `Cannot delete "${label}"` : `Delete "${label}"?`;
   }
   if (elements.profileDeleteText) {
-    elements.profileDeleteText.textContent = "This removes the saved company profile from this local app. Quote details already filled from it are not changed.";
+    elements.profileDeleteText.textContent = isReadOnlyNotice
+      ? "Profile templates are read-only. Select a saved profile if you need to delete one."
+      : "This removes the saved company profile from this local app. Quote details already filled from it are not changed.";
   }
   if (elements.profileDeleteError) {
     const message = String(state.profileDeleteError || "").trim();
@@ -2684,7 +2706,11 @@ function renderProfileDeleteModal() {
     button.disabled = state.profileDeleteBusy;
     button.setAttribute("aria-disabled", String(button.disabled));
   });
+  if (elements.cancelProfileDeleteButton) {
+    elements.cancelProfileDeleteButton.textContent = isReadOnlyNotice ? "Close" : "Cancel";
+  }
   if (elements.confirmProfileDeleteButton) {
+    elements.confirmProfileDeleteButton.hidden = isReadOnlyNotice;
     elements.confirmProfileDeleteButton.textContent = state.profileDeleteBusy ? "Deleting..." : "Delete";
   }
 }
@@ -2697,11 +2723,16 @@ function requestSelectedPresetDelete() {
     return;
   }
   if (!preset || preset.source !== "company") {
-    renderPresetStatus("Profile templates are read-only. Select a saved profile to delete.");
+    state.profileDeleteConfirmId = "";
+    state.profileDeleteReadOnlyName = preset?.name || preset?.id || "this profile template";
+    state.profileDeleteError = "";
+    renderProfileDeleteModal();
+    window.setTimeout(() => elements.cancelProfileDeleteButton?.focus(), 0);
     updatePresetButtons();
     return;
   }
   state.profileDeleteConfirmId = preset.id || "";
+  state.profileDeleteReadOnlyName = "";
   state.profileDeleteError = "";
   renderProfileDeleteModal();
   window.setTimeout(() => elements.cancelProfileDeleteButton?.focus(), 0);

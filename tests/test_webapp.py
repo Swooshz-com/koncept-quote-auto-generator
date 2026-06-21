@@ -9386,6 +9386,157 @@ assert.strictEqual(generationProfileIdForPayload(), "repo-layout");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_template_profile_delete_button_opens_read_only_popup(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const PROFILE_PRESET_PREFIX = "profile:";
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const state = {
+  selectedPresetValue: "profile:default",
+  profileDeleteConfirmId: "",
+  profileDeleteReadOnlyName: "",
+  profileDeleteError: "",
+  profileSaveBusy: false,
+  profileDeleteBusy: false,
+  permissions: { canManageProfiles: true },
+  profiles: [{
+    id: "default",
+    label: "Default",
+    quote_detail_presets: [{ id: "default", name: "Default", details: {} }],
+  }],
+  companyProfiles: [{ id: "saved-profile", label: "Saved Profile", defaults: { company: { name: "Saved" } } }],
+};
+const elements = {
+  presetSelect: { value: "profile:default" },
+  presetSourceBadge: { textContent: "" },
+  loadPresetButton: { disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
+  deletePresetButton: { dataset: {}, disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
+  savePresetButton: {
+    disabled: false,
+    title: "",
+    setAttribute(name, value) { this[name] = value; },
+    querySelector() { return { textContent: "" }; },
+  },
+  presetNameInput: { value: "", disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
+  importPresetButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  exportPresetButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  profileDeleteModal: {
+    hidden: true,
+    classList: {
+      values: new Set(),
+      add(value) { this.values.add(value); },
+      remove(value) { this.values.delete(value); },
+      contains(value) { return this.values.has(value); },
+    },
+  },
+  profileDeleteTitle: { textContent: "" },
+  profileDeleteText: { textContent: "" },
+  profileDeleteError: { hidden: true, textContent: "" },
+  cancelProfileDeleteButton: {
+    disabled: false,
+    hidden: false,
+    textContent: "",
+    focused: false,
+    focus() { this.focused = true; },
+    setAttribute(name, value) { this[name] = value; },
+  },
+  confirmProfileDeleteButton: {
+    disabled: false,
+    hidden: false,
+    textContent: "",
+    setAttribute(name, value) { this[name] = value; },
+  },
+};
+const window = { setTimeout(callback) { callback(); } };
+const statuses = [];
+function appIsBusy() { return false; }
+function renderPresetStatus(message = "") { statuses.push(message); }
+
+eval([
+  "safeId",
+  "neutralizeFormulaText",
+  "safeProfileId",
+  "safeProfileLabel",
+  "profilePresetOptionValue",
+  "companyProfileOptionValue",
+  "selectedPresetId",
+  "templateProfilePresets",
+  "normalizeCompanyProfile",
+  "companyProfilePresets",
+  "selectedPreset",
+  "canManageProfiles",
+  "profileNoAccessReason",
+  "updatePresetSourceBadge",
+  "setButtonLabel",
+  "updatePresetButtons",
+  "profileDeleteConfirmPreset",
+  "hideProfileDeleteModal",
+  "renderProfileDeleteModal",
+  "requestSelectedPresetDelete",
+].map(extractFunction).join("\n"));
+
+updatePresetButtons();
+assert.strictEqual(elements.deletePresetButton.disabled, false);
+assert.strictEqual(elements.deletePresetButton["aria-disabled"], "false");
+assert.strictEqual(elements.deletePresetButton.dataset.profileDeleteReadonly, "true");
+assert.match(elements.deletePresetButton.title, /read-only/i);
+
+requestSelectedPresetDelete();
+assert.strictEqual(elements.profileDeleteModal.hidden, false);
+assert.strictEqual(elements.profileDeleteModal.classList.contains("is-open"), true);
+assert.strictEqual(elements.profileDeleteTitle.textContent, 'Cannot delete "Default"');
+assert.strictEqual(elements.profileDeleteText.textContent, "Profile templates are read-only. Select a saved profile if you need to delete one.");
+assert.strictEqual(elements.confirmProfileDeleteButton.hidden, true);
+assert.strictEqual(elements.cancelProfileDeleteButton.textContent, "Close");
+assert.strictEqual(elements.cancelProfileDeleteButton.focused, true);
+assert.deepStrictEqual(statuses, []);
+
+hideProfileDeleteModal({ force: true });
+state.selectedPresetValue = "company:saved-profile";
+elements.presetSelect.value = "company:saved-profile";
+updatePresetButtons();
+assert.strictEqual(elements.deletePresetButton.dataset.profileDeleteReadonly, undefined);
+requestSelectedPresetDelete();
+assert.strictEqual(elements.profileDeleteModal.hidden, false);
+assert.strictEqual(elements.profileDeleteTitle.textContent, 'Delete "Saved Profile"?');
+assert.strictEqual(elements.profileDeleteText.textContent, "This removes the saved company profile from this local app. Quote details already filled from it are not changed.");
+assert.strictEqual(elements.confirmProfileDeleteButton.hidden, false);
+assert.strictEqual(elements.confirmProfileDeleteButton.textContent, "Delete");
+assert.strictEqual(elements.cancelProfileDeleteButton.textContent, "Cancel");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_profile_import_auto_saves_imported_profile(self):
         node = require_node(self)
 

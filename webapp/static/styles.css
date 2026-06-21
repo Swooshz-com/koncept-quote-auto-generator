@@ -901,7 +901,7 @@ h3 {
   color: #9f2d27;
 }
 
-.secondary-button.danger-button:hover:not(:disabled):not([aria-disabled="true"]) {
+.secondary-button.danger-button:hover:not(:disabled):not([aria-disabled="true"]):not([data-profile-delete-readonly="true"]) {
   border-color: #dc2626;
   background: #fff1f1;
   color: #7f1d1d;
@@ -1558,14 +1558,14 @@ select:focus {
   color: var(--ink);
 }
 
-.secondary-button:hover:not(:disabled):not([aria-disabled="true"]) {
+.secondary-button:hover:not(:disabled):not([aria-disabled="true"]):not([data-profile-delete-readonly="true"]) {
   border-color: #8c9eb2;
   background: var(--surface-soft);
   box-shadow: var(--shadow-xs);
   transform: translateY(-0.5px);
 }
 
-.secondary-button:active:not(:disabled):not([aria-disabled="true"]) {
+.secondary-button:active:not(:disabled):not([aria-disabled="true"]):not([data-profile-delete-readonly="true"]) {
   transform: translateY(0.5px);
 }
 
@@ -2410,9 +2410,14 @@ select:focus {
   color: var(--red);
 }
 
-.danger-button:hover:not(:disabled) {
+.danger-button:hover:not(:disabled):not([aria-disabled="true"]):not([data-profile-delete-readonly="true"]) {
   border-color: var(--red);
   background: var(--red-soft);
+}
+
+.danger-button[data-profile-delete-readonly="true"] {
+  cursor: help;
+  opacity: 0.55;
 }
 
 /* ============================================================
