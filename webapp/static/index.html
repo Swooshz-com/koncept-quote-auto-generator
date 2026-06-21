@@ -141,8 +141,8 @@
                         <select id="profileSelect"></select>
                       </label>
                       <span class="pricing-reference-pill-row" aria-label="Selected pricing reference currency and tax">
-                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceCurrency">SGD</span>
-                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceTax">GST 9%</span>
+                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceCurrency" data-pricing-reference-currency>SGD</span>
+                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
                       </span>
                     </div>
                   </div>
@@ -543,7 +543,13 @@
                       <p>Review quotation rows, resolve pricing, and download Excel.</p>
                     </div>
                     <div class="quote-basis-source output-source">
-                      <span id="outputSourceLabel">Source: Pricing reference</span>
+                      <span class="pricing-reference-source-line">
+                        <span id="outputSourceLabel">Source: Pricing reference</span>
+                        <span class="pricing-reference-pill-row pricing-reference-context-pills" aria-label="Selected pricing reference currency and tax">
+                          <span class="tax-badge pricing-reference-pill" id="outputPricingReferenceCurrency" data-pricing-reference-currency>SGD</span>
+                          <span class="tax-badge pricing-reference-pill" id="outputPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
+                        </span>
+                      </span>
                       <strong id="outputTotalLines">Total approved lines: 0</strong>
                     </div>
                   </div>
@@ -668,7 +674,7 @@
               <section class="pricing-reference-mode-panel pricing-reference-manage-panel" id="pricingReferenceManagePanel" role="tabpanel" aria-labelledby="pricingReferenceManageTab" data-pricing-reference-mode-panel="manage">
                 <section class="pricing-reference-upload-field pricing-reference-delete-section" id="pricingReferenceDeleteSection">
                   <span class="pricing-reference-field-title">Existing local references</span>
-                  <span class="settings-note">Select a local pricing reference pack to review and edit its pricing rows. Delete saved local packs that are no longer needed. Default profile references are protected.</span>
+                  <span class="settings-note">Select a local pricing reference pack to review and edit its pricing rows.<br>Delete saved local packs that are no longer needed.</span>
                   <div class="pricing-reference-delete-controls">
                     <label class="compact-control">
                       Pricing reference
@@ -803,7 +809,7 @@
         <section class="modal-panel profile-delete-panel">
           <header class="modal-header">
             <div>
-              <span class="basis-chat-eyebrow">Saved Profile</span>
+              <span class="basis-chat-eyebrow">Delete Profile</span>
               <h3 id="profileDeleteTitle">Delete saved profile?</h3>
             </div>
           </header>

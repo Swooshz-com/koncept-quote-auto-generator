@@ -1088,7 +1088,7 @@ h3 {
 .company-preset-panel {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(0, 462px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 260px) minmax(0, 460px) minmax(0, 1fr);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
@@ -1209,7 +1209,7 @@ h3 {
 
 .company-preset-card.company-preset-profile-card {
   display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(150px, 158px);
+  grid-template-columns: minmax(0, 258px) minmax(150px, 158px);
   align-items: center;
   justify-content: center;
   gap: 10px;
@@ -1227,7 +1227,7 @@ h3 {
 
 .pricing-reference-card .compact-control,
 .company-preset-profile-card .compact-control {
-  width: min(260px, 100%);
+  width: min(258px, 100%);
 }
 
 .company-preset-card-heading {
@@ -1926,6 +1926,18 @@ select:focus {
   color: #536577;
   text-align: right;
   font-size: 13px;
+}
+
+.pricing-reference-source-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pricing-reference-context-pills {
+  justify-content: flex-end;
 }
 
 .quote-basis-source strong {
@@ -4097,6 +4109,16 @@ body.privacy-page {
   width: min(520px, calc(100vw - 48px));
 }
 
+#profileDeleteModal .profile-delete-panel .modal-header {
+  border-bottom-color: #ffd4cf;
+  background: linear-gradient(180deg, #fff8f7, #fff2ef);
+}
+
+#profileDeleteModal .profile-delete-panel .basis-chat-eyebrow,
+#profileDeleteModal .profile-delete-panel h3 {
+  color: #8f1f1a;
+}
+
 .profile-name-panel {
   overflow: hidden;
   width: min(500px, calc(100vw - 48px));
@@ -4131,6 +4153,13 @@ body.privacy-page {
   border-radius: var(--radius-md);
   background: #fff5f3;
   color: #7f1d1d;
+}
+
+#profileDeleteModal .profile-delete-warning {
+  padding: 15px 16px 15px 18px;
+  border-color: #e77c72;
+  background: #fff0ed;
+  box-shadow: inset 4px 0 0 #d43d34, 0 10px 24px rgba(127, 29, 29, 0.08);
 }
 
 .profile-delete-warning strong,
@@ -4170,6 +4199,15 @@ body.privacy-page {
   padding: 8px 24px 22px;
 }
 
+#profileDeleteModal .profile-delete-panel > .profile-delete-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px 24px 22px;
+  border-top: 1px solid #ffe0dc;
+  background: #fff8f7;
+}
+
 .profile-name-panel > .profile-name-actions,
 .profile-load-panel > .profile-load-actions,
 .profile-overwrite-panel > .profile-overwrite-actions {
@@ -4183,6 +4221,24 @@ body.privacy-page {
 
 .profile-delete-actions button {
   min-width: 96px;
+}
+
+#profileDeleteModal .profile-delete-actions button {
+  min-width: 0;
+  min-height: 48px;
+}
+
+#profileDeleteModal .profile-delete-actions .danger-button {
+  border-color: #b8322b;
+  background: linear-gradient(180deg, #dc493f, #bf2f28);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(191, 47, 40, 0.22);
+}
+
+#profileDeleteModal .profile-delete-actions .danger-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #8f1f1a;
+  background: #a92b25;
+  color: #ffffff;
 }
 
 .profile-name-actions button,
@@ -4568,6 +4624,7 @@ body.privacy-page {
 }
 
 .pricing-preview-status {
+  vertical-align: middle;
   font-size: 12px;
   font-weight: 650;
   overflow-wrap: anywhere;
@@ -5157,6 +5214,20 @@ body.privacy-page {
 
   .quote-basis-source {
     text-align: left;
+  }
+
+  .pricing-reference-source-line,
+  .pricing-reference-context-pills {
+    justify-content: flex-start;
+  }
+
+  .side-workspace,
+  .workspace-pane-scroll {
+    overflow: visible;
+  }
+
+  .workspace-pane-scroll {
+    overscroll-behavior: auto;
   }
 
   .stat-card-row {

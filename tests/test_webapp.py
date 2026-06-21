@@ -10282,10 +10282,12 @@ eval([
   "lastSelectedPricingReference",
   "selectedPricingReferenceTax",
   "selectedPricingReferenceCurrency",
+  "selectedPricingReferenceTaxText",
   "taxRatePercentText",
   "normalizeTaxLabel",
   "normalizeTaxRate",
   "normalizeCurrencyLabel",
+  "syncPricingReferenceContextPills",
   "renderSelectedPricingReferenceSummary",
   "renderProfileOptions",
   "updateSidePanelNav",
@@ -11271,6 +11273,8 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricing-reference-upload-field", pricing_reference_modal)
         self.assertIn("pricing-reference-upload-field pricing-reference-delete-section", pricing_reference_modal)
         self.assertIn("pricing-reference-field-title", pricing_reference_modal)
+        self.assertIn("Select a local pricing reference pack to review and edit its pricing rows.<br>Delete saved local packs that are no longer needed.", pricing_reference_modal)
+        self.assertNotIn("Default profile references are protected.", pricing_reference_modal)
         self.assertIn("pricing-reference-template-footer", pricing_reference_modal)
         self.assertIn("is-placeholder", js)
         self.assertNotIn("pricing-reference-footer-note", pricing_reference_modal)
@@ -11406,6 +11410,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-preview-status.is-ok", css)
         self.assertIn(".pricing-preview-status.is-warn", css)
         self.assertIn(".pricing-preview-status.is-error", css)
+        self.assertIn(".pricing-preview-status {\n  vertical-align: middle;", css)
         self.assertIn(".pricing-reference-col-description", css)
         self.assertIn(".pricing-reference-col-remarks", css)
         self.assertIn('String(result.layout || "") === "importing"', js)
@@ -11818,10 +11823,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".pricing-reference-card", css)
         self.assertIn("grid-template-columns: minmax(0, 260px) minmax(0, 292px) minmax(0, 1fr);", css)
         self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
-        self.assertIn(".company-preset-panel {\n  box-sizing: border-box;\n  display: grid;\n  grid-template-columns: minmax(0, 260px) minmax(0, 462px) minmax(0, 1fr);", css)
+        self.assertIn(".company-preset-panel {\n  box-sizing: border-box;\n  display: grid;\n  grid-template-columns: minmax(0, 260px) minmax(0, 460px) minmax(0, 1fr);", css)
         self.assertIn(".company-preset-panel .company-preset-profile-card {\n  grid-column: 2;", css)
         self.assertIn(".pricing-reference-panel .pricing-reference-card,\n.company-preset-panel .company-preset-profile-card {\n  min-height: 156px;", css)
-        self.assertIn(".company-preset-card.company-preset-profile-card {\n  display: grid;\n  grid-template-columns: minmax(0, 260px) minmax(150px, 158px);", css)
+        self.assertIn(".company-preset-card.company-preset-profile-card {\n  display: grid;\n  grid-template-columns: minmax(0, 258px) minmax(150px, 158px);", css)
         self.assertIn(".company-preset-profile-card .company-preset-fields {\n  align-self: center;\n  max-width: 260px;", css)
         self.assertNotIn(".company-preset-save-card {\n  grid-column: 3;", css)
         self.assertNotIn(".company-preset-select-actions", css)
@@ -11851,6 +11856,8 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn('id="pricingReferenceCurrency"', html)
         self.assertIn('id="pricingReferenceCurrencyCustom"', html)
         self.assertIn('id="selectedPricingReferenceCurrency"', html)
+        self.assertIn('data-pricing-reference-currency', html)
+        self.assertIn('data-pricing-reference-tax', html)
         self.assertIn("pricing-reference-pill-row", html)
         self.assertIn("SGD - Singapore Dollar", html)
         self.assertLess(html.index("SGD - Singapore Dollar"), html.index("AUD - Australian Dollar"))
@@ -11874,6 +11881,8 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".analysis-mode-actions .sample-button {\n  justify-self: start;", css)
         self.assertIn("width: min(680px, calc(100vw - 48px));", css)
         self.assertIn(".pricing-reference-pill {\n  width: 76px;", css)
+        self.assertIn(".side-workspace,\n  .workspace-pane-scroll {\n    overflow: visible;\n  }", css)
+        self.assertIn(".workspace-pane-scroll {\n    overscroll-behavior: auto;\n  }", css)
         self.assertIn(".currency-control-row {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
         self.assertNotIn(".secondary-button.ai-mode-button", css)
         self.assertNotIn(".secondary-button.panel-analyse-quality-button", css)
@@ -13313,6 +13322,7 @@ const state = {
 };
 function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char])); }
 function outputPricingSourceLabel() { return "Pricing reference"; }
+function pricingReferenceContextPillsHtml() { return '<span class="pricing-reference-pill-row pricing-reference-context-pills"><span>SGD</span><span>GST 9%</span></span>'; }
 function basisSections() { return state.quoteBasisSections; }
 function renderAnalysisFindings() { return ""; }
 function basisTotalLineCount(sections = []) { return sections.reduce((total, section) => total + (section.lines || []).length, 0); }
@@ -13425,6 +13435,7 @@ function escapeHtml(value = "") {
   }[char]));
 }
 function outputPricingSourceLabel() { return "Pricing reference"; }
+function pricingReferenceContextPillsHtml() { return '<span class="pricing-reference-pill-row pricing-reference-context-pills"><span>SGD</span><span>GST 9%</span></span>'; }
 function renderAnalysisFindings() { return ""; }
 function setDownloadFiles() { state.downloadFile = null; }
 function markOutputRowsDirty() { state.downloadFile = null; }
@@ -14335,13 +14346,20 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn('class="quote-basis-header output-page-header"', html)
         self.assertIn('id="outputStatusPill"', html)
         self.assertIn('id="outputSourceLabel"', html)
+        self.assertIn('id="outputPricingReferenceCurrency"', html)
+        self.assertIn('id="outputPricingReferenceTax"', html)
         self.assertIn('id="outputTotalLines"', html)
         self.assertIn("Source: Pricing reference", html)
         self.assertIn("Total approved lines: 0", html)
         self.assertNotIn("Source: Koncept Pricing Catalog", html)
         self.assertIn("function updateOutputHeader", js)
         self.assertIn("function outputHeaderStatus", js)
+        self.assertIn("function pricingReferenceContextPillsHtml", js)
+        self.assertIn("function syncPricingReferenceContextPills", js)
         self.assertIn('return reference.label || "Pricing reference";', js)
+        self.assertIn("pricing-reference-source-line", html)
+        self.assertIn("pricing-reference-context-pills", html)
+        self.assertIn("pricingReferenceContextPillsHtml()", js)
         self.assertNotIn(".output-page-header {", css)
         self.assertIn(".output-status-pill.is-ok", css)
         self.assertIn(".quote-basis-title-row .output-status-pill", css)

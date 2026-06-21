@@ -1450,6 +1450,30 @@ function selectedPricingReferenceCurrency() {
   return normalizeCurrencyLabel(reference?.currency);
 }
 
+function selectedPricingReferenceTaxText() {
+  const tax = selectedPricingReferenceTax();
+  return `${tax.label} ${taxRatePercentText(tax.rate)}%`;
+}
+
+function pricingReferenceContextPillsHtml() {
+  return `
+    <span class="pricing-reference-pill-row pricing-reference-context-pills" aria-label="Selected pricing reference currency and tax">
+      <span class="tax-badge pricing-reference-pill" data-pricing-reference-currency>${escapeHtml(selectedPricingReferenceCurrency())}</span>
+      <span class="tax-badge pricing-reference-pill" data-pricing-reference-tax>${escapeHtml(selectedPricingReferenceTaxText())}</span>
+    </span>
+  `;
+}
+
+function syncPricingReferenceContextPills(currency = selectedPricingReferenceCurrency(), taxText = selectedPricingReferenceTaxText()) {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll("[data-pricing-reference-currency]").forEach((element) => {
+    element.textContent = currency;
+  });
+  document.querySelectorAll("[data-pricing-reference-tax]").forEach((element) => {
+    element.textContent = taxText;
+  });
+}
+
 function supportedCurrencyLabel(value = DEFAULT_CURRENCY_LABEL) {
   const normalized = normalizeCurrencyLabel(value);
   return isStandardCurrencyCode(normalized) ? normalized : DEFAULT_CURRENCY_LABEL;
@@ -1514,7 +1538,7 @@ function renderSelectedPricingReferenceSummary() {
   const reference = currentPricingReference();
   const tax = selectedPricingReferenceTax();
   const currency = selectedPricingReferenceCurrency();
-  const taxText = `${tax.label} ${taxRatePercentText(tax.rate)}%`;
+  const taxText = selectedPricingReferenceTaxText();
   if (elements.selectedPricingReferenceSummary) {
     elements.selectedPricingReferenceSummary.textContent = reference
       ? "Managed in Settings."
@@ -1524,6 +1548,7 @@ function renderSelectedPricingReferenceSummary() {
   }
   if (elements.selectedPricingReferenceCurrency) elements.selectedPricingReferenceCurrency.textContent = currency;
   if (elements.selectedPricingReferenceTax) elements.selectedPricingReferenceTax.textContent = taxText;
+  syncPricingReferenceContextPills(currency, taxText);
   if (elements.taxLabel) elements.taxLabel.value = tax.label;
   if (elements.taxRate) elements.taxRate.value = taxRatePercentText(tax.rate);
   updatePricingReferenceDeleteButton();
@@ -6465,6 +6490,7 @@ function updateOutputHeader(rows = state.outputRows) {
   if (elements.outputSourceLabel) {
     elements.outputSourceLabel.textContent = `Source: ${outputPricingSourceLabel()}`;
   }
+  syncPricingReferenceContextPills();
   if (elements.outputTotalLines) {
     elements.outputTotalLines.textContent = `Total approved lines: ${safeRows.length}`;
   }
@@ -6971,7 +6997,10 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
           <p>${aiFailed ? GENERIC_FAILURE_MESSAGE : "Please review the AI takeoff and revise individual lines where needed."}</p>
         </div>
         <div class="quote-basis-source">
-          <span>${aiFailed ? "Source: Local fallback only" : `Source: ${escapeHtml(outputPricingSourceLabel())}`}</span>
+          <span class="pricing-reference-source-line">
+            <span>${aiFailed ? "Source: Local fallback only" : `Source: ${escapeHtml(outputPricingSourceLabel())}`}</span>
+            ${aiFailed ? "" : pricingReferenceContextPillsHtml()}
+          </span>
           <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(reviewSections)))}</strong>
         </div>
       </div>
