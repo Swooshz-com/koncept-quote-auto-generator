@@ -251,7 +251,7 @@
                       <h3>Select Profile</h3>
                       <span class="company-preset-source-badge">Profile template</span>
                     </div>
-                    <p class="settings-note" id="presetStatus">Load a template, or save/import/export a reusable company profile.</p>
+                    <p class="settings-note" id="presetStatus">Load a template or saved company profile.</p>
                   </div>
                   <div class="company-preset-controls">
                     <div class="company-preset-control-group company-preset-card company-preset-profile-card">
@@ -277,39 +277,6 @@
                             <path d="m7 11 5 5 5-5"></path>
                           </svg>
                           <span>Load</span>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="company-preset-control-group company-preset-card company-preset-save-card">
-                      <label class="compact-control preset-save-name">
-                        Reusable Profile Name
-                        <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
-                      </label>
-                      <div class="settings-button-row company-preset-file-actions">
-                        <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
-                        <button class="secondary-button" type="button" id="exportPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 20V9"></path>
-                            <path d="m7 14 5-5 5 5"></path>
-                            <path d="M5 4h14"></path>
-                          </svg>
-                          <span>Export</span>
-                        </button>
-                        <button class="secondary-button" type="button" id="importPresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M12 4v11"></path>
-                            <path d="m7 10 5 5 5-5"></path>
-                            <path d="M5 20h14"></path>
-                          </svg>
-                          <span>Import</span>
-                        </button>
-                        <button class="primary-button" type="button" id="savePresetButton">
-                          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                            <polyline points="7 3 7 8 15 8"></polyline>
-                          </svg>
-                          <span>Save</span>
                         </button>
                       </div>
                     </div>
@@ -804,6 +771,45 @@
           <div class="modal-actions profile-delete-actions">
             <button class="secondary-button" type="button" id="cancelProfileDeleteButton">Cancel</button>
             <button class="secondary-button danger-button" type="button" id="confirmProfileDeleteButton">Delete</button>
+          </div>
+        </section>
+      </div>
+      <div class="modal-overlay profile-save-modal" id="profileSaveModal" role="dialog" aria-modal="true" aria-labelledby="profileSaveTitle" hidden>
+        <div class="modal-backdrop" data-profile-save-close></div>
+        <section class="modal-panel profile-save-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Profile Menu</span>
+              <h3 id="profileSaveTitle">Add New Profile</h3>
+            </div>
+          </header>
+          <div class="profile-save-content">
+            <label class="compact-control preset-save-name">
+              Reusable Profile Name
+              <input id="presetNameInput" type="text" placeholder="Reusable profile name" aria-describedby="presetStatus">
+            </label>
+            <div class="profile-save-actions">
+              <input id="importPresetFile" type="file" accept="application/json,.json" hidden>
+              <button class="secondary-button" type="button" id="importPresetButton">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <path d="M12 4v11"></path>
+                  <path d="m7 10 5 5 5-5"></path>
+                  <path d="M5 20h14"></path>
+                </svg>
+                <span>Import</span>
+              </button>
+              <button class="primary-button" type="button" id="savePresetButton">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+          <div class="modal-actions profile-save-footer">
+            <button class="secondary-button" type="button" id="cancelProfileSaveButton">Cancel</button>
           </div>
         </section>
       </div>

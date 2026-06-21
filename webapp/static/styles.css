@@ -1086,7 +1086,7 @@ h3 {
 
 .company-preset-panel {
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  grid-template-columns: minmax(250px, 0.8fr) minmax(280px, 420px);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
@@ -1166,10 +1166,6 @@ h3 {
   grid-column: 2;
 }
 
-.company-preset-save-card {
-  grid-column: 3;
-}
-
 .pricing-reference-card,
 .company-preset-card {
   display: flex;
@@ -1190,8 +1186,7 @@ h3 {
 }
 
 .pricing-reference-card .compact-control select,
-.company-preset-card .compact-control select,
-.company-preset-card .compact-control input {
+.company-preset-card .compact-control select {
   min-height: 40px;
 }
 
@@ -1222,10 +1217,6 @@ h3 {
   flex: 1;
 }
 
-.company-preset-file-actions {
-  margin-top: 0;
-}
-
 .company-preset-panel .primary-button,
 .company-preset-panel .secondary-button {
   gap: 3px;
@@ -1235,6 +1226,7 @@ h3 {
 }
 
 .company-preset-panel button svg,
+.profile-save-panel button svg,
 .pricing-reference-panel button svg {
   width: 15px;
   height: 15px;
@@ -1252,6 +1244,40 @@ h3 {
 .pricing-reference-panel .settings-note,
 .company-preset-panel .settings-note {
   text-align: left;
+}
+
+.profile-save-panel {
+  width: min(520px, calc(100vw - 48px));
+}
+
+.profile-save-content {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px 8px;
+}
+
+.profile-save-content .compact-control {
+  width: 100%;
+}
+
+.profile-save-content .compact-control input {
+  min-height: 44px;
+}
+
+.profile-save-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-save-actions button {
+  gap: 5px;
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.profile-save-footer {
+  padding: 8px 20px 20px;
 }
 
 .pricing-reference-panel .settings-note {
@@ -4683,6 +4709,10 @@ body.privacy-page {
 
   .company-preset-controls .settings-button-row {
     flex-direction: column;
+  }
+
+  .profile-save-actions {
+    grid-template-columns: 1fr;
   }
 
   .modal-actions.pricing-reference-modal-actions,
