@@ -7661,13 +7661,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "savePresetButton",
             "importPresetButton",
             "importPresetFile",
+            "exportPresetButton",
             "clearCustomerButton",
             "clearQuoteCompanyButton",
-            "loadPresetButton",
             "deletePresetButton",
-            "profileSaveModal",
-            "profileSaveTitle",
-            "cancelProfileSaveButton",
             "profileDeleteModal",
             "profileDeleteTitle",
             "profileDeleteText",
@@ -7740,12 +7737,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"{forbidden_source_term} context", html)
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
-        self.assertIn("Load a template or saved company profile.", html)
-        self.assertIn('const ADD_PROFILE_PRESET_VALUE = "__add_profile__"', js)
-        self.assertIn('const EXPORT_PROFILE_PRESET_VALUE = "__export_current_profile__"', js)
-        self.assertIn("Add New Profile", js)
-        self.assertIn("Export Current Profile", js)
-        self.assertIn("function openProfileSaveModal", js)
+        self.assertIn("Select a profile to load it.", html)
+        self.assertNotIn("ADD_PROFILE_PRESET_VALUE", js)
+        self.assertNotIn("EXPORT_PROFILE_PRESET_VALUE", js)
+        self.assertNotIn("Add New Profile", html)
+        self.assertNotIn("Add New Profile", js)
+        self.assertNotIn("Profile Actions", js)
+        self.assertNotIn("function openProfileSaveModal", js)
         self.assertIn("function handlePresetSelectChange", js)
         self.assertNotIn('id="layoutTemplateInput"', html)
         self.assertNotIn('id="layoutTemplateButton"', html)
@@ -7797,13 +7795,16 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="topbarStatus"', html)
         self.assertNotIn('id="statusDot"', html)
         self.assertNotIn('id="healthText"', html)
-        self.assertIn("<h3>Select Profile</h3>", html)
+        self.assertIn("Quote Company Profile", html)
+        self.assertNotIn("<h3>Select Profile</h3>", html)
         self.assertNotIn("<h4>Select Profile</h4>", html)
         self.assertNotIn("Save &amp; Manage Data", html)
         self.assertNotIn("More Actions", html)
         self.assertIn('class="company-preset-control-group company-preset-card company-preset-profile-card"', html)
         self.assertNotIn('class="company-preset-control-group company-preset-card company-preset-save-card"', html)
-        self.assertIn("profile-load-button", html)
+        self.assertNotIn("profile-load-button", html)
+        self.assertNotIn('id="loadPresetButton"', html)
+        self.assertNotIn("loadPresetButton", js)
         self.assertIn('id="deletePresetButton"', html)
         self.assertNotIn('id="deletePresetButton" hidden', html)
         self.assertIn('id="profileDeleteModal"', html)
@@ -7817,12 +7818,15 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("function confirmOutputRowDelete", js)
         self.assertNotIn("window.confirm(`Delete output row", js)
         self.assertIn('id="importPresetButton"', html)
-        self.assertNotIn('id="exportPresetButton"', html)
-        self.assertIn('id="profileSaveModal"', html)
-        self.assertIn("Profile Menu", html)
-        self.assertIn("profile-save-actions", html)
-        self.assertIn(".profile-save-panel", css)
-        self.assertIn(".profile-save-actions", css)
+        self.assertIn('id="exportPresetButton"', html)
+        self.assertNotIn('id="profileSaveModal"', html)
+        self.assertNotIn("Profile Menu", html)
+        self.assertNotIn("profile-save-actions", html)
+        self.assertNotIn(".profile-save-panel", css)
+        self.assertNotIn(".profile-save-actions", css)
+        self.assertNotIn(".profile-save-close-button", css)
+        self.assertIn("company-preset-action-panel", html)
+        self.assertIn(".company-preset-action-panel", css)
         self.assertIn('id="importPresetFile" type="file" accept="application/json,.json" hidden', html)
         self.assertNotIn('class="company-preset-control-group company-preset-save-group"', html)
         self.assertIn('id="presetNameInput" type="text" placeholder="Reusable profile name"', html)
@@ -7836,9 +7840,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertLess(html.index('id="clearCustomerButton"'), html.index('id="customerDetailsPanel"'))
         self.assertLess(html.index('id="clearQuoteCompanyButton"'), html.index('id="quoteCompanyPanel"'))
         self.assertGreater(html.index('id="profileSelect"'), html.index('id="imageInput"'))
+        self.assertLess(html.index('id="profileSelect"'), html.index('id="presetSelect"'))
+        self.assertLess(html.index('id="presetSelect"'), html.index('id="clientName"'))
         self.assertLess(html.index('id="profileSelect"'), html.index('id="clientName"'))
         self.assertLess(html.index('id="sampleDetailsButton"'), html.index('id="imageInput"'))
-        self.assertLess(html.index('id="quoteCompanyPanel"'), html.index('id="presetSelect"'))
+        self.assertLess(html.index('id="presetSelect"'), html.index('id="quoteCompanyPanel"'))
         self.assertLess(html.index('id="clientName"'), html.index('id="clientAddress"'))
         self.assertLess(html.index('id="clientAddress"'), html.index('id="clientAttention"'))
         self.assertLess(html.index('id="quoteDate"'), html.index('id="projectTitle"'))
@@ -7909,8 +7915,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".pricing-reference-controls", css)
         self.assertIn(".pricing-reference-controls .settings-button-row", css)
         self.assertIn("align-items: stretch;", css)
-        self.assertIn(".company-preset-panel", css)
         self.assertIn(".company-preset-controls", css)
+        self.assertIn(".pricing-reference-panel .company-preset-profile-card", css)
         self.assertNotIn(".quote-company-toolbar", css)
         self.assertNotIn(".quote-details-clear-button", css)
         self.assertIn("loadDefaultProfilePreset", js)
@@ -7928,10 +7934,14 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".company-preset-card", css)
         self.assertIn(".company-preset-profile-card", css)
         self.assertNotIn(".company-preset-save-card", css)
-        self.assertIn(".profile-save-panel", css)
-        self.assertIn(".profile-save-actions", css)
-        self.assertIn(".profile-save-content .compact-control input", css)
-        self.assertIn(".company-preset-panel .profile-load-button", css)
+        self.assertIn(".company-preset-card.company-preset-profile-card", css)
+        self.assertIn(".company-preset-fields", css)
+        self.assertIn(".company-preset-action-panel", css)
+        self.assertNotIn(".profile-save-panel", css)
+        self.assertNotIn(".profile-save-actions", css)
+        self.assertNotIn(".profile-save-close-button", css)
+        self.assertNotIn(".profile-save-footer", css)
+        self.assertNotIn(".profile-load-button", css)
         self.assertNotIn(".company-preset-file-actions", css)
         self.assertIn(".profile-delete-panel", css)
         self.assertIn(".profile-delete-actions button", css)
@@ -8083,6 +8093,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         css = (static_dir / "styles.css").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
+        customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('id="quoteCompanyPanel"', 1)[0]
         quote_company_panel = html.split('id="quoteCompanyPanel"', 1)[1].split('id="quoteBasisPanel"', 1)[0]
         settings_panel = html.split('id="pricingReferenceModal"', 1)[1].split('id="pricingReferenceTableOverlay"', 1)[0]
 
@@ -8100,27 +8111,41 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".settings-status-section", css)
         self.assertNotIn(".settings-status-grid", css)
 
-        self.assertIn('id="presetStatus">Load a template or saved company profile.</p>', html)
+        self.assertIn('id="presetStatus">Select a profile to load it.</p>', html)
         self.assertNotIn('id="presetFlowStatus"', html)
         self.assertNotIn("profile-management-section", html)
         self.assertNotIn("profile-management-controls", html)
         self.assertNotIn(".profile-management-section", css)
         self.assertNotIn(".profile-management-controls", css)
         self.assertNotIn('class="company-preset-control-group company-preset-card company-preset-save-card"', quote_company_panel)
-        self.assertIn('id="deletePresetButton"', quote_company_panel)
-        self.assertIn('id="loadPresetButton"', quote_company_panel)
-        self.assertIn('id="profileSaveModal"', html)
-        profile_save_modal = html.split('id="profileSaveModal"', 1)[1].split('id="outputDeleteModal"', 1)[0]
+        self.assertIn("Quote Company Profile", customer_panel)
+        self.assertIn('class="company-preset-control-group company-preset-card company-preset-profile-card"', customer_panel)
+        self.assertIn('id="presetSelect"', customer_panel)
+        self.assertIn('id="presetNameInput"', customer_panel)
+        self.assertIn('class="company-preset-action-panel"', customer_panel)
+        self.assertIn('id="importPresetButton"', customer_panel)
+        self.assertIn('id="exportPresetButton"', customer_panel)
+        self.assertIn('id="savePresetButton"', customer_panel)
+        self.assertIn('id="deletePresetButton"', customer_panel)
+        self.assertNotIn('id="presetSelect"', quote_company_panel)
+        self.assertNotIn('id="presetNameInput"', quote_company_panel)
+        self.assertNotIn('id="importPresetButton"', quote_company_panel)
+        self.assertNotIn('id="exportPresetButton"', quote_company_panel)
+        self.assertNotIn('id="savePresetButton"', quote_company_panel)
+        self.assertNotIn('id="deletePresetButton"', quote_company_panel)
+        self.assertNotIn('id="loadPresetButton"', quote_company_panel)
+        self.assertNotIn('id="loadPresetButton"', html)
+        self.assertNotIn('id="profileSaveModal"', html)
         for management_id in (
             "presetNameInput",
             "importPresetFile",
             "importPresetButton",
+            "exportPresetButton",
             "savePresetButton",
         ):
-            self.assertIn(f'id="{management_id}"', profile_save_modal)
+            self.assertIn(f'id="{management_id}"', customer_panel)
             self.assertNotIn(f'id="{management_id}"', settings_panel)
-        self.assertNotIn('id="exportPresetButton"', html)
-        self.assertIn("Export Current Profile", js)
+        self.assertNotIn("Export Current Profile", js)
 
         self.assertIn('class="pricing-reference-source-badge">Repo catalog</span>', html)
         self.assertIn('id="selectedPricingReferenceSummary">Managed in Settings.</p>', html)
@@ -8171,7 +8196,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="profileDescription"', html)
         self.assertIn("Client block", html)
         self.assertIn("Quote reference", html)
-        self.assertIn("Select Profile", html)
+        self.assertIn("Quote Company Profile", html)
         self.assertIn("Company header", html)
         self.assertIn("Select header logo", html)
         self.assertIn(".header-logo-preview", css)
@@ -9152,8 +9177,11 @@ assert.strictEqual(elements.presetSelect.value, "profile:trade-show");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
-    def test_static_add_new_profile_option_opens_profile_save_modal(self):
+    def test_static_profile_select_auto_loads_and_uses_action_panel(self):
         node = require_node(self)
+        static_dir = ROOT / "webapp" / "static"
+        html = (static_dir / "index.html").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         script = r"""
 const fs = require("fs");
@@ -9178,133 +9206,31 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const DEFAULT_PROFILE_ID = "quote-layout";
-const PROFILE_PRESET_PREFIX = "profile:";
-const COMPANY_PROFILE_PRESET_PREFIX = "company:";
-const ADD_PROFILE_PRESET_VALUE = "__add_profile__";
-const EXPORT_PROFILE_PRESET_VALUE = "__export_current_profile__";
-const LAST_SELECTION_STORAGE_KEY = "swooshz_last_selection_v1";
-const window = {
-  localStorage: {
-    getItem() { return null; },
-  },
-  setTimeout(callback) { callback(); },
-};
-const classList = () => ({
-  values: new Set(),
-  add(value) { this.values.add(value); },
-  remove(value) { this.values.delete(value); },
-  contains(value) { return this.values.has(value); },
-});
 const state = {
-  profileId: "quote-layout",
-  selectedPresetValue: "",
-  profiles: [{
-    id: "quote-layout",
-    label: "Quote Layout",
-    quote_detail_presets: [
-      { id: "default", name: "Default", details: {} },
-      { id: "trade-show", name: "Trade Show", details: {} },
-    ],
-  }],
-  companyProfiles: [{ id: "saved-profile", label: "Saved Profile", defaults: { company: { name: "Saved" } } }],
-  permissions: { canManageProfiles: true },
-  profileSaveBusy: false,
-  profileDeleteBusy: false,
+  selectedPresetValue: "profile:default",
   pendingProfilePack: { quotation_layout: true },
 };
 const elements = {
-  presetSelect: { value: "", innerHTML: "" },
-  presetSourceBadge: { textContent: "" },
-  loadPresetButton: { disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
-  deletePresetButton: { dataset: {}, disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
-  profileSaveModal: { hidden: true, classList: classList() },
-  presetNameInput: {
-    value: "Keep me",
-    disabled: false,
-    title: "",
-    focused: false,
-    focus() { this.focused = true; },
-    setAttribute(name, value) { this[name] = value; },
-  },
-  savePresetButton: {
-    disabled: false,
-    title: "",
-    textContent: "",
-    setAttribute(name, value) { this[name] = value; },
-    querySelector() { return { textContent: "" }; },
-  },
-  importPresetButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
-  cancelProfileSaveButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  presetSelect: { value: "company:saved-profile" },
 };
-const statuses = [];
-let exportCalls = 0;
-function escapeHtml(value = "") { return String(value); }
-function appIsBusy() { return false; }
-function renderPresetStatus(message = "") { statuses.push(message); }
-function persistLastProfilePresetSelection(value) { statuses.push(`persist:${value}`); }
-function syncControlStates() {}
-function exportCurrentPreset() { exportCalls += 1; }
+const persisted = [];
+let cleared = false;
+let loaded = 0;
+function clearPendingProfilePack() {
+  cleared = true;
+  state.pendingProfilePack = null;
+}
+function persistLastProfilePresetSelection(value) { persisted.push(value); }
+function loadSelectedPreset() { loaded += 1; }
 
-eval([
-  "safeId",
-  "neutralizeFormulaText",
-  "safeProfileId",
-  "safeProfileLabel",
-  "profilePresetOptionValue",
-  "companyProfileOptionValue",
-  "currentProfile",
-  "templateProfilePresets",
-  "normalizeCompanyProfile",
-  "companyProfilePresets",
-  "defaultProfilePresetId",
-  "defaultPresetOptionValue",
-  "safeLastSelectionJson",
-  "availablePresetValues",
-  "lastSelectedPresetValue",
-  "renderPresetOptions",
-  "selectedPresetId",
-  "selectedPreset",
-  "canManageProfiles",
-  "profileNoAccessReason",
-  "updatePresetSourceBadge",
-  "setButtonLabel",
-  "updatePresetButtons",
-  "hideProfileSaveModal",
-  "openProfileSaveModal",
-  "handlePresetSelectChange",
-].map(extractFunction).join("\n"));
-
-renderPresetOptions();
-assert.ok(elements.presetSelect.innerHTML.includes(`value="${ADD_PROFILE_PRESET_VALUE}"`));
-assert.ok(elements.presetSelect.innerHTML.includes("Add New Profile"));
-assert.ok(elements.presetSelect.innerHTML.includes(`value="${EXPORT_PROFILE_PRESET_VALUE}"`));
-assert.ok(elements.presetSelect.innerHTML.includes("Export Current Profile"));
-assert.strictEqual(elements.presetSelect.value, "profile:default");
-assert.strictEqual(state.selectedPresetValue, "profile:default");
-
-elements.presetSelect.value = ADD_PROFILE_PRESET_VALUE;
+eval(extractFunction("handlePresetSelectChange"));
 handlePresetSelectChange();
 
-assert.strictEqual(elements.profileSaveModal.hidden, false);
-assert.strictEqual(elements.profileSaveModal.classList.contains("is-open"), true);
-assert.strictEqual(elements.presetSelect.value, "profile:default");
-assert.strictEqual(state.selectedPresetValue, "profile:default");
-assert.deepStrictEqual(state.pendingProfilePack, { quotation_layout: true });
-assert.strictEqual(elements.presetNameInput.value, "");
-assert.strictEqual(elements.presetNameInput.focused, true);
-assert.strictEqual(elements.savePresetButton.disabled, true);
-assert.strictEqual(elements.importPresetButton.disabled, false);
-assert.deepStrictEqual(statuses, []);
-
-hideProfileSaveModal({ force: true });
-elements.presetSelect.value = EXPORT_PROFILE_PRESET_VALUE;
-handlePresetSelectChange();
-assert.strictEqual(exportCalls, 1);
-assert.strictEqual(elements.profileSaveModal.hidden, true);
-assert.strictEqual(elements.presetSelect.value, "profile:default");
-assert.strictEqual(state.selectedPresetValue, "profile:default");
-assert.deepStrictEqual(statuses, []);
+assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
+assert.strictEqual(state.pendingProfilePack, null);
+assert.strictEqual(cleared, true);
+assert.deepStrictEqual(persisted, ["company:saved-profile"]);
+assert.strictEqual(loaded, 1);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -9315,6 +9241,16 @@ assert.deepStrictEqual(statuses, []);
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+        customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('id="quoteCompanyPanel"', 1)[0]
+        self.assertNotIn("Profile Actions", js)
+        self.assertNotIn("Add New Profile", js)
+        self.assertNotIn("Export Current Profile", js)
+        self.assertNotIn('id="loadPresetButton"', html)
+        self.assertNotIn('id="profileSaveModal"', html)
+        self.assertLess(customer_panel.index('id="presetSelect"'), customer_panel.index('id="presetNameInput"'))
+        self.assertLess(customer_panel.index('id="importPresetButton"'), customer_panel.index('id="exportPresetButton"'))
+        self.assertLess(customer_panel.index('id="exportPresetButton"'), customer_panel.index('id="savePresetButton"'))
+        self.assertLess(customer_panel.index('id="savePresetButton"'), customer_panel.index('id="deletePresetButton"'))
 
     def test_static_reset_quote_company_forces_default_profile_template(self):
         node = require_node(self)
@@ -9615,7 +9551,6 @@ const state = {
 const elements = {
   presetSelect: { value: "profile:default" },
   presetSourceBadge: { textContent: "" },
-  loadPresetButton: { disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
   deletePresetButton: { dataset: {}, disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
   savePresetButton: {
     disabled: false,
@@ -9625,6 +9560,7 @@ const elements = {
   },
   presetNameInput: { value: "", disabled: false, title: "", setAttribute(name, value) { this[name] = value; } },
   importPresetButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  exportPresetButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
   profileDeleteModal: {
     hidden: true,
     classList: {
@@ -11512,10 +11448,11 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".pricing-reference-card", css)
         self.assertIn("grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);", css)
         self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
-        self.assertIn(".company-preset-profile-card {\n  grid-column: 2;", css)
+        self.assertIn(".pricing-reference-panel .company-preset-profile-card {\n  grid-column: 3;", css)
+        self.assertIn(".company-preset-card.company-preset-profile-card {\n  display: grid;", css)
         self.assertIn("grid-template-columns: minmax(250px, 0.8fr) minmax(280px, 420px);", css)
         self.assertNotIn(".company-preset-save-card {\n  grid-column: 3;", css)
-        self.assertIn(".profile-save-actions {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
+        self.assertIn(".company-preset-action-panel {\n  display: grid;\n  grid-template-columns: 1fr;", css)
         self.assertIn(".pricing-reference-panel .settings-note {\n  align-self: start;\n  padding-top: 0;", css)
         self.assertIn("padding: 12px 28px 80px;", css)
         self.assertIn('/api/settings/pricing-references/import-preview', js)

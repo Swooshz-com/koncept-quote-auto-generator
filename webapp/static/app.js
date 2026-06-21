@@ -23,8 +23,6 @@ const PRICING_REFERENCE_SETTINGS_MODE_IMPORT = "import";
 const FINAL_JOB_STATUSES = new Set(["completed", "degraded", "needs_review", "blocked", "failed"]);
 const PROFILE_PRESET_PREFIX = "profile:";
 const COMPANY_PROFILE_PRESET_PREFIX = "company:";
-const ADD_PROFILE_PRESET_VALUE = "__add_profile__";
-const EXPORT_PROFILE_PRESET_VALUE = "__export_current_profile__";
 const COMPANY_PROFILE_EXPORT_SCHEMA = "swooshz.quote-company-profile.v1";
 const PRICING_REFERENCE_FILE_ACCEPT = ".xlsx,.csv,.md";
 const REFERENCE_FILE_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf,.pdf";
@@ -302,10 +300,10 @@ const elements = {
   presetNameInput: qs("#presetNameInput"),
   presetSelect: qs("#presetSelect"),
   savePresetButton: qs("#savePresetButton"),
-  loadPresetButton: qs("#loadPresetButton"),
   deletePresetButton: qs("#deletePresetButton"),
   importPresetButton: qs("#importPresetButton"),
   importPresetFile: qs("#importPresetFile"),
+  exportPresetButton: qs("#exportPresetButton"),
   resetImagesButton: qs("#resetImagesButton"),
   clearCustomerButton: qs("#clearCustomerButton"),
   clearQuoteCompanyButton: qs("#clearQuoteCompanyButton"),
@@ -314,9 +312,6 @@ const elements = {
   resetOutputButton: qs("#resetOutputButton"),
   presetStatus: qs("#presetStatus"),
   presetSourceBadge: qs(".company-preset-source-badge"),
-  profileSaveModal: qs("#profileSaveModal"),
-  profileSaveTitle: qs("#profileSaveTitle"),
-  cancelProfileSaveButton: qs("#cancelProfileSaveButton"),
   profileDeleteModal: qs("#profileDeleteModal"),
   profileDeleteTitle: qs("#profileDeleteTitle"),
   profileDeleteText: qs("#profileDeleteText"),
@@ -2316,7 +2311,7 @@ function persistLastProfilePresetSelection(value = state.selectedPresetValue) {
 
 function renderPresetStatus(message = "") {
   if (!elements.presetStatus) return;
-  elements.presetStatus.textContent = message || "Load a template or saved company profile.";
+  elements.presetStatus.textContent = message || "Select a profile to load it.";
 }
 
 function profilePackPayloadForSave() {
@@ -2361,15 +2356,10 @@ function renderPresetOptions() {
   const savedOptions = savedPresets
     .map((preset) => `<option value="${escapeHtml(companyProfileOptionValue(preset.id))}">${escapeHtml(preset.name)}</option>`)
     .join("");
-  const actionOptions = [
-    canManageProfiles() ? `<option value="${escapeHtml(ADD_PROFILE_PRESET_VALUE)}">Add New Profile</option>` : "",
-    `<option value="${escapeHtml(EXPORT_PROFILE_PRESET_VALUE)}">Export Current Profile</option>`,
-  ].join("");
   elements.presetSelect.innerHTML = [
     defaultOption,
     builtInOptions ? `<optgroup label="Profile Templates">${builtInOptions}</optgroup>` : "",
     savedOptions ? `<optgroup label="Saved Profiles">${savedOptions}</optgroup>` : "",
-    actionOptions ? `<optgroup label="Profile Actions">${actionOptions}</optgroup>` : "",
   ].join("");
   const availableValues = availablePresetValues();
   state.selectedPresetValue = availableValues.has(selectedValue) ? selectedValue : defaultPresetOptionValue();
@@ -2382,7 +2372,7 @@ function canManageProfiles() {
 }
 
 function profileNoAccessReason() {
-  return "You do not have access to save or delete company profiles.";
+  return "You do not have access to save, import, or delete company profiles.";
 }
 
 function updatePresetSourceBadge(preset = selectedPreset()) {
@@ -2405,11 +2395,6 @@ function updatePresetButtons() {
   const busy = Boolean(state.profileSaveBusy || state.profileDeleteBusy || appIsBusy());
   const canManage = canManageProfiles();
   updatePresetSourceBadge(preset);
-  if (elements.loadPresetButton) {
-    elements.loadPresetButton.disabled = !preset || busy;
-    elements.loadPresetButton.title = preset ? "" : "Choose a preset to load.";
-    elements.loadPresetButton.setAttribute("aria-disabled", String(elements.loadPresetButton.disabled));
-  }
   if (elements.deletePresetButton) {
     const hasPreset = Boolean(preset);
     const canOpenDeletePrompt = canManage && hasPreset;
@@ -2451,68 +2436,22 @@ function updatePresetButtons() {
     elements.presetNameInput.setAttribute("aria-disabled", String(elements.presetNameInput.disabled));
   }
   if (elements.importPresetButton) {
-    elements.importPresetButton.disabled = busy;
+    elements.importPresetButton.disabled = !canManage || busy;
+    elements.importPresetButton.title = !canManage ? profileNoAccessReason() : "";
     elements.importPresetButton.setAttribute("aria-disabled", String(elements.importPresetButton.disabled));
   }
-}
-
-function hideProfileSaveModal(options = {}) {
-  if (state.profileSaveBusy && !options.force) return;
-  if (elements.profileSaveModal) {
-    elements.profileSaveModal.classList.remove("is-open");
-    elements.profileSaveModal.hidden = true;
+  if (elements.exportPresetButton) {
+    elements.exportPresetButton.disabled = busy;
+    elements.exportPresetButton.setAttribute("aria-disabled", String(elements.exportPresetButton.disabled));
   }
-}
-
-function openProfileSaveModal(options = {}) {
-  if (!canManageProfiles()) {
-    renderPresetStatus(profileNoAccessReason());
-    updatePresetButtons();
-    return;
-  }
-  if (options.resetName !== false && elements.presetNameInput) {
-    elements.presetNameInput.value = "";
-  }
-  if (elements.profileSaveModal) {
-    elements.profileSaveModal.hidden = false;
-    elements.profileSaveModal.classList.add("is-open");
-  }
-  updatePresetButtons();
-  window.setTimeout(() => elements.presetNameInput?.focus(), 0);
 }
 
 function handlePresetSelectChange() {
   const value = elements.presetSelect.value || "";
-  if (value === ADD_PROFILE_PRESET_VALUE) {
-    const availableValues = availablePresetValues();
-    const previousValue = availableValues.has(state.selectedPresetValue)
-      ? state.selectedPresetValue
-      : defaultPresetOptionValue();
-    state.selectedPresetValue = previousValue;
-    elements.presetSelect.value = previousValue;
-    openProfileSaveModal();
-    syncControlStates();
-    return;
-  }
-  if (value === EXPORT_PROFILE_PRESET_VALUE) {
-    const availableValues = availablePresetValues();
-    const previousValue = availableValues.has(state.selectedPresetValue)
-      ? state.selectedPresetValue
-      : defaultPresetOptionValue();
-    state.selectedPresetValue = previousValue;
-    elements.presetSelect.value = previousValue;
-    hideProfileSaveModal({ force: true });
-    exportCurrentPreset();
-    updatePresetButtons();
-    syncControlStates();
-    return;
-  }
   state.selectedPresetValue = value;
   clearPendingProfilePack();
   persistLastProfilePresetSelection(state.selectedPresetValue);
-  updatePresetButtons();
-  renderPresetStatus();
-  syncControlStates();
+  loadSelectedPreset();
 }
 
 async function saveCurrentPreset() {
@@ -2559,7 +2498,6 @@ async function saveCurrentPreset() {
     clearPendingProfilePack();
     renderPresetOptions();
     renderPresetStatus(`Saved "${saved.label || label}".`);
-    hideProfileSaveModal({ force: true });
   } catch (error) {
     renderPresetStatus(genericFailureMessages(error).join(" "));
   } finally {
@@ -3029,7 +2967,6 @@ async function handlePresetImportFileChange() {
     clearPendingProfilePack();
     renderPresetOptions();
     renderPresetStatus(`Imported and saved "${saved.label || imported.label}".${layoutCopy}`);
-    hideProfileSaveModal({ force: true });
   } catch (error) {
     renderPresetStatus(error?.message || "Could not import that company profile JSON.");
   } finally {
@@ -3042,7 +2979,11 @@ async function handlePresetImportFileChange() {
 
 function requestPresetImport(event) {
   event?.preventDefault();
-  if (state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) return;
+  if (!canManageProfiles() || state.profileSaveBusy || state.profileDeleteBusy || appIsBusy()) {
+    renderPresetStatus(profileNoAccessReason());
+    updatePresetButtons();
+    return;
+  }
   elements.importPresetFile?.click();
 }
 
@@ -8668,8 +8609,6 @@ function wireEvents() {
         closeBasisChatOverlay();
       } else if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) {
         hideOutputDeleteModal();
-      } else if (elements.profileSaveModal && !elements.profileSaveModal.hidden) {
-        hideProfileSaveModal();
       } else if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
         hideProfileDeleteModal();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
@@ -8798,14 +8737,7 @@ function wireEvents() {
   elements.presetSelect.addEventListener("change", handlePresetSelectChange);
   elements.presetNameInput?.addEventListener("input", updatePresetButtons);
   elements.savePresetButton.addEventListener("click", saveCurrentPreset);
-  elements.loadPresetButton.addEventListener("click", loadSelectedPreset);
   elements.deletePresetButton.addEventListener("click", requestSelectedPresetDelete);
-  elements.cancelProfileSaveButton?.addEventListener("click", hideProfileSaveModal);
-  elements.profileSaveModal?.addEventListener("click", (event) => {
-    if (event.target.closest("[data-profile-save-close]")) {
-      hideProfileSaveModal();
-    }
-  });
   elements.cancelProfileDeleteButton?.addEventListener("click", hideProfileDeleteModal);
   elements.confirmProfileDeleteButton?.addEventListener("click", deleteSelectedPreset);
   elements.profileDeleteModal?.addEventListener("click", (event) => {
@@ -8822,6 +8754,7 @@ function wireEvents() {
   });
   elements.importPresetButton?.addEventListener("click", requestPresetImport);
   elements.importPresetFile?.addEventListener("change", handlePresetImportFileChange);
+  elements.exportPresetButton?.addEventListener("click", exportCurrentPreset);
   elements.clearCustomerButton.addEventListener("click", clearCustomerDetails);
   elements.clearQuoteCompanyButton.addEventListener("click", clearQuoteCompanyDetails);
   [
