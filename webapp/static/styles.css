@@ -1934,22 +1934,22 @@ select:focus {
   justify-content: flex-end;
   gap: 0;
   flex-wrap: wrap;
-  min-height: 40px;
-  padding: 0 13px;
+  min-height: 30px;
+  padding: 0 8px;
   border: 1px solid #dde7f2;
-  border-radius: var(--radius-md);
+  border-radius: 7px;
   background: #ffffff;
-  box-shadow: 0 4px 12px rgba(15, 35, 58, 0.05);
+  box-shadow: 0 2px 7px rgba(15, 35, 58, 0.04);
 }
 
 .pricing-reference-source-name {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 18px;
   color: #10223b;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 850;
-  line-height: 1.2;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -1963,8 +1963,8 @@ select:focus {
 .pricing-reference-divider {
   display: inline-block;
   width: 1px;
-  height: 22px;
-  margin: 0 13px;
+  height: 16px;
+  margin: 0 8px;
   background: #e2e9f2;
   flex: 0 0 auto;
 }
@@ -1973,18 +1973,18 @@ select:focus {
 .pricing-reference-line-count {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 24px;
+  gap: 4px;
+  min-height: 18px;
   color: #49617d;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 780;
-  line-height: 1.2;
+  line-height: 1;
   white-space: nowrap;
 }
 
 .pricing-reference-meta-icon {
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   fill: none;
   stroke: #53729a;
   stroke-linecap: round;
@@ -1993,18 +1993,18 @@ select:focus {
 }
 
 .pricing-reference-line-count {
-  align-items: baseline;
-  gap: 5px;
+  align-items: center;
+  gap: 4px;
   color: #60748d;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
 }
 
 .pricing-reference-line-count strong {
   color: #2563eb;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 850;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 
