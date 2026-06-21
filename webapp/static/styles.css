@@ -1921,7 +1921,8 @@ select:focus {
 
 .quote-basis-source {
   display: grid;
-  gap: 3px;
+  justify-items: end;
+  gap: 6px;
   min-width: 190px;
   color: #536577;
   text-align: right;
@@ -1932,17 +1933,44 @@ select:focus {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
+  padding: 3px;
+  border: 1px solid #dbe6f1;
+  border-radius: var(--radius-pill);
+  background: #f8fbff;
+}
+
+.pricing-reference-source-name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: #ffffff;
+  color: #10223b;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .pricing-reference-context-pills {
   justify-content: flex-end;
+  gap: 4px;
 }
 
-.quote-basis-source strong {
-  color: #10223b;
-  font-size: 15px;
+.pricing-reference-context-pills .pricing-reference-pill {
+  width: auto;
+  min-width: 58px;
+  min-height: 24px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+.quote-basis-source > strong {
+  color: #536577;
+  font-size: 13px;
+  font-weight: 720;
 }
 
 

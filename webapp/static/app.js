@@ -6488,11 +6488,11 @@ function updateOutputHeader(rows = state.outputRows) {
     elements.outputStatusPill.className = `output-status-pill ${status.className}`;
   }
   if (elements.outputSourceLabel) {
-    elements.outputSourceLabel.textContent = `Source: ${outputPricingSourceLabel()}`;
+    elements.outputSourceLabel.textContent = outputPricingSourceLabel();
   }
   syncPricingReferenceContextPills();
   if (elements.outputTotalLines) {
-    elements.outputTotalLines.textContent = `Total approved lines: ${safeRows.length}`;
+    elements.outputTotalLines.textContent = `${safeRows.length} approved line${safeRows.length === 1 ? "" : "s"}`;
   }
 }
 
@@ -6985,6 +6985,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
       </div>
     `
     : "";
+  const reviewLineCount = basisTotalLineCount(reviewSections);
   return `
     <div class="assistant-card quote-basis-card ${aiFailed ? "quote-basis-card-failed" : ""}">
       <div class="quote-basis-header">
@@ -6998,10 +6999,10 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         </div>
         <div class="quote-basis-source">
           <span class="pricing-reference-source-line">
-            <span>${aiFailed ? "Source: Local fallback only" : `Source: ${escapeHtml(outputPricingSourceLabel())}`}</span>
+            <strong class="pricing-reference-source-name">${aiFailed ? "Local fallback only" : escapeHtml(outputPricingSourceLabel())}</strong>
             ${aiFailed ? "" : pricingReferenceContextPillsHtml()}
           </span>
-          <strong>${escapeHtml(basisTotalLineLabel(basisTotalLineCount(reviewSections)))}</strong>
+          <strong>${escapeHtml(`${reviewLineCount} review line${reviewLineCount === 1 ? "" : "s"}`)}</strong>
         </div>
       </div>
       ${renderAnalysisFindings()}
