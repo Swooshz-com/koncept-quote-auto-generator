@@ -7678,6 +7678,16 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "profileNameError",
             "cancelProfileNameButton",
             "confirmProfileNameButton",
+            "profileLoadModal",
+            "profileLoadTitle",
+            "profileLoadText",
+            "cancelProfileLoadButton",
+            "confirmProfileLoadButton",
+            "profileOverwriteModal",
+            "profileOverwriteTitle",
+            "profileOverwriteText",
+            "cancelProfileOverwriteButton",
+            "confirmProfileOverwriteButton",
             "outputDeleteModal",
             "outputDeleteTitle",
             "outputDeleteText",
@@ -7744,7 +7754,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(f"{forbidden_source_term} context", html)
         self.assertNotIn(f"({forbidden_source_term})", js)
         self.assertIn("Profile template", html)
-        self.assertIn("Select a profile, then choose Load.", html)
+        self.assertIn("Currently active: Default", html)
         self.assertNotIn("ADD_PROFILE_PRESET_VALUE", js)
         self.assertNotIn("EXPORT_PROFILE_PRESET_VALUE", js)
         self.assertNotIn("Add New Profile", html)
@@ -7784,10 +7794,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="taxLabel"', html)
         self.assertNotIn('id="taxRate"', html)
         self.assertIn("if (elements.taxLabel) elements.taxLabel.value", js)
-        self.assertIn('defaultPreset = builtInPresets.find((preset) => preset.id === "default")', js)
-        self.assertIn("defaultOption", js)
+        self.assertIn("selectableTemplateProfilePresets", js)
         self.assertIn('.filter((preset) => preset.id !== "default")', js)
-        self.assertLess(js.index("defaultOption,"), js.index('`<optgroup label="Profile Templates">'))
+        self.assertNotIn("defaultOption", js)
         self.assertIn('`<optgroup label="Saved Profiles">', js)
         self.assertNotIn("Profile Pricing References", js)
         self.assertNotIn("Company Pricing References", js)
@@ -7810,15 +7819,17 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("<h3>Select Profile</h3>", html)
         self.assertNotIn("<h4>Select Profile</h4>", html)
         self.assertNotIn("Save &amp; Manage Data", html)
-        self.assertNotIn("More Actions", html)
+        self.assertIn("More Actions", html)
         self.assertIn('class="company-preset-control-group company-preset-card company-preset-profile-card"', html)
         self.assertNotIn('class="company-preset-control-group company-preset-card company-preset-save-card"', html)
         self.assertNotIn("company-preset-load-button", html)
         self.assertIn('id="loadPresetButton"', html)
         self.assertIn("loadPresetButton", js)
         self.assertIn('id="deletePresetButton"', html)
-        self.assertIn('class="company-preset-select-actions"', html)
-        self.assertIn(".company-preset-select-actions", css)
+        self.assertIn('id="profileActionsMenuButton"', html)
+        self.assertIn('id="presetActionsMenu"', html)
+        self.assertIn("toggleProfileActionsMenu", js)
+        self.assertIn("handleProfileActionsMenuKeydown", js)
         self.assertIn('id="profileDeleteModal"', html)
         self.assertIn("Delete saved profile?", html)
         self.assertIn("requestSelectedPresetDelete", js)
@@ -7846,11 +7857,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="presetNameInput" type="text" placeholder="Database save pending" disabled', html)
         self.assertNotIn('id="savePresetButton" disabled', html)
         self.assertIn("<span>Save New</span>", html)
-        self.assertIn("<span>Import</span>", html)
+        self.assertIn("<span>Import Profile</span>", html)
         self.assertNotIn("<span>Import Other</span>", html)
-        self.assertIn("<span>Export</span>", html)
+        self.assertIn("<span>Export Profile</span>", html)
         self.assertIn("<span>Load</span>", html)
-        self.assertIn("<span>Delete</span>", html)
+        self.assertIn("<span>Delete Profile</span>", html)
         self.assertNotIn("<span>Export Current</span>", html)
         self.assertNotIn("<span>Delete Current</span>", html)
         self.assertNotIn('`<optgroup label="Profile Actions">', js)
@@ -7927,7 +7938,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".pricing-reference-panel", css)
         self.assertIn(".pricing-reference-source-badge", css)
         self.assertIn(".pricing-reference-heading", css)
-        self.assertIn(".pricing-reference-heading,\n.company-preset-heading {\n  display: flex;", css)
+        self.assertIn(".pricing-reference-heading {\n  display: flex;", css)
+        self.assertIn(".company-preset-heading {\n  display: flex;", css)
         self.assertIn("flex-direction: column;\n  flex-wrap: wrap;\n  align-items: flex-start;", css)
         self.assertIn("gap: 8px;\n  width: 100%;", css)
         self.assertNotIn("margin-left: auto;\n  min-height: 24px;", css)
@@ -8138,7 +8150,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".settings-status-section", css)
         self.assertNotIn(".settings-status-grid", css)
 
-        self.assertIn('id="presetStatus">Select a profile, then choose Load.</p>', html)
+        self.assertIn('id="presetStatus">Currently active: Default</p>', html)
         self.assertNotIn('id="presetFlowStatus"', html)
         self.assertNotIn("profile-management-section", html)
         self.assertNotIn("profile-management-controls", html)
@@ -8163,8 +8175,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('id="savePresetButton"', quote_company_panel)
         self.assertIn('id="loadPresetButton"', quote_company_panel)
         self.assertIn('id="deletePresetButton"', quote_company_panel)
-        self.assertLess(quote_company_panel.index('id="presetSelect"'), quote_company_panel.index('id="deletePresetButton"'))
-        self.assertLess(quote_company_panel.index('id="deletePresetButton"'), quote_company_panel.index('id="loadPresetButton"'))
+        self.assertIn('id="profileActionsMenuButton"', quote_company_panel)
+        self.assertIn('id="presetActionsMenu"', quote_company_panel)
+        self.assertLess(quote_company_panel.index('id="presetSelect"'), quote_company_panel.index('id="loadPresetButton"'))
+        self.assertLess(quote_company_panel.index('id="loadPresetButton"'), quote_company_panel.index('id="savePresetButton"'))
+        self.assertLess(quote_company_panel.index('id="savePresetButton"'), quote_company_panel.index('id="profileActionsMenuButton"'))
+        self.assertLess(quote_company_panel.index('id="profileActionsMenuButton"'), quote_company_panel.index('id="deletePresetButton"'))
         self.assertNotIn('id="profileSaveModal"', html)
         for management_id in (
             "importPresetFile",
@@ -9160,7 +9176,7 @@ const state = {
   }],
   companyProfiles: [{ id: "saved-profile", label: "Saved Profile", defaults: { company: { name: "Saved" } } }],
 };
-const elements = { presetSelect: { value: "", innerHTML: "" } };
+const elements = { presetSelect: { value: "", innerHTML: "", disabled: false, title: "", setAttribute(name, value) { this[name] = value; } } };
 function escapeHtml(value = "") { return String(value); }
 function updatePresetButtons() {}
 
@@ -9173,6 +9189,7 @@ eval([
   "companyProfileOptionValue",
   "currentProfile",
   "templateProfilePresets",
+  "selectableTemplateProfilePresets",
   "normalizeCompanyProfile",
   "companyProfilePresets",
   "defaultProfilePresetId",
@@ -9186,13 +9203,14 @@ eval([
 renderPresetOptions();
 assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
 assert.strictEqual(elements.presetSelect.value, "company:saved-profile");
+assert.ok(!elements.presetSelect.innerHTML.includes("Default Profile"));
 
 savedSelection = JSON.stringify({ presetValue: "company:missing-profile" });
 state.selectedPresetValue = "";
 elements.presetSelect.value = "";
 renderPresetOptions();
-assert.strictEqual(state.selectedPresetValue, "profile:default");
-assert.strictEqual(elements.presetSelect.value, "profile:default");
+assert.strictEqual(state.selectedPresetValue, "");
+assert.strictEqual(elements.presetSelect.value, "");
 
 savedSelection = JSON.stringify({ presetValue: "profile:trade-show" });
 state.selectedPresetValue = "";
@@ -9243,9 +9261,23 @@ function extractFunction(name) {
 const state = {
   selectedPresetValue: "profile:default",
   pendingProfilePack: { quotation_layout: true },
+  profileLoadConfirmValue: "",
 };
 const elements = {
   presetSelect: { value: "company:saved-profile" },
+  profileLoadModal: {
+    hidden: true,
+    classList: {
+      values: new Set(),
+      add(value) { this.values.add(value); },
+      remove(value) { this.values.delete(value); },
+      contains(value) { return this.values.has(value); },
+    },
+  },
+  profileLoadTitle: { textContent: "" },
+  profileLoadText: { textContent: "" },
+  cancelProfileLoadButton: { focused: false, disabled: false, focus() { this.focused = true; }, setAttribute(name, value) { this[name] = value; } },
+  confirmProfileLoadButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
 };
 const persisted = [];
 const statuses = [];
@@ -9253,19 +9285,28 @@ let cleared = false;
 let loaded = 0;
 let buttonUpdates = 0;
 let prevented = false;
+const window = { setTimeout(callback) { callback(); } };
 function clearPendingProfilePack() {
   cleared = true;
   state.pendingProfilePack = null;
 }
+function appIsBusy() { return false; }
+function safeProfileLabel(value = "", fallback = "Company Profile") { return String(value || fallback).trim(); }
 function persistLastProfilePresetSelection(value) { persisted.push(value); }
 function loadSelectedPreset() { loaded += 1; }
-function selectedPreset() { return { name: state.selectedPresetValue === "company:saved-profile" ? "Saved Profile" : "Default" }; }
+function presetOptionValue(preset) { return preset?.value || ""; }
+function selectedPreset() { return state.selectedPresetValue === "company:saved-profile" ? { name: "Saved Profile", value: "company:saved-profile" } : { name: "Default", value: "profile:default" }; }
 function updatePresetSourceBadge() {}
 function updatePresetButtons() { buttonUpdates += 1; }
 function renderPresetStatus(message = "") { statuses.push(message); }
 
 eval([
   extractFunction("handlePresetSelectChange"),
+  extractFunction("selectedPresetNameForLoad"),
+  extractFunction("hideProfileLoadModal"),
+  extractFunction("renderProfileLoadModal"),
+  extractFunction("requestSelectedPresetLoad"),
+  extractFunction("confirmSelectedPresetLoad"),
   extractFunction("loadCurrentPreset"),
 ].join("\n"));
 handlePresetSelectChange();
@@ -9273,14 +9314,22 @@ handlePresetSelectChange();
 assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
 assert.strictEqual(state.pendingProfilePack, null);
 assert.strictEqual(cleared, true);
-assert.deepStrictEqual(persisted, ["company:saved-profile"]);
+assert.deepStrictEqual(persisted, []);
 assert.strictEqual(loaded, 0);
 assert.strictEqual(statuses.at(-1), 'Selected "Saved Profile". Click Load to apply it.');
 assert.ok(buttonUpdates >= 1);
 
 loadCurrentPreset({ preventDefault() { prevented = true; } });
 assert.strictEqual(prevented, true);
+assert.strictEqual(loaded, 0);
+assert.strictEqual(state.profileLoadConfirmValue, "company:saved-profile");
+assert.strictEqual(elements.profileLoadModal.hidden, false);
+assert.strictEqual(elements.profileLoadModal.classList.contains("is-open"), true);
+assert.strictEqual(elements.profileLoadTitle.textContent, 'Load "Saved Profile"?');
+assert.strictEqual(elements.cancelProfileLoadButton.focused, true);
+confirmSelectedPresetLoad({ preventDefault() {} });
 assert.strictEqual(loaded, 1);
+assert.strictEqual(elements.profileLoadModal.hidden, true);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -9297,16 +9346,25 @@ assert.strictEqual(loaded, 1);
         self.assertNotIn("Add New Profile", js)
         self.assertNotIn("Export Current Profile", js)
         self.assertIn('id="loadPresetButton"', html)
+        self.assertIn('id="profileLoadModal"', html)
+        self.assertIn('id="profileOverwriteModal"', html)
+        self.assertIn("Load selected profile?", html)
+        self.assertIn("Overwrite saved profile?", html)
+        self.assertIn("requestSelectedPresetLoad", js)
+        self.assertIn("confirmSelectedPresetLoad", js)
+        self.assertIn("requestProfileOverwriteConfirmation", js)
+        self.assertIn("confirmProfileOverwriteSave", js)
         self.assertNotIn('id="profileSaveModal"', html)
         self.assertNotIn('id="presetSelect"', customer_panel)
         self.assertIn('id="presetSelect"', quote_company_panel)
         self.assertNotIn('id="presetNameInput"', quote_company_panel)
         self.assertIn('id="deletePresetButton"', quote_company_panel)
-        self.assertLess(quote_company_panel.index('id="presetSelect"'), quote_company_panel.index('id="deletePresetButton"'))
-        self.assertLess(quote_company_panel.index('id="deletePresetButton"'), quote_company_panel.index('id="loadPresetButton"'))
-        self.assertLess(quote_company_panel.index('id="loadPresetButton"'), quote_company_panel.index('id="exportPresetButton"'))
+        self.assertLess(quote_company_panel.index('id="presetSelect"'), quote_company_panel.index('id="loadPresetButton"'))
+        self.assertLess(quote_company_panel.index('id="loadPresetButton"'), quote_company_panel.index('id="savePresetButton"'))
+        self.assertLess(quote_company_panel.index('id="savePresetButton"'), quote_company_panel.index('id="profileActionsMenuButton"'))
+        self.assertLess(quote_company_panel.index('id="profileActionsMenuButton"'), quote_company_panel.index('id="exportPresetButton"'))
         self.assertLess(quote_company_panel.index('id="exportPresetButton"'), quote_company_panel.index('id="importPresetButton"'))
-        self.assertLess(quote_company_panel.index('id="importPresetButton"'), quote_company_panel.index('id="savePresetButton"'))
+        self.assertLess(quote_company_panel.index('id="importPresetButton"'), quote_company_panel.index('id="deletePresetButton"'))
         self.assertNotIn("PROFILE_PRESET_ACTION_LOAD", js)
         self.assertNotIn("PROFILE_PRESET_ACTION_DELETE", js)
         self.assertIn('id="profileNameInput"', html)
@@ -9342,6 +9400,8 @@ const elements = { presetSelect: { value: "" } };
 const loaded = [];
 function lastSelectedPresetValue() { return "company:saved-profile"; }
 function defaultPresetOptionValue() { return "profile:default"; }
+function availablePresetValues() { return new Set(["company:saved-profile"]); }
+function updatePresetButtons() {}
 function loadSelectedPreset(options = {}) { loaded.push({ value: state.selectedPresetValue, options }); }
 
 eval(extractFunction("loadDefaultProfilePreset"));
@@ -9354,8 +9414,8 @@ assert.strictEqual(loaded[0].value, "company:saved-profile");
 state.selectedPresetValue = "";
 elements.presetSelect.value = "";
 loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
-assert.strictEqual(state.selectedPresetValue, "profile:default");
-assert.strictEqual(elements.presetSelect.value, "profile:default");
+assert.strictEqual(state.selectedPresetValue, "");
+assert.strictEqual(elements.presetSelect.value, "");
 assert.strictEqual(loaded[1].value, "profile:default");
 """
         completed = subprocess.run(
@@ -9699,7 +9759,7 @@ assert.strictEqual(elements.deletePresetButton.dataset.profileDeleteReadonly, un
 requestSelectedPresetDelete();
 assert.strictEqual(elements.profileDeleteModal.hidden, false);
 assert.strictEqual(elements.profileDeleteTitle.textContent, 'Delete "Saved Profile"?');
-assert.strictEqual(elements.profileDeleteText.textContent, "This removes the saved company profile from this local app. Quote details already filled from it are not changed.");
+assert.strictEqual(elements.profileDeleteText.textContent, "This removes the saved company profile. Quote details already filled from it are not changed.");
 assert.strictEqual(elements.confirmProfileDeleteButton.hidden, false);
 assert.strictEqual(elements.confirmProfileDeleteButton.textContent, "Delete");
 assert.strictEqual(elements.cancelProfileDeleteButton.textContent, "Cancel");
@@ -9843,10 +9903,13 @@ eval([
   "importedProfilePackPayload",
   "clearPendingProfilePack",
   "profileNameFallbackLabel",
+  "hideProfileOverwriteModal",
   "hideProfileNameModal",
   "renderProfileNameModal",
   "openProfileNameModal",
   "profilePayloadForLabel",
+  "existingCompanyProfileForLabel",
+  "applySavedCompanyProfileProfile",
   "saveNamedCompanyProfile",
   "confirmProfileNameSave",
   "normalizeImportedCompanyProfile",
@@ -9865,11 +9928,11 @@ eval([
   assert.strictEqual(elements.profileNameInput.focused, true);
   assert.strictEqual(elements.profileNameInput.selected, true);
   assert.strictEqual(elements.importPresetFile.value, "");
-  assert.deepStrictEqual(appliedDefaults.quote_text.payment_terms, ["Imported terms."]);
-  assert.strictEqual(clearedGeneratedState, true);
-  assert.strictEqual(workflowStage, "needs_images");
+  assert.strictEqual(appliedDefaults, null);
+  assert.strictEqual(clearedGeneratedState, false);
+  assert.strictEqual(workflowStage, "");
   assert.strictEqual(state.pendingProfilePack.quotation_layout.filename, "quotation-layout.xlsx");
-  assert.ok(statuses.some((message) => message.includes('Imported "Imported Layout" into the form.')));
+  assert.ok(statuses.some((message) => message.includes('Ready to import "Imported Layout". Save it as a profile to overwrite the current profile settings defaults.')));
 
   await confirmProfileNameSave();
 
@@ -9879,6 +9942,9 @@ eval([
   assert.strictEqual(posted[0].payload.label, "Imported Layout");
   assert.strictEqual(posted[0].payload.defaults.company.name, "Imported Layout Co");
   assert.strictEqual(posted[0].payload.pack.quotation_layout.filename, "quotation-layout.xlsx");
+  assert.deepStrictEqual(appliedDefaults.quote_text.payment_terms, ["Imported terms."]);
+  assert.strictEqual(clearedGeneratedState, true);
+  assert.strictEqual(workflowStage, "needs_images");
   assert.strictEqual(state.companyProfiles.length, 1);
   assert.strictEqual(state.companyProfiles[0].id, "imported-layout");
   assert.strictEqual(state.selectedPresetValue, "company:imported-layout");
@@ -9889,6 +9955,200 @@ eval([
   assert.ok(buttonUpdates >= 1);
   assert.ok(syncedControls >= 1);
   assert.ok(statuses.some((message) => message.includes('Imported and saved "Imported Layout".')));
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_profile_save_requires_overwrite_confirmation_for_existing_name(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const COMPANY_PROFILE_PRESET_PREFIX = "company:";
+const state = {
+  images: [],
+  profileSaveBusy: false,
+  profileDeleteBusy: false,
+  pendingProfilePack: null,
+  profileNameMode: "save",
+  profileNamePendingProfile: null,
+  profileNameError: "",
+  profileOverwriteConfirmLabel: "",
+  profileOverwriteConfirmOptions: null,
+  permissions: { canManageProfiles: true },
+  companyProfiles: [{ id: "legacy-profile-id", label: "Existing Profile", description: "Kept id", defaults: { company: { name: "Old" } } }],
+  selectedPresetValue: "",
+};
+const overwriteStrong = { textContent: "" };
+const overwriteDetail = { textContent: "" };
+const elements = {
+  profileNameModal: {
+    hidden: false,
+    classList: {
+      values: new Set(["is-open"]),
+      add(value) { this.values.add(value); },
+      remove(value) { this.values.delete(value); },
+      contains(value) { return this.values.has(value); },
+    },
+  },
+  profileNameInput: {
+    value: "Existing Profile",
+    disabled: false,
+    focused: false,
+    focus() { this.focused = true; },
+    setAttribute(name, value) { this[name] = value; },
+  },
+  profileNameEyebrow: { textContent: "" },
+  profileNameTitle: { textContent: "" },
+  profileNameText: { textContent: "" },
+  profileNameError: { hidden: true, textContent: "" },
+  cancelProfileNameButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  confirmProfileNameButton: { disabled: false, textContent: "", setAttribute(name, value) { this[name] = value; } },
+  profileOverwriteModal: {
+    hidden: true,
+    classList: {
+      values: new Set(),
+      add(value) { this.values.add(value); },
+      remove(value) { this.values.delete(value); },
+      contains(value) { return this.values.has(value); },
+    },
+  },
+  profileOverwriteTitle: { textContent: "" },
+  profileOverwriteText: {
+    textContent: "",
+    querySelector(selector) {
+      if (selector === "strong") return overwriteStrong;
+      if (selector === "span") return overwriteDetail;
+      return null;
+    },
+  },
+  cancelProfileOverwriteButton: {
+    disabled: false,
+    focused: false,
+    focus() { this.focused = true; },
+    setAttribute(name, value) { this[name] = value; },
+  },
+  confirmProfileOverwriteButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+};
+const posted = [];
+const statuses = [];
+let renderedOptions = 0;
+let persistedSelection = "";
+let buttonUpdates = 0;
+let syncedControls = 0;
+
+function neutralizeFormulaText(value = "") { return String(value || ""); }
+function collectQuoteCompanyProfileDetails() { return { company: { name: "Current Defaults" } }; }
+function renderPresetStatus(message = "") { statuses.push(message); }
+function updatePresetButtons() { buttonUpdates += 1; }
+function syncControlStates() { syncedControls += 1; }
+function renderPresetOptions() { renderedOptions += 1; }
+function persistLastProfilePresetSelection(value) { persistedSelection = value; }
+function appIsBusy() { return false; }
+function genericFailureMessages(value) { return value?.errors || ["Failed."]; }
+function applyQuoteDetails() { throw new Error("Import defaults should not apply for a normal save."); }
+function clearGeneratedQuoteState() {}
+function setWorkflowStage() {}
+const window = { setTimeout(callback) { callback(); } };
+async function postJson(url, payload) {
+  posted.push({ url, payload });
+  return { ok: true, data: { profile: { ...payload, saved_at: "2026-06-21T00:00:00Z" } } };
+}
+
+eval([
+  "safeId",
+  "safeProfileId",
+  "safeProfileLabel",
+  "companyProfileOptionValue",
+  "normalizeCompanyProfile",
+  "canManageProfiles",
+  "profilePackPayloadForSave",
+  "clearPendingProfilePack",
+  "hideProfileOverwriteModal",
+  "renderProfileOverwriteModal",
+  "requestProfileOverwriteConfirmation",
+  "confirmProfileOverwriteSave",
+  "hideProfileNameModal",
+  "renderProfileNameModal",
+  "profilePayloadForLabel",
+  "existingCompanyProfileForLabel",
+  "applySavedCompanyProfileProfile",
+  "saveNamedCompanyProfile",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  await saveNamedCompanyProfile("Existing Profile", { mode: "save" });
+
+  assert.strictEqual(posted.length, 0);
+  assert.strictEqual(elements.profileOverwriteModal.hidden, false);
+  assert.strictEqual(elements.profileOverwriteModal.classList.contains("is-open"), true);
+  assert.strictEqual(elements.profileOverwriteTitle.textContent, 'Overwrite "Existing Profile"?');
+  assert.strictEqual(overwriteStrong.textContent, 'A profile named "Existing Profile" already exists.');
+  assert.match(overwriteDetail.textContent, /saved profile settings will be replaced/i);
+  assert.strictEqual(state.profileOverwriteConfirmOptions.existingProfile.id, "legacy-profile-id");
+  assert.strictEqual(elements.cancelProfileOverwriteButton.focused, true);
+  assert.strictEqual(elements.profileNameModal.hidden, false);
+
+  hideProfileOverwriteModal({ focusInput: true });
+  assert.strictEqual(posted.length, 0);
+  assert.strictEqual(elements.profileOverwriteModal.hidden, true);
+  assert.strictEqual(elements.profileNameInput.focused, true);
+  assert.strictEqual(elements.profileNameModal.hidden, false);
+
+  await saveNamedCompanyProfile("Existing Profile", { mode: "save" });
+  await confirmProfileOverwriteSave({ preventDefault() {} });
+
+  assert.strictEqual(posted.length, 1);
+  assert.strictEqual(posted[0].url, "/api/settings/profiles");
+  assert.strictEqual(posted[0].payload.id, "legacy-profile-id");
+  assert.strictEqual(posted[0].payload.label, "Existing Profile");
+  assert.deepStrictEqual(posted[0].payload.defaults.company, { name: "Current Defaults" });
+  assert.strictEqual(state.companyProfiles.length, 1);
+  assert.strictEqual(state.companyProfiles[0].id, "legacy-profile-id");
+  assert.strictEqual(state.companyProfiles[0].defaults.company.name, "Current Defaults");
+  assert.strictEqual(state.selectedPresetValue, "company:legacy-profile-id");
+  assert.strictEqual(persistedSelection, "company:legacy-profile-id");
+  assert.strictEqual(elements.profileOverwriteModal.hidden, true);
+  assert.strictEqual(elements.profileNameModal.hidden, true);
+  assert.ok(renderedOptions >= 1);
+  assert.ok(buttonUpdates >= 1);
+  assert.ok(syncedControls >= 1);
+  assert.ok(statuses.some((message) => message.includes('Saved "Existing Profile".')));
 })().catch((error) => {
   console.error(error);
   process.exit(1);
@@ -11556,16 +11816,17 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".company-preset-panel .settings-note", css)
         self.assertIn(".pricing-reference-control-group", css)
         self.assertIn(".pricing-reference-card", css)
-        self.assertIn("grid-template-columns: minmax(0, 260px) minmax(0, 354px) minmax(0, 1fr);", css)
+        self.assertIn("grid-template-columns: minmax(0, 260px) minmax(0, 292px) minmax(0, 1fr);", css)
         self.assertIn(".pricing-reference-controls,\n.company-preset-controls {\n  display: contents;", css)
-        self.assertIn(".company-preset-panel {\n  box-sizing: border-box;\n  display: grid;\n  grid-template-columns: minmax(0, 260px) minmax(0, 540px) minmax(0, 1fr);", css)
+        self.assertIn(".company-preset-panel {\n  box-sizing: border-box;\n  display: grid;\n  grid-template-columns: minmax(0, 260px) minmax(0, 462px) minmax(0, 1fr);", css)
         self.assertIn(".company-preset-panel .company-preset-profile-card {\n  grid-column: 2;", css)
         self.assertIn(".pricing-reference-panel .pricing-reference-card,\n.company-preset-panel .company-preset-profile-card {\n  min-height: 156px;", css)
-        self.assertIn(".company-preset-card.company-preset-profile-card {\n  display: grid;\n  grid-template-columns: minmax(200px, 220px) minmax(230px, 260px);", css)
-        self.assertIn(".company-preset-profile-card .company-preset-fields {\n  max-width: 220px;", css)
+        self.assertIn(".company-preset-card.company-preset-profile-card {\n  display: grid;\n  grid-template-columns: minmax(0, 260px) minmax(150px, 158px);", css)
+        self.assertIn(".company-preset-profile-card .company-preset-fields {\n  align-self: center;\n  max-width: 260px;", css)
         self.assertNotIn(".company-preset-save-card {\n  grid-column: 3;", css)
-        self.assertIn(".company-preset-select-actions {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
-        self.assertIn(".company-preset-action-panel {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);", css)
+        self.assertNotIn(".company-preset-select-actions", css)
+        self.assertIn(".company-preset-action-panel {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  align-content: center;\n  gap: 7px;", css)
+        self.assertIn(".company-preset-profile-card .company-preset-action-panel button {\n  min-height: 36px;", css)
         self.assertNotIn(".company-preset-save-button {\n  grid-column: 1 / -1;", css)
         self.assertIn(".pricing-reference-panel .settings-note {\n  align-self: start;\n  padding-top: 0;", css)
         self.assertIn("padding: 12px 28px 80px;", css)
