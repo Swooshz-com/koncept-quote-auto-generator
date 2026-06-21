@@ -1075,8 +1075,9 @@ h3 {
 }
 
 .pricing-reference-panel {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(260px, 354px) minmax(260px, 354px);
+  grid-template-columns: minmax(0, 260px) minmax(0, 354px) minmax(0, 1fr);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
@@ -1085,12 +1086,13 @@ h3 {
 }
 
 .company-preset-panel {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(280px, 420px);
+  grid-template-columns: minmax(0, 260px) minmax(0, 540px) minmax(0, 1fr);
   gap: 16px 34px;
   align-items: stretch;
   margin: 17px 17px 18px;
-  padding: 10px 0 18px;
+  padding: 14px 0 16px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1160,14 +1162,11 @@ h3 {
 
 .pricing-reference-control-group {
   grid-column: 2;
+  grid-row: 1;
 }
 
 .company-preset-panel .company-preset-profile-card {
   grid-column: 2;
-}
-
-.pricing-reference-panel .company-preset-profile-card {
-  grid-column: 3;
 }
 
 .company-preset-fields {
@@ -1178,6 +1177,7 @@ h3 {
 
 .pricing-reference-card,
 .company-preset-card {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1190,11 +1190,21 @@ h3 {
   height: 100%;
 }
 
+.pricing-reference-panel .pricing-reference-card,
+.company-preset-panel .company-preset-profile-card {
+  min-height: 156px;
+}
+
 .company-preset-card.company-preset-profile-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(108px, 118px);
+  grid-template-columns: minmax(200px, 220px) minmax(230px, 260px);
+  align-items: center;
   gap: 12px;
-  align-items: stretch;
+  justify-content: start;
+}
+
+.company-preset-profile-card .company-preset-fields {
+  max-width: 220px;
 }
 
 .pricing-reference-card .compact-control,
@@ -1247,13 +1257,17 @@ h3 {
 
 .company-preset-action-panel {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  align-content: stretch;
+  align-content: center;
 }
 
 .company-preset-action-panel button {
   width: 100%;
+}
+
+.company-preset-save-button {
+  grid-column: 1 / -1;
 }
 
 .company-preset-panel .primary-button,
@@ -1261,9 +1275,10 @@ h3 {
 .company-preset-card .primary-button,
 .company-preset-card .secondary-button {
   gap: 3px;
-  min-height: 36px;
-  padding: 0 16px;
-  font-size: 13px;
+  min-height: 38px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 1.15;
 }
 
 .company-preset-panel button svg,
@@ -3964,6 +3979,27 @@ body.privacy-page {
   width: min(520px, calc(100vw - 48px));
 }
 
+.profile-name-panel {
+  width: min(540px, calc(100vw - 48px));
+}
+
+.profile-name-body {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px 10px;
+}
+
+.profile-name-body p {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.profile-name-body .compact-control input {
+  min-height: 44px;
+}
+
 .profile-delete-panel > p {
   padding: 18px 20px 10px;
   font-size: 15px;
@@ -3979,8 +4015,16 @@ body.privacy-page {
   padding: 8px 20px 20px;
 }
 
+.profile-name-panel > .profile-name-actions {
+  padding: 8px 20px 20px;
+}
+
 .profile-delete-actions button {
   min-width: 96px;
+}
+
+.profile-name-actions button {
+  min-width: 112px;
 }
 
 .analysis-confirm-panel > p {
@@ -4697,6 +4741,11 @@ body.privacy-page {
   }
 
   .pricing-reference-panel,
+  .company-preset-panel {
+    width: auto;
+  }
+
+  .pricing-reference-panel,
   .pricing-reference-controls,
   .pricing-reference-control-group,
   .company-preset-panel,
@@ -4707,9 +4756,15 @@ body.privacy-page {
   .pricing-reference-control-group,
   .company-preset-control-group {
     grid-column: auto;
+    grid-row: auto;
   }
 
-  .pricing-reference-panel .company-preset-profile-card {
+  .pricing-reference-copy,
+  .company-preset-copy {
+    grid-row: auto;
+  }
+
+  .company-preset-panel .company-preset-profile-card {
     grid-column: auto;
   }
 
@@ -4719,10 +4774,17 @@ body.privacy-page {
 
   .company-preset-card.company-preset-profile-card {
     grid-template-columns: 1fr;
+    gap: 10px;
+    min-height: auto;
+    padding: 12px;
   }
 
   .company-preset-action-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .company-preset-action-panel button {
+    min-height: 36px;
   }
 
   .modal-actions.pricing-reference-modal-actions,
