@@ -2389,6 +2389,28 @@ function profileActionsMenuIsOpen() {
   return Boolean(elements.presetActionsMenu && !elements.presetActionsMenu.hidden);
 }
 
+function buttonCanAcceptClick(button) {
+  return Boolean(button && !button.hidden && !button.disabled && button.getAttribute?.("aria-disabled") !== "true");
+}
+
+function focusActionButton(button) {
+  if (buttonCanAcceptClick(button)) button.focus();
+}
+
+function queueActionButtonFocus(button) {
+  window.setTimeout(() => focusActionButton(button), 0);
+}
+
+function profileActionsMenuItems() {
+  return [elements.exportPresetButton, elements.importPresetButton, elements.deletePresetButton]
+    .filter(buttonCanAcceptClick);
+}
+
+function focusFirstProfileActionsMenuItem() {
+  const [firstItem] = profileActionsMenuItems();
+  if (firstItem) firstItem.focus();
+}
+
 function closeProfileActionsMenu(options = {}) {
   if (elements.presetActionsMenu) elements.presetActionsMenu.hidden = true;
   if (elements.profileActionsMenuButton) {
@@ -2397,10 +2419,11 @@ function closeProfileActionsMenu(options = {}) {
   }
 }
 
-function openProfileActionsMenu() {
+function openProfileActionsMenu(options = {}) {
   if (!elements.profileActionsMenuButton || !elements.presetActionsMenu || elements.profileActionsMenuButton.disabled) return;
   elements.presetActionsMenu.hidden = false;
   elements.profileActionsMenuButton.setAttribute("aria-expanded", "true");
+  if (options.focusFirst) queueActionButtonFocus(profileActionsMenuItems()[0]);
 }
 
 function toggleProfileActionsMenu(event) {
@@ -2408,7 +2431,7 @@ function toggleProfileActionsMenu(event) {
   if (profileActionsMenuIsOpen()) {
     closeProfileActionsMenu();
   } else {
-    openProfileActionsMenu();
+    openProfileActionsMenu({ focusFirst: event?.detail === 0 });
   }
 }
 
@@ -2419,15 +2442,25 @@ function handleProfileActionsDocumentClick(event) {
 }
 
 function handleProfileActionsMenuKeydown(event) {
-  if (!profileActionsMenuIsOpen()) return;
+  const menuItems = profileActionsMenuItems();
+  if (!profileActionsMenuIsOpen()) {
+    if (event.target === elements.profileActionsMenuButton && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      openProfileActionsMenu({ focusFirst: true });
+    }
+    return;
+  }
   if (event.key === "Escape") {
     event.preventDefault();
     closeProfileActionsMenu({ focusButton: true });
     return;
   }
+  if (event.target === elements.profileActionsMenuButton && ["Enter", " "].includes(event.key)) {
+    event.preventDefault();
+    focusFirstProfileActionsMenuItem();
+    return;
+  }
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-  const menuItems = [elements.exportPresetButton, elements.importPresetButton, elements.deletePresetButton]
-    .filter((button) => button && !button.hidden && !button.disabled);
   if (!menuItems.length) return;
   event.preventDefault();
   const activeIndex = menuItems.indexOf(document.activeElement);
@@ -2757,7 +2790,7 @@ function requestProfileOverwriteConfirmation(label = "", options = {}) {
   state.profileOverwriteConfirmLabel = safeProfileLabel(label, "");
   state.profileOverwriteConfirmOptions = { ...options };
   renderProfileOverwriteModal();
-  window.setTimeout(() => elements.cancelProfileOverwriteButton?.focus(), 0);
+  queueActionButtonFocus(elements.confirmProfileOverwriteButton);
 }
 
 async function confirmProfileOverwriteSave(event) {
@@ -2910,7 +2943,7 @@ function requestSelectedPresetLoad(event) {
   }
   state.profileLoadConfirmValue = elements.presetSelect.value || presetOptionValue(preset);
   renderProfileLoadModal();
-  window.setTimeout(() => elements.cancelProfileLoadButton?.focus(), 0);
+  queueActionButtonFocus(elements.confirmProfileLoadButton);
 }
 
 function confirmSelectedPresetLoad(event) {
@@ -3165,7 +3198,7 @@ function requestSelectedPresetDelete() {
     state.profileDeleteReadOnlyName = preset?.name || preset?.id || "this profile template";
     state.profileDeleteError = "";
     renderProfileDeleteModal();
-    window.setTimeout(() => elements.cancelProfileDeleteButton?.focus(), 0);
+    queueActionButtonFocus(elements.cancelProfileDeleteButton);
     updatePresetButtons();
     return;
   }
@@ -3173,7 +3206,7 @@ function requestSelectedPresetDelete() {
   state.profileDeleteReadOnlyName = "";
   state.profileDeleteError = "";
   renderProfileDeleteModal();
-  window.setTimeout(() => elements.cancelProfileDeleteButton?.focus(), 0);
+  queueActionButtonFocus(elements.confirmProfileDeleteButton);
 }
 
 async function deleteSelectedPreset() {
@@ -3779,7 +3812,7 @@ function showPricingReferenceDeleteConfirm(reference) {
   state.pricingReferenceDeleteConfirmSource = reference.source || "local";
   state.pricingReferenceDeleteError = "";
   renderPricingReferenceDeleteConfirm();
-  window.setTimeout(() => elements.cancelPricingReferenceDeleteButton?.focus(), 0);
+  queueActionButtonFocus(elements.confirmPricingReferenceDeleteButton);
 }
 
 function openSettingsModal() {
@@ -6407,7 +6440,7 @@ function renderOutputDeleteModal() {
   }
   modal.hidden = false;
   modal.classList.add("is-open");
-  window.setTimeout(() => elements.confirmOutputDeleteButton?.focus(), 0);
+  queueActionButtonFocus(elements.confirmOutputDeleteButton);
 }
 
 function requestOutputRowDelete(index) {
@@ -8897,6 +8930,49 @@ function handleBeforeUnload(event) {
   return "";
 }
 
+function visiblePrimaryModalActionButton() {
+  if (elements.profileLoadModal && !elements.profileLoadModal.hidden) return elements.confirmProfileLoadButton;
+  if (elements.profileOverwriteModal && !elements.profileOverwriteModal.hidden) return elements.confirmProfileOverwriteButton;
+  if (elements.profileNameModal && !elements.profileNameModal.hidden) return elements.confirmProfileNameButton;
+  if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) return elements.confirmOutputDeleteButton;
+  if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
+    return buttonCanAcceptClick(elements.confirmProfileDeleteButton)
+      ? elements.confirmProfileDeleteButton
+      : elements.cancelProfileDeleteButton;
+  }
+  if (
+    elements.pricingReferenceModal
+    && !elements.pricingReferenceModal.hidden
+    && elements.pricingReferenceDeleteConfirm
+    && !elements.pricingReferenceDeleteConfirm.hidden
+  ) {
+    return elements.confirmPricingReferenceDeleteButton;
+  }
+  if (elements.analysisConfirmModal && !elements.analysisConfirmModal.hidden) return elements.analysisConfirmStartButton;
+  return null;
+}
+
+function handleModalEnterKey(event) {
+  if (
+    event.key !== "Enter"
+    || event.defaultPrevented
+    || event.shiftKey
+    || event.ctrlKey
+    || event.altKey
+    || event.metaKey
+    || event.isComposing
+  ) {
+    return false;
+  }
+  const actionButton = visiblePrimaryModalActionButton();
+  if (!buttonCanAcceptClick(actionButton)) return false;
+  const activeAction = document.activeElement?.closest?.("button, a");
+  if (activeAction && activeAction !== actionButton) return false;
+  event.preventDefault();
+  actionButton.click();
+  return true;
+}
+
 function wireEvents() {
   wireRichTextEditors();
   if (elements.pricingReferenceFile) {
@@ -9012,6 +9088,7 @@ function wireEvents() {
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (handleModalEnterKey(event)) return;
     if (event.key === "Escape") {
       if (profileActionsMenuIsOpen()) {
         closeProfileActionsMenu({ focusButton: true });

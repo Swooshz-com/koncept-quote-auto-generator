@@ -9277,7 +9277,7 @@ const elements = {
   profileLoadTitle: { textContent: "" },
   profileLoadText: { textContent: "" },
   cancelProfileLoadButton: { focused: false, disabled: false, focus() { this.focused = true; }, setAttribute(name, value) { this[name] = value; } },
-  confirmProfileLoadButton: { disabled: false, setAttribute(name, value) { this[name] = value; } },
+  confirmProfileLoadButton: { focused: false, disabled: false, focus() { this.focused = true; }, setAttribute(name, value) { this[name] = value; } },
 };
 const persisted = [];
 const statuses = [];
@@ -9301,6 +9301,9 @@ function updatePresetButtons() { buttonUpdates += 1; }
 function renderPresetStatus(message = "") { statuses.push(message); }
 
 eval([
+  extractFunction("buttonCanAcceptClick"),
+  extractFunction("focusActionButton"),
+  extractFunction("queueActionButtonFocus"),
   extractFunction("handlePresetSelectChange"),
   extractFunction("selectedPresetNameForLoad"),
   extractFunction("hideProfileLoadModal"),
@@ -9326,7 +9329,8 @@ assert.strictEqual(state.profileLoadConfirmValue, "company:saved-profile");
 assert.strictEqual(elements.profileLoadModal.hidden, false);
 assert.strictEqual(elements.profileLoadModal.classList.contains("is-open"), true);
 assert.strictEqual(elements.profileLoadTitle.textContent, 'Load "Saved Profile"?');
-assert.strictEqual(elements.cancelProfileLoadButton.focused, true);
+assert.strictEqual(elements.cancelProfileLoadButton.focused, false);
+assert.strictEqual(elements.confirmProfileLoadButton.focused, true);
 confirmSelectedPresetLoad({ preventDefault() {} });
 assert.strictEqual(loaded, 1);
 assert.strictEqual(elements.profileLoadModal.hidden, true);
@@ -9368,6 +9372,108 @@ assert.strictEqual(elements.profileLoadModal.hidden, true);
         self.assertNotIn("PROFILE_PRESET_ACTION_LOAD", js)
         self.assertNotIn("PROFILE_PRESET_ACTION_DELETE", js)
         self.assertIn('id="profileNameInput"', html)
+
+    def test_static_modal_enter_key_activates_visible_primary_action(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const clicks = [];
+function modal(hidden = true) { return { hidden }; }
+function button(name, options = {}) {
+  return {
+    hidden: Boolean(options.hidden),
+    disabled: Boolean(options.disabled),
+    click() { clicks.push(name); },
+    getAttribute() { return options.ariaDisabled ? "true" : "false"; },
+  };
+}
+
+const elements = {
+  profileLoadModal: modal(false),
+  confirmProfileLoadButton: button("load"),
+  profileOverwriteModal: modal(true),
+  confirmProfileOverwriteButton: button("overwrite"),
+  profileNameModal: modal(true),
+  confirmProfileNameButton: button("save"),
+  outputDeleteModal: modal(true),
+  confirmOutputDeleteButton: button("delete-output"),
+  profileDeleteModal: modal(true),
+  confirmProfileDeleteButton: button("delete-profile"),
+  cancelProfileDeleteButton: button("close-profile-delete"),
+  pricingReferenceModal: modal(true),
+  pricingReferenceDeleteConfirm: modal(true),
+  confirmPricingReferenceDeleteButton: button("delete-pricing-reference"),
+  analysisConfirmModal: modal(true),
+  analysisConfirmStartButton: button("start-analysis"),
+};
+const document = { activeElement: null };
+
+eval([
+  extractFunction("buttonCanAcceptClick"),
+  extractFunction("visiblePrimaryModalActionButton"),
+  extractFunction("handleModalEnterKey"),
+].join("\n"));
+
+let prevented = false;
+assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
+assert.strictEqual(prevented, true);
+assert.deepStrictEqual(clicks, ["load"]);
+
+elements.profileLoadModal.hidden = true;
+elements.profileOverwriteModal.hidden = false;
+prevented = false;
+assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
+assert.strictEqual(prevented, true);
+assert.deepStrictEqual(clicks, ["load", "overwrite"]);
+
+elements.profileOverwriteModal.hidden = true;
+elements.profileNameModal.hidden = false;
+assert.strictEqual(handleModalEnterKey({ key: "Enter", defaultPrevented: true, preventDefault() { throw new Error("should not run"); } }), false);
+assert.deepStrictEqual(clicks, ["load", "overwrite"]);
+
+elements.profileNameModal.hidden = true;
+elements.profileDeleteModal.hidden = false;
+elements.confirmProfileDeleteButton.hidden = true;
+assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
+assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete"]);
+
+elements.profileDeleteModal.hidden = true;
+elements.pricingReferenceModal.hidden = false;
+elements.pricingReferenceDeleteConfirm.hidden = false;
+assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
+assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete", "delete-pricing-reference"]);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_static_reset_quote_company_forces_default_profile_template(self):
         node = require_node(self)
