@@ -1417,28 +1417,49 @@ h3 {
 .rich-text-field {
   display: grid;
   gap: 6px;
+  position: relative;
 }
 
 .rich-text-toolbar {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 8;
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
   border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 31, 53, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+  visibility: hidden;
 }
 
 .date-format-control {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
+  gap: 6px;
   align-items: center;
 }
 
-.date-format-toolbar {
-  align-self: stretch;
-  align-items: center;
+.rich-text-field:focus-within .rich-text-toolbar,
+.date-format-control:focus-within .rich-text-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.date-format-control .rich-text-toolbar {
+  top: calc(100% + 6px);
+  right: 0;
+  bottom: auto;
 }
 
 .rich-text-tool {
@@ -1500,6 +1521,15 @@ h3 {
   border-color: #93b5dd;
   outline: none;
   box-shadow: var(--shadow-glow-blue);
+}
+
+.rich-text-field:focus-within .rich-text-editor {
+  padding-bottom: 48px;
+}
+
+.rich-text-field:has(.rich-text-editor.is-single-line):focus-within .rich-text-editor {
+  padding-right: 116px;
+  padding-bottom: 11px;
 }
 
 .rich-text-editor:empty::before {
