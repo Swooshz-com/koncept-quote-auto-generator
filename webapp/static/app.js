@@ -8758,8 +8758,16 @@ function dashboardSessionCanResume(session = {}) {
   );
 }
 
+function dashboardSessionHasCurrentDraft(session = {}) {
+  const sessionId = safeQuoteSessionId(session.session_id || "");
+  return Boolean(sessionId && sessionId === safeQuoteSessionId(state.quoteSessionId) && quoteDraftShouldPersistToDashboard());
+}
+
 function dashboardSessionCanModify(session = {}) {
-  return Boolean(safeQuoteSessionId(session.session_id || "") && session.has_draft_state === true);
+  return Boolean(
+    safeQuoteSessionId(session.session_id || "")
+    && (session.has_draft_state === true || dashboardSessionHasCurrentDraft(session))
+  );
 }
 
 async function loadQuoteSessionDetail(sessionId = "") {
@@ -8787,9 +8795,12 @@ async function modifyDashboardQuote(sessionId) {
   syncControlStates();
   try {
     const detailedSession = await loadQuoteSessionDetail(safeSessionId);
-    const draftState = detailedSession?.draft_state && typeof detailedSession.draft_state === "object"
+    let draftState = detailedSession?.draft_state && typeof detailedSession.draft_state === "object"
       ? detailedSession.draft_state
       : {};
+    if (!Object.keys(draftState).length && safeSessionId === safeQuoteSessionId(state.quoteSessionId) && quoteDraftShouldPersistToDashboard()) {
+      draftState = currentQuoteSessionDraftState();
+    }
     if (!Object.keys(draftState).length) {
       mergeDashboardQuoteSession({ ...(detailedSession || {}), session_id: safeSessionId, has_draft_state: false });
       dashboardRestoreError("This quote session does not have saved draft data to modify.");

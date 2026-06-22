@@ -7958,6 +7958,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             js,
         )
         self.assertIn("dashboardSessionCanModify", js)
+        self.assertIn("dashboardSessionHasCurrentDraft", js)
         self.assertIn("Modify quote", js)
         self.assertIn("Clear selection", js)
         self.assertIn("handleTopbarBrandClick", js)
@@ -7978,8 +7979,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('label: "Exported"', status_body)
         can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
         self.assertIn("session.has_draft_state === true", can_modify_body)
+        self.assertIn("dashboardSessionHasCurrentDraft(session)", can_modify_body)
         restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
         self.assertIn("detailedSession?.draft_state", restore_body)
+        self.assertIn("currentQuoteSessionDraftState()", restore_body)
         self.assertIn("This quote session does not have saved draft data to modify.", restore_body)
         self.assertIn("applyQuoteSessionSnapshot", js)
         self.assertNotIn("QUOTE_SESSION_RESTORE_NOTE", js)

@@ -107,6 +107,7 @@ async function expectTopbarPrimaryAction(page, expectedAction) {
 }
 
 async function dashboardPanelActionBottomGap(page, label) {
+  await page.locator("#dashboardSelectedSessionPanel").scrollIntoViewIfNeeded();
   const panelBox = await page.locator("#dashboardSelectedSessionPanel").boundingBox();
   const actionBox = await page.locator("#dashboardSelectedSessionPanel .dashboard-selected-actions").boundingBox();
   if (!panelBox || !actionBox) {
@@ -546,6 +547,8 @@ async function main() {
     await page.locator("#dashboardSearchInput").fill("");
     await createDashboardSmokeSession(page, "alpha", { sessionIdPrefix: "quote-7a-playwright-alpha" });
     await createDashboardSmokeSession(page, "beta", { sessionIdPrefix: "quote-2c-hidden-3" });
+    await createDashboardSmokeSession(page, "gamma", { sessionIdPrefix: "quote-bulk-extra-1" });
+    await createDashboardSmokeSession(page, "delta", { sessionIdPrefix: "quote-bulk-extra-2" });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Dashboard" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("7a");
@@ -632,6 +635,14 @@ async function main() {
     if (Math.abs(bulkPanelActionBottomGap - singlePanelActionBottomGap) > 8) {
       throw new Error(`Dashboard action footer moved between single and bulk states: ${singlePanelActionBottomGap}px -> ${bulkPanelActionBottomGap}px.`);
     }
+    await page.setViewportSize({ width: 520, height: 720 });
+    const mobileBulkPanelActionBottomGap = await dashboardPanelActionBottomGap(page, "mobile bulk selection");
+    if (mobileBulkPanelActionBottomGap < 8 || mobileBulkPanelActionBottomGap > 36) {
+      throw new Error(`Mobile bulk action footer is not bottom anchored: ${mobileBulkPanelActionBottomGap}px gap.`);
+    }
+    const dashboardSelectedMobileShot = await screenshot(page, "dashboard-selected-mobile.png");
+    await page.setViewportSize({ width: 1365, height: 768 });
+    await page.locator("#dashboardSelectedSessionPanel", { hasText: "Bulk selection" }).waitFor({ state: "visible", timeout: 15000 });
     const bulkExtraBlocks = await page.locator(".dashboard-bulk-breakdown, .dashboard-bulk-value-card").count();
     if (bulkExtraBlocks !== 0) {
       throw new Error("Bulk panel should not show status breakdown or combined value blocks.");
@@ -703,7 +714,16 @@ async function main() {
     console.log(JSON.stringify({
       status: "ok",
       url: page.url(),
-      screenshots: [dashboardShot, homeShot, customerPricingShot, customerShot, dashboardSingleSelectedShot, dashboardSelectedShot, dashboardDeleteModalShot].filter(Boolean),
+      screenshots: [
+        dashboardShot,
+        homeShot,
+        customerPricingShot,
+        customerShot,
+        dashboardSingleSelectedShot,
+        dashboardSelectedShot,
+        dashboardSelectedMobileShot,
+        dashboardDeleteModalShot,
+      ].filter(Boolean),
       consoleProblems,
       networkProblems,
     }, null, 2));
