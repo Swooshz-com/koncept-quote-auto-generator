@@ -1955,7 +1955,7 @@ h3 {
 }
 
 .dashboard-session-total {
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .dashboard-session-meta {
@@ -2779,7 +2779,7 @@ h3 {
 
 .dashboard-session-total strong {
   color: var(--ink);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 900;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
