@@ -9116,19 +9116,15 @@ function renderDashboardSinglePanel(activeSession = {}) {
         <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
       </dl>
       <div class="dashboard-selected-downloads">
-        <div class="dashboard-action-separator" aria-hidden="true"></div>
         <div class="dashboard-export-action-row">
           ${dashboardSelectedExportAction(activeSession, "xlsx", "XLSX")}
           ${dashboardSelectedExportAction(activeSession, "pdf", "PDF")}
         </div>
         ${restoreError ? `<p class="dashboard-restore-message" role="status">${escapeHtml(restoreError)}</p>` : ""}
-        <div class="dashboard-selected-primary-actions">
-          <div class="dashboard-action-separator" aria-hidden="true"></div>
-          <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
-        </div>
       </div>
     </div>
     <div class="dashboard-selected-actions dashboard-selected-actions--single">
+      <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-session" data-quote-session-id="${escapeHtml(safeSessionId)}">Delete session</button>
       <button class="secondary-button dashboard-selected-action dashboard-clear-selection-action" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
     </div>

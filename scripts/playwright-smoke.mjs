@@ -115,14 +115,17 @@ async function dashboardPanelActionMetrics(page, label) {
     const panelRect = panel.getBoundingClientRect();
     const actions = panel.querySelector(".dashboard-selected-actions");
     const actionRect = actions?.getBoundingClientRect();
+    const modifyButton = actions?.querySelector('[data-dashboard-panel-action="modify-session"]');
     const deleteButton = actions?.querySelector('[data-dashboard-panel-action="delete-session"], [data-dashboard-panel-action="delete-selected"]');
     const clearButton = actions?.querySelector('[data-dashboard-panel-action="clear-selection"]');
+    const modifyRect = modifyButton?.getBoundingClientRect();
     const deleteRect = deleteButton?.getBoundingClientRect();
     const clearRect = clearButton?.getBoundingClientRect();
     return {
       actionX: actionRect ? Math.round(actionRect.x - panelRect.x) : null,
       actionWidth: actionRect ? Math.round(actionRect.width) : null,
       actionTop: actionRect ? Math.round(actionRect.y - panelRect.y) : null,
+      modifyTop: modifyRect ? Math.round(modifyRect.y - panelRect.y) : null,
       deleteTop: deleteRect ? Math.round(deleteRect.y - panelRect.y) : null,
       clearTop: clearRect ? Math.round(clearRect.y - panelRect.y) : null,
     };
@@ -133,6 +136,14 @@ async function dashboardPanelActionMetrics(page, label) {
   if (actionPositions.deleteTop === null || actionPositions.clearTop === null) {
     throw new Error(`Dashboard ${label} shared delete/clear actions were not measurable.`);
   }
+  const deleteClearGap = actionPositions.clearTop - actionPositions.deleteTop;
+  if (deleteClearGap < 38 || deleteClearGap > 54) {
+    throw new Error(`Dashboard ${label} delete/clear spacing is unexpected: ${deleteClearGap}px.`);
+  }
+  const modifyDeleteGap = actionPositions.modifyTop === null ? null : actionPositions.deleteTop - actionPositions.modifyTop;
+  if (modifyDeleteGap !== null && Math.abs(modifyDeleteGap - deleteClearGap) > 4) {
+    throw new Error(`Dashboard ${label} modify/delete spacing differs from delete/clear spacing: ${modifyDeleteGap}px vs ${deleteClearGap}px.`);
+  }
   const bottomGap = Math.round((panelBox.y + panelBox.height) - (actionBox.y + actionBox.height));
   if (bottomGap < 8 || bottomGap > 36) {
     throw new Error(`Dashboard ${label} action footer is not bottom anchored: ${bottomGap}px gap.`);
@@ -141,6 +152,8 @@ async function dashboardPanelActionMetrics(page, label) {
     bottomGap,
     actionViewportTop: Math.round(actionBox.y),
     firstActionTop: Math.round(firstActionBox.y),
+    deleteClearGap,
+    modifyDeleteGap,
     ...actionPositions,
   };
 }
@@ -676,20 +689,14 @@ async function main() {
     if (Math.abs(bulkPanelActionMetrics.bottomGap - singlePanelActionMetrics.bottomGap) > 8) {
       throw new Error(`Dashboard action footer bottom moved between single and bulk states: ${singlePanelActionMetrics.bottomGap}px -> ${bulkPanelActionMetrics.bottomGap}px.`);
     }
-    if (Math.abs(bulkPanelActionMetrics.actionTop - singlePanelActionMetrics.actionTop) > 4) {
-      throw new Error(`Dashboard action footer top offset moved between single and bulk states: ${singlePanelActionMetrics.actionTop}px -> ${bulkPanelActionMetrics.actionTop}px.`);
-    }
     if (Math.abs(bulkPanelActionMetrics.actionX - singlePanelActionMetrics.actionX) > 4) {
       throw new Error(`Dashboard action footer x offset moved between single and bulk states: ${singlePanelActionMetrics.actionX}px -> ${bulkPanelActionMetrics.actionX}px.`);
     }
     if (Math.abs(bulkPanelActionMetrics.actionWidth - singlePanelActionMetrics.actionWidth) > 4) {
       throw new Error(`Dashboard action footer width changed between single and bulk states: ${singlePanelActionMetrics.actionWidth}px -> ${bulkPanelActionMetrics.actionWidth}px.`);
     }
-    if (Math.abs(bulkPanelActionMetrics.deleteTop - singlePanelActionMetrics.deleteTop) > 4) {
-      throw new Error(`Dashboard delete action moved between single and bulk states: ${singlePanelActionMetrics.deleteTop}px -> ${bulkPanelActionMetrics.deleteTop}px.`);
-    }
-    if (Math.abs(bulkPanelActionMetrics.clearTop - singlePanelActionMetrics.clearTop) > 4) {
-      throw new Error(`Dashboard clear action moved between single and bulk states: ${singlePanelActionMetrics.clearTop}px -> ${bulkPanelActionMetrics.clearTop}px.`);
+    if (Math.abs(bulkPanelActionMetrics.deleteClearGap - singlePanelActionMetrics.deleteClearGap) > 4) {
+      throw new Error(`Dashboard delete/clear spacing changed between single and bulk states: ${singlePanelActionMetrics.deleteClearGap}px -> ${bulkPanelActionMetrics.deleteClearGap}px.`);
     }
     await page.setViewportSize({ width: 520, height: 720 });
     const mobileBulkPanelActionMetrics = await dashboardPanelActionMetrics(page, "mobile bulk selection");
