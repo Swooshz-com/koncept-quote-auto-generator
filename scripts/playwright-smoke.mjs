@@ -282,6 +282,13 @@ async function main() {
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
     await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
     await expectTopbarPrimaryAction(page, "new-quote");
+    await page.waitForFunction(() => {
+      const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+      const emptyState = document.querySelector("#dashboardEmptyState");
+      const sessionList = document.querySelector("#dashboardSessionsList");
+      return !/Loading sessions/i.test(countText)
+        && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+    }, null, { timeout: 15000 });
     const dashboardShot = await screenshot(page, "dashboard.png");
     const emptyNewQuoteButton = page.locator("#dashboardEmptyNewQuoteButton:not([disabled])");
     if (await emptyNewQuoteButton.isVisible()) {
