@@ -516,11 +516,11 @@ h3 {
 .dashboard-selection-toolbar {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(180px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  height: 46px;
-  min-height: 46px;
+  height: 40px;
+  min-height: 40px;
   padding: 8px 14px 0;
 }
 
@@ -531,10 +531,78 @@ h3 {
   min-width: 0;
 }
 
-.dashboard-select-mode-button {
-  min-height: 30px;
-  padding: 0 14px;
-  font-size: 13px;
+.secondary-button.dashboard-select-mode-button {
+  position: relative;
+  gap: 7px;
+  min-height: 24px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-secondary);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.secondary-button.dashboard-select-mode-button::before,
+.secondary-button.dashboard-select-mode-button::after {
+  content: "";
+  flex: 0 0 auto;
+}
+
+.secondary-button.dashboard-select-mode-button::before {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: #ffffff;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.secondary-button.dashboard-select-mode-button::after {
+  position: absolute;
+  top: 50%;
+  left: 9.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  background: var(--green-dark);
+  opacity: 0;
+  transform: translateY(-50%) scale(0);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.secondary-button.dashboard-select-mode-button:hover:not(:disabled):not([aria-disabled="true"]),
+.secondary-button.dashboard-select-mode-button:focus-visible {
+  border-color: rgba(15, 118, 110, 0.16);
+  background: rgba(239, 250, 248, 0.62);
+  color: var(--green-dark);
+  box-shadow: none;
+  transform: none;
+}
+
+.secondary-button.dashboard-select-mode-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+  outline: none;
+}
+
+.secondary-button.dashboard-select-mode-button.is-selecting::before {
+  border-color: var(--green);
+}
+
+.secondary-button.dashboard-select-mode-button.is-all-selected::before {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.secondary-button.dashboard-select-mode-button.is-all-selected::after {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
 }
 
 .dashboard-selection-hint {

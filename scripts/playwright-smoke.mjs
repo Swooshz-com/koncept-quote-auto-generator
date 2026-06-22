@@ -428,7 +428,12 @@ async function main() {
       throw new Error(`Expected at least two bulk smoke rows, found ${visibleBulkRows}.`);
     }
     const filteredFirstCard = page.locator(".dashboard-session-card").first();
-    await page.locator("#dashboardSelectModeButton", { hasText: "Select" }).click();
+    const selectModeButton = page.locator("#dashboardSelectModeButton", { hasText: "Select" });
+    const selectModeBox = await selectModeButton.boundingBox();
+    if (!selectModeBox || selectModeBox.height > 28 || selectModeBox.width > 100) {
+      throw new Error(`Select mode control is too large: ${JSON.stringify(selectModeBox)}.`);
+    }
+    await selectModeButton.click();
     await page.locator("#dashboardSelectionHint").waitFor({ state: "visible", timeout: 15000 });
     await filteredFirstCard.locator(".dashboard-session-select-control").waitFor({ state: "visible", timeout: 15000 });
     const firstCardTopBeforeBulk = await filteredFirstCard.evaluate((element) => element.getBoundingClientRect().top);
@@ -442,10 +447,42 @@ async function main() {
       throw new Error(`Row checkbox is too large: ${JSON.stringify(rowCheckboxBox)}.`);
     }
     await page.locator("#dashboardBulkActionBar", { hasText: "1 selected" }).waitFor({ state: "visible", timeout: 15000 });
-    await page.locator("#dashboardSelectModeButton", { hasText: "Select All" }).click();
+    const selectAllButton = page.locator("#dashboardSelectModeButton", { hasText: "Select All" });
+    const selectAllBox = await selectAllButton.boundingBox();
+    if (!selectAllBox || selectAllBox.height > 28 || selectAllBox.width > 112) {
+      throw new Error(`Select all control is too large: ${JSON.stringify(selectAllBox)}.`);
+    }
+    await selectAllButton.click();
     await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator(".dashboard-bulk-summary-grid").waitFor({ state: "visible", timeout: 15000 });
+    const selectAllChecked = await page.locator("#dashboardSelectModeButton").evaluate((button) => button.classList.contains("is-all-selected"));
+    if (!selectAllChecked) {
+      throw new Error("Select all control did not enter the checked visual state after selecting all visible rows.");
+    }
+    await selectAllButton.click();
+    const selectedAfterDeselectAll = await page.locator(".dashboard-session-card.is-selected").count();
+    if (selectedAfterDeselectAll !== 0) {
+      throw new Error(`Select all toggle did not deselect visible rows: ${selectedAfterDeselectAll} remain selected.`);
+    }
+    await page.locator("#dashboardBulkActionBar").waitFor({ state: "hidden", timeout: 15000 });
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select" }).waitFor({ state: "visible", timeout: 15000 });
+    const returnedToNoneMode = await page.locator("#dashboardSelectModeButton").evaluate((button) => (
+      !button.classList.contains("is-all-selected")
+        && !button.classList.contains("is-selecting")
+        && button.getAttribute("aria-pressed") === "false"
+    ));
+    if (!returnedToNoneMode) {
+      throw new Error("Select all toggle did not return the control to the original Select mode.");
+    }
+    const rowCheckboxVisibleAfterDeselectAll = await filteredFirstCard.locator(".dashboard-session-select-control").isVisible();
+    if (rowCheckboxVisibleAfterDeselectAll) {
+      throw new Error("Row checkboxes stayed visible after Select All was toggled off.");
+    }
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select" }).click();
+    await page.locator("#dashboardSelectionHint").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select All" }).click();
+    await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} selected` }).waitFor({ state: "visible", timeout: 15000 });
     const dashboardSelectedShot = await screenshot(page, "dashboard-selected.png");
     await page.locator("#dashboardBulkDeleteButton").click();
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });

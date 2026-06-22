@@ -8761,12 +8761,17 @@ function renderDashboardSelectionControls(filtered) {
   const visibleIds = dashboardVisibleSessionIds(filtered);
   const selected = dashboardSelectedSessionIds();
   const hasVisibleRows = visibleIds.length > 0 && !state.quoteSessionLoadError;
+  const selectedSet = new Set(selected);
+  const allVisibleSelected = hasVisibleRows && visibleIds.every((sessionId) => selectedSet.has(sessionId));
   if (elements.dashboardSelectionToolbar) elements.dashboardSelectionToolbar.hidden = !hasVisibleRows;
   if (elements.dashboardSelectModeButton) {
     elements.dashboardSelectModeButton.textContent = state.dashboardSelectionMode ? "Select All" : "Select";
     elements.dashboardSelectModeButton.disabled = !hasVisibleRows || state.quoteSessionDeleteBusy;
     elements.dashboardSelectModeButton.setAttribute("aria-disabled", String(elements.dashboardSelectModeButton.disabled));
     elements.dashboardSelectModeButton.setAttribute("aria-pressed", String(state.dashboardSelectionMode));
+    elements.dashboardSelectModeButton.setAttribute("aria-label", state.dashboardSelectionMode ? "Select all visible quote sessions" : "Enable quote session selection");
+    elements.dashboardSelectModeButton.classList.toggle("is-selecting", state.dashboardSelectionMode);
+    elements.dashboardSelectModeButton.classList.toggle("is-all-selected", allVisibleSelected);
   }
   if (elements.dashboardSelectionHint) {
     elements.dashboardSelectionHint.hidden = !state.dashboardSelectionMode || selected.length > 0;
@@ -8919,6 +8924,16 @@ function handleDashboardSelectModeButton() {
   if (!state.dashboardSelectionMode) {
     state.dashboardSelectionMode = true;
     state.dashboardSelectedSessionIds = [];
+    renderQuoteDashboard();
+    return;
+  }
+  const visibleIds = dashboardVisibleSessionIds();
+  const selectedSet = new Set(dashboardSelectedSessionIds());
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((sessionId) => selectedSet.has(sessionId));
+  if (allVisibleSelected) {
+    state.dashboardSelectedSessionIds = [];
+    state.dashboardActiveSessionId = "";
+    state.dashboardSelectionMode = false;
     renderQuoteDashboard();
     return;
   }
