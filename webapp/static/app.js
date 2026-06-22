@@ -6562,7 +6562,7 @@ function confirmOutputRowDelete() {
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   syncControlStates();
-  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
+  if (typeof queueQuoteSessionDraftStateSave === "function") queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function deleteOutputRow(index) {
@@ -6737,7 +6737,7 @@ function handleOutputRowEdit(event) {
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
   syncControlStates();
-  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
+  if (typeof queueQuoteSessionDraftStateSave === "function") queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function commitOutputEditor(editor) {
@@ -6764,7 +6764,7 @@ function commitOutputEditor(editor) {
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   syncControlStates();
-  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
+  if (typeof queueQuoteSessionDraftStateSave === "function") queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function applyOutputIncludedAction(button) {
@@ -6783,7 +6783,7 @@ function applyOutputIncludedAction(button) {
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   syncControlStates();
-  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
+  if (typeof queueQuoteSessionDraftStateSave === "function") queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function openOutputCellEditor(cell) {
