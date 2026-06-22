@@ -106,18 +106,23 @@ async function expectTopbarPrimaryAction(page, expectedAction) {
   }
 }
 
-async function dashboardPanelActionBottomGap(page, label) {
+async function dashboardPanelActionMetrics(page, label) {
   await page.locator("#dashboardSelectedSessionPanel").scrollIntoViewIfNeeded();
   const panelBox = await page.locator("#dashboardSelectedSessionPanel").boundingBox();
   const actionBox = await page.locator("#dashboardSelectedSessionPanel .dashboard-selected-actions").boundingBox();
-  if (!panelBox || !actionBox) {
+  const firstActionBox = await page.locator("#dashboardSelectedSessionPanel .dashboard-selected-actions button, #dashboardSelectedSessionPanel .dashboard-selected-actions a").first().boundingBox();
+  if (!panelBox || !actionBox || !firstActionBox) {
     throw new Error(`Dashboard ${label} action footer was not measurable.`);
   }
   const bottomGap = Math.round((panelBox.y + panelBox.height) - (actionBox.y + actionBox.height));
   if (bottomGap < 8 || bottomGap > 36) {
     throw new Error(`Dashboard ${label} action footer is not bottom anchored: ${bottomGap}px gap.`);
   }
-  return bottomGap;
+  return {
+    bottomGap,
+    actionTop: Math.round(actionBox.y),
+    firstActionTop: Math.round(firstActionBox.y),
+  };
 }
 
 async function installMockProfiles(page) {
@@ -524,7 +529,7 @@ async function main() {
     if (normalModeCheckboxVisible) {
       throw new Error("Row checkbox should stay hidden until Select mode is enabled.");
     }
-    const singlePanelActionBottomGap = await dashboardPanelActionBottomGap(page, "single selection");
+    const singlePanelActionMetrics = await dashboardPanelActionMetrics(page, "single selection");
     const dashboardSingleSelectedShot = await screenshot(page, "dashboard-single-selected.png");
     await createDashboardSmokeSession(page, "reference-c", {
       sessionIdPrefix: "quote-4f-search-row",
@@ -631,14 +636,17 @@ async function main() {
     await page.locator(".dashboard-bulk-selection-summary", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: "Bulk selection" }).waitFor({ state: "visible", timeout: 15000 });
-    const bulkPanelActionBottomGap = await dashboardPanelActionBottomGap(page, "bulk selection");
-    if (Math.abs(bulkPanelActionBottomGap - singlePanelActionBottomGap) > 8) {
-      throw new Error(`Dashboard action footer moved between single and bulk states: ${singlePanelActionBottomGap}px -> ${bulkPanelActionBottomGap}px.`);
+    const bulkPanelActionMetrics = await dashboardPanelActionMetrics(page, "bulk selection");
+    if (Math.abs(bulkPanelActionMetrics.bottomGap - singlePanelActionMetrics.bottomGap) > 8) {
+      throw new Error(`Dashboard action footer bottom moved between single and bulk states: ${singlePanelActionMetrics.bottomGap}px -> ${bulkPanelActionMetrics.bottomGap}px.`);
+    }
+    if (Math.abs(bulkPanelActionMetrics.firstActionTop - singlePanelActionMetrics.firstActionTop) > 8) {
+      throw new Error(`Dashboard first action moved between single and bulk states: ${singlePanelActionMetrics.firstActionTop}px -> ${bulkPanelActionMetrics.firstActionTop}px.`);
     }
     await page.setViewportSize({ width: 520, height: 720 });
-    const mobileBulkPanelActionBottomGap = await dashboardPanelActionBottomGap(page, "mobile bulk selection");
-    if (mobileBulkPanelActionBottomGap < 8 || mobileBulkPanelActionBottomGap > 36) {
-      throw new Error(`Mobile bulk action footer is not bottom anchored: ${mobileBulkPanelActionBottomGap}px gap.`);
+    const mobileBulkPanelActionMetrics = await dashboardPanelActionMetrics(page, "mobile bulk selection");
+    if (mobileBulkPanelActionMetrics.bottomGap < 8 || mobileBulkPanelActionMetrics.bottomGap > 36) {
+      throw new Error(`Mobile bulk action footer is not bottom anchored: ${mobileBulkPanelActionMetrics.bottomGap}px gap.`);
     }
     const dashboardSelectedMobileShot = await screenshot(page, "dashboard-selected-mobile.png");
     await page.setViewportSize({ width: 1365, height: 768 });

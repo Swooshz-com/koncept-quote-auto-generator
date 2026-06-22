@@ -1147,7 +1147,7 @@ h3 {
 }
 
 .dashboard-selected-body--single {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }
 
@@ -1193,6 +1193,11 @@ h3 {
   font-size: 12px;
   font-weight: 800;
   line-height: 1.3;
+}
+
+.dashboard-selected-downloads {
+  display: grid;
+  gap: 10px;
 }
 
 .dashboard-selected-items {
@@ -1351,7 +1356,9 @@ h3 {
 .dashboard-selected-actions {
   display: grid;
   flex: 0 0 auto;
+  align-content: start;
   gap: 8px;
+  min-height: 144px;
   padding-top: 14px;
   border-top: 1px solid var(--line-subtle);
   background: #ffffff;
@@ -2364,7 +2371,7 @@ h3 {
   }
 
   .dashboard-selected-body--single {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-summary-grid,
