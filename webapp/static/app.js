@@ -8470,7 +8470,6 @@ function dashboardTaxText(session = {}) {
 
 const QUOTE_SESSION_DELETE_SINGLE_MESSAGE = "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.";
 const QUOTE_SESSION_DELETE_BULK_MESSAGE = "This removes the selected local dashboard records and any saved local exports for those quote sessions. This cannot be undone.";
-const QUOTE_SESSION_RESTORE_NOTE = "Saved dashboard records include quote metadata and export links only. Continue is available only for the current in-browser draft.";
 
 function dashboardShortSessionReference(session = {}) {
   const sessionId = safeQuoteSessionId(session.session_id || "");
@@ -8753,7 +8752,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
   const shortReference = dashboardShortSessionReference(activeSession);
   const continueMarkup = dashboardSessionCanResume(activeSession)
     ? '<button class="primary-button dashboard-selected-action" type="button" data-dashboard-panel-action="continue-session">Continue draft</button>'
-    : `<p class="dashboard-restore-note">${escapeHtml(QUOTE_SESSION_RESTORE_NOTE)}</p>`;
+    : "";
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
