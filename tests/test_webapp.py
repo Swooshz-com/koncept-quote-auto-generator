@@ -7843,35 +7843,68 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
 
         self.assertIn('id="quoteDashboardPanel"', html)
         self.assertIn('id="dashboardSessionsList"', html)
-        self.assertIn('id="dashboardNewQuoteButton"', html)
+        self.assertNotIn('id="dashboardNewQuoteButton"', html)
+        self.assertIn('id="dashboardSideNewQuoteButton"', html)
         self.assertIn('id="backToDashboardButton"', html)
-        self.assertIn('>Back to Dashboard<', html)
+        self.assertIn('>Dashboard<', html)
+        self.assertNotIn('>Back to Dashboard<', html)
         self.assertNotIn('id="dashboardContinueQuoteButton"', html)
         self.assertNotIn("Continue Current Quote", html)
+        topbar_controls = html.split('<div class="topbar-controls">', 1)[1].split('</div>', 1)[0]
+        self.assertNotIn("Privacy", topbar_controls)
+        self.assertIn('class="dashboard-privacy-link"', html)
         self.assertIn('class="panel quote-dashboard-panel is-active"', html)
         self.assertIn('class="panel quote-shell"', html)
         self.assertIn("quote-dashboard-panel", css)
         self.assertIn("dashboard-session-list", css)
+        self.assertIn("dashboard-selected-card", css)
         self.assertNotIn("dashboard-session-table", css)
         self.assertIn("showDashboard", js)
         self.assertIn("showQuoteFlow", js)
         self.assertIn("loadQuoteDashboard", js)
         self.assertIn("/api/quote-sessions", js)
 
-    def test_static_dashboard_session_cards_use_contextual_delete_and_continue_actions(self):
+    def test_static_dashboard_uses_selected_panel_bulk_delete_and_custom_modal(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertNotIn("dashboardContinueQuoteButton", html)
+        self.assertIn('id="dashboardSelectedSessionPanel"', html)
+        self.assertIn('id="dashboardSelectModeButton"', html)
+        self.assertNotIn('id="dashboardSelectVisibleCheckbox"', html)
+        self.assertIn('id="dashboardBulkActionBar"', html)
+        self.assertIn('id="quoteSessionDeleteModal"', html)
+        self.assertIn("Delete quote session?", html)
+        self.assertIn(
+            "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.",
+            js,
+        )
+        self.assertIn(
+            "This removes the selected local dashboard records and any saved local exports for those quote sessions. This cannot be undone.",
+            js,
+        )
         self.assertIn("dashboardSessionCanResume", js)
         self.assertIn("Continue draft", js)
-        self.assertIn('data-dashboard-action="continue"', js)
-        self.assertIn('data-dashboard-action="delete"', js)
-        self.assertIn("Delete this local quote session? This removes its saved dashboard record and local exported files if present. This cannot be undone.", js)
-        self.assertIn("window.confirm", js)
+        self.assertIn("state.quoteSessionId", js.split("function dashboardSessionCanResume", 1)[1].split("function dashboardSelectedExportAction", 1)[0])
+        self.assertIn("hasCurrentQuoteDraft", js.split("function dashboardSessionCanResume", 1)[1].split("function dashboardSelectedExportAction", 1)[0])
+        self.assertIn("QUOTE_SESSION_RESTORE_NOTE", js)
+        self.assertIn('data-dashboard-panel-action="continue-session"', js)
+        self.assertIn('data-dashboard-panel-action="delete-session"', js)
+        self.assertIn('data-dashboard-panel-action="delete-selected"', js)
+        self.assertIn("dashboardSelectionMode", js)
+        self.assertIn("handleDashboardSelectModeButton", js)
+        self.assertIn("Bulk Selection", js)
+        self.assertIn("dashboard-bulk-summary-grid", js)
+        self.assertIn("dashboard-selected-summary-grid", js)
+        self.assertIn("dashboardVisibleSessionIds", js)
+        self.assertIn('mode: "visible"', js)
+        self.assertNotIn('data-dashboard-action="continue"', js)
+        self.assertNotIn('data-dashboard-action="delete"', js)
+        self.assertNotIn("dashboardSelectVisibleCheckbox", js)
+        self.assertNotIn("window.confirm", js)
         self.assertIn('method: "DELETE"', js)
-        delete_body = js.split("async function deleteQuoteSession", 1)[1].split("function renderQuoteDashboard", 1)[0]
+        delete_body = js.split("async function confirmQuoteSessionDelete", 1)[1].split("function handleDashboardSessionAction", 1)[0]
         self.assertIn("await loadQuoteDashboard()", delete_body)
         self.assertNotIn("error.message", delete_body)
 

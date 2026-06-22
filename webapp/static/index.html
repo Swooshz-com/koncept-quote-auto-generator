@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=50">
+    <link rel="stylesheet" href="/static/styles.css?v=52">
   </head>
   <body>
     <div class="app-shell">
@@ -19,8 +19,7 @@
           </div>
         </div>
         <div class="topbar-controls">
-          <a class="topbar-action topbar-link-action" href="/privacy" target="_blank" rel="noopener">Privacy</a>
-          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Back to dashboard" hidden>Back to Dashboard</button>
+          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>Dashboard</button>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -42,13 +41,6 @@
                   <h2 id="quoteDashboardTitle">Past Quote Sessions</h2>
                   <p class="workspace-pane-subtitle">Sessions saved in the active local runtime.</p>
                 </div>
-                <button class="primary-button" type="button" id="dashboardNewQuoteButton">
-                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                    <path d="M12 5v14"></path>
-                    <path d="M5 12h14"></path>
-                  </svg>
-                  <span>New Quote</span>
-                </button>
               </section>
 
               <section class="dashboard-summary-grid" aria-label="Quote session summary">
@@ -114,27 +106,44 @@
                     <strong>Quote sessions unavailable</strong>
                     <p id="dashboardErrorText">Failed. Please try again. Contact support if this keeps happening.</p>
                   </div>
+                  <div class="dashboard-selection-toolbar" id="dashboardSelectionToolbar" hidden>
+                    <div class="dashboard-selection-mode">
+                      <button class="secondary-button dashboard-select-mode-button" type="button" id="dashboardSelectModeButton">Select</button>
+                      <span class="dashboard-selection-hint" id="dashboardSelectionHint" hidden>Select individual sessions, or select all visible rows.</span>
+                    </div>
+                    <div class="dashboard-bulk-action-bar" id="dashboardBulkActionBar" hidden>
+                      <span id="dashboardBulkSelectionCount">0 selected</span>
+                      <button class="secondary-button dashboard-bulk-clear" type="button" id="dashboardBulkClearButton">Clear selection</button>
+                      <button class="secondary-button danger-button dashboard-bulk-delete" type="button" id="dashboardBulkDeleteButton">Delete selected</button>
+                    </div>
+                  </div>
                   <div class="dashboard-session-list" id="dashboardSessionsList" aria-live="polite"></div>
                 </section>
 
-                <aside class="dashboard-start-card" aria-labelledby="dashboardStartTitle">
-                  <div class="dashboard-start-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" focusable="false">
-                      <path d="M7 3h7l5 5v13H7V3Z"></path>
-                      <path d="M14 3v5h5"></path>
-                      <path d="M10 13h6"></path>
-                      <path d="M10 17h4"></path>
-                    </svg>
-                  </div>
-                  <h3 id="dashboardStartTitle">Start a New Quote</h3>
-                  <button class="primary-button" type="button" id="dashboardSideNewQuoteButton">
-                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                      <path d="M12 5v14"></path>
-                      <path d="M5 12h14"></path>
-                    </svg>
-                    <span>New Quote</span>
-                  </button>
-                  <button class="secondary-button" type="button" id="dashboardRefreshButton">Refresh Sessions</button>
+                <aside class="dashboard-side-panel" id="dashboardSidePanel" aria-live="polite">
+                  <section class="dashboard-start-card" id="dashboardEmptySelectionPanel" aria-labelledby="dashboardStartTitle">
+                    <div class="dashboard-start-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M7 3h7l5 5v13H7V3Z"></path>
+                        <path d="M14 3v5h5"></path>
+                        <path d="M10 13h6"></path>
+                        <path d="M10 17h4"></path>
+                      </svg>
+                    </div>
+                    <h3 id="dashboardStartTitle">Start a New Quote</h3>
+                    <button class="primary-button" type="button" id="dashboardSideNewQuoteButton">
+                      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                        <path d="M12 5v14"></path>
+                        <path d="M5 12h14"></path>
+                      </svg>
+                      <span>New Quote</span>
+                    </button>
+                    <button class="secondary-button" type="button" id="dashboardRefreshButton">Refresh Sessions</button>
+                  </section>
+                  <section class="dashboard-selected-card" id="dashboardSelectedSessionPanel" aria-labelledby="dashboardSelectedSessionTitle" hidden></section>
+                  <nav class="dashboard-bottom-menu" aria-label="Dashboard links">
+                    <a class="dashboard-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
+                  </nav>
                 </aside>
               </div>
             </div>
@@ -774,6 +783,28 @@
           </div>
         </section>
       </div>
+      <div class="modal-overlay profile-delete-modal" id="quoteSessionDeleteModal" role="dialog" aria-modal="true" aria-labelledby="quoteSessionDeleteTitle" hidden>
+        <div class="modal-backdrop" data-quote-session-delete-close></div>
+        <section class="modal-panel profile-delete-panel quote-session-delete-panel">
+          <header class="modal-header">
+            <div>
+              <span class="basis-chat-eyebrow">Quote Session</span>
+              <h3 id="quoteSessionDeleteTitle">Delete quote session?</h3>
+            </div>
+          </header>
+          <div class="profile-delete-body">
+            <div class="profile-delete-warning" id="quoteSessionDeleteText">
+              <strong>This removes the local dashboard record and any saved local exports for this quote session.</strong>
+              <span>This cannot be undone.</span>
+            </div>
+            <p class="profile-delete-error" id="quoteSessionDeleteError" hidden></p>
+          </div>
+          <div class="modal-actions profile-delete-actions">
+            <button class="secondary-button" type="button" id="cancelQuoteSessionDeleteButton">Cancel</button>
+            <button class="secondary-button danger-button" type="button" id="confirmQuoteSessionDeleteButton">Delete session</button>
+          </div>
+        </section>
+      </div>
       <div class="modal-overlay pricing-reference-settings-page" id="pricingReferenceModal" role="dialog" aria-modal="true" aria-labelledby="pricingReferenceModalTitle" hidden>
         <div class="modal-backdrop" data-pricing-reference-close></div>
         <section class="modal-panel pricing-reference-modal-panel pricing-reference-settings-panel">
@@ -1048,6 +1079,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=63"></script>
+    <script src="/static/app.js?v=65"></script>
   </body>
 </html>

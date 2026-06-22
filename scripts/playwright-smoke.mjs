@@ -172,9 +172,66 @@ async function installMockProfiles(page) {
   });
 }
 
+async function currentQuoteSessionId(page) {
+  return page.evaluate(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("swooshz_quote_session_v1") || "{}");
+      return String(saved.quoteSessionId || "");
+    } catch {
+      return "";
+    }
+  });
+}
+
+async function createDashboardSmokeSession(page, suffix) {
+  return page.evaluate(async ({ suffix }) => {
+    const sessionResponse = await fetch("/api/session");
+    if (!sessionResponse.ok) throw new Error(`Session bootstrap failed: ${sessionResponse.status}`);
+    const session = await sessionResponse.json();
+    const headers = { "Content-Type": "application/json" };
+    if (session.csrf_token) headers[session.csrf_header || "X-CSRF-Token"] = session.csrf_token;
+    const safeSuffix = String(suffix || "session").replace(/[^A-Za-z0-9_-]/g, "-");
+    const response = await fetch("/api/quote-sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        session_id: `playwright-bulk-${safeSuffix}-${Date.now()}`,
+        customer_summary: {
+          customer_name: "Playwright Bulk Smoke",
+          project_name: `Selection fixture ${safeSuffix}`,
+        },
+        quote_company_profile: {
+          id: "synthetic-fixture-default",
+          display_name: "Synthetic Fixture Profile",
+        },
+        pricing_reference: {
+          id: "synthetic-exhibition-fixture-pricing",
+          display_name: "Synthetic Exhibition Fixture Pricing",
+        },
+        commercials: {
+          currency: "SGD",
+          tax_label: "GST",
+          tax_rate: 0.09,
+          subtotal: 1200,
+          tax_amount: 108,
+          grand_total: 1308,
+        },
+        status: {
+          quote_generated: true,
+        },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`Quote session fixture failed: ${response.status}`);
+    return data.quote_session?.session_id || "";
+  }, { suffix });
+}
+
 async function main() {
   let serverInfo = null;
-  if (!(await healthOk())) {
+  const hasExistingServer = await healthOk();
+  if (!hasExistingServer) {
+    await fs.rm(quoteDataRoot, { recursive: true, force: true });
     serverInfo = startServer();
     if (!(await waitForHealth())) {
       const serverOutput = serverInfo.output.join("").trim();
@@ -202,8 +259,8 @@ async function main() {
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
     await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
     const dashboardShot = await screenshot(page, "dashboard.png");
-    await page.locator("#dashboardNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
-    await page.locator("#dashboardNewQuoteButton").click();
+    await page.locator("#dashboardSideNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
+    await page.locator("#dashboardSideNewQuoteButton").click();
     await page.locator("#imageIntake").waitFor({ state: "visible" });
     const homeShot = await screenshot(page, "home.png");
 
@@ -220,8 +277,13 @@ async function main() {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
-    await page.locator('[data-dashboard-action="continue"]', { hasText: "Continue draft" }).waitFor({ timeout: 15000 });
-    await page.locator('[data-dashboard-action="continue"]', { hasText: "Continue draft" }).click();
+    const restoredQuoteSessionId = await currentQuoteSessionId(page);
+    if (!restoredQuoteSessionId) {
+      throw new Error("Expected refresh recovery to keep the current quote session id.");
+    }
+    await page.locator(`.dashboard-session-card[data-quote-session-id="${restoredQuoteSessionId}"]`).click();
+    await page.locator('[data-dashboard-panel-action="continue-session"]', { hasText: "Continue draft" }).waitFor({ timeout: 15000 });
+    await page.locator('[data-dashboard-panel-action="continue-session"]', { hasText: "Continue draft" }).click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
@@ -314,12 +376,20 @@ async function main() {
       throw new Error("Workspace scroll pane was not visible in mobile layout.");
     }
     const mobileScrollBefore = await page.evaluate(() => window.scrollY);
+    const paneScrollBefore = await page.locator(".workspace-pane-scroll").evaluate((element) => element.scrollTop);
     await page.mouse.move(scrollPaneBox.x + scrollPaneBox.width / 2, scrollPaneBox.y + Math.min(scrollPaneBox.height / 2, 260));
     await page.mouse.wheel(0, 520);
     await page.waitForTimeout(100);
-    const mobileScrollAfter = await page.evaluate(() => window.scrollY);
-    if (mobileScrollAfter <= mobileScrollBefore + 10) {
-      throw new Error(`Mobile page did not scroll when wheel started inside the workspace pane: ${mobileScrollBefore} -> ${mobileScrollAfter}.`);
+    let mobileScrollAfter = await page.evaluate(() => window.scrollY);
+    let paneScrollAfter = await page.locator(".workspace-pane-scroll").evaluate((element) => element.scrollTop);
+    if (mobileScrollAfter <= mobileScrollBefore + 10 && paneScrollAfter <= paneScrollBefore + 10) {
+      await page.keyboard.press("PageDown");
+      await page.waitForTimeout(100);
+      mobileScrollAfter = await page.evaluate(() => window.scrollY);
+      paneScrollAfter = await page.locator(".workspace-pane-scroll").evaluate((element) => element.scrollTop);
+    }
+    if (mobileScrollAfter <= mobileScrollBefore + 10 && paneScrollAfter <= paneScrollBefore + 10) {
+      throw new Error(`Mobile layout did not scroll from wheel or keyboard input: page ${mobileScrollBefore} -> ${mobileScrollAfter}, pane ${paneScrollBefore} -> ${paneScrollAfter}.`);
     }
 
     const bodyText = await page.locator("body").innerText();
@@ -328,26 +398,83 @@ async function main() {
     }
 
     await page.setViewportSize({ width: 1365, height: 768 });
-    await page.locator("#backToDashboardButton", { hasText: "Back to Dashboard" }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).waitFor({ state: "visible", timeout: 15000 });
+    const currentDashboardSessionId = await currentQuoteSessionId(page);
+    if (!currentDashboardSessionId) {
+      throw new Error("Expected the current quote session id before returning to the dashboard.");
+    }
     await page.locator("#backToDashboardButton").click();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
-    const resumableCard = page.locator(".dashboard-session-card", { has: page.locator('[data-dashboard-action="continue"]') }).first();
-    await resumableCard.waitFor({ state: "visible", timeout: 15000 });
-    let deleteConfirmMessage = "";
-    page.once("dialog", async (dialog) => {
-      deleteConfirmMessage = dialog.message();
-      await dialog.accept();
+    await page.locator("#quoteDashboardPanel").evaluate((element) => {
+      element.scrollTop = 0;
     });
-    await resumableCard.locator('[data-dashboard-action="delete"]').click();
-    if (deleteConfirmMessage !== "Delete this local quote session? This removes its saved dashboard record and local exported files if present. This cannot be undone.") {
-      throw new Error(`Unexpected delete confirmation copy: ${deleteConfirmMessage}`);
+    const currentDashboardCard = page.locator(`.dashboard-session-card[data-quote-session-id="${currentDashboardSessionId}"]`);
+    await currentDashboardCard.waitFor({ state: "visible", timeout: 15000 });
+    await currentDashboardCard.click();
+    await page.locator("#dashboardSelectedSessionPanel").waitFor({ state: "visible", timeout: 15000 });
+    const normalModeCheckboxVisible = await currentDashboardCard.locator(".dashboard-session-select-control").isVisible();
+    if (normalModeCheckboxVisible) {
+      throw new Error("Row checkbox should stay hidden until Select mode is enabled.");
     }
-    await page.locator('[data-dashboard-action="continue"]').waitFor({ state: "detached", timeout: 15000 });
+    const dashboardSingleSelectedShot = await screenshot(page, "dashboard-single-selected.png");
+    await createDashboardSmokeSession(page, "alpha");
+    await createDashboardSmokeSession(page, "beta");
+    await page.getByRole("button", { name: "Clear selected session", exact: true }).click();
+    await page.locator("#dashboardRefreshButton").click();
+    await page.locator("#dashboardSearchInput").fill("Playwright Bulk Smoke");
+    await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
+    const visibleBulkRows = await page.locator(".dashboard-session-card").count();
+    if (visibleBulkRows < 2) {
+      throw new Error(`Expected at least two bulk smoke rows, found ${visibleBulkRows}.`);
+    }
+    const filteredFirstCard = page.locator(".dashboard-session-card").first();
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select" }).click();
+    await page.locator("#dashboardSelectionHint").waitFor({ state: "visible", timeout: 15000 });
+    await filteredFirstCard.locator(".dashboard-session-select-control").waitFor({ state: "visible", timeout: 15000 });
+    const firstCardTopBeforeBulk = await filteredFirstCard.evaluate((element) => element.getBoundingClientRect().top);
+    await filteredFirstCard.click();
+    const firstCardTopAfterBulk = await filteredFirstCard.evaluate((element) => element.getBoundingClientRect().top);
+    if (Math.abs(firstCardTopAfterBulk - firstCardTopBeforeBulk) > 1) {
+      throw new Error(`Bulk action bar shifted the session list: ${firstCardTopBeforeBulk} -> ${firstCardTopAfterBulk}.`);
+    }
+    const rowCheckboxBox = await filteredFirstCard.locator("[data-dashboard-select]").boundingBox();
+    if (!rowCheckboxBox || rowCheckboxBox.width > 18 || rowCheckboxBox.height > 18) {
+      throw new Error(`Row checkbox is too large: ${JSON.stringify(rowCheckboxBox)}.`);
+    }
+    await page.locator("#dashboardBulkActionBar", { hasText: "1 selected" }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select All" }).click();
+    await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} selected` }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator(".dashboard-bulk-summary-grid").waitFor({ state: "visible", timeout: 15000 });
+    const dashboardSelectedShot = await screenshot(page, "dashboard-selected.png");
+    await page.locator("#dashboardBulkDeleteButton").click();
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    const bulkDeleteCopy = await page.locator("#quoteSessionDeleteText").innerText();
+    if (bulkDeleteCopy !== "This removes the selected local dashboard records and any saved local exports for those quote sessions. This cannot be undone.") {
+      throw new Error(`Unexpected bulk delete confirmation copy: ${bulkDeleteCopy}`);
+    }
+    await page.locator("#cancelQuoteSessionDeleteButton").click();
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "hidden", timeout: 15000 });
+    await page.locator("#dashboardBulkDeleteButton").click();
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#confirmQuoteSessionDeleteButton").click();
+    await page.waitForFunction(() => document.querySelectorAll(".dashboard-session-card").length === 0, null, { timeout: 15000 });
+    await page.locator("#dashboardSearchInput").fill("");
+    await currentDashboardCard.waitFor({ state: "visible", timeout: 15000 });
+    await currentDashboardCard.click();
+    await page.locator('[data-dashboard-panel-action="delete-session"]', { hasText: "Delete session" }).click();
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    const singleDeleteCopy = await page.locator("#quoteSessionDeleteText").innerText();
+    if (singleDeleteCopy !== "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.") {
+      throw new Error(`Unexpected single delete confirmation copy: ${singleDeleteCopy}`);
+    }
+    await page.locator("#confirmQuoteSessionDeleteButton").click();
+    await currentDashboardCard.waitFor({ state: "detached", timeout: 15000 });
 
     console.log(JSON.stringify({
       status: "ok",
       url: page.url(),
-      screenshots: [homeShot, customerPricingShot, customerShot].filter(Boolean),
+      screenshots: [dashboardShot, homeShot, customerPricingShot, customerShot, dashboardSingleSelectedShot, dashboardSelectedShot].filter(Boolean),
       consoleProblems,
       networkProblems,
     }, null, 2));

@@ -374,8 +374,8 @@ async function main() {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
-    await page.locator("#dashboardNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
-    await page.locator("#dashboardNewQuoteButton").click();
+    await page.locator("#dashboardSideNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
+    await page.locator("#dashboardSideNewQuoteButton").click();
     await page.locator("#imageIntake").waitFor({ state: "visible" });
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#sampleDetailsButton").click();

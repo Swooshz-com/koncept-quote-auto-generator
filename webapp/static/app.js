@@ -159,6 +159,12 @@ const state = {
   quoteSessionLoadError: "",
   dashboardStatusFilter: "all",
   dashboardSearch: "",
+  dashboardSelectionMode: false,
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "",
+  quoteSessionDeletePendingIds: [],
+  quoteSessionDeleteBulk: false,
+  quoteSessionDeleteBusy: false,
   quoteBasis: { ...EMPTY_BASIS },
   quoteBasisSections: [],
   lineItems: [],
@@ -267,7 +273,6 @@ const elements = {
   fileList: qs("#fileList"),
   quoteDashboardPanel: qs("#quoteDashboardPanel"),
   quoteFlowPanel: qs("#panel-analysis"),
-  dashboardNewQuoteButton: qs("#dashboardNewQuoteButton"),
   dashboardSideNewQuoteButton: qs("#dashboardSideNewQuoteButton"),
   dashboardRefreshButton: qs("#dashboardRefreshButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
@@ -282,6 +287,16 @@ const elements = {
   dashboardGeneratedSessions: qs("#dashboardGeneratedSessions"),
   dashboardExportedSessions: qs("#dashboardExportedSessions"),
   dashboardMissingSessions: qs("#dashboardMissingSessions"),
+  dashboardSidePanel: qs("#dashboardSidePanel"),
+  dashboardEmptySelectionPanel: qs("#dashboardEmptySelectionPanel"),
+  dashboardSelectedSessionPanel: qs("#dashboardSelectedSessionPanel"),
+  dashboardSelectionToolbar: qs("#dashboardSelectionToolbar"),
+  dashboardSelectModeButton: qs("#dashboardSelectModeButton"),
+  dashboardSelectionHint: qs("#dashboardSelectionHint"),
+  dashboardBulkActionBar: qs("#dashboardBulkActionBar"),
+  dashboardBulkSelectionCount: qs("#dashboardBulkSelectionCount"),
+  dashboardBulkClearButton: qs("#dashboardBulkClearButton"),
+  dashboardBulkDeleteButton: qs("#dashboardBulkDeleteButton"),
   newQuoteButton: qs("#newQuoteButton"),
   sideWorkspace: qs("#sideWorkspace"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
@@ -373,6 +388,12 @@ const elements = {
   outputDeleteText: qs("#outputDeleteText"),
   cancelOutputDeleteButton: qs("#cancelOutputDeleteButton"),
   confirmOutputDeleteButton: qs("#confirmOutputDeleteButton"),
+  quoteSessionDeleteModal: qs("#quoteSessionDeleteModal"),
+  quoteSessionDeleteTitle: qs("#quoteSessionDeleteTitle"),
+  quoteSessionDeleteText: qs("#quoteSessionDeleteText"),
+  quoteSessionDeleteError: qs("#quoteSessionDeleteError"),
+  cancelQuoteSessionDeleteButton: qs("#cancelQuoteSessionDeleteButton"),
+  confirmQuoteSessionDeleteButton: qs("#confirmQuoteSessionDeleteButton"),
   workspacePaneFooter: qs(".workspace-pane-footer"),
   sideBackButton: qs("#sideBackButton"),
   sideNextButton: qs("#sideNextButton"),
@@ -8323,6 +8344,7 @@ function showQuoteFlow() {
   elements.quoteDashboardPanel?.classList.remove("is-active");
   elements.quoteFlowPanel?.classList.add("is-active");
   if (elements.backToDashboardButton) elements.backToDashboardButton.hidden = false;
+  if (elements.newQuoteButton) elements.newQuoteButton.hidden = false;
   syncControlStates();
 }
 
@@ -8331,6 +8353,7 @@ function showDashboard(options = {}) {
   elements.quoteFlowPanel?.classList.remove("is-active");
   elements.quoteDashboardPanel?.classList.add("is-active");
   if (elements.backToDashboardButton) elements.backToDashboardButton.hidden = true;
+  if (elements.newQuoteButton) elements.newQuoteButton.hidden = true;
   syncControlStates();
   if (options.load !== false) {
     loadQuoteDashboard();
@@ -8427,7 +8450,9 @@ function dashboardTaxText(session = {}) {
   return `${currency} / ${label}${rateText ? ` ${rateText}` : ""}`;
 }
 
-const QUOTE_SESSION_DELETE_CONFIRM_MESSAGE = "Delete this local quote session? This removes its saved dashboard record and local exported files if present. This cannot be undone.";
+const QUOTE_SESSION_DELETE_SINGLE_MESSAGE = "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.";
+const QUOTE_SESSION_DELETE_BULK_MESSAGE = "This removes the selected local dashboard records and any saved local exports for those quote sessions. This cannot be undone.";
+const QUOTE_SESSION_RESTORE_NOTE = "Saved dashboard records include quote metadata and export links only. Continue is available only for the current in-browser draft.";
 
 function dashboardShortSessionReference(session = {}) {
   const sessionId = safeQuoteSessionId(session.session_id || "");
@@ -8445,15 +8470,11 @@ function dashboardSessionCanResume(session = {}) {
   );
 }
 
-function dashboardExportMarkup(session = {}, kind = "xlsx", label = "XLSX") {
+function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") {
   const exportInfo = quoteSessionExport(session, kind);
-  if (exportInfo.exists && exportInfo.url) {
-    return `<a class="dashboard-card-action dashboard-export-link" href="${escapeHtml(exportInfo.url)}" download>Download ${escapeHtml(label)}</a>`;
-  }
-  if (exportInfo.missing) {
-    return `<span class="dashboard-card-action dashboard-export-missing" aria-disabled="true" title="${escapeHtml(label)} unavailable">Missing ${escapeHtml(label)}</span>`;
-  }
-  return `<span class="dashboard-card-action dashboard-export-missing" aria-disabled="true">${escapeHtml(label)} unavailable</span>`;
+  if (exportInfo.exists && exportInfo.url) return `${label} ready`;
+  if (exportInfo.missing) return `Missing ${label}`;
+  return `${label} unavailable`;
 }
 
 function dashboardSessionCard(session = {}) {
@@ -8464,12 +8485,17 @@ function dashboardSessionCard(session = {}) {
   const pricing = session.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   const shortReference = dashboardShortSessionReference(session);
-  const continueAction = dashboardSessionCanResume(session)
-    ? '<button class="dashboard-card-action dashboard-continue-action" type="button" data-dashboard-action="continue">Continue draft</button>'
-    : "";
+  const selected = dashboardSelectedSessionIds().includes(safeSessionId);
+  const active = safeQuoteSessionId(state.dashboardActiveSessionId || "") === safeSessionId;
+  const selectionMode = Boolean(state.dashboardSelectionMode);
+  const checkboxLabel = `Select ${customer} ${project}`.trim();
   return `
-    <article class="dashboard-session-card" data-quote-session-id="${escapeHtml(safeSessionId)}">
+    <article class="dashboard-session-card${active ? " is-active" : ""}${selected ? " is-selected" : ""}${selectionMode ? " is-selection-mode" : ""}" data-quote-session-id="${escapeHtml(safeSessionId)}" role="button" tabindex="0" aria-selected="${active ? "true" : "false"}">
       <div class="dashboard-session-main">
+        <label class="dashboard-session-select-control" data-dashboard-select-control ${selectionMode ? "" : "hidden"}>
+          <input type="checkbox" data-dashboard-select aria-label="${escapeHtml(checkboxLabel)}" ${selected ? "checked" : ""}>
+          <span aria-hidden="true"></span>
+        </label>
         <div class="dashboard-customer-cell">
           <strong>${escapeHtml(customer)}</strong>
           <span>${escapeHtml(project)}</span>
@@ -8502,20 +8528,83 @@ function dashboardSessionCard(session = {}) {
           <dt>Total</dt>
           <dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(session))}</span></dd>
         </div>
+        <div>
+          <dt>Exports</dt>
+          <dd>${escapeHtml(dashboardExportStatusText(session, "xlsx", "XLSX"))} / ${escapeHtml(dashboardExportStatusText(session, "pdf", "PDF"))}</dd>
+        </div>
       </dl>
-      <div class="dashboard-card-actions">
-        ${continueAction}
-        ${dashboardExportMarkup(session, "xlsx", "XLSX")}
-        ${dashboardExportMarkup(session, "pdf", "PDF")}
-        <button class="dashboard-card-action dashboard-delete-action" type="button" data-dashboard-action="delete">Delete</button>
-      </div>
     </article>
   `;
 }
 
-function dashboardSessionIdFromAction(action) {
-  const card = action?.closest?.("[data-quote-session-id]");
-  return safeQuoteSessionId(card?.dataset?.quoteSessionId || "");
+function dashboardSelectedSessionIds() {
+  const seen = new Set();
+  const selected = [];
+  (Array.isArray(state.dashboardSelectedSessionIds) ? state.dashboardSelectedSessionIds : []).forEach((value) => {
+    const sessionId = safeQuoteSessionId(value || "");
+    if (!sessionId || seen.has(sessionId)) return;
+    seen.add(sessionId);
+    selected.push(sessionId);
+  });
+  return selected;
+}
+
+function dashboardSessionById(sessionId) {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  if (!safeSessionId) return null;
+  return state.quoteSessions.find((session) => safeQuoteSessionId(session.session_id || "") === safeSessionId) || null;
+}
+
+function dashboardVisibleSessionIds(sessions = filteredDashboardSessions()) {
+  return sessions.map((session) => safeQuoteSessionId(session.session_id || "")).filter(Boolean);
+}
+
+function pruneDashboardSelection(visibleSessions = filteredDashboardSessions()) {
+  const visibleIds = new Set(dashboardVisibleSessionIds(visibleSessions));
+  const selected = dashboardSelectedSessionIds().filter((sessionId) => visibleIds.has(sessionId));
+  state.dashboardSelectedSessionIds = selected;
+  if (state.dashboardActiveSessionId && !visibleIds.has(safeQuoteSessionId(state.dashboardActiveSessionId || ""))) {
+    state.dashboardActiveSessionId = "";
+  }
+}
+
+function setDashboardSelection(sessionId, options = {}) {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  const mode = options.mode || "single";
+  if (mode === "clear") {
+    state.dashboardSelectedSessionIds = [];
+    state.dashboardSelectionMode = false;
+    state.dashboardActiveSessionId = "";
+    renderQuoteDashboard();
+    return;
+  }
+  if (mode === "visible") {
+    const visibleIds = dashboardVisibleSessionIds();
+    state.dashboardSelectionMode = true;
+    state.dashboardSelectedSessionIds = visibleIds;
+    state.dashboardActiveSessionId = visibleIds.length === 1 ? visibleIds[0] : "";
+    renderQuoteDashboard();
+    return;
+  }
+  if (!safeSessionId) return;
+  if (mode === "toggle") {
+    state.dashboardSelectionMode = true;
+    const selected = dashboardSelectedSessionIds();
+    let nextSelected;
+    if (selected.includes(safeSessionId)) {
+      nextSelected = selected.filter((item) => item !== safeSessionId);
+    } else {
+      nextSelected = [...selected, safeSessionId];
+    }
+    state.dashboardSelectedSessionIds = nextSelected;
+    state.dashboardActiveSessionId = nextSelected.length === 1 ? nextSelected[0] : "";
+    renderQuoteDashboard();
+    return;
+  }
+  state.dashboardSelectionMode = false;
+  state.dashboardSelectedSessionIds = [];
+  state.dashboardActiveSessionId = safeSessionId;
+  renderQuoteDashboard();
 }
 
 function continueDashboardDraft(sessionId) {
@@ -8525,10 +8614,176 @@ function continueDashboardDraft(sessionId) {
   showQuoteFlow();
 }
 
-async function deleteQuoteSession(sessionId) {
+function dashboardSelectedExportAction(session = {}, kind = "xlsx", label = "XLSX") {
+  const exportInfo = quoteSessionExport(session, kind);
+  if (exportInfo.exists && exportInfo.url) {
+    return `<a class="dashboard-selected-action dashboard-export-link" href="${escapeHtml(exportInfo.url)}" download>Download ${escapeHtml(label)}</a>`;
+  }
+  if (exportInfo.missing) {
+    return `<span class="dashboard-selected-action dashboard-export-missing" aria-disabled="true">Missing ${escapeHtml(label)}</span>`;
+  }
+  return `<span class="dashboard-selected-action dashboard-export-missing" aria-disabled="true">${escapeHtml(label)} unavailable</span>`;
+}
+
+function dashboardSelectedSessions() {
+  return dashboardSelectedSessionIds().map(dashboardSessionById).filter(Boolean);
+}
+
+function dashboardSelectionSummaryPills(sessions = []) {
+  const order = [
+    ["draft", "Draft"],
+    ["generated", "Generated"],
+    ["exported", "Exported"],
+    ["missing", "Missing files"],
+  ];
+  const counts = new Map(order.map(([key]) => [key, 0]));
+  sessions.forEach((session) => {
+    const key = quoteSessionStatus(session).key;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return order
+    .filter(([key]) => (counts.get(key) || 0) > 0)
+    .map(([key, label]) => {
+      const statusClass = key === "missing" ? "is-missing" : key === "draft" ? "is-draft" : "is-generated";
+      return `<span class="dashboard-status-pill ${statusClass}">${counts.get(key)} ${escapeHtml(label)}</span>`;
+    })
+    .join("");
+}
+
+function dashboardSelectedCloseButton(label = "Clear selection") {
+  return `
+    <button class="icon-button dashboard-selected-close" type="button" data-dashboard-panel-action="clear-selection" aria-label="${escapeHtml(label)}">
+      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+        <path d="M6 6l12 12"></path>
+        <path d="M18 6L6 18"></path>
+      </svg>
+    </button>
+  `;
+}
+
+function renderDashboardBulkPanel(selectedIds = []) {
+  const sessions = dashboardSelectedSessions();
+  const total = sessions.length;
+  const exportsReady = sessions.filter(quoteSessionHasAvailableExport).length;
+  const missingFiles = sessions.filter(quoteSessionHasMissingExport).length;
+  const generated = sessions.filter((session) => session.status?.quote_generated).length;
+  elements.dashboardSelectedSessionPanel.innerHTML = `
+    <header class="dashboard-selected-header">
+      <div>
+        <p class="workspace-pane-eyebrow">Bulk Selection</p>
+        <h3 id="dashboardSelectedSessionTitle">${total} sessions selected</h3>
+        <p class="settings-note">Bulk actions apply only to the checked visible sessions.</p>
+      </div>
+      ${dashboardSelectedCloseButton("Clear selected sessions")}
+    </header>
+    <div class="dashboard-selected-status-row">
+      ${dashboardSelectionSummaryPills(sessions)}
+    </div>
+    <dl class="dashboard-bulk-summary-grid">
+      <div><dt>Selected</dt><dd>${total}</dd></div>
+      <div><dt>Generated</dt><dd>${generated}</dd></div>
+      <div><dt>Exports ready</dt><dd>${exportsReady}</dd></div>
+      <div><dt>Missing files</dt><dd>${missingFiles}</dd></div>
+    </dl>
+    <div class="dashboard-selected-actions">
+      <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-selected">Delete selected</button>
+      <button class="secondary-button" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
+    </div>
+  `;
+}
+
+function renderDashboardSinglePanel(activeSession = {}) {
+  const status = quoteSessionStatus(activeSession);
+  const customer = activeSession.customer_summary?.customer_name || "Untitled customer";
+  const project = activeSession.customer_summary?.project_name || "Untitled quote";
+  const profile = activeSession.quote_company_profile?.display_name || "Quote Company Profile";
+  const pricing = activeSession.pricing_reference?.display_name || "Pricing Reference";
+  const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
+  const shortReference = dashboardShortSessionReference(activeSession);
+  const continueMarkup = dashboardSessionCanResume(activeSession)
+    ? '<button class="primary-button dashboard-selected-action" type="button" data-dashboard-panel-action="continue-session">Continue draft</button>'
+    : `<p class="dashboard-restore-note">${escapeHtml(QUOTE_SESSION_RESTORE_NOTE)}</p>`;
+  elements.dashboardSelectedSessionPanel.innerHTML = `
+    <header class="dashboard-selected-header">
+      <div>
+        <p class="workspace-pane-eyebrow">Selected Session</p>
+        <h3 id="dashboardSelectedSessionTitle">${escapeHtml(customer)}</h3>
+        <p class="settings-note">${escapeHtml(project)}</p>
+      </div>
+      ${dashboardSelectedCloseButton("Clear selected session")}
+    </header>
+    <div class="dashboard-selected-status-row">
+      <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+      ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+    </div>
+    <dl class="dashboard-selected-summary-grid">
+      <div><dt>Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
+      <div><dt>Created</dt><dd>${escapeHtml(formatDashboardDateTime(activeSession.created_at))}</dd></div>
+      <div><dt>Last export</dt><dd>${escapeHtml(dashboardLastExportText(activeSession))}</dd></div>
+      <div><dt>Currency / tax</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+    </dl>
+    <div class="dashboard-selected-setup">
+      <div><span>Profile</span><strong>${escapeHtml(profile)}</strong></div>
+      <div><span>Pricing</span><strong>${escapeHtml(pricing)}</strong></div>
+    </div>
+    <div class="dashboard-selected-actions">
+      ${continueMarkup}
+      <div class="dashboard-export-action-row">
+        ${dashboardSelectedExportAction(activeSession, "xlsx", "XLSX")}
+        ${dashboardSelectedExportAction(activeSession, "pdf", "PDF")}
+      </div>
+      <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-session" data-quote-session-id="${escapeHtml(safeSessionId)}">Delete session</button>
+    </div>
+  `;
+}
+
+function renderDashboardSelectedPanel() {
+  const selectedIds = dashboardSelectedSessionIds();
+  const activeSession = selectedIds.length === 1
+    ? dashboardSessionById(selectedIds[0])
+    : dashboardSessionById(state.dashboardActiveSessionId);
+  const showSelected = selectedIds.length > 1 || Boolean(activeSession);
+  if (elements.dashboardEmptySelectionPanel) elements.dashboardEmptySelectionPanel.hidden = showSelected;
+  if (!elements.dashboardSelectedSessionPanel) return;
+  elements.dashboardSelectedSessionPanel.hidden = !showSelected;
+  if (!showSelected) {
+    elements.dashboardSelectedSessionPanel.innerHTML = "";
+    return;
+  }
+  if (selectedIds.length > 1) {
+    renderDashboardBulkPanel(selectedIds);
+    return;
+  }
+  renderDashboardSinglePanel(activeSession);
+}
+
+function renderDashboardSelectionControls(filtered) {
+  const visibleIds = dashboardVisibleSessionIds(filtered);
+  const selected = dashboardSelectedSessionIds();
+  const hasVisibleRows = visibleIds.length > 0 && !state.quoteSessionLoadError;
+  if (elements.dashboardSelectionToolbar) elements.dashboardSelectionToolbar.hidden = !hasVisibleRows;
+  if (elements.dashboardSelectModeButton) {
+    elements.dashboardSelectModeButton.textContent = state.dashboardSelectionMode ? "Select All" : "Select";
+    elements.dashboardSelectModeButton.disabled = !hasVisibleRows || state.quoteSessionDeleteBusy;
+    elements.dashboardSelectModeButton.setAttribute("aria-disabled", String(elements.dashboardSelectModeButton.disabled));
+    elements.dashboardSelectModeButton.setAttribute("aria-pressed", String(state.dashboardSelectionMode));
+  }
+  if (elements.dashboardSelectionHint) {
+    elements.dashboardSelectionHint.hidden = !state.dashboardSelectionMode || selected.length > 0;
+  }
+  if (elements.dashboardBulkActionBar) elements.dashboardBulkActionBar.hidden = selected.length === 0;
+  if (elements.dashboardBulkSelectionCount) {
+    elements.dashboardBulkSelectionCount.textContent = `${selected.length} selected`;
+  }
+  [elements.dashboardBulkClearButton, elements.dashboardBulkDeleteButton].filter(Boolean).forEach((button) => {
+    button.disabled = state.quoteSessionDeleteBusy;
+    button.setAttribute("aria-disabled", String(button.disabled));
+  });
+}
+
+async function deleteQuoteSessionById(sessionId) {
   const safeSessionId = safeQuoteSessionId(sessionId || "");
-  if (!safeSessionId || appIsBusy()) return;
-  if (!window.confirm(QUOTE_SESSION_DELETE_CONFIRM_MESSAGE)) return;
+  if (!safeSessionId) return false;
   const url = `/api/quote-sessions/${encodeURIComponent(safeSessionId)}`;
   const headers = {};
   if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
@@ -8544,37 +8799,179 @@ async function deleteQuoteSession(sessionId) {
       data = await jsonFromResponse(response);
     }
   } catch (error) {
-    state.quoteSessionLoadError = genericFailureMessage(error);
-    renderQuoteDashboard();
+    return { ok: false, data: error };
+  }
+  return { ok: response.ok, data };
+}
+
+function quoteSessionDeletePendingIds() {
+  const seen = new Set();
+  const sessionIds = [];
+  (Array.isArray(state.quoteSessionDeletePendingIds) ? state.quoteSessionDeletePendingIds : []).forEach((value) => {
+    const sessionId = safeQuoteSessionId(value || "");
+    if (!sessionId || seen.has(sessionId)) return;
+    seen.add(sessionId);
+    sessionIds.push(sessionId);
+  });
+  return sessionIds;
+}
+
+function hideQuoteSessionDeleteModal() {
+  if (state.quoteSessionDeleteBusy) return;
+  state.quoteSessionDeletePendingIds = [];
+  state.quoteSessionDeleteBulk = false;
+  if (elements.quoteSessionDeleteError) {
+    elements.quoteSessionDeleteError.hidden = true;
+    elements.quoteSessionDeleteError.textContent = "";
+  }
+  if (elements.quoteSessionDeleteModal) {
+    elements.quoteSessionDeleteModal.classList.remove("is-open");
+    elements.quoteSessionDeleteModal.hidden = true;
+  }
+}
+
+function renderQuoteSessionDeleteModal() {
+  const sessionIds = quoteSessionDeletePendingIds();
+  const modal = elements.quoteSessionDeleteModal;
+  if (!modal || !sessionIds.length) {
+    hideQuoteSessionDeleteModal();
     return;
   }
-  if (!response.ok) {
-    state.quoteSessionLoadError = genericFailureMessage(data);
-    renderQuoteDashboard();
+  const bulk = state.quoteSessionDeleteBulk || sessionIds.length > 1;
+  if (elements.quoteSessionDeleteTitle) elements.quoteSessionDeleteTitle.textContent = "Delete quote session?";
+  if (elements.quoteSessionDeleteText) {
+    elements.quoteSessionDeleteText.textContent = bulk ? QUOTE_SESSION_DELETE_BULK_MESSAGE : QUOTE_SESSION_DELETE_SINGLE_MESSAGE;
+  }
+  if (elements.confirmQuoteSessionDeleteButton) {
+    elements.confirmQuoteSessionDeleteButton.textContent = bulk ? "Delete selected" : "Delete session";
+    elements.confirmQuoteSessionDeleteButton.disabled = state.quoteSessionDeleteBusy;
+    elements.confirmQuoteSessionDeleteButton.setAttribute("aria-disabled", String(state.quoteSessionDeleteBusy));
+  }
+  if (elements.cancelQuoteSessionDeleteButton) {
+    elements.cancelQuoteSessionDeleteButton.disabled = state.quoteSessionDeleteBusy;
+    elements.cancelQuoteSessionDeleteButton.setAttribute("aria-disabled", String(state.quoteSessionDeleteBusy));
+  }
+  modal.hidden = false;
+  modal.classList.add("is-open");
+  queueActionButtonFocus(elements.confirmQuoteSessionDeleteButton);
+}
+
+function requestQuoteSessionDelete(sessionIds, options = {}) {
+  if (appIsBusy() || state.quoteSessionDeleteBusy) return;
+  const ids = Array.isArray(sessionIds) ? sessionIds : [sessionIds];
+  state.quoteSessionDeletePendingIds = ids.map((value) => safeQuoteSessionId(value || "")).filter(Boolean);
+  state.quoteSessionDeleteBulk = Boolean(options.bulk);
+  if (elements.quoteSessionDeleteError) {
+    elements.quoteSessionDeleteError.hidden = true;
+    elements.quoteSessionDeleteError.textContent = "";
+  }
+  renderQuoteSessionDeleteModal();
+}
+
+async function confirmQuoteSessionDelete() {
+  const sessionIds = quoteSessionDeletePendingIds();
+  if (!sessionIds.length || state.quoteSessionDeleteBusy) {
+    hideQuoteSessionDeleteModal();
     return;
   }
-  if (safeSessionId === safeQuoteSessionId(state.quoteSessionId)) {
+  state.quoteSessionDeleteBusy = true;
+  renderQuoteSessionDeleteModal();
+  let failed = null;
+  for (const sessionId of sessionIds) {
+    const result = await deleteQuoteSessionById(sessionId);
+    if (!result?.ok) {
+      failed = result?.data || {};
+      break;
+    }
+  }
+  state.quoteSessionDeleteBusy = false;
+  if (failed) {
+    if (elements.quoteSessionDeleteError) {
+      elements.quoteSessionDeleteError.textContent = genericFailureMessage(failed);
+      elements.quoteSessionDeleteError.hidden = false;
+    }
+    renderQuoteSessionDeleteModal();
+    return;
+  }
+  if (sessionIds.includes(safeQuoteSessionId(state.quoteSessionId))) {
     state.quoteSessionId = "";
     saveSessionState();
+  }
+  state.dashboardSelectedSessionIds = dashboardSelectedSessionIds().filter((sessionId) => !sessionIds.includes(sessionId));
+  if (sessionIds.includes(safeQuoteSessionId(state.dashboardActiveSessionId))) {
+    state.dashboardActiveSessionId = state.dashboardSelectedSessionIds.length === 1 ? state.dashboardSelectedSessionIds[0] : "";
+  }
+  if (!state.dashboardSelectedSessionIds.length) {
+    state.dashboardSelectionMode = false;
+  }
+  state.quoteSessionDeletePendingIds = [];
+  state.quoteSessionDeleteBulk = false;
+  if (elements.quoteSessionDeleteModal) {
+    elements.quoteSessionDeleteModal.classList.remove("is-open");
+    elements.quoteSessionDeleteModal.hidden = true;
   }
   await loadQuoteDashboard();
   syncControlStates();
 }
 
+function handleDashboardSelectModeButton() {
+  if (appIsBusy() || state.quoteSessionDeleteBusy) return;
+  if (!state.dashboardSelectionMode) {
+    state.dashboardSelectionMode = true;
+    state.dashboardSelectedSessionIds = [];
+    renderQuoteDashboard();
+    return;
+  }
+  setDashboardSelection("", { mode: "visible" });
+}
+
 function handleDashboardSessionAction(event) {
-  const action = event.target?.closest?.("[data-dashboard-action]");
-  if (!action || !elements.dashboardSessionsList?.contains(action)) return;
-  const sessionId = dashboardSessionIdFromAction(action);
-  if (action.dataset.dashboardAction === "continue") {
-    continueDashboardDraft(sessionId);
-  } else if (action.dataset.dashboardAction === "delete") {
-    deleteQuoteSession(sessionId);
+  const selectInput = event.target?.closest?.("[data-dashboard-select]");
+  if (selectInput && elements.dashboardSessionsList?.contains(selectInput)) {
+    const card = selectInput.closest("[data-quote-session-id]");
+    setDashboardSelection(card?.dataset?.quoteSessionId || "", { mode: "toggle" });
+    return;
+  }
+  const selectControl = event.target?.closest?.("[data-dashboard-select-control]");
+  if (selectControl && elements.dashboardSessionsList?.contains(selectControl)) {
+    event.preventDefault();
+    const card = selectControl.closest("[data-quote-session-id]");
+    setDashboardSelection(card?.dataset?.quoteSessionId || "", { mode: "toggle" });
+    return;
+  }
+  const card = event.target?.closest?.("[data-quote-session-id]");
+  if (!card || !elements.dashboardSessionsList?.contains(card)) return;
+  setDashboardSelection(card.dataset.quoteSessionId || "", { mode: state.dashboardSelectionMode ? "toggle" : "single" });
+}
+
+function handleDashboardSessionKeydown(event) {
+  if (!["Enter", " "].includes(event.key)) return;
+  if (event.target?.closest?.("input, button, a, select, textarea")) return;
+  const card = event.target?.closest?.("[data-quote-session-id]");
+  if (!card || !elements.dashboardSessionsList?.contains(card)) return;
+  event.preventDefault();
+  setDashboardSelection(card.dataset.quoteSessionId || "", { mode: state.dashboardSelectionMode ? "toggle" : "single" });
+}
+
+function handleDashboardSidePanelAction(event) {
+  const action = event.target?.closest?.("[data-dashboard-panel-action]");
+  if (!action || !elements.dashboardSidePanel?.contains(action)) return;
+  const selectedId = safeQuoteSessionId(state.dashboardActiveSessionId || dashboardSelectedSessionIds()[0] || "");
+  if (action.dataset.dashboardPanelAction === "continue-session") {
+    continueDashboardDraft(selectedId);
+  } else if (action.dataset.dashboardPanelAction === "delete-session") {
+    requestQuoteSessionDelete(action.dataset.quoteSessionId || selectedId);
+  } else if (action.dataset.dashboardPanelAction === "delete-selected") {
+    requestQuoteSessionDelete(dashboardSelectedSessionIds(), { bulk: true });
+  } else if (action.dataset.dashboardPanelAction === "clear-selection") {
+    setDashboardSelection("", { mode: "clear" });
   }
 }
 
 function renderQuoteDashboard() {
   updateDashboardSummary();
   const filtered = filteredDashboardSessions();
+  pruneDashboardSelection(filtered);
   const hasError = Boolean(state.quoteSessionLoadError);
   const hasSessions = state.quoteSessions.length > 0;
   const hasRows = filtered.length > 0;
@@ -8598,6 +8995,8 @@ function renderQuoteDashboard() {
     elements.dashboardSessionsList.hidden = hasError || !hasRows;
     elements.dashboardSessionsList.innerHTML = filtered.map(dashboardSessionCard).join("");
   }
+  renderDashboardSelectionControls(filtered);
+  renderDashboardSelectedPanel();
 }
 
 function delay(ms) {
@@ -8681,14 +9080,16 @@ async function initializeSession() {
 function syncControlStates() {
   const busy = appIsBusy();
   elements.newQuoteButton.disabled = busy;
+  elements.newQuoteButton.hidden = state.activeAppView === "dashboard";
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
-  [elements.dashboardNewQuoteButton, elements.dashboardSideNewQuoteButton, elements.dashboardRefreshButton, elements.backToDashboardButton]
+  [elements.dashboardSideNewQuoteButton, elements.dashboardRefreshButton, elements.backToDashboardButton]
     .filter(Boolean)
     .forEach((button) => {
       button.disabled = busy;
       button.setAttribute("aria-disabled", String(busy));
       button.title = busy ? appBusyTitle() : "";
     });
+  renderDashboardSelectionControls(filteredDashboardSessions());
   if (elements.backToDashboardButton) {
     elements.backToDashboardButton.hidden = state.activeAppView !== "quote";
   }
@@ -9378,6 +9779,7 @@ function visiblePrimaryModalActionButton() {
   if (elements.profileOverwriteModal && !elements.profileOverwriteModal.hidden) return elements.confirmProfileOverwriteButton;
   if (elements.profileNameModal && !elements.profileNameModal.hidden) return elements.confirmProfileNameButton;
   if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) return elements.confirmOutputDeleteButton;
+  if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) return elements.confirmQuoteSessionDeleteButton;
   if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
     return buttonCanAcceptClick(elements.confirmProfileDeleteButton)
       ? elements.confirmProfileDeleteButton
@@ -9547,6 +9949,8 @@ function wireEvents() {
         hideProfileNameModal();
       } else if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) {
         hideOutputDeleteModal();
+      } else if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) {
+        hideQuoteSessionDeleteModal();
       } else if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
         hideProfileDeleteModal();
       } else if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) {
@@ -9563,10 +9967,14 @@ function wireEvents() {
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
-  elements.dashboardNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardSideNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardRefreshButton?.addEventListener("click", loadQuoteDashboard);
   elements.dashboardSessionsList?.addEventListener("click", handleDashboardSessionAction);
+  elements.dashboardSessionsList?.addEventListener("keydown", handleDashboardSessionKeydown);
+  elements.dashboardSidePanel?.addEventListener("click", handleDashboardSidePanelAction);
+  elements.dashboardSelectModeButton?.addEventListener("click", handleDashboardSelectModeButton);
+  elements.dashboardBulkClearButton?.addEventListener("click", () => setDashboardSelection("", { mode: "clear" }));
+  elements.dashboardBulkDeleteButton?.addEventListener("click", () => requestQuoteSessionDelete(dashboardSelectedSessionIds(), { bulk: true }));
   elements.backToDashboardButton?.addEventListener("click", returnToDashboard);
   elements.dashboardStatusFilter?.addEventListener("change", () => {
     state.dashboardStatusFilter = elements.dashboardStatusFilter.value || "all";
@@ -9733,6 +10141,13 @@ function wireEvents() {
   elements.outputDeleteModal?.addEventListener("click", (event) => {
     if (event.target.closest("[data-output-delete-close]")) {
       hideOutputDeleteModal();
+    }
+  });
+  elements.cancelQuoteSessionDeleteButton?.addEventListener("click", hideQuoteSessionDeleteModal);
+  elements.confirmQuoteSessionDeleteButton?.addEventListener("click", confirmQuoteSessionDelete);
+  elements.quoteSessionDeleteModal?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-quote-session-delete-close]")) {
+      hideQuoteSessionDeleteModal();
     }
   });
   elements.importPresetButton?.addEventListener("click", (event) => {
