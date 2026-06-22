@@ -771,7 +771,8 @@ async function main() {
     if (singleDeleteCopy !== "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.") {
       throw new Error(`Unexpected single delete confirmation copy: ${singleDeleteCopy}`);
     }
-    await page.locator("#confirmQuoteSessionDeleteButton").click();
+    await page.locator("#cancelQuoteSessionDeleteButton").focus();
+    await page.keyboard.press("Enter");
     await currentDashboardCard.waitFor({ state: "detached", timeout: 15000 });
 
     console.log(JSON.stringify({

@@ -7928,6 +7928,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         wire_events_body = js.split("function wireEvents", 1)[1].split("function renderQuoteDashboard", 1)[0]
         self.assertIn("saveQuoteSessionDraftStateAfterPanelMove(panelName)", wire_events_body)
         start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
+        self.assertIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", start_new_quote_body)
+        self.assertIn("quoteDraftShouldPersistToDashboard()", start_new_quote_body)
+        self.assertIn("saveQuoteSessionDraftState", start_new_quote_body)
         self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
         self.assertIn("/api/quote-sessions", js)
 
@@ -7982,8 +7985,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("Missing files", status_body)
         self.assertNotIn('label: "Exported"', status_body)
         can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
-        self.assertIn("session.has_draft_state === true", can_modify_body)
-        self.assertIn("dashboardSessionHasCurrentDraft(session)", can_modify_body)
+        self.assertIn("safeQuoteSessionId(session.session_id", can_modify_body)
+        self.assertNotIn("session.has_draft_state === true", can_modify_body)
         restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
         self.assertIn("detailedSession?.draft_state", restore_body)
         self.assertIn("currentQuoteSessionDraftState()", restore_body)
@@ -9813,6 +9816,7 @@ function button(name, options = {}) {
     disabled: Boolean(options.disabled),
     click() { clicks.push(name); },
     getAttribute() { return options.ariaDisabled ? "true" : "false"; },
+    closest(selector) { return selector === "button, a" ? this : null; },
   };
 }
 
@@ -9825,6 +9829,9 @@ const elements = {
   confirmProfileNameButton: button("save"),
   outputDeleteModal: modal(true),
   confirmOutputDeleteButton: button("delete-output"),
+  quoteSessionDeleteModal: modal(true),
+  confirmQuoteSessionDeleteButton: button("delete-session"),
+  cancelQuoteSessionDeleteButton: button("cancel-delete-session"),
   profileDeleteModal: modal(true),
   confirmProfileDeleteButton: button("delete-profile"),
   cancelProfileDeleteButton: button("close-profile-delete"),
@@ -9860,16 +9867,25 @@ assert.strictEqual(handleModalEnterKey({ key: "Enter", defaultPrevented: true, p
 assert.deepStrictEqual(clicks, ["load", "overwrite"]);
 
 elements.profileNameModal.hidden = true;
+elements.quoteSessionDeleteModal.hidden = false;
+document.activeElement = elements.cancelQuoteSessionDeleteButton;
+prevented = false;
+assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
+assert.strictEqual(prevented, true);
+assert.deepStrictEqual(clicks, ["load", "overwrite", "delete-session"]);
+
+elements.quoteSessionDeleteModal.hidden = true;
+document.activeElement = null;
 elements.profileDeleteModal.hidden = false;
 elements.confirmProfileDeleteButton.hidden = true;
 assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete"]);
+assert.deepStrictEqual(clicks, ["load", "overwrite", "delete-session", "close-profile-delete"]);
 
 elements.profileDeleteModal.hidden = true;
 elements.pricingReferenceModal.hidden = false;
 elements.pricingReferenceDeleteConfirm.hidden = false;
 assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete", "delete-pricing-reference"]);
+assert.deepStrictEqual(clicks, ["load", "overwrite", "delete-session", "close-profile-delete", "delete-pricing-reference"]);
 """
         completed = subprocess.run(
             [node, "-e", script],

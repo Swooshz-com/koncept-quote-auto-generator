@@ -3173,6 +3173,10 @@ function resetImagesDraft() {
 
 async function startNewQuote() {
   if (appIsBusy()) return;
+  markQuoteSessionDraftSaveStartedAfterCustomerStep();
+  if (quoteDraftShouldPersistToDashboard()) {
+    await saveQuoteSessionDraftState({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
+  }
   clearSessionState();
   resetCurrentQuoteDraftState();
   showQuoteFlow();
@@ -8786,10 +8790,7 @@ function dashboardSessionHasCurrentDraft(session = {}) {
 }
 
 function dashboardSessionCanModify(session = {}) {
-  return Boolean(
-    safeQuoteSessionId(session.session_id || "")
-    && (session.has_draft_state === true || dashboardSessionHasCurrentDraft(session))
-  );
+  return Boolean(safeQuoteSessionId(session.session_id || ""));
 }
 
 async function loadQuoteSessionDetail(sessionId = "") {
@@ -10248,8 +10249,6 @@ function handleModalEnterKey(event) {
   }
   const actionButton = visiblePrimaryModalActionButton();
   if (!buttonCanAcceptClick(actionButton)) return false;
-  const activeAction = document.activeElement?.closest?.("button, a");
-  if (activeAction && activeAction !== actionButton) return false;
   event.preventDefault();
   actionButton.click();
   return true;
