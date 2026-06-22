@@ -7649,8 +7649,21 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                         "customer_name": "New Customer",
                         "project_name": "New Project",
                     },
+                    "draft_state": {
+                        "outputRows": [{"description": "Edited output row", "quantity": 2}],
+                        "analysisFindings": [{"text": "Synthetic visible finding"}],
+                        "images": [{
+                            "name": "reference.pdf",
+                            "type": "application/pdf",
+                            "data_url": "data:application/pdf;base64,SECRET",
+                        }],
+                        "output_dir": str(data_root / "private-output"),
+                    },
                 }
                 new_session = webapp.create_or_update_quote_session(new_payload)
+                new_path = webapp.quote_session_metadata_path(new_session["session_id"])
+                new_data = json.loads(new_path.read_text(encoding="utf-8"))
+                detailed_new_session = webapp.get_quote_session("quote-new", include_draft_state=True)
 
                 sessions = webapp.list_quote_sessions()
 
@@ -7658,6 +7671,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(new_session["customer_summary"]["customer_name"], "New Customer")
             self.assertEqual(new_session["customer_summary"]["project_name"], "New Project")
             self.assertEqual(new_session["status"]["quote_generated"], False)
+            self.assertEqual(new_data["draft_state"]["outputRows"][0]["description"], "Edited output row")
+            self.assertEqual(new_data["draft_state"]["analysisFindings"][0]["text"], "Synthetic visible finding")
+            self.assertNotIn("data_url", json.dumps(new_data["draft_state"]))
+            self.assertNotIn("output_dir", json.dumps(new_data["draft_state"]))
+            self.assertIn("draft_state", detailed_new_session)
+            self.assertNotIn("draft_state", sessions[0])
             self.assertTrue((data_root / "quote-sessions" / "quote-new" / "quote-session.json").is_file())
 
     def test_quote_session_exports_are_recorded_and_missing_artifacts_are_safe(self):
@@ -7877,6 +7896,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("showDashboard", js)
         self.assertIn("showQuoteFlow", js)
         self.assertIn("loadQuoteDashboard", js)
+        self.assertIn("quoteDraftShouldPersistToDashboard", js)
+        self.assertIn("discardCurrentQuoteDraftSession", js)
+        self.assertIn("includeDraftState: true", js)
+        self.assertIn("payload.draft_state = currentQuoteSessionDraftState()", js)
+        start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
+        self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
         self.assertIn("/api/quote-sessions", js)
 
     def test_static_dashboard_uses_selected_panel_bulk_delete_and_custom_modal(self):

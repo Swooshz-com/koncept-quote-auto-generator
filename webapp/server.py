@@ -11038,6 +11038,44 @@ def quote_session_commercials(payload: dict[str, Any], patch: dict[str, Any]) ->
     }
 
 
+QUOTE_SESSION_DRAFT_STATE_STRIP_KEYS = {
+    "data_url",
+    "logo_data_url",
+    "brief_path",
+    "output_dir",
+    "stdout",
+    "stderr",
+}
+
+
+def quote_session_draft_state_value(value: Any, depth: int = 0) -> Any:
+    if depth > 8:
+        return None
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int | float):
+        return value if math.isfinite(float(value)) else None
+    if isinstance(value, str):
+        return dashboard_safe_text(value, 5000)
+    if isinstance(value, list):
+        return [quote_session_draft_state_value(item, depth + 1) for item in value[:200]]
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for raw_key, raw_value in list(value.items())[:120]:
+            key = dashboard_safe_text(raw_key, 80)
+            if not key or key in QUOTE_SESSION_DRAFT_STATE_STRIP_KEYS:
+                continue
+            sanitized[key] = quote_session_draft_state_value(raw_value, depth + 1)
+        return sanitized
+    return dashboard_safe_text(value, 5000)
+
+
+def quote_session_draft_state(patch: dict[str, Any]) -> dict[str, Any]:
+    supplied = patch.get("draft_state") if isinstance(patch.get("draft_state"), dict) else {}
+    sanitized = quote_session_draft_state_value(supplied)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
 def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, Any]:
     return {
         "schema_version": QUOTE_SESSION_SCHEMA_VERSION,
@@ -11082,6 +11120,7 @@ def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, 
                 "size_bytes": None,
             },
         },
+        "draft_state": {},
     }
 
 
@@ -11092,7 +11131,7 @@ def normalized_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any
     created_at = dashboard_safe_text(metadata.get("created_at")) or utc_timestamp()
     normalized = blank_quote_session_metadata(session_id, created_at)
     normalized["updated_at"] = dashboard_safe_text(metadata.get("updated_at")) or created_at
-    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports"):
+    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "draft_state"):
         if isinstance(metadata.get(key), dict):
             normalized[key].update(copy.deepcopy(metadata[key]))
     return normalized
@@ -11158,6 +11197,8 @@ def create_or_update_quote_session(
     status_patch = patch.get("status") if isinstance(patch.get("status"), dict) else {}
     if isinstance(status_patch.get("quote_generated"), bool):
         metadata["status"]["quote_generated"] = status_patch["quote_generated"]
+    if isinstance(patch.get("draft_state"), dict):
+        metadata["draft_state"] = quote_session_draft_state(patch)
     if result_has_generated_quote(result):
         metadata["status"]["quote_generated"] = True
     copy_quote_session_exports(resolved_session_id, metadata, result, output_dir)
@@ -11165,12 +11206,14 @@ def create_or_update_quote_session(
     return public_quote_session(metadata)
 
 
-def public_quote_session(metadata: dict[str, Any]) -> dict[str, Any]:
+def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool = False) -> dict[str, Any]:
     normalized = normalized_quote_session_metadata(metadata)
     if not normalized:
         return {}
     session_id = normalized["session_id"]
     public = copy.deepcopy(normalized)
+    if not include_draft_state:
+        public.pop("draft_state", None)
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
         raw_export = public["exports"].get(kind) if isinstance(public["exports"].get(kind), dict) else {}
         recorded_filename = clean_text(raw_export.get("filename"))
@@ -11187,11 +11230,11 @@ def public_quote_session(metadata: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
-def get_quote_session(session_id: str) -> dict[str, Any] | None:
+def get_quote_session(session_id: str, *, include_draft_state: bool = False) -> dict[str, Any] | None:
     metadata = read_quote_session_metadata(session_id)
     if not metadata:
         return None
-    return public_quote_session(metadata)
+    return public_quote_session(metadata, include_draft_state=include_draft_state)
 
 
 def iso_timestamp_sort_value(value: Any) -> float:
@@ -11704,7 +11747,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         quote_session_detail_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", path)
         if quote_session_detail_match:
-            session = get_quote_session(quote_session_detail_match.group(1))
+            session = get_quote_session(quote_session_detail_match.group(1), include_draft_state=True)
             if not session:
                 self.send_json({"error": "Not found"}, status=404)
                 return

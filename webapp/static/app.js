@@ -1256,6 +1256,7 @@ async function addImagesFromFiles(files) {
   }
   state.images = [...state.images, ...unique];
   await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
+  await ensureQuoteSession({ quoteGenerated: false, includeDraftState: true });
   renderFiles();
   setWorkflowStage("ready_to_analyze");
   const generator = currentGenerator();
@@ -2182,6 +2183,10 @@ function clearSessionState() {
 function saveSessionState() {
   if (state.isBooting) return;
   try {
+    if (state.activeAppView === "dashboard" && !safeQuoteSessionId(state.quoteSessionId) && !quoteDraftShouldPersistToDashboard()) {
+      window.localStorage.removeItem(QUOTE_SESSION_STORAGE_KEY);
+      return;
+    }
     const fileRecords = sessionFileRecordsFromImages();
     const snapshot = buildSessionSnapshot();
     window.localStorage.setItem(QUOTE_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
@@ -3133,6 +3138,12 @@ function resetImagesDraft() {
 async function startNewQuote() {
   if (appIsBusy()) return;
   clearSessionState();
+  resetCurrentQuoteDraftState();
+  showQuoteFlow();
+  syncControlStates();
+}
+
+function resetCurrentQuoteDraftState() {
   state.quoteSessionId = "";
   state.profileId = "";
   state.pricingReferenceId = "";
@@ -3161,10 +3172,6 @@ async function startNewQuote() {
   renderPresetStatus("Started a new quote.");
   setWorkflowStage("needs_images");
   setSidePanel("images", { force: true });
-  showQuoteFlow();
-  syncControlStates();
-  await saveCurrentQuoteSession({ quoteGenerated: false });
-  syncControlStates();
 }
 
 function profileDeleteConfirmPreset() {
@@ -5650,6 +5657,9 @@ async function setSampleDetails() {
     applyQuoteDetails(data.details || {}, { partial: true });
     state.images = Array.isArray(data.images) ? data.images.slice(0, MAX_REFERENCE_IMAGES) : [];
     await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
+    if (state.images.length) {
+      await ensureQuoteSession({ quoteGenerated: false, includeDraftState: true });
+    }
     renderFiles();
     setImageUploadStatus(`${state.images.length} sample reference file${state.images.length === 1 ? "" : "s"} loaded.`);
     setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
@@ -5687,6 +5697,7 @@ function buildPayload(options = {}) {
     } : { id: state.pricingReferenceId || "", source: state.pricingReferenceSource || "bundled", tax: selectedPricingReferenceTax(), currency: selectedPricingReferenceCurrency() },
     quote_session: currentQuoteSessionPayload({
       quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length),
+      includeDraftState: true,
     }),
     analysis_mode: normalizeAnalysisMode(options.analysisMode || state.pendingAnalysisMode),
     generator_label: generator.label,
@@ -8293,13 +8304,81 @@ function dashboardCommercialsFromState() {
   };
 }
 
+function quoteDraftHasReferenceFiles() {
+  return state.images.some((image) => (
+    String(image?.data_url || image?.session_file_key || image?.name || "").trim()
+  ));
+}
+
+function quoteDraftHasAiAnalysis() {
+  const basisValues = Object.values(state.quoteBasis || {}).some((value) => String(value || "").trim());
+  return Boolean(
+    basisValues
+    || state.quoteBasisSections.length
+    || state.lineItems.length
+    || state.analysisFindings.length
+    || state.blockingClarificationQuestions.length
+    || state.originalAnalysisSnapshot
+    || state.basisConfirmed
+    || state.aiFailed
+    || String(state.draftSource || "").trim()
+  );
+}
+
+function quoteDraftHasOutputState() {
+  return Boolean(
+    state.outputRows.length
+    || state.originalOutputRows.length
+    || revisionNumber(state.outputRevision, 0) > 0
+    || state.downloadFile
+    || state.pdfFile
+  );
+}
+
+function quoteDraftShouldPersistToDashboard() {
+  return quoteDraftHasReferenceFiles() || quoteDraftHasAiAnalysis() || quoteDraftHasOutputState();
+}
+
+function currentQuoteSessionDraftState() {
+  const snapshot = buildSessionSnapshot();
+  return {
+    version: snapshot.version,
+    savedAt: snapshot.savedAt,
+    profileId: snapshot.profileId,
+    pricingReferenceId: snapshot.pricingReferenceId,
+    pricingReferenceSource: snapshot.pricingReferenceSource,
+    selectedPresetValue: snapshot.selectedPresetValue,
+    images: snapshot.images,
+    quoteDetails: snapshot.quoteDetails,
+    workflowStage: snapshot.workflowStage,
+    quoteBasis: snapshot.quoteBasis,
+    quoteBasisSections: snapshot.quoteBasisSections,
+    lineItems: snapshot.lineItems,
+    outputRows: snapshot.outputRows,
+    originalOutputRows: snapshot.originalOutputRows,
+    outputErrors: snapshot.outputErrors,
+    outputSortMode: snapshot.outputSortMode,
+    analysisFindings: snapshot.analysisFindings,
+    blockingClarificationQuestions: snapshot.blockingClarificationQuestions,
+    boothDimensions: snapshot.boothDimensions,
+    originalAnalysisSnapshot: snapshot.originalAnalysisSnapshot,
+    basisConfirmed: snapshot.basisConfirmed,
+    aiFailed: snapshot.aiFailed,
+    draftSource: snapshot.draftSource,
+    lastAnalysisMode: snapshot.lastAnalysisMode,
+    activeSidePanel: snapshot.activeSidePanel,
+    outputRevision: snapshot.outputRevision,
+    pricingMatches: snapshot.pricingMatches,
+  };
+}
+
 function currentQuoteSessionPayload(options = {}) {
   const details = collectQuoteDetails();
   const selectedProfile = selectedPreset();
   const selectedReference = currentPricingReference();
   const profile = currentProfile();
   const quoteGenerated = Boolean(options.quoteGenerated ?? (state.basisConfirmed || state.outputRows.length));
-  return {
+  const payload = {
     session_id: safeQuoteSessionId(options.sessionId || state.quoteSessionId || ""),
     customer_summary: {
       customer_name: details.client?.name || "",
@@ -8319,6 +8398,10 @@ function currentQuoteSessionPayload(options = {}) {
       quote_generated: quoteGenerated,
     },
   };
+  if (options.includeDraftState === true) {
+    payload.draft_state = currentQuoteSessionDraftState();
+  }
+  return payload;
 }
 
 async function saveCurrentQuoteSession(options = {}) {
@@ -8340,14 +8423,31 @@ async function ensureQuoteSession(options = {}) {
 }
 
 function hasCurrentQuoteDraft() {
-  return Boolean(
-    safeQuoteSessionId(state.quoteSessionId)
-    || state.images.length
-    || state.lineItems.length
-    || state.outputRows.length
-    || state.basisConfirmed
-    || state.workflowStage !== "needs_images"
-  );
+  return quoteDraftShouldPersistToDashboard();
+}
+
+async function deleteQuoteSessionRecord(sessionId = "") {
+  const safeSessionId = safeQuoteSessionId(sessionId);
+  if (!safeSessionId) return true;
+  const headers = {};
+  if (state.csrfToken) headers[state.csrfHeaderName] = state.csrfToken;
+  try {
+    const response = await fetch(`/api/quote-sessions/${encodeURIComponent(safeSessionId)}`, {
+      method: "DELETE",
+      headers,
+    });
+    return response.ok || response.status === 404;
+  } catch (error) {
+    const errorReference = newClientErrorReference();
+    logClientEvent("client_error", fetchFailureLogDetails(`/api/quote-sessions/${safeSessionId}`, { error_reference: errorReference }));
+    return false;
+  }
+}
+
+async function discardCurrentQuoteDraftSession() {
+  await deleteQuoteSessionRecord(state.quoteSessionId);
+  clearSessionState();
+  resetCurrentQuoteDraftState();
 }
 
 function showQuoteFlow() {
@@ -8373,7 +8473,15 @@ function showDashboard(options = {}) {
 
 async function returnToDashboard() {
   if (appIsBusy()) return;
-  await saveCurrentQuoteSession({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
+  if (!quoteDraftShouldPersistToDashboard()) {
+    await discardCurrentQuoteDraftSession();
+    showDashboard();
+    return;
+  }
+  await saveCurrentQuoteSession({
+    quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length),
+    includeDraftState: true,
+  });
   showDashboard();
 }
 

@@ -300,6 +300,17 @@ async function main() {
     await expectTopbarPrimaryAction(page, "dashboard");
     const homeShot = await screenshot(page, "home.png");
 
+    await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).click();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardEmptyState").waitFor({ state: "visible", timeout: 15000 });
+    const blankDraftRows = await page.locator(".dashboard-session-card").count();
+    if (blankDraftRows !== 0) {
+      throw new Error(`Blank quote draft should be discarded on dashboard return, found ${blankDraftRows} dashboard rows.`);
+    }
+    await page.locator("#newQuoteButton:not([disabled])").click();
+    await page.locator("#imageIntake").waitFor({ state: "visible" });
+    await expectTopbarPrimaryAction(page, "dashboard");
+
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#sampleDetailsButton").click();
     await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
@@ -449,6 +460,17 @@ async function main() {
     });
     const currentDashboardCard = page.locator(`.dashboard-session-card[data-quote-session-id="${currentDashboardSessionId}"]`);
     await currentDashboardCard.waitFor({ state: "visible", timeout: 15000 });
+    const currentDashboardDetail = await page.evaluate(async (sessionId) => {
+      const response = await fetch(`/api/quote-sessions/${encodeURIComponent(sessionId)}`);
+      return response.json();
+    }, currentDashboardSessionId);
+    const currentDraftState = currentDashboardDetail.quote_session?.draft_state || {};
+    if (!Array.isArray(currentDraftState.images) || !currentDraftState.images.some((image) => /kent-group\.pdf/i.test(image.name || ""))) {
+      throw new Error(`Expected dashboard session draft state to include the reference PDF metadata, found ${JSON.stringify(currentDraftState.images || [])}.`);
+    }
+    if (JSON.stringify(currentDraftState).includes("data:application/pdf")) {
+      throw new Error("Dashboard session draft state should not store raw PDF data URLs.");
+    }
     await currentDashboardCard.click();
     await page.locator("#dashboardSelectedSessionPanel").waitFor({ state: "visible", timeout: 15000 });
     const normalModeCheckboxVisible = await currentDashboardCard.locator(".dashboard-session-select-control").isVisible();
