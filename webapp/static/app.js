@@ -8894,7 +8894,7 @@ function dashboardSessionCard(session = {}) {
         <div class="dashboard-session-record-zone dashboard-session-result-zone">
           <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
           <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
-            <span>Grand Total</span>
+            <span>Total</span>
             <strong>${grandTotalHtml}</strong>
           </span>
           <span class="dashboard-session-export">${escapeHtml(exportAvailability)}</span>
