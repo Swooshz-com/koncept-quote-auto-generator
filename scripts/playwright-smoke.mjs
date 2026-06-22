@@ -192,8 +192,8 @@ async function createDashboardSmokeSession(page, suffix, options = {}) {
     if (session.csrf_token) headers[session.csrf_header || "X-CSRF-Token"] = session.csrf_token;
     const safeSuffix = String(suffix || "session").replace(/[^A-Za-z0-9_-]/g, "-");
     const safePrefix = String(sessionIdPrefix || `playwright-bulk-${safeSuffix}`).replace(/[^A-Za-z0-9_-]/g, "-");
-    const customer = String(customerName || "Playwright Bulk Smoke");
-    const project = String(projectName || `Selection fixture ${safeSuffix}`);
+    const customer = customerName === undefined ? "Playwright Bulk Smoke" : String(customerName);
+    const project = projectName === undefined ? `Selection fixture ${safeSuffix}` : String(projectName);
     const response = await fetch("/api/quote-sessions", {
       method: "POST",
       headers,
@@ -230,8 +230,8 @@ async function createDashboardSmokeSession(page, suffix, options = {}) {
   }, {
     suffix,
     sessionIdPrefix: options.sessionIdPrefix || "",
-    customerName: options.customerName || "",
-    projectName: options.projectName || "",
+    customerName: Object.prototype.hasOwnProperty.call(options, "customerName") ? options.customerName : undefined,
+    projectName: Object.prototype.hasOwnProperty.call(options, "projectName") ? options.projectName : undefined,
   });
 }
 
@@ -465,6 +465,33 @@ async function main() {
     const digitSearchText = await page.locator(".dashboard-session-card").first().innerText();
     if (!digitSearchText.includes("REF QUOTE-43")) {
       throw new Error(`Search for 3 did not return the visible quote reference row: ${digitSearchText}`);
+    }
+    await page.locator("#dashboardSearchInput").fill("");
+    await createDashboardSmokeSession(page, "untitled-visible", {
+      sessionIdPrefix: "quote-ut-visible",
+      customerName: "",
+      projectName: "",
+    });
+    await page.locator("#dashboardRefreshButton").click();
+    await page.locator("#dashboardSearchInput").fill("untitled customer");
+    await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
+    const untitledCustomerRows = await page.locator(".dashboard-session-card").count();
+    if (untitledCustomerRows !== 1) {
+      throw new Error(`Expected search for Untitled customer to match one fallback row, found ${untitledCustomerRows}.`);
+    }
+    const untitledCustomerText = await page.locator(".dashboard-session-card").first().innerText();
+    if (!untitledCustomerText.includes("Untitled customer") || !untitledCustomerText.includes("REF QUOTE-UT")) {
+      throw new Error(`Search for Untitled customer did not return the visible fallback row: ${untitledCustomerText}`);
+    }
+    await page.locator("#dashboardSearchInput").fill("untitled quote");
+    await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
+    const untitledProjectRows = await page.locator(".dashboard-session-card").count();
+    if (untitledProjectRows !== 1) {
+      throw new Error(`Expected search for Untitled quote to match one fallback row, found ${untitledProjectRows}.`);
+    }
+    const untitledProjectText = await page.locator(".dashboard-session-card").first().innerText();
+    if (!untitledProjectText.includes("Untitled quote") || !untitledProjectText.includes("REF QUOTE-UT")) {
+      throw new Error(`Search for Untitled quote did not return the visible fallback row: ${untitledProjectText}`);
     }
     await page.locator("#dashboardSearchInput").fill("Playwright Bulk Smoke");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });

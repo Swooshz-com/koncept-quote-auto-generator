@@ -8400,13 +8400,21 @@ function quoteSessionStatus(session = {}) {
   return { key: "draft", label: "Draft", className: "is-draft" };
 }
 
+function dashboardSessionCustomerText(session = {}) {
+  return String(session.customer_summary?.customer_name || "").trim() || "Untitled customer";
+}
+
+function dashboardSessionProjectText(session = {}) {
+  return String(session.customer_summary?.project_name || "").trim() || "Untitled quote";
+}
+
 function dashboardSessionSearchText(session = {}) {
   const shortReference = dashboardShortSessionReference(session);
   return [
     shortReference,
     shortReference ? `ref ${shortReference}` : "",
-    session.customer_summary?.customer_name,
-    session.customer_summary?.project_name,
+    dashboardSessionCustomerText(session),
+    dashboardSessionProjectText(session),
   ].map((value) => String(value || "").toLowerCase()).join(" ");
 }
 
@@ -8478,8 +8486,8 @@ function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") 
 
 function dashboardSessionCard(session = {}) {
   const status = quoteSessionStatus(session);
-  const customer = session.customer_summary?.customer_name || "Untitled customer";
-  const project = session.customer_summary?.project_name || "Untitled quote";
+  const customer = dashboardSessionCustomerText(session);
+  const project = dashboardSessionProjectText(session);
   const profile = session.quote_company_profile?.display_name || "Quote Company Profile";
   const pricing = session.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
