@@ -111,8 +111,22 @@ async function dashboardPanelActionMetrics(page, label) {
   const panelBox = await page.locator("#dashboardSelectedSessionPanel").boundingBox();
   const actionBox = await page.locator("#dashboardSelectedSessionPanel .dashboard-selected-actions").boundingBox();
   const firstActionBox = await page.locator("#dashboardSelectedSessionPanel .dashboard-selected-actions button, #dashboardSelectedSessionPanel .dashboard-selected-actions a").first().boundingBox();
+  const actionPositions = await page.locator("#dashboardSelectedSessionPanel").evaluate((panel) => {
+    const actions = panel.querySelector(".dashboard-selected-actions");
+    const deleteButton = actions?.querySelector('[data-dashboard-panel-action="delete-session"], [data-dashboard-panel-action="delete-selected"]');
+    const clearButton = actions?.querySelector('[data-dashboard-panel-action="clear-selection"]');
+    const deleteRect = deleteButton?.getBoundingClientRect();
+    const clearRect = clearButton?.getBoundingClientRect();
+    return {
+      deleteTop: deleteRect ? Math.round(deleteRect.y) : null,
+      clearTop: clearRect ? Math.round(clearRect.y) : null,
+    };
+  });
   if (!panelBox || !actionBox || !firstActionBox) {
     throw new Error(`Dashboard ${label} action footer was not measurable.`);
+  }
+  if (actionPositions.deleteTop === null || actionPositions.clearTop === null) {
+    throw new Error(`Dashboard ${label} shared delete/clear actions were not measurable.`);
   }
   const bottomGap = Math.round((panelBox.y + panelBox.height) - (actionBox.y + actionBox.height));
   if (bottomGap < 8 || bottomGap > 36) {
@@ -122,6 +136,7 @@ async function dashboardPanelActionMetrics(page, label) {
     bottomGap,
     actionTop: Math.round(actionBox.y),
     firstActionTop: Math.round(firstActionBox.y),
+    ...actionPositions,
   };
 }
 
@@ -640,8 +655,11 @@ async function main() {
     if (Math.abs(bulkPanelActionMetrics.bottomGap - singlePanelActionMetrics.bottomGap) > 8) {
       throw new Error(`Dashboard action footer bottom moved between single and bulk states: ${singlePanelActionMetrics.bottomGap}px -> ${bulkPanelActionMetrics.bottomGap}px.`);
     }
-    if (Math.abs(bulkPanelActionMetrics.firstActionTop - singlePanelActionMetrics.firstActionTop) > 8) {
-      throw new Error(`Dashboard first action moved between single and bulk states: ${singlePanelActionMetrics.firstActionTop}px -> ${bulkPanelActionMetrics.firstActionTop}px.`);
+    if (Math.abs(bulkPanelActionMetrics.deleteTop - singlePanelActionMetrics.deleteTop) > 8) {
+      throw new Error(`Dashboard delete action moved between single and bulk states: ${singlePanelActionMetrics.deleteTop}px -> ${bulkPanelActionMetrics.deleteTop}px.`);
+    }
+    if (Math.abs(bulkPanelActionMetrics.clearTop - singlePanelActionMetrics.clearTop) > 8) {
+      throw new Error(`Dashboard clear action moved between single and bulk states: ${singlePanelActionMetrics.clearTop}px -> ${bulkPanelActionMetrics.clearTop}px.`);
     }
     await page.setViewportSize({ width: 520, height: 720 });
     const mobileBulkPanelActionMetrics = await dashboardPanelActionMetrics(page, "mobile bulk selection");

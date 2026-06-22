@@ -1356,7 +1356,7 @@ h3 {
 .dashboard-selected-actions {
   display: grid;
   flex: 0 0 auto;
-  align-content: start;
+  align-content: end;
   gap: 8px;
   min-height: 144px;
   padding-top: 14px;
