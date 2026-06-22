@@ -37,6 +37,8 @@ const DEFAULT_STAMP_LABEL = "Company name & stamp";
 const DEFAULT_TAX_LABEL = "GST";
 const DEFAULT_TAX_RATE = 0.09;
 const DEFAULT_CURRENCY_LABEL = "SGD";
+const DASHBOARD_DEFAULT_PAGE_SIZE = 5;
+const DASHBOARD_PAGE_SIZE_OPTIONS = [5, 10, 20, 0];
 const MISSING_PRICING_REFERENCES_MESSAGE = "No pricing references found. Please contact an admin or import a pricing reference in Settings before generating a quote.";
 const CUSTOM_CURRENCY_VALUE = "__CUSTOM__";
 const CURRENCY_OPTIONS = [
@@ -162,6 +164,8 @@ const state = {
   quoteSessionDraftSaveStarted: false,
   dashboardStatusFilter: "all",
   dashboardSearch: "",
+  dashboardPageSize: DASHBOARD_DEFAULT_PAGE_SIZE,
+  dashboardPageIndex: 0,
   dashboardSelectionMode: false,
   dashboardSelectedSessionIds: [],
   dashboardActiveSessionId: "",
@@ -281,6 +285,9 @@ const elements = {
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
+  dashboardPageControls: qs("#dashboardPageControls"),
+  dashboardPageSizeSelect: qs("#dashboardPageSizeSelect"),
+  dashboardRangeSelect: qs("#dashboardRangeSelect"),
   dashboardSessionsList: qs("#dashboardSessionsList"),
   dashboardSessionCount: qs("#dashboardSessionCount"),
   dashboardEmptyState: qs("#dashboardEmptyState"),
@@ -296,8 +303,6 @@ const elements = {
   dashboardSelectionToolbar: qs("#dashboardSelectionToolbar"),
   dashboardSelectModeButton: qs("#dashboardSelectModeButton"),
   dashboardSelectionHint: qs("#dashboardSelectionHint"),
-  dashboardBulkActionBar: qs("#dashboardBulkActionBar"),
-  dashboardBulkSelectionCount: qs("#dashboardBulkSelectionCount"),
   newQuoteButton: qs("#newQuoteButton"),
   sideWorkspace: qs("#sideWorkspace"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
@@ -8636,6 +8641,70 @@ function filteredDashboardSessions() {
   });
 }
 
+function dashboardPageSizeValue() {
+  const size = Number(state.dashboardPageSize);
+  return DASHBOARD_PAGE_SIZE_OPTIONS.includes(size) ? size : DASHBOARD_DEFAULT_PAGE_SIZE;
+}
+
+function dashboardPageCount(total, pageSize = dashboardPageSizeValue()) {
+  if (!Number.isFinite(total) || total <= 0) return 1;
+  if (pageSize <= 0) return 1;
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+function clampDashboardPageIndex(total) {
+  const maxIndex = dashboardPageCount(total) - 1;
+  const index = Number(state.dashboardPageIndex);
+  state.dashboardPageIndex = Math.min(Math.max(Number.isFinite(index) ? Math.floor(index) : 0, 0), maxIndex);
+  return state.dashboardPageIndex;
+}
+
+function dashboardPageRange(total) {
+  const pageSize = dashboardPageSizeValue();
+  const pageIndex = clampDashboardPageIndex(total);
+  if (!Number.isFinite(total) || total <= 0) {
+    return { start: 0, end: 0, pageIndex, pageSize };
+  }
+  if (pageSize <= 0) {
+    return { start: 1, end: total, pageIndex: 0, pageSize };
+  }
+  const start = pageIndex * pageSize + 1;
+  const end = Math.min(total, start + pageSize - 1);
+  return { start, end, pageIndex, pageSize };
+}
+
+function pagedDashboardSessions(filtered = filteredDashboardSessions()) {
+  const sessions = Array.isArray(filtered) ? filtered : [];
+  const { start, end, pageSize } = dashboardPageRange(sessions.length);
+  if (pageSize <= 0 || sessions.length <= 0) return sessions;
+  return sessions.slice(start - 1, end);
+}
+
+function renderDashboardPageControls(filtered = []) {
+  const sessions = Array.isArray(filtered) ? filtered : [];
+  const total = sessions.length;
+  const pageSize = dashboardPageSizeValue();
+  const hasRows = total > 0 && !state.quoteSessionLoadError;
+  if (elements.dashboardPageControls) elements.dashboardPageControls.hidden = !hasRows;
+  if (elements.dashboardPageSizeSelect) {
+    elements.dashboardPageSizeSelect.value = String(pageSize);
+    elements.dashboardPageSizeSelect.disabled = !hasRows;
+  }
+  if (!elements.dashboardRangeSelect) return;
+  const pageCount = dashboardPageCount(total, pageSize);
+  const activePageIndex = clampDashboardPageIndex(total);
+  const options = [];
+  for (let index = 0; index < pageCount; index += 1) {
+    const start = pageSize <= 0 ? 1 : index * pageSize + 1;
+    const end = pageSize <= 0 ? total : Math.min(total, start + pageSize - 1);
+    const label = total > 0 ? `${start}-${end}` : "0-0";
+    options.push(`<option value="${index}">${label}</option>`);
+  }
+  elements.dashboardRangeSelect.innerHTML = options.join("");
+  elements.dashboardRangeSelect.value = String(activePageIndex);
+  elements.dashboardRangeSelect.disabled = !hasRows || pageCount <= 1;
+}
+
 function updateDashboardSummary() {
   const sessions = state.quoteSessions;
   const generated = sessions.filter((session) => session.status?.quote_generated).length;
@@ -8760,6 +8829,9 @@ function dashboardSessionCard(session = {}) {
   const pricing = session.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   const shortReference = dashboardShortSessionReference(session);
+  const grandTotal = formatDashboardMoney(session);
+  const grandTotalHtml = grandTotal === "-" ? "&mdash;" : escapeHtml(grandTotal);
+  const exportAvailability = dashboardExportAvailabilityText(session);
   const selected = dashboardSelectedSessionIds().includes(safeSessionId);
   const active = safeQuoteSessionId(state.dashboardActiveSessionId || "") === safeSessionId;
   const selectionMode = Boolean(state.dashboardSelectionMode);
@@ -8767,31 +8839,47 @@ function dashboardSessionCard(session = {}) {
   return `
     <article class="dashboard-session-card${active ? " is-active" : ""}${selected ? " is-selected" : ""}${selectionMode ? " is-selection-mode" : ""}" data-quote-session-id="${escapeHtml(safeSessionId)}" role="button" tabindex="0" aria-selected="${active ? "true" : "false"}">
       <div class="dashboard-session-main">
-        <label class="dashboard-session-select-control" data-dashboard-select-control ${selectionMode ? "" : "hidden"}>
-          <input type="checkbox" data-dashboard-select aria-label="${escapeHtml(checkboxLabel)}" ${selected ? "checked" : ""}>
-          <span aria-hidden="true"></span>
-        </label>
-        <span class="dashboard-session-file-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path d="M7 3h7l5 5v13H7V3Z"></path>
-            <path d="M14 3v5h5"></path>
-          </svg>
-        </span>
-        <div class="dashboard-session-card-body">
-          <div class="dashboard-customer-cell">
+        <div class="dashboard-session-record-zone dashboard-session-primary-zone">
+          <label class="dashboard-session-select-control" data-dashboard-select-control ${selectionMode ? "" : "hidden"}>
+            <input type="checkbox" data-dashboard-select aria-label="${escapeHtml(checkboxLabel)}" ${selected ? "checked" : ""}>
+            <span aria-hidden="true"></span>
+          </label>
+          <span class="dashboard-session-file-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M7 3h7l5 5v13H7V3Z"></path>
+              <path d="M14 3v5h5"></path>
+            </svg>
+          </span>
+          <div class="dashboard-session-title-group">
             <strong>${escapeHtml(customer)}</strong>
             <span>${escapeHtml(project)}</span>
-            <span class="dashboard-session-inline-meta">
-              ${shortReference ? `<span>Ref ${escapeHtml(shortReference)}</span>` : ""}
-              <span>Created ${escapeHtml(formatDashboardDateTime(session.created_at))}</span>
-              <span>${escapeHtml(profile)}</span>
-            </span>
           </div>
         </div>
-        <div class="dashboard-session-card-aside">
+        <dl class="dashboard-session-record-zone dashboard-session-meta-zone">
+          <div>
+            <dt>Short ref</dt>
+            <dd>${shortReference ? `Ref ${escapeHtml(shortReference)}` : "-"}</dd>
+          </div>
+          <div>
+            <dt>Created</dt>
+            <dd>${escapeHtml(formatDashboardDateTime(session.created_at))}</dd>
+          </div>
+          <div>
+            <dt>Quote Company</dt>
+            <dd>${escapeHtml(profile)}</dd>
+          </div>
+          <div>
+            <dt>Pricing Reference</dt>
+            <dd>${escapeHtml(pricing)}</dd>
+          </div>
+        </dl>
+        <div class="dashboard-session-record-zone dashboard-session-result-zone">
           <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
-          <span class="dashboard-session-total">${escapeHtml(formatDashboardMoney(session))}</span>
-          <span>${escapeHtml(dashboardTaxText(session))}</span>
+          <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
+            <span>Grand Total</span>
+            <strong>${grandTotalHtml}</strong>
+          </span>
+          <span class="dashboard-session-export">${escapeHtml(exportAvailability)}</span>
         </div>
       </div>
     </article>
@@ -8816,7 +8904,7 @@ function dashboardSessionById(sessionId) {
   return state.quoteSessions.find((session) => safeQuoteSessionId(session.session_id || "") === safeSessionId) || null;
 }
 
-function dashboardVisibleSessionIds(sessions = filteredDashboardSessions()) {
+function dashboardVisibleSessionIds(sessions = pagedDashboardSessions()) {
   return sessions.map((session) => safeQuoteSessionId(session.session_id || "")).filter(Boolean);
 }
 
@@ -8937,7 +9025,10 @@ function renderDashboardBulkPanel(selectedIds = []) {
       <div>
         <p class="workspace-pane-eyebrow">LOCAL QUOTE HISTORY</p>
         <h3 id="dashboardSelectedSessionTitle">Bulk selection</h3>
-        <p class="settings-note">${total} quote session${total === 1 ? "" : "s"} selected</p>
+        <div class="dashboard-bulk-selection-summary" role="status">
+          <strong>${total}</strong>
+          <span>quote session${total === 1 ? "" : "s"} selected</span>
+        </div>
       </div>
       ${dashboardSelectedCloseButton("Clear selected sessions")}
     </header>
@@ -9033,10 +9124,6 @@ function renderDashboardSelectionControls(filtered) {
   }
   if (elements.dashboardSelectionHint) {
     elements.dashboardSelectionHint.hidden = !state.dashboardSelectionMode;
-  }
-  if (elements.dashboardBulkActionBar) elements.dashboardBulkActionBar.hidden = selected.length === 0;
-  if (elements.dashboardBulkSelectionCount) {
-    elements.dashboardBulkSelectionCount.textContent = `${selected.length} quote session${selected.length === 1 ? "" : "s"} selected`;
   }
 }
 
@@ -9248,6 +9335,8 @@ function handleDashboardSidePanelAction(event) {
 function renderQuoteDashboard() {
   updateDashboardSummary();
   const filtered = filteredDashboardSessions();
+  const paged = pagedDashboardSessions(filtered);
+  const range = dashboardPageRange(filtered.length);
   pruneDashboardSelection(filtered);
   const hasError = Boolean(state.quoteSessionLoadError);
   const hasSessions = state.quoteSessions.length > 0;
@@ -9256,9 +9345,14 @@ function renderQuoteDashboard() {
     elements.dashboardSessionCount.textContent = hasError
       ? "Sessions could not be loaded."
       : hasSessions
-        ? `Showing ${filtered.length} of ${state.quoteSessions.length} session${state.quoteSessions.length === 1 ? "" : "s"}.`
+        ? filtered.length > 0
+          ? filtered.length === state.quoteSessions.length
+            ? `Showing ${range.start}-${range.end} of ${state.quoteSessions.length} session${state.quoteSessions.length === 1 ? "" : "s"}.`
+            : `Showing ${range.start}-${range.end} of ${filtered.length} matching session${filtered.length === 1 ? "" : "s"}.`
+          : "No matching sessions."
         : "No saved sessions in this local runtime.";
   }
+  renderDashboardPageControls(filtered);
   if (elements.dashboardErrorState) elements.dashboardErrorState.hidden = !hasError;
   if (elements.dashboardErrorText) elements.dashboardErrorText.textContent = state.quoteSessionLoadError || GENERIC_FAILURE_MESSAGE;
   if (elements.dashboardEmptyState) {
@@ -9272,9 +9366,9 @@ function renderQuoteDashboard() {
   }
   if (elements.dashboardSessionsList) {
     elements.dashboardSessionsList.hidden = hasError || !hasRows;
-    elements.dashboardSessionsList.innerHTML = filtered.map(dashboardSessionCard).join("");
+    elements.dashboardSessionsList.innerHTML = paged.map(dashboardSessionCard).join("");
   }
-  renderDashboardSelectionControls(filtered);
+  renderDashboardSelectionControls(paged);
   renderDashboardSelectedPanel();
 }
 
@@ -9368,7 +9462,7 @@ function syncControlStates() {
       button.setAttribute("aria-disabled", String(busy));
       button.title = busy ? appBusyTitle() : "";
     });
-  renderDashboardSelectionControls(filteredDashboardSessions());
+  renderDashboardSelectionControls(pagedDashboardSessions(filteredDashboardSessions()));
   if (elements.backToDashboardButton) {
     elements.backToDashboardButton.hidden = state.activeAppView !== "quote";
   }
@@ -10268,10 +10362,21 @@ function wireEvents() {
   elements.backToDashboardButton?.addEventListener("click", returnToDashboard);
   elements.dashboardStatusFilter?.addEventListener("change", () => {
     state.dashboardStatusFilter = elements.dashboardStatusFilter.value || "all";
+    state.dashboardPageIndex = 0;
     renderQuoteDashboard();
   });
   elements.dashboardSearchInput?.addEventListener("input", () => {
     state.dashboardSearch = elements.dashboardSearchInput.value || "";
+    state.dashboardPageIndex = 0;
+    renderQuoteDashboard();
+  });
+  elements.dashboardPageSizeSelect?.addEventListener("change", () => {
+    state.dashboardPageSize = Number(elements.dashboardPageSizeSelect.value);
+    state.dashboardPageIndex = 0;
+    renderQuoteDashboard();
+  });
+  elements.dashboardRangeSelect?.addEventListener("change", () => {
+    state.dashboardPageIndex = Number(elements.dashboardRangeSelect.value);
     renderQuoteDashboard();
   });
   elements.settingsButton?.addEventListener("click", openSettingsModal);

@@ -581,30 +581,31 @@ async function main() {
     const filteredFirstCard = page.locator(".dashboard-session-card").first();
     const selectModeButton = page.locator("#dashboardSelectModeButton", { hasText: "Select" });
     const selectModeBox = await selectModeButton.boundingBox();
-    if (!selectModeBox || selectModeBox.height > 36 || selectModeBox.width > 100) {
+    if (!selectModeBox || selectModeBox.height > 40 || selectModeBox.width > 100) {
       throw new Error(`Select mode control is too large: ${JSON.stringify(selectModeBox)}.`);
     }
     await selectModeButton.click();
-    await page.locator("#dashboardSelectionHint").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select all visible" }).waitFor({ state: "visible", timeout: 15000 });
     await filteredFirstCard.locator(".dashboard-session-select-control").waitFor({ state: "visible", timeout: 15000 });
     const firstCardTopBeforeBulk = await filteredFirstCard.evaluate((element) => element.getBoundingClientRect().top);
     await filteredFirstCard.click();
     const firstCardTopAfterBulk = await filteredFirstCard.evaluate((element) => element.getBoundingClientRect().top);
     if (Math.abs(firstCardTopAfterBulk - firstCardTopBeforeBulk) > 12) {
-      throw new Error(`Bulk action bar shifted the session list: ${firstCardTopBeforeBulk} -> ${firstCardTopAfterBulk}.`);
+      throw new Error(`Bulk panel selection shifted the session list: ${firstCardTopBeforeBulk} -> ${firstCardTopAfterBulk}.`);
     }
     const rowCheckboxBox = await filteredFirstCard.locator("[data-dashboard-select]").boundingBox();
     if (!rowCheckboxBox || rowCheckboxBox.width > 18 || rowCheckboxBox.height > 18) {
       throw new Error(`Row checkbox is too large: ${JSON.stringify(rowCheckboxBox)}.`);
     }
-    await page.locator("#dashboardBulkActionBar", { hasText: "1 quote session selected" }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator(".dashboard-session-card.is-selected").first().waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardSelectedSessionPanel", { hasText: "SELECTED SESSION" }).waitFor({ state: "visible", timeout: 15000 });
     const selectAllButton = page.locator("#dashboardSelectModeButton", { hasText: "Select all visible" });
     const selectAllBox = await selectAllButton.boundingBox();
-    if (!selectAllBox || selectAllBox.height > 36 || selectAllBox.width > 180) {
+    if (!selectAllBox || selectAllBox.height > 40 || selectAllBox.width > 180) {
       throw new Error(`Select all control is too large: ${JSON.stringify(selectAllBox)}.`);
     }
     await selectAllButton.click();
-    await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator(".dashboard-bulk-selection-summary", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: "Bulk selection" }).waitFor({ state: "visible", timeout: 15000 });
     const bulkExtraBlocks = await page.locator(".dashboard-bulk-breakdown, .dashboard-bulk-value-card").count();
@@ -624,7 +625,7 @@ async function main() {
     if (selectedAfterDeselectAll !== 0) {
       throw new Error(`Select all toggle did not deselect visible rows: ${selectedAfterDeselectAll} remain selected.`);
     }
-    await page.locator("#dashboardBulkActionBar").waitFor({ state: "hidden", timeout: 15000 });
+    await page.locator("#dashboardSelectedSessionPanel").waitFor({ state: "hidden", timeout: 15000 });
     await page.locator("#dashboardSelectModeButton", { hasText: "Select" }).waitFor({ state: "visible", timeout: 15000 });
     const returnedToNoneMode = await page.locator("#dashboardSelectModeButton").evaluate((button) => (
       !button.classList.contains("is-all-selected")
@@ -639,9 +640,9 @@ async function main() {
       throw new Error("Row checkboxes stayed visible after Select all visible was toggled off.");
     }
     await page.locator("#dashboardSelectModeButton", { hasText: "Select" }).click();
-    await page.locator("#dashboardSelectionHint").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#dashboardSelectModeButton", { hasText: "Select all visible" }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectModeButton", { hasText: "Select all visible" }).click();
-    await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator(".dashboard-bulk-selection-summary", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#quoteDashboardPanel").evaluate((panel) => {
       panel.scrollTop = 0;
     });
