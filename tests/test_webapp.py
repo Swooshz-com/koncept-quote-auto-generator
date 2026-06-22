@@ -7861,6 +7861,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Select a quote session to view downloads, delete actions, and any available draft controls.", html)
         topbar_controls = html.split('<div class="topbar-controls">', 1)[1].split('</div>', 1)[0]
         self.assertNotIn("Privacy", topbar_controls)
+        self.assertIn("Pricing Reference", topbar_controls)
+        self.assertIn('aria-label="Open pricing reference settings"', topbar_controls)
         self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="newQuoteButton"'))
         self.assertLess(topbar_controls.index('id="newQuoteButton"'), topbar_controls.index('id="settingsButton"'))
         self.assertIn('class="dashboard-privacy-link"', html)
