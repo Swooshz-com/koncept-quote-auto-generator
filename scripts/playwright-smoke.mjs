@@ -91,6 +91,21 @@ async function screenshot(page, name) {
   return filePath;
 }
 
+async function expectTopbarPrimaryAction(page, expectedAction) {
+  const dashboardVisible = await page.locator("#backToDashboardButton").isVisible();
+  const newQuoteVisible = await page.locator("#newQuoteButton").isVisible();
+  const settingsVisible = await page.locator("#settingsButton").isVisible();
+  if (!settingsVisible) {
+    throw new Error("Settings topbar action should stay visible.");
+  }
+  if (expectedAction === "dashboard" && (!dashboardVisible || newQuoteVisible)) {
+    throw new Error(`Expected Dashboard-only topbar action, found ${JSON.stringify({ dashboardVisible, newQuoteVisible })}.`);
+  }
+  if (expectedAction === "new-quote" && (!newQuoteVisible || dashboardVisible)) {
+    throw new Error(`Expected New Quote-only topbar action, found ${JSON.stringify({ dashboardVisible, newQuoteVisible })}.`);
+  }
+}
+
 async function installMockProfiles(page) {
   await page.route("**/api/settings/pricing-references/synthetic-exhibition-fixture-pricing**", async (route) => {
     await route.fulfill({
@@ -266,10 +281,12 @@ async function main() {
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
     await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
+    await expectTopbarPrimaryAction(page, "new-quote");
     const dashboardShot = await screenshot(page, "dashboard.png");
     await page.locator("#dashboardSideNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#dashboardSideNewQuoteButton").click();
     await page.locator("#imageIntake").waitFor({ state: "visible" });
+    await expectTopbarPrimaryAction(page, "dashboard");
     const homeShot = await screenshot(page, "home.png");
 
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
@@ -285,6 +302,7 @@ async function main() {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
+    await expectTopbarPrimaryAction(page, "new-quote");
     const restoredQuoteSessionId = await currentQuoteSessionId(page);
     if (!restoredQuoteSessionId) {
       throw new Error("Expected refresh recovery to keep the current quote session id.");
@@ -293,6 +311,7 @@ async function main() {
     await page.locator('[data-dashboard-panel-action="continue-session"]', { hasText: "Continue draft" }).waitFor({ timeout: 15000 });
     await page.locator('[data-dashboard-panel-action="continue-session"]', { hasText: "Continue draft" }).click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
+    await expectTopbarPrimaryAction(page, "dashboard");
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
     ));
@@ -413,6 +432,7 @@ async function main() {
     }
     await page.locator("#backToDashboardButton").click();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+    await expectTopbarPrimaryAction(page, "new-quote");
     await page.locator("#quoteDashboardPanel").evaluate((element) => {
       element.scrollTop = 0;
     });

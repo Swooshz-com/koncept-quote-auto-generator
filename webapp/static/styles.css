@@ -111,7 +111,7 @@
   --duration-slow: 280ms;
 
   /* Layout */
-  --topbar-height: 61px;
+  --topbar-height: 68px;
   --rail-width: 92px;
   --workspace-width: clamp(380px, 30vw, 560px);
   --workspace-content-width: min(1120px, calc(100vw - 48px));
@@ -272,13 +272,13 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 0 13px;
+  min-height: 40px;
+  padding: 0 16px;
   border: 1px solid #97d4cb;
   border-radius: var(--radius-pill);
   background: linear-gradient(180deg, #f0faf8, #ffffff);
   color: var(--green-dark);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 760;
   box-shadow: var(--shadow-xs);
 }
@@ -288,8 +288,8 @@ button {
 }
 
 .topbar-action svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;

@@ -8344,7 +8344,7 @@ function showQuoteFlow() {
   elements.quoteDashboardPanel?.classList.remove("is-active");
   elements.quoteFlowPanel?.classList.add("is-active");
   if (elements.backToDashboardButton) elements.backToDashboardButton.hidden = false;
-  if (elements.newQuoteButton) elements.newQuoteButton.hidden = false;
+  if (elements.newQuoteButton) elements.newQuoteButton.hidden = true;
   syncControlStates();
 }
 
@@ -8353,7 +8353,7 @@ function showDashboard(options = {}) {
   elements.quoteFlowPanel?.classList.remove("is-active");
   elements.quoteDashboardPanel?.classList.add("is-active");
   if (elements.backToDashboardButton) elements.backToDashboardButton.hidden = true;
-  if (elements.newQuoteButton) elements.newQuoteButton.hidden = true;
+  if (elements.newQuoteButton) elements.newQuoteButton.hidden = false;
   syncControlStates();
   if (options.load !== false) {
     loadQuoteDashboard();
@@ -9102,7 +9102,7 @@ async function initializeSession() {
 function syncControlStates() {
   const busy = appIsBusy();
   elements.newQuoteButton.disabled = busy;
-  elements.newQuoteButton.hidden = state.activeAppView === "dashboard";
+  elements.newQuoteButton.hidden = state.activeAppView !== "dashboard";
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
   [elements.dashboardSideNewQuoteButton, elements.dashboardRefreshButton, elements.backToDashboardButton]
     .filter(Boolean)

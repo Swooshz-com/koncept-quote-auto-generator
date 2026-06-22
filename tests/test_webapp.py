@@ -7852,6 +7852,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("Continue Current Quote", html)
         topbar_controls = html.split('<div class="topbar-controls">', 1)[1].split('</div>', 1)[0]
         self.assertNotIn("Privacy", topbar_controls)
+        self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="settingsButton"'))
+        self.assertLess(topbar_controls.index('id="newQuoteButton"'), topbar_controls.index('id="settingsButton"'))
         self.assertIn('class="dashboard-privacy-link"', html)
         self.assertIn('class="panel quote-dashboard-panel is-active"', html)
         self.assertIn('class="panel quote-shell"', html)
@@ -8397,6 +8399,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("startNewQuote", js)
         self.assertIn('elements.newQuoteButton.addEventListener("click", startNewQuote)', js)
         self.assertIn("elements.newQuoteButton.disabled = busy", js)
+        self.assertIn('elements.newQuoteButton.hidden = state.activeAppView !== "dashboard"', js)
+        self.assertNotIn('elements.newQuoteButton.hidden = state.activeAppView === "dashboard"', js)
+        self.assertIn("--topbar-height: 68px", css)
+        topbar_action_css = css.split(".topbar-action {", 1)[1].split("}", 1)[0]
+        self.assertIn("min-height: 40px", topbar_action_css)
+        self.assertIn("font-size: 14px", topbar_action_css)
         self.assertIn(".rail-button.is-locked", css)
         self.assertIn(".topbar-action", css)
         self.assertIn('data-side-panel="basis"', html)
