@@ -162,6 +162,8 @@ const state = {
   quoteSessionRestoreError: "",
   quoteSessionRestoreBusy: false,
   quoteSessionDraftSaveStarted: false,
+  quoteSessionRestoredSessionId: "",
+  quoteSessionRestoredDraftKey: "",
   dashboardStatusFilter: "all",
   dashboardSearch: "",
   dashboardPageSize: DASHBOARD_DEFAULT_PAGE_SIZE,
@@ -2151,6 +2153,8 @@ function buildSessionSnapshot() {
     selectedPresetValue: state.selectedPresetValue,
     quoteSessionId: state.quoteSessionId,
     quoteSessionDraftSaveStarted: state.quoteSessionDraftSaveStarted,
+    quoteSessionRestoredSessionId: state.quoteSessionRestoredSessionId,
+    quoteSessionRestoredDraftKey: state.quoteSessionRestoredDraftKey,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES).map(sessionImageMetadata),
     quoteDetails: collectQuoteDetails(),
     workflowStage: state.workflowStage,
@@ -2250,6 +2254,9 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   state.pricingReferenceSource = saved.pricingReferenceSource || "";
   state.quoteSessionId = safeQuoteSessionId(options.sessionId || saved.quoteSessionId || "");
   state.quoteSessionDraftSaveStarted = Boolean(saved.quoteSessionDraftSaveStarted || options.sessionId);
+  const restoredSessionId = safeQuoteSessionId(saved.quoteSessionRestoredSessionId || "");
+  state.quoteSessionRestoredSessionId = restoredSessionId && restoredSessionId === state.quoteSessionId ? restoredSessionId : "";
+  state.quoteSessionRestoredDraftKey = state.quoteSessionRestoredSessionId ? String(saved.quoteSessionRestoredDraftKey || "") : "";
   state.activeAppView = saved.activeAppView === "quote" || options.forceQuoteView ? "quote" : "dashboard";
   state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {}) || lastSelectedPresetValue();
   syncSelectedPricingReference();
@@ -3184,8 +3191,10 @@ async function startNewQuote() {
 }
 
 function resetCurrentQuoteDraftState() {
+  clearQuoteSessionDraftSaveTimer();
   state.quoteSessionId = "";
   state.quoteSessionDraftSaveStarted = false;
+  clearRestoredQuoteSessionBaseline();
   state.profileId = "";
   state.pricingReferenceId = "";
   state.pricingReferenceSource = "";
@@ -8441,6 +8450,39 @@ function currentQuoteSessionDraftState() {
   };
 }
 
+function quoteSessionDraftComparisonKey(draftState = currentQuoteSessionDraftState()) {
+  const comparable = JSON.parse(JSON.stringify(draftState || {}));
+  delete comparable.savedAt;
+  delete comparable.activeAppView;
+  delete comparable.activeSidePanel;
+  return JSON.stringify(comparable);
+}
+
+function rememberRestoredQuoteSessionBaseline(sessionId = state.quoteSessionId) {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  state.quoteSessionRestoredSessionId = safeSessionId;
+  state.quoteSessionRestoredDraftKey = safeSessionId ? quoteSessionDraftComparisonKey() : "";
+  saveSessionState();
+}
+
+function clearRestoredQuoteSessionBaseline() {
+  state.quoteSessionRestoredSessionId = "";
+  state.quoteSessionRestoredDraftKey = "";
+}
+
+function currentQuoteSessionIsRestoredFromDashboard() {
+  const restoredSessionId = safeQuoteSessionId(state.quoteSessionRestoredSessionId || "");
+  const currentSessionId = safeQuoteSessionId(state.quoteSessionId || "");
+  return Boolean(restoredSessionId && currentSessionId && restoredSessionId === currentSessionId);
+}
+
+function restoredQuoteSessionHasChanged() {
+  if (!currentQuoteSessionIsRestoredFromDashboard()) return true;
+  const baseline = String(state.quoteSessionRestoredDraftKey || "");
+  if (!baseline) return true;
+  return quoteSessionDraftComparisonKey() !== baseline;
+}
+
 function mergeDashboardQuoteSession(session = {}) {
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   if (!safeSessionId) return;
@@ -8494,6 +8536,9 @@ async function saveCurrentQuoteSession(options = {}) {
   const session = data.quote_session || {};
   state.quoteSessionId = safeQuoteSessionId(session.session_id || payload.session_id);
   mergeDashboardQuoteSession(session);
+  if (currentQuoteSessionIsRestoredFromDashboard()) {
+    state.quoteSessionRestoredDraftKey = quoteSessionDraftComparisonKey();
+  }
   return session;
 }
 
@@ -8514,10 +8559,16 @@ async function saveQuoteSessionDraftState(options = {}) {
   return session;
 }
 
+function clearQuoteSessionDraftSaveTimer() {
+  if (!quoteSessionDraftSaveTimer) return;
+  window.clearTimeout(quoteSessionDraftSaveTimer);
+  quoteSessionDraftSaveTimer = null;
+}
+
 function queueQuoteSessionDraftStateSave(options = {}) {
   if (!quoteSessionDraftStateCanSave()) return;
   saveSessionState();
-  if (quoteSessionDraftSaveTimer) window.clearTimeout(quoteSessionDraftSaveTimer);
+  clearQuoteSessionDraftSaveTimer();
   const delay = Number.isFinite(Number(options.delay)) ? Math.max(0, Number(options.delay)) : 650;
   quoteSessionDraftSaveTimer = window.setTimeout(() => {
     quoteSessionDraftSaveTimer = null;
@@ -8591,8 +8642,17 @@ function showDashboard(options = {}) {
 
 async function returnToDashboard() {
   if (appIsBusy()) return;
+  clearQuoteSessionDraftSaveTimer();
   markQuoteSessionDraftSaveStartedAfterCustomerStep();
+  if (currentQuoteSessionIsRestoredFromDashboard() && !restoredQuoteSessionHasChanged()) {
+    showDashboard();
+    return;
+  }
   if (!quoteDraftShouldPersistToDashboard()) {
+    if (currentQuoteSessionIsRestoredFromDashboard()) {
+      showDashboard();
+      return;
+    }
     await discardCurrentQuoteDraftSession();
     showDashboard();
     return;
@@ -8814,6 +8874,7 @@ function dashboardRestoreError(message) {
 async function modifyDashboardQuote(sessionId) {
   const safeSessionId = safeQuoteSessionId(sessionId || "");
   if (!safeSessionId || appIsBusy() || state.quoteSessionRestoreBusy) return;
+  clearQuoteSessionDraftSaveTimer();
   state.quoteSessionRestoreBusy = true;
   syncControlStates();
   try {
@@ -8841,6 +8902,7 @@ async function modifyDashboardQuote(sessionId) {
     state.dashboardSelectedSessionIds = [];
     state.dashboardActiveSessionId = safeSessionId;
     mergeDashboardQuoteSession({ ...detailedSession, has_draft_state: true });
+    rememberRestoredQuoteSessionBaseline(safeSessionId);
     showQuoteFlow();
   } finally {
     state.quoteSessionRestoreBusy = false;

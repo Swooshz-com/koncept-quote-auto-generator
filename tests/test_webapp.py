@@ -7911,6 +7911,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("quoteSessionDraftStateCanSave", js)
         self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
         self.assertIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", js)
+        self.assertIn("quoteSessionRestoredSessionId", js)
+        self.assertIn("rememberRestoredQuoteSessionBaseline", js)
+        self.assertIn("currentQuoteSessionIsRestoredFromDashboard", js)
+        self.assertIn("restoredQuoteSessionHasChanged", js)
         self.assertIn("saveQuoteSessionDraftStateAfterPanelMove", js)
         self.assertIn("saveQuoteSessionDraftState", js)
         self.assertIn("queueQuoteSessionDraftStateSave", js)
@@ -7932,6 +7936,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("quoteDraftShouldPersistToDashboard()", start_new_quote_body)
         self.assertIn("saveQuoteSessionDraftState", start_new_quote_body)
         self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
+        return_dashboard_body = js.split("async function returnToDashboard()", 1)[1].split("async function handleTopbarBrandClick", 1)[0]
+        self.assertIn("currentQuoteSessionIsRestoredFromDashboard() && !restoredQuoteSessionHasChanged()", return_dashboard_body)
+        self.assertIn("if (currentQuoteSessionIsRestoredFromDashboard())", return_dashboard_body)
+        self.assertIn("discardCurrentQuoteDraftSession", return_dashboard_body)
         self.assertIn("/api/quote-sessions", js)
 
     def test_static_dashboard_uses_selected_panel_bulk_delete_and_custom_modal(self):
@@ -7988,8 +7996,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("safeQuoteSessionId(session.session_id", can_modify_body)
         self.assertNotIn("session.has_draft_state === true", can_modify_body)
         restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
+        self.assertIn("clearQuoteSessionDraftSaveTimer", restore_body)
         self.assertIn("detailedSession?.draft_state", restore_body)
         self.assertIn("currentQuoteSessionDraftState()", restore_body)
+        self.assertIn("rememberRestoredQuoteSessionBaseline", restore_body)
         self.assertIn("This quote session does not have saved draft data to modify.", restore_body)
         self.assertIn("applyQuoteSessionSnapshot", js)
         self.assertNotIn("QUOTE_SESSION_RESTORE_NOTE", js)

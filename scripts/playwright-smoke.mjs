@@ -250,6 +250,13 @@ async function currentQuoteSessionId(page) {
   });
 }
 
+async function dashboardQuoteSessionDetail(page, sessionId) {
+  return page.evaluate(async (safeSessionId) => {
+    const response = await fetch(`/api/quote-sessions/${encodeURIComponent(safeSessionId)}`);
+    return response.json();
+  }, sessionId);
+}
+
 async function createDashboardSmokeSession(page, suffix, options = {}) {
   return page.evaluate(async ({ suffix, sessionIdPrefix, customerName, projectName }) => {
     const sessionResponse = await fetch("/api/session");
@@ -425,6 +432,11 @@ async function main() {
     }
     await page.locator(`.dashboard-session-card[data-quote-session-id="${restoredQuoteSessionId}"]`).click();
     await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).waitFor({ timeout: 15000 });
+    const restoredDetailBeforeModify = await dashboardQuoteSessionDetail(page, restoredQuoteSessionId);
+    const restoredUpdatedAtBeforeModify = restoredDetailBeforeModify.quote_session?.updated_at || "";
+    if (!restoredUpdatedAtBeforeModify) {
+      throw new Error("Expected dashboard session detail to expose updated_at before Modify quote.");
+    }
     await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).click();
     await page.locator("#panel-analysis.is-active").waitFor({ state: "visible", timeout: 15000 });
     await expectTopbarPrimaryAction(page, "dashboard");
@@ -444,6 +456,21 @@ async function main() {
     if (restoredFiles.length !== 1 || !restoredFiles[0].includes("kent-group.pdf")) {
       throw new Error(`Expected refresh to preserve the sample PDF reference, found ${JSON.stringify(restoredFiles)}.`);
     }
+    await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).click();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+    await expectTopbarPrimaryAction(page, "new-quote");
+    const restoredCardAfterCleanReturn = page.locator(`.dashboard-session-card[data-quote-session-id="${restoredQuoteSessionId}"]`);
+    await restoredCardAfterCleanReturn.waitFor({ state: "visible", timeout: 15000 });
+    const restoredDetailAfterCleanReturn = await dashboardQuoteSessionDetail(page, restoredQuoteSessionId);
+    const restoredUpdatedAtAfterCleanReturn = restoredDetailAfterCleanReturn.quote_session?.updated_at || "";
+    if (restoredUpdatedAtAfterCleanReturn !== restoredUpdatedAtBeforeModify) {
+      throw new Error(`Modify -> Dashboard without edits should not rewrite or reorder the session: ${restoredUpdatedAtBeforeModify} -> ${restoredUpdatedAtAfterCleanReturn}.`);
+    }
+    await restoredCardAfterCleanReturn.click();
+    await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).waitFor({ timeout: 15000 });
+    await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).click();
+    await page.locator("#panel-analysis.is-active").waitFor({ state: "visible", timeout: 15000 });
+    await expectTopbarPrimaryAction(page, "dashboard");
     await page.locator('.rail-button[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
     await page.locator('.rail-button[data-side-panel="quote_company"]').click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible", timeout: 15000 });
@@ -561,10 +588,7 @@ async function main() {
     });
     const currentDashboardCard = page.locator(`.dashboard-session-card[data-quote-session-id="${currentDashboardSessionId}"]`);
     await currentDashboardCard.waitFor({ state: "visible", timeout: 15000 });
-    const currentDashboardDetail = await page.evaluate(async (sessionId) => {
-      const response = await fetch(`/api/quote-sessions/${encodeURIComponent(sessionId)}`);
-      return response.json();
-    }, currentDashboardSessionId);
+    const currentDashboardDetail = await dashboardQuoteSessionDetail(page, currentDashboardSessionId);
     const currentDraftState = currentDashboardDetail.quote_session?.draft_state || {};
     if (!Array.isArray(currentDraftState.images) || !currentDraftState.images.some((image) => /kent-group\.pdf/i.test(image.name || ""))) {
       throw new Error(`Expected dashboard session draft state to include the reference PDF metadata, found ${JSON.stringify(currentDraftState.images || [])}.`);
