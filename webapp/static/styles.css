@@ -1200,6 +1200,11 @@ h3 {
   gap: 10px;
 }
 
+.dashboard-selected-primary-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .dashboard-selected-items {
   display: grid;
   gap: 8px;
@@ -1356,9 +1361,9 @@ h3 {
 .dashboard-selected-actions {
   display: grid;
   flex: 0 0 auto;
-  align-content: end;
+  align-content: start;
   gap: 8px;
-  min-height: 144px;
+  min-height: 96px;
   padding-top: 14px;
   border-top: 1px solid var(--line-subtle);
   background: #ffffff;
@@ -1969,7 +1974,7 @@ h3 {
   background: #ffffff;
 }
 
-.dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card:not(:has(.dashboard-selected-items)) {
+.dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card {
   padding: 24px;
 }
 
@@ -2439,7 +2444,7 @@ h3 {
     padding: 12px;
   }
 
-  .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card:not(:has(.dashboard-selected-items)) {
+  .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card {
     padding: 18px;
   }
 
@@ -2556,7 +2561,7 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card:not(:has(.dashboard-selected-items)) {
+  .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card {
     padding: 16px;
   }
 
