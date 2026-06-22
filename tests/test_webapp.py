@@ -9693,7 +9693,7 @@ handlePresetSelectChange();
 assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
 assert.strictEqual(state.pendingProfilePack, null);
 assert.strictEqual(cleared, true);
-assert.deepStrictEqual(persisted, []);
+assert.deepStrictEqual(persisted, ["company:saved-profile"]);
 assert.strictEqual(loaded, 0);
 assert.strictEqual(statuses.at(-1), 'Selected "Saved Profile". Click Load to apply it.');
 assert.ok(buttonUpdates >= 1);
