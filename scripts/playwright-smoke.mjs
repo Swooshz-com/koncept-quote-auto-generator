@@ -398,11 +398,27 @@ async function main() {
     await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).click();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
     await expectTopbarPrimaryAction(page, "new-quote");
+    await page.evaluate((storageKey) => {
+      const saved = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+      saved.quoteSessionId = "quote-unrelated-regression";
+      saved.activeAppView = "dashboard";
+      window.localStorage.setItem(storageKey, JSON.stringify(saved));
+    }, "swooshz_quote_session_v1");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    const unrelatedLocalQuoteSessionId = await currentQuoteSessionId(page);
+    if (unrelatedLocalQuoteSessionId === restoredQuoteSessionId) {
+      throw new Error(`Expected Modify quote regression to use a non-current browser draft, found ${unrelatedLocalQuoteSessionId}.`);
+    }
     await page.locator(`.dashboard-session-card[data-quote-session-id="${restoredQuoteSessionId}"]`).click();
     await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).waitFor({ timeout: 15000 });
     await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).click();
     await page.locator("#panel-analysis.is-active").waitFor({ state: "visible", timeout: 15000 });
     await expectTopbarPrimaryAction(page, "dashboard");
+    const modifiedQuoteSessionId = await currentQuoteSessionId(page);
+    if (modifiedQuoteSessionId !== restoredQuoteSessionId) {
+      throw new Error(`Expected Modify quote to restore saved dashboard session ${restoredQuoteSessionId}, found ${modifiedQuoteSessionId}.`);
+    }
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
     ));

@@ -7910,6 +7910,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("quoteSessionDraftSaveStarted", js)
         self.assertIn("quoteSessionDraftStateCanSave", js)
         self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
+        self.assertIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", js)
+        self.assertIn("saveQuoteSessionDraftStateAfterPanelMove", js)
         self.assertIn("saveQuoteSessionDraftState", js)
         self.assertIn("queueQuoteSessionDraftStateSave", js)
         self.assertIn("activeAppView", js)
@@ -7923,6 +7925,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('nextPanel === "customer"', next_panel_body)
         self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", next_panel_body)
         self.assertIn("saveQuoteSessionDraftState", next_panel_body)
+        wire_events_body = js.split("function wireEvents", 1)[1].split("function renderQuoteDashboard", 1)[0]
+        self.assertIn("saveQuoteSessionDraftStateAfterPanelMove(panelName)", wire_events_body)
         start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
         self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
         self.assertIn("/api/quote-sessions", js)

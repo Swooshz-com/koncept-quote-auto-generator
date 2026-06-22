@@ -1197,12 +1197,12 @@ h3 {
 
 .dashboard-selected-downloads {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .dashboard-selected-primary-actions {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .dashboard-selected-items {
@@ -1362,9 +1362,9 @@ h3 {
   display: grid;
   flex: 0 0 auto;
   align-content: start;
-  gap: 8px;
-  min-height: 96px;
-  padding-top: 14px;
+  gap: 6px;
+  min-height: auto;
+  padding-top: 8px;
   border-top: 1px solid var(--line-subtle);
   background: #ffffff;
   box-shadow: 0 -10px 18px rgba(255, 255, 255, 0.86);

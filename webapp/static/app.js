@@ -8381,6 +8381,19 @@ function quoteSessionDraftStateCanSave() {
   return Boolean(state.quoteSessionDraftSaveStarted);
 }
 
+function quoteSessionDraftReachedCustomerStep() {
+  return activeSidePanelIndex() >= SIDE_PANEL_SEQUENCE.indexOf("customer");
+}
+
+function markQuoteSessionDraftSaveStartedAfterCustomerStep() {
+  if (state.quoteSessionDraftSaveStarted || !state.images.length || !quoteSessionDraftReachedCustomerStep()) {
+    return false;
+  }
+  state.quoteSessionDraftSaveStarted = true;
+  saveSessionState();
+  return true;
+}
+
 function quoteDraftShouldPersistToDashboard() {
   return quoteSessionDraftStateCanSave() && (quoteDraftHasReferenceFiles() || quoteDraftHasAiAnalysis() || quoteDraftHasOutputState());
 }
@@ -8509,10 +8522,18 @@ function queueQuoteSessionDraftStateSave(options = {}) {
 }
 
 async function startQuoteSessionDraftSaveAfterCustomerStep() {
-  if (state.quoteSessionDraftSaveStarted || !state.images.length) return;
-  state.quoteSessionDraftSaveStarted = true;
-  saveSessionState();
+  if (!markQuoteSessionDraftSaveStartedAfterCustomerStep()) return;
   await saveQuoteSessionDraftState({ quoteGenerated: false });
+}
+
+async function saveQuoteSessionDraftStateAfterPanelMove(panelName = state.activeSidePanel) {
+  const panelIndex = SIDE_PANEL_SEQUENCE.indexOf(panelName);
+  if (panelIndex < SIDE_PANEL_SEQUENCE.indexOf("customer")) return;
+  if (!state.quoteSessionDraftSaveStarted) {
+    await startQuoteSessionDraftSaveAfterCustomerStep();
+    return;
+  }
+  await saveQuoteSessionDraftState({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
 }
 
 function hasCurrentQuoteDraft() {
@@ -8566,6 +8587,7 @@ function showDashboard(options = {}) {
 
 async function returnToDashboard() {
   if (appIsBusy()) return;
+  markQuoteSessionDraftSaveStartedAfterCustomerStep();
   if (!quoteDraftShouldPersistToDashboard()) {
     await discardCurrentQuoteDraftSession();
     showDashboard();
@@ -10305,7 +10327,11 @@ function wireEvents() {
   });
 
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {
-    button.addEventListener("click", () => setSidePanel(button.dataset.sidePanel || "images", { notify: true }));
+    button.addEventListener("click", () => {
+      const panelName = button.dataset.sidePanel || "images";
+      const moved = setSidePanel(panelName, { notify: true });
+      if (moved) saveQuoteSessionDraftStateAfterPanelMove(panelName).catch(() => {});
+    });
   });
   elements.sideBackButton.addEventListener("click", goToPreviousSidePanel);
   elements.sideNextButton.addEventListener("click", goToNextSidePanel);
