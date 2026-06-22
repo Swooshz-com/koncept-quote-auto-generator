@@ -337,13 +337,22 @@ async function main() {
     }
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
-    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
-    await expectTopbarPrimaryAction(page, "new-quote");
-    await page.locator("#dashboardTopNewQuoteButton", { hasText: "New Quote" }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#panel-analysis.is-active").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#quoteCompanyPanel.is-active").waitFor({ state: "visible", timeout: 15000 });
+    await expectTopbarPrimaryAction(page, "dashboard");
+    const refreshedActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
+      buttons.map((button) => button.textContent?.trim() || "")
+    ));
+    if (refreshedActiveRailTexts.length !== 1 || refreshedActiveRailTexts[0] !== "Quote Company") {
+      throw new Error(`Expected refresh to restore the last quote menu, found ${JSON.stringify(refreshedActiveRailTexts)}.`);
+    }
     const restoredQuoteSessionId = await currentQuoteSessionId(page);
     if (!restoredQuoteSessionId) {
       throw new Error("Expected refresh recovery to keep the current quote session id.");
     }
+    await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).click();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+    await expectTopbarPrimaryAction(page, "new-quote");
     await page.locator(`.dashboard-session-card[data-quote-session-id="${restoredQuoteSessionId}"]`).click();
     await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).waitFor({ timeout: 15000 });
     await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).click();

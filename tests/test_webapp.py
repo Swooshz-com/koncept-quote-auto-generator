@@ -7866,6 +7866,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('id="quoteDashboardPanel"', html)
         self.assertIn('id="dashboardSessionsList"', html)
         self.assertNotIn('id="dashboardNewQuoteButton"', html)
+        self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
         self.assertIn('id="dashboardEmptyNewQuoteButton"', html)
         self.assertNotIn('id="dashboardSideNewQuoteButton"', html)
         self.assertNotIn('id="dashboardRefreshButton"', html)
@@ -7882,12 +7883,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("No session selected", html)
         self.assertIn("Select a quote session to view downloads, delete actions, and any available draft controls.", html)
         topbar_controls = html.split('<div class="topbar-controls">', 1)[1].split('</div>', 1)[0]
-        self.assertNotIn("Privacy", topbar_controls)
+        self.assertIn("Privacy Notice", topbar_controls)
+        self.assertIn('class="topbar-privacy-link"', topbar_controls)
         self.assertIn("Pricing Reference", topbar_controls)
         self.assertIn('aria-label="Open pricing reference settings"', topbar_controls)
         self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="newQuoteButton"'))
         self.assertLess(topbar_controls.index('id="newQuoteButton"'), topbar_controls.index('id="settingsButton"'))
-        self.assertIn('class="dashboard-privacy-link"', html)
+        self.assertNotIn('class="dashboard-privacy-link"', html)
         self.assertIn('class="panel quote-dashboard-panel is-active"', html)
         self.assertIn('class="panel quote-shell"', html)
         self.assertIn("quote-dashboard-panel", css)
@@ -7906,6 +7908,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("quoteSessionDraftSaveStarted", js)
         self.assertIn("quoteSessionDraftStateCanSave", js)
         self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
+        self.assertIn("saveQuoteSessionDraftState", js)
+        self.assertIn("queueQuoteSessionDraftStateSave", js)
+        self.assertIn("activeAppView", js)
         self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", js)
         self.assertIn("options.includeDraftState === true && quoteSessionDraftStateCanSave()", js)
         add_images_body = js.split("async function addImagesFromFiles", 1)[1].split("function removeImageAt", 1)[0]
@@ -7915,6 +7920,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         next_panel_body = js.split("async function goToNextSidePanel", 1)[1].split("function handleQuoteBasisClick", 1)[0]
         self.assertIn('nextPanel === "customer"', next_panel_body)
         self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", next_panel_body)
+        self.assertIn("saveQuoteSessionDraftState", next_panel_body)
         start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
         self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
         self.assertIn("/api/quote-sessions", js)
@@ -7925,7 +7931,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         js = (static_dir / "app.js").read_text(encoding="utf-8")
 
         self.assertNotIn("dashboardContinueQuoteButton", html)
-        self.assertIn('id="dashboardTopNewQuoteButton"', html)
+        self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
         self.assertIn('id="dashboardSelectedSessionPanel"', html)
         self.assertIn('id="dashboardSelectModeButton"', html)
         self.assertNotIn('id="dashboardSelectVisibleCheckbox"', html)
@@ -7944,6 +7950,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         )
         self.assertIn("dashboardSessionCanModify", js)
         self.assertIn("Modify quote", js)
+        self.assertIn("Clear selection", js)
         self.assertIn("has_draft_state", js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0])
         self.assertIn("applyQuoteSessionSnapshot", js)
         self.assertNotIn("QUOTE_SESSION_RESTORE_NOTE", js)

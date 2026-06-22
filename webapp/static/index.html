@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=56">
+    <link rel="stylesheet" href="/static/styles.css?v=57">
   </head>
   <body>
     <div class="app-shell">
@@ -19,7 +19,15 @@
           </div>
         </div>
         <div class="topbar-controls">
-          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>Dashboard</button>
+          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M4 5h7v7H4z"></path>
+              <path d="M13 5h7v4h-7z"></path>
+              <path d="M13 11h7v8h-7z"></path>
+              <path d="M4 14h7v5H4z"></path>
+            </svg>
+            <span>Dashboard</span>
+          </button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M12 5v14"></path>
@@ -27,6 +35,7 @@
             </svg>
             <span>New Quote</span>
           </button>
+          <a class="topbar-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
           <button class="topbar-action" type="button" id="settingsButton" aria-label="Open pricing reference settings">Pricing Reference</button>
         </div>
       </header>
@@ -136,20 +145,11 @@
                 </section>
 
                 <aside class="dashboard-side-panel" id="dashboardSidePanel" aria-live="polite">
-                  <button class="primary-button dashboard-new-quote-button" type="button" id="dashboardTopNewQuoteButton">
-                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                      <path d="M12 5v14"></path>
-                      <path d="M5 12h14"></path>
-                    </svg>
-                    <span>New Quote</span>
-                  </button>
                   <section class="dashboard-start-card dashboard-context-card" id="dashboardEmptySelectionPanel" aria-labelledby="dashboardStartTitle">
                     <div class="dashboard-start-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" focusable="false">
-                        <path d="M7 3h7l5 5v13H7V3Z"></path>
-                        <path d="M14 3v5h5"></path>
-                        <path d="M10 13h6"></path>
-                        <path d="M10 17h4"></path>
+                        <path d="M20 12a8 8 0 1 1-2.34-5.66"></path>
+                        <path d="M20 4v6h-6"></path>
                       </svg>
                     </div>
                     <p class="workspace-pane-eyebrow">SELECTED SESSION</p>
@@ -157,9 +157,6 @@
                     <p class="settings-note">Select a quote session to view downloads, delete actions, and any available draft controls.</p>
                   </section>
                   <section class="dashboard-selected-card" id="dashboardSelectedSessionPanel" aria-labelledby="dashboardSelectedSessionTitle" hidden></section>
-                  <nav class="dashboard-bottom-menu" aria-label="Dashboard links">
-                    <a class="dashboard-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
-                  </nav>
                 </aside>
               </div>
             </div>

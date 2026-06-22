@@ -261,6 +261,7 @@ const qs = (selector) => document.querySelector(selector);
 let analysisElapsedTimerId = 0;
 const elapsedTimerIds = new Map();
 let sessionFileDbPromise = null;
+let quoteSessionDraftSaveTimer = null;
 
 const elements = {
   healthText: qs("#healthText"),
@@ -276,7 +277,6 @@ const elements = {
   quoteDashboardPanel: qs("#quoteDashboardPanel"),
   quoteFlowPanel: qs("#panel-analysis"),
   dashboardEmptyNewQuoteButton: qs("#dashboardEmptyNewQuoteButton"),
-  dashboardTopNewQuoteButton: qs("#dashboardTopNewQuoteButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
@@ -2138,6 +2138,7 @@ function buildSessionSnapshot() {
   return {
     version: QUOTE_SESSION_STATE_VERSION,
     savedAt: new Date().toISOString(),
+    activeAppView: state.activeAppView,
     profileId: state.profileId,
     pricingReferenceId: state.pricingReferenceId,
     pricingReferenceSource: state.pricingReferenceSource,
@@ -2243,6 +2244,7 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   state.pricingReferenceSource = saved.pricingReferenceSource || "";
   state.quoteSessionId = safeQuoteSessionId(options.sessionId || saved.quoteSessionId || "");
   state.quoteSessionDraftSaveStarted = Boolean(saved.quoteSessionDraftSaveStarted || options.sessionId);
+  state.activeAppView = saved.activeAppView === "quote" || options.forceQuoteView ? "quote" : "dashboard";
   state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {}) || lastSelectedPresetValue();
   syncSelectedPricingReference();
   renderProfileOptions();
@@ -6560,6 +6562,7 @@ function confirmOutputRowDelete() {
   renderMatchSummary({ pricing_matches: state.outputRows });
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   syncControlStates();
+  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function deleteOutputRow(index) {
@@ -6734,6 +6737,7 @@ function handleOutputRowEdit(event) {
   renderOutputValidationMessages(validation.valid ? [] : validation.errors);
   renderPricingMatches(state.outputRows);
   syncControlStates();
+  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function commitOutputEditor(editor) {
@@ -6760,6 +6764,7 @@ function commitOutputEditor(editor) {
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   syncControlStates();
+  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function applyOutputIncludedAction(button) {
@@ -6778,6 +6783,7 @@ function applyOutputIncludedAction(button) {
   renderPricingMatches(state.outputRows);
   renderMatchSummary({ pricing_matches: state.outputRows });
   syncControlStates();
+  queueQuoteSessionDraftStateSave({ quoteGenerated: true });
 }
 
 function openOutputCellEditor(cell) {
@@ -8377,6 +8383,7 @@ function currentQuoteSessionDraftState() {
   return {
     version: snapshot.version,
     savedAt: snapshot.savedAt,
+    activeAppView: "quote",
     quoteSessionDraftSaveStarted: snapshot.quoteSessionDraftSaveStarted,
     profileId: snapshot.profileId,
     pricingReferenceId: snapshot.pricingReferenceId,
@@ -8456,12 +8463,33 @@ async function ensureQuoteSession(options = {}) {
   return safeQuoteSessionId(session?.session_id || state.quoteSessionId);
 }
 
+async function saveQuoteSessionDraftState(options = {}) {
+  if (!quoteSessionDraftStateCanSave()) return null;
+  saveSessionState();
+  const session = await saveCurrentQuoteSession({
+    quoteGenerated: Boolean(options.quoteGenerated ?? (state.basisConfirmed || state.outputRows.length)),
+    includeDraftState: true,
+  });
+  if (session) saveSessionState();
+  return session;
+}
+
+function queueQuoteSessionDraftStateSave(options = {}) {
+  if (!quoteSessionDraftStateCanSave()) return;
+  saveSessionState();
+  if (quoteSessionDraftSaveTimer) window.clearTimeout(quoteSessionDraftSaveTimer);
+  const delay = Number.isFinite(Number(options.delay)) ? Math.max(0, Number(options.delay)) : 650;
+  quoteSessionDraftSaveTimer = window.setTimeout(() => {
+    quoteSessionDraftSaveTimer = null;
+    saveQuoteSessionDraftState(options).catch(() => {});
+  }, delay);
+}
+
 async function startQuoteSessionDraftSaveAfterCustomerStep() {
   if (state.quoteSessionDraftSaveStarted || !state.images.length) return;
   state.quoteSessionDraftSaveStarted = true;
   saveSessionState();
-  const sessionId = await ensureQuoteSession({ quoteGenerated: false, includeDraftState: true });
-  if (sessionId) saveSessionState();
+  await saveQuoteSessionDraftState({ quoteGenerated: false });
 }
 
 function hasCurrentQuoteDraft() {
@@ -8679,7 +8707,7 @@ async function modifyDashboardQuote(sessionId) {
     }
     const restored = await applyQuoteSessionSnapshot(
       { ...draftState, quoteSessionId: safeSessionId },
-      { sessionId: safeSessionId }
+      { sessionId: safeSessionId, forceQuoteView: true }
     );
     if (!restored) {
       dashboardRestoreError("This quote session was saved with an incompatible draft format.");
@@ -8855,12 +8883,14 @@ function dashboardSelectedItemList(sessions = []) {
       <ul>
         ${sessions.slice(0, 6).map((session) => {
           const customer = dashboardSessionCustomerText(session);
+          const project = dashboardSessionProjectText(session);
           const shortReference = dashboardShortSessionReference(session);
           return `
             <li>
               <div>
                 <strong>${escapeHtml(customer)}</strong>
-                <span>${shortReference ? `Ref ${escapeHtml(shortReference)}` : escapeHtml(dashboardSessionProjectText(session))}</span>
+                <span>${escapeHtml(project)}</span>
+                ${shortReference ? `<small>Ref ${escapeHtml(shortReference)}</small>` : ""}
               </div>
               <button class="dashboard-selected-item-remove" type="button" data-dashboard-remove-selected="${escapeHtml(safeQuoteSessionId(session.session_id || ""))}" aria-label="Remove ${escapeHtml(customer)} from selection">x</button>
             </li>
@@ -8935,11 +8965,12 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
     </dl>
     <div class="dashboard-selected-actions">
-      <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
       <div class="dashboard-export-action-row">
         ${dashboardSelectedExportAction(activeSession, "xlsx", "XLSX")}
         ${dashboardSelectedExportAction(activeSession, "pdf", "PDF")}
       </div>
+      <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
+      <button class="secondary-button dashboard-selected-action dashboard-clear-selection-action" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-session" data-quote-session-id="${escapeHtml(safeSessionId)}">Delete session</button>
     </div>
   `;
@@ -9311,7 +9342,7 @@ function syncControlStates() {
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.hidden = state.activeAppView !== "dashboard";
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
-  [elements.dashboardEmptyNewQuoteButton, elements.dashboardTopNewQuoteButton, elements.backToDashboardButton]
+  [elements.dashboardEmptyNewQuoteButton, elements.backToDashboardButton]
     .filter(Boolean)
     .forEach((button) => {
       button.disabled = busy;
@@ -9419,6 +9450,7 @@ async function handleDraftBasis(options = {}) {
   if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length) {
     clearAiFailureBanner();
     openBlockingClarifications(data.blocking_clarification_questions, data.analysis_findings || state.analysisFindings || [], data.project || state.boothDimensions || {});
+    await saveQuoteSessionDraftState({ quoteGenerated: false });
     return;
   }
   const hasFinalBasis = Array.isArray(data.quote_basis_sections) && data.quote_basis_sections.length && Array.isArray(data.line_items) && data.line_items.length;
@@ -9431,6 +9463,7 @@ async function handleDraftBasis(options = {}) {
   const aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
   if (aiFailed) {
     showAiFailedDraftState(data);
+    await saveQuoteSessionDraftState({ quoteGenerated: false });
     return;
   }
   applyDraftBasis(data);
@@ -9445,6 +9478,7 @@ async function handleDraftBasis(options = {}) {
   updateQuoteBasisCard(data.source);
   setSidePanel("basis", { force: true });
   syncControlStates();
+  await saveQuoteSessionDraftState({ quoteGenerated: false });
 }
 
 async function confirmBasis() {
@@ -9485,7 +9519,7 @@ async function confirmBasis() {
     state.originalOutputRows = snapshotOutputRows(state.outputRows);
     state.lineItems = outputRowsToLineItems();
     setWorkflowStage("completed");
-    await saveCurrentQuoteSession({ quoteGenerated: true });
+    await saveQuoteSessionDraftState({ quoteGenerated: true });
     renderPricingMatches(state.outputRows);
     renderMatchSummary({ pricing_matches: state.outputRows });
     setResultStatus(refreshed ? "Ready for pricing review" : "Pricing refresh unavailable", "is-warn");
@@ -9613,6 +9647,7 @@ async function handleGenerate(options = {}) {
       renderMessages([]);
     }
   }
+  await saveQuoteSessionDraftState({ quoteGenerated: true });
   syncControlStates();
   return viewPdf ? Boolean(state.pdfFile) : Boolean(state.downloadFile);
 }
@@ -9656,6 +9691,7 @@ async function resumeSavedJob() {
     const aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
     if (aiFailed) {
       showAiFailedDraftState(data);
+      await saveQuoteSessionDraftState({ quoteGenerated: false });
       return;
     }
     applyDraftBasis(data);
@@ -9669,6 +9705,7 @@ async function resumeSavedJob() {
     updateQuoteBasisCard(data.source);
     setSidePanel("basis", { force: true });
     syncControlStates();
+    await saveQuoteSessionDraftState({ quoteGenerated: false });
     return;
   }
 
@@ -9724,6 +9761,7 @@ async function resumeSavedJob() {
     }
     if (data.pricing_matches?.length) renderPricingMatches(data.pricing_matches || [], { fromPricingMatches: true });
     renderMatchSummary(data);
+    await saveQuoteSessionDraftState({ quoteGenerated: true });
     syncControlStates();
     return;
   }
@@ -9926,6 +9964,7 @@ async function goToNextSidePanel() {
     return;
   }
   if (state.activeSidePanel === "quote_company") {
+    await saveQuoteSessionDraftState({ quoteGenerated: false });
     requestStartAnalysis();
     return;
   }
@@ -9938,6 +9977,8 @@ async function goToNextSidePanel() {
   const moved = setSidePanel(nextPanel, { notify: true });
   if (moved && nextPanel === "customer") {
     await startQuoteSessionDraftSaveAfterCustomerStep();
+  } else if (moved) {
+    await saveQuoteSessionDraftState({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
   }
 }
 
@@ -10201,7 +10242,6 @@ function wireEvents() {
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
   elements.dashboardEmptyNewQuoteButton?.addEventListener("click", startNewQuote);
-  elements.dashboardTopNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardSessionsList?.addEventListener("click", handleDashboardSessionAction);
   elements.dashboardSessionsList?.addEventListener("keydown", handleDashboardSessionKeydown);
   elements.dashboardSidePanel?.addEventListener("click", handleDashboardSidePanelAction);
@@ -10476,15 +10516,23 @@ async function boot() {
     await initializeSession();
     await loadProfiles();
     await setInitialValues();
-    showDashboard({ load: false });
+    if (state.activeAppView === "quote") {
+      showQuoteFlow();
+    } else {
+      showDashboard({ load: false });
+    }
     checkHealth();
   } finally {
     state.isBooting = false;
     syncControlStates();
   }
   await resumeSavedJob();
-  showDashboard({ load: false });
-  await loadQuoteDashboard();
+  if (state.activeAppView === "quote") {
+    showQuoteFlow();
+  } else {
+    showDashboard({ load: false });
+    await loadQuoteDashboard();
+  }
 }
 
 boot();
