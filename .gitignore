@@ -35,6 +35,7 @@ profile-exports/
 private-pricing-uploads/
 local-pricing-uploads/
 pricing-uploads/
+quote-sessions/
 *.private-pricing.xlsx
 *.private-pricing.csv
 _pricing-references/

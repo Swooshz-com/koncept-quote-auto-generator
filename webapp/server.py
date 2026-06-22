@@ -218,6 +218,15 @@ PRICING_REFERENCE_TEMPLATE_EXAMPLE_ROWS = [
     ],
 ]
 DOWNLOADABLE_FILES = {"quotation.pdf", "quotation.xlsx"}
+QUOTE_SESSION_SCHEMA_VERSION = 1
+QUOTE_SESSION_ID_RE = re.compile(r"^quote-[A-Za-z0-9_-]{3,64}$")
+QUOTE_SESSION_DIR_NAME = "quote-sessions"
+QUOTE_SESSION_METADATA_FILENAME = "quote-session.json"
+QUOTE_SESSION_EXPORT_DIR_NAME = "exports"
+QUOTE_SESSION_EXPORT_KINDS = {
+    "xlsx": "quotation.xlsx",
+    "pdf": "quotation.pdf",
+}
 DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
 CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
 CSRF_TOKEN_ENV_NAME = "LOCAL_RUNNER_CSRF_TOKEN"
@@ -254,6 +263,8 @@ POST_RATE_LIMITS = {
     "/api/settings/pricing-references/:id": 20,
     "/api/settings/profiles": 30,
     "/api/settings/profiles/:id": 30,
+    "/api/quote-sessions": 30,
+    "/api/quote-sessions/:id": 30,
     "/api/log": 180,
 }
 RATE_LIMIT_BUCKETS: dict[tuple[str, str], list[float]] = {}
@@ -5692,6 +5703,8 @@ def rate_limit_path_key(path: str) -> str:
     normalized_path = urlparse(path).path
     if re.fullmatch(r"/api/settings/pricing-references/[A-Za-z0-9_-]+", normalized_path):
         return "/api/settings/pricing-references/:id"
+    if re.fullmatch(r"/api/quote-sessions/[A-Za-z0-9_-]+", normalized_path):
+        return "/api/quote-sessions/:id"
     if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+/export\.json", normalized_path):
         return "/api/settings/profiles/:id"
     if re.fullmatch(r"/api/settings/profiles/[A-Za-z0-9_-]+", normalized_path):
@@ -10884,6 +10897,353 @@ def output_files(job_id: str, output_dir: Path) -> list[dict[str, str]]:
     return files
 
 
+def safe_quote_session_id(value: Any, fallback: str = "") -> str:
+    session_id = clean_text(value) or fallback
+    return session_id if QUOTE_SESSION_ID_RE.fullmatch(session_id) else fallback
+
+
+def new_quote_session_id() -> str:
+    return f"quote-{secrets.token_hex(12)}"
+
+
+def quote_sessions_root() -> Path:
+    return configured_data_root() / QUOTE_SESSION_DIR_NAME
+
+
+def quote_session_dir(session_id: str) -> Path:
+    safe_id = safe_quote_session_id(session_id, "")
+    if not safe_id:
+        raise ValueError("Quote session id is required and may only contain safe generated characters.")
+    root = quote_sessions_root()
+    path = root / safe_id
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("Quote session id is not safe.") from exc
+    return resolved_path
+
+
+def quote_session_metadata_path(session_id: str) -> Path:
+    return quote_session_dir(session_id) / QUOTE_SESSION_METADATA_FILENAME
+
+
+def quote_session_export_dir(session_id: str) -> Path:
+    return quote_session_dir(session_id) / QUOTE_SESSION_EXPORT_DIR_NAME
+
+
+def quote_session_export_path(session_id: str, kind: str) -> Path:
+    normalized_kind = clean_text(kind).lower()
+    filename = QUOTE_SESSION_EXPORT_KINDS.get(normalized_kind)
+    if not filename:
+        raise ValueError("Quote session export type is not supported.")
+    return quote_session_export_dir(session_id) / filename
+
+
+def read_quote_session_metadata(session_id: str) -> dict[str, Any]:
+    safe_id = safe_quote_session_id(session_id, "")
+    if not safe_id:
+        return {}
+    data = load_json_file(quote_session_metadata_path(safe_id))
+    if safe_quote_session_id(data.get("session_id"), "") != safe_id:
+        return {}
+    return data
+
+
+def dashboard_safe_text(value: Any, limit: int = 160) -> str:
+    return clean_text(value)[:limit]
+
+
+def dashboard_safe_number(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    number = parse_float_or_none(value)
+    if number is None or not math.isfinite(number):
+        return None
+    return round(number, 2)
+
+
+def quote_session_patch_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    patch = payload.get("quote_session") if isinstance(payload.get("quote_session"), dict) else None
+    return patch if patch is not None else payload
+
+
+def quote_session_customer_summary(payload: dict[str, Any], patch: dict[str, Any]) -> dict[str, str]:
+    supplied = patch.get("customer_summary") if isinstance(patch.get("customer_summary"), dict) else {}
+    client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
+    project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
+    return {
+        "customer_name": dashboard_safe_text(supplied.get("customer_name") or client.get("name")),
+        "project_name": dashboard_safe_text(supplied.get("project_name") or project.get("title")),
+        "event_or_project_date": dashboard_safe_text(
+            supplied.get("event_or_project_date")
+            or project.get("event_or_project_date")
+            or payload.get("quote_date")
+        ),
+    }
+
+
+def safe_display_pair(value: Any) -> tuple[str, str]:
+    item = value if isinstance(value, dict) else {}
+    return safe_resource_id(item.get("id"), ""), dashboard_safe_text(item.get("display_name") or item.get("label") or item.get("name"))
+
+
+def quote_session_profile_summary(payload: dict[str, Any], patch: dict[str, Any]) -> dict[str, str]:
+    supplied = patch.get("quote_company_profile") if isinstance(patch.get("quote_company_profile"), dict) else {}
+    supplied_id, supplied_name = safe_display_pair(supplied)
+    profile_id = supplied_id or safe_resource_id(payload.get("profile_id"), "")
+    display_name = supplied_name
+    company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
+    if not display_name:
+        display_name = dashboard_safe_text(company.get("name"))
+    if not display_name and profile_id:
+        with contextlib.suppress(Exception):
+            display_name = profile_prompt_summary(load_profile_pack(profile_id)).get("label", "")
+    return {
+        "id": profile_id,
+        "display_name": dashboard_safe_text(display_name) or "Quote Company Profile",
+    }
+
+
+def quote_session_pricing_reference_summary(payload: dict[str, Any], patch: dict[str, Any]) -> dict[str, str]:
+    supplied = patch.get("pricing_reference") if isinstance(patch.get("pricing_reference"), dict) else {}
+    supplied_id, supplied_name = safe_display_pair(supplied)
+    reference = pricing_reference_payload(payload)
+    reference_id = supplied_id or safe_resource_id(reference.get("id") or payload.get("pricing_reference_id"), "")
+    display_name = supplied_name or dashboard_safe_text(reference.get("label") or reference.get("display_name"))
+    if not display_name and reference_id:
+        source = pricing_reference_source_from_payload(payload)
+        with contextlib.suppress(Exception):
+            display_name = load_pricing_reference_pack(reference_id, source=source).public_summary().get("label", "")
+    return {
+        "id": reference_id,
+        "display_name": dashboard_safe_text(display_name) or "Pricing Reference",
+    }
+
+
+def quote_session_commercials(payload: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    supplied = patch.get("commercials") if isinstance(patch.get("commercials"), dict) else {}
+    tax = quote_tax_from_payload(payload)
+    subtotal = dashboard_safe_number(supplied.get("subtotal"))
+    tax_amount = dashboard_safe_number(supplied.get("tax_amount"))
+    grand_total = dashboard_safe_number(supplied.get("grand_total"))
+    return {
+        "currency": normalize_currency_label(supplied.get("currency") or quote_currency_from_payload(payload)),
+        "tax_label": normalize_tax_label(supplied.get("tax_label") or tax.get("label")),
+        "tax_rate": normalize_tax_rate(supplied.get("tax_rate") if supplied.get("tax_rate") not in (None, "") else tax.get("rate")),
+        "subtotal": subtotal,
+        "tax_amount": tax_amount,
+        "grand_total": grand_total,
+    }
+
+
+def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, Any]:
+    return {
+        "schema_version": QUOTE_SESSION_SCHEMA_VERSION,
+        "session_id": session_id,
+        "created_at": created_at,
+        "updated_at": created_at,
+        "customer_summary": {
+            "customer_name": "",
+            "project_name": "",
+            "event_or_project_date": "",
+        },
+        "quote_company_profile": {
+            "id": "",
+            "display_name": "Quote Company Profile",
+        },
+        "pricing_reference": {
+            "id": "",
+            "display_name": "Pricing Reference",
+        },
+        "commercials": {
+            "currency": DEFAULT_CURRENCY_LABEL,
+            "tax_label": DEFAULT_TAX_LABEL,
+            "tax_rate": DEFAULT_TAX_RATE,
+            "subtotal": None,
+            "tax_amount": None,
+            "grand_total": None,
+        },
+        "status": {
+            "quote_generated": False,
+            "xlsx_exported": False,
+            "pdf_exported": False,
+        },
+        "exports": {
+            "xlsx": {
+                "filename": None,
+                "created_at": None,
+                "size_bytes": None,
+            },
+            "pdf": {
+                "filename": None,
+                "created_at": None,
+                "size_bytes": None,
+            },
+        },
+    }
+
+
+def normalized_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    session_id = safe_quote_session_id(metadata.get("session_id"), "")
+    if not session_id:
+        return {}
+    created_at = dashboard_safe_text(metadata.get("created_at")) or utc_timestamp()
+    normalized = blank_quote_session_metadata(session_id, created_at)
+    normalized["updated_at"] = dashboard_safe_text(metadata.get("updated_at")) or created_at
+    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports"):
+        if isinstance(metadata.get(key), dict):
+            normalized[key].update(copy.deepcopy(metadata[key]))
+    return normalized
+
+
+def write_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalized_quote_session_metadata(metadata)
+    if not normalized:
+        raise ValueError("Quote session metadata is not valid.")
+    path = quote_session_metadata_path(normalized["session_id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(normalized, indent=2, sort_keys=True), encoding="utf-8")
+    return normalized
+
+
+def result_has_generated_quote(result: dict[str, Any] | None) -> bool:
+    if not isinstance(result, dict):
+        return False
+    return clean_text(result.get("status")) in {"completed", "needs_confirmation", "needs_review", "degraded"}
+
+
+def copy_quote_session_exports(session_id: str, metadata: dict[str, Any], result: dict[str, Any] | None, output_dir: Path | None) -> None:
+    if not result_has_generated_quote(result) or output_dir is None:
+        return
+    export_dir = quote_session_export_dir(session_id)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
+        source = output_dir / filename
+        if not source.exists() or not source.is_file():
+            continue
+        target = quote_session_export_path(session_id, kind)
+        shutil.copy2(source, target)
+        stat = target.stat()
+        metadata["exports"][kind] = {
+            "filename": filename,
+            "created_at": utc_timestamp(),
+            "size_bytes": stat.st_size,
+        }
+        metadata["status"][f"{kind}_exported"] = True
+
+
+def create_or_update_quote_session(
+    payload: dict[str, Any],
+    result: dict[str, Any] | None = None,
+    output_dir: Path | None = None,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    patch = quote_session_patch_payload(payload)
+    resolved_session_id = safe_quote_session_id(
+        session_id
+        or patch.get("session_id")
+        or payload.get("session_id"),
+        "",
+    ) or new_quote_session_id()
+    existing = read_quote_session_metadata(resolved_session_id)
+    now = utc_timestamp()
+    metadata = normalized_quote_session_metadata(existing) if existing else blank_quote_session_metadata(resolved_session_id, now)
+    metadata["updated_at"] = now
+    metadata["customer_summary"] = quote_session_customer_summary(payload, patch)
+    metadata["quote_company_profile"] = quote_session_profile_summary(payload, patch)
+    metadata["pricing_reference"] = quote_session_pricing_reference_summary(payload, patch)
+    metadata["commercials"] = quote_session_commercials(payload, patch)
+    status_patch = patch.get("status") if isinstance(patch.get("status"), dict) else {}
+    if isinstance(status_patch.get("quote_generated"), bool):
+        metadata["status"]["quote_generated"] = status_patch["quote_generated"]
+    if result_has_generated_quote(result):
+        metadata["status"]["quote_generated"] = True
+    copy_quote_session_exports(resolved_session_id, metadata, result, output_dir)
+    write_quote_session_metadata(metadata)
+    return public_quote_session(metadata)
+
+
+def public_quote_session(metadata: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalized_quote_session_metadata(metadata)
+    if not normalized:
+        return {}
+    session_id = normalized["session_id"]
+    public = copy.deepcopy(normalized)
+    for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
+        raw_export = public["exports"].get(kind) if isinstance(public["exports"].get(kind), dict) else {}
+        recorded_filename = clean_text(raw_export.get("filename"))
+        safe_recorded = recorded_filename if recorded_filename == filename else ""
+        export_path = quote_session_export_path(session_id, kind) if safe_recorded else None
+        exists = bool(export_path and export_path.exists() and export_path.is_file())
+        raw_export["filename"] = safe_recorded or None
+        raw_export["exists"] = exists
+        raw_export["missing"] = bool(safe_recorded and not exists)
+        raw_export["url"] = f"/api/quote-sessions/{session_id}/download/{kind}" if exists else None
+        if exists and export_path is not None:
+            raw_export["size_bytes"] = export_path.stat().st_size
+        public["exports"][kind] = raw_export
+    return public
+
+
+def get_quote_session(session_id: str) -> dict[str, Any] | None:
+    metadata = read_quote_session_metadata(session_id)
+    if not metadata:
+        return None
+    return public_quote_session(metadata)
+
+
+def iso_timestamp_sort_value(value: Any) -> float:
+    text = clean_text(value)
+    if not text:
+        return 0.0
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def list_quote_sessions() -> list[dict[str, Any]]:
+    root = quote_sessions_root()
+    if not root.exists():
+        return []
+    sessions: list[dict[str, Any]] = []
+    for path in sorted(root.iterdir()):
+        if not path.is_dir():
+            continue
+        safe_id = safe_quote_session_id(path.name, "")
+        if not safe_id:
+            continue
+        session = get_quote_session(safe_id)
+        if session:
+            sessions.append(session)
+    return sorted(
+        sessions,
+        key=lambda item: (
+            iso_timestamp_sort_value(item.get("updated_at")),
+            clean_text(item.get("session_id")).casefold(),
+        ),
+        reverse=True,
+    )
+
+
+def delete_quote_session(session_id: str) -> bool:
+    safe_id = safe_quote_session_id(session_id, "")
+    if not safe_id:
+        return False
+    root = quote_sessions_root().resolve()
+    session_dir = quote_session_dir(safe_id)
+    try:
+        session_dir.relative_to(root)
+    except ValueError:
+        return False
+    if session_dir.name != safe_id or not session_dir.exists() or not session_dir.is_dir():
+        return False
+    shutil.rmtree(session_dir)
+    return True
+
+
 def file_data_url(path: Path) -> str:
     content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
     return f"data:{content_type};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
@@ -11274,6 +11634,14 @@ def run_quote_job(
     }
     if error_reference:
         result["error_reference"] = error_reference
+    if isinstance(payload.get("quote_session"), dict):
+        try:
+            result["quote_session"] = create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+        except Exception as exc:  # pragma: no cover - defensive dashboard metadata boundary
+            write_local_log(
+                "quote_session_update_failed",
+                unexpected_error_log_details(new_error_reference(), exc, job_id=job_id),
+            )
     if configured_app_mode() != "deploy" and status != "failed":
         result.update({
             "stdout": completed.stdout,
@@ -11326,6 +11694,21 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 "permissions": current_permissions(),
                 "user": session.get("user") if session else None,
             })
+            return
+        if path == "/api/quote-sessions":
+            self.send_json({"quote_sessions": list_quote_sessions()})
+            return
+        quote_session_download_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)/download/([A-Za-z0-9_-]+)", path)
+        if quote_session_download_match:
+            self.send_quote_session_download(quote_session_download_match.group(1), quote_session_download_match.group(2))
+            return
+        quote_session_detail_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", path)
+        if quote_session_detail_match:
+            session = get_quote_session(quote_session_detail_match.group(1))
+            if not session:
+                self.send_json({"error": "Not found"}, status=404)
+                return
+            self.send_json({"quote_session": session})
             return
         if path == "/api/profiles":
             workspace = default_runtime_workspace()
@@ -11570,6 +11953,19 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             self.send_json({"status": "normalized", "line_items": normalize_line_items_for_quote_basis_review(payload)})
             return
 
+        if parsed.path == "/api/quote-sessions":
+            allowed, error = require_permission("canGenerateQuote")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            try:
+                session = create_or_update_quote_session(payload)
+            except ValueError as exc:
+                self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
+                return
+            self.send_json({"status": "saved", "quote_session": session})
+            return
+
         if parsed.path == "/api/draft":
             with ai_log_tracking_scope(request_ai_tracking):
                 if not image_entries(payload):
@@ -11631,6 +12027,26 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if self.block_unauthenticated_request(parsed.path):
             return
         if self.block_unsafe_post(parsed.path):
+            return
+        quote_session_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", parsed.path)
+        if quote_session_match:
+            allowed, error = require_permission("canGenerateQuote")
+            if not allowed:
+                self.send_json(error, status=403)
+                return
+            try:
+                deleted = delete_quote_session(quote_session_match.group(1))
+            except Exception as exc:  # pragma: no cover - defensive HTTP boundary
+                error_reference = new_error_reference()
+                write_local_log("server_error", {
+                    "error_reference": error_reference,
+                    "reason": "quote_session_delete_failed",
+                    "session_id": safe_quote_session_id(quote_session_match.group(1), ""),
+                    "errors": safe_error_messages([str(exc)]),
+                })
+                self.send_json({"status": "failed", "errors": safe_error_messages([f"Unexpected local runner error. Reference: {error_reference}."])}, status=500)
+                return
+            self.send_json({"status": "deleted" if deleted else "not_found"}, status=200 if deleted else 404)
             return
         pricing_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", parsed.path)
         if pricing_match:
@@ -11912,6 +12328,41 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         disposition = "inline" if filename == "quotation.pdf" else "attachment"
         self.send_header("Content-Disposition", f'{disposition}; filename="{filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_quote_session_download(self, session_id: str, kind: str) -> None:
+        safe_id = safe_quote_session_id(session_id, "")
+        normalized_kind = clean_text(kind).lower()
+        expected_filename = QUOTE_SESSION_EXPORT_KINDS.get(normalized_kind)
+        if not safe_id or not expected_filename:
+            self.send_json({"error": "Not found"}, status=404)
+            return
+        metadata = read_quote_session_metadata(safe_id)
+        export = metadata.get("exports", {}).get(normalized_kind) if metadata else None
+        filename = clean_text(export.get("filename")) if isinstance(export, dict) else ""
+        if filename != expected_filename:
+            self.send_json({"error": "Not found"}, status=404)
+            return
+        export_dir = quote_session_export_dir(safe_id)
+        file_path = export_dir / filename
+        try:
+            resolved = file_path.resolve()
+            resolved.relative_to(export_dir.resolve())
+        except ValueError:
+            self.send_json({"error": "Not found"}, status=404)
+            return
+        if not resolved.exists() or not resolved.is_file():
+            self.send_json({"error": "Not found"}, status=404)
+            return
+        content_type = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
+        body = resolved.read_bytes()
+        safe_filename = safe_segment(filename, expected_filename)
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.send_security_headers()
         self.end_headers()

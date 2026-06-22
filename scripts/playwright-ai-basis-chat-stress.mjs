@@ -27,6 +27,7 @@ const options = {
 
 const baseUrl = `http://${options.host}:${options.port}`;
 const outputDir = path.join(root, "_output", "playwright");
+const quoteDataRoot = path.join(root, "_tmp", "playwright-ai-basis-chat-quote-data");
 
 function pythonCommand() {
   if (process.env.PYTHON) return process.env.PYTHON;
@@ -60,7 +61,7 @@ function startServer() {
     ["webapp/server.py", "--host", options.host, "--port", String(options.port)],
     {
       cwd: root,
-      env: { ...process.env, APP_MODE: "local" },
+      env: { ...process.env, APP_MODE: "local", QUOTE_DATA_ROOT: process.env.QUOTE_DATA_ROOT || quoteDataRoot },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -370,8 +371,12 @@ async function main() {
 
   try {
     await installMockJobs(page);
-    await page.goto(baseUrl, { waitUntil: "networkidle" });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
+    await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
+    await page.locator("#dashboardSideNewQuoteButton:not([disabled])").waitFor({ timeout: 15000 });
+    await page.locator("#dashboardSideNewQuoteButton").click();
+    await page.locator("#imageIntake").waitFor({ state: "visible" });
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#sampleDetailsButton").click();
     await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
