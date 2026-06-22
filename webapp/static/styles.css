@@ -250,6 +250,32 @@ button {
   gap: 14px;
 }
 
+.brand-lockup {
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brand-lockup:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: rgba(239, 250, 248, 0.56);
+}
+
+.brand-lockup:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+}
+
+.brand-lockup:disabled,
+.brand-lockup[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 .brand-mark {
   position: relative;
   display: grid;
@@ -460,7 +486,7 @@ h3 {
 
 .dashboard-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1832,7 +1858,7 @@ h3 {
 
 .dashboard-summary-grid {
   max-width: min(860px, 72%);
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: 12px;
 }
 
@@ -2135,7 +2161,7 @@ h3 {
 .dashboard-summary-grid {
   width: 100%;
   max-width: none;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dashboard-sessions-card {

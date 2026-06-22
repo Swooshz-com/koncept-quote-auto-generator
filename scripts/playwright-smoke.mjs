@@ -281,6 +281,12 @@ async function main() {
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
     await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    const statusFilterLabels = await page.locator("#dashboardStatusFilter option").evaluateAll((options) => (
+      options.map((option) => option.textContent?.trim())
+    ));
+    if (JSON.stringify(statusFilterLabels) !== JSON.stringify(["All statuses", "Draft", "Generated"])) {
+      throw new Error(`Unexpected dashboard status filters: ${JSON.stringify(statusFilterLabels)}`);
+    }
     await expectTopbarPrimaryAction(page, "new-quote");
     await page.waitForFunction(() => {
       const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
@@ -300,7 +306,7 @@ async function main() {
     await expectTopbarPrimaryAction(page, "dashboard");
     const homeShot = await screenshot(page, "home.png");
 
-    await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).click();
+    await page.locator("#topbarBrandButton", { hasText: "Swooshz Quote Generator" }).click();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardEmptyState").waitFor({ state: "visible", timeout: 15000 });
     const blankDraftRows = await page.locator(".dashboard-session-card").count();

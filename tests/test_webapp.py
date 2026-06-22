@@ -7935,10 +7935,14 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("dashboardContinueQuoteButton", html)
         self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
         self.assertIn('id="dashboardSelectedSessionPanel"', html)
+        self.assertIn('id="topbarBrandButton"', html)
         self.assertIn('id="dashboardSelectModeButton"', html)
         self.assertNotIn('id="dashboardSelectVisibleCheckbox"', html)
         self.assertNotIn('id="dashboardBulkActionBar"', html)
         self.assertNotIn('id="dashboardBulkDeleteButton"', html)
+        self.assertNotIn('<option value="exported">', html)
+        self.assertNotIn('<option value="missing">', html)
+        self.assertNotIn(">Missing files<", html)
         self.assertIn("dashboard-list-toolbar", html)
         self.assertIn('id="dashboardPageSizeSelect"', html)
         self.assertIn('id="dashboardRangeSelect"', html)
@@ -7956,6 +7960,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSessionCanModify", js)
         self.assertIn("Modify quote", js)
         self.assertIn("Clear selection", js)
+        self.assertIn("handleTopbarBrandClick", js)
         self.assertIn("dashboard-session-primary-zone", js)
         self.assertIn("dashboard-session-meta-zone", js)
         self.assertIn("dashboard-session-result-zone", js)
@@ -7966,6 +7971,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("renderDashboardPageControls", js)
         self.assertIn("dashboardPageSizeSelect", js)
         self.assertIn("Grand Total", js)
+        status_body = js.split("function quoteSessionStatus", 1)[1].split("function dashboardSessionCustomerText", 1)[0]
+        self.assertNotIn("Missing files", status_body)
+        self.assertNotIn('label: "Exported"', status_body)
         can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
         self.assertIn('return Boolean(safeQuoteSessionId(session.session_id || ""));', can_modify_body)
         restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]

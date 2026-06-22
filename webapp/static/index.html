@@ -10,14 +10,14 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div class="brand-lockup">
+        <button class="brand-lockup" type="button" id="topbarBrandButton" aria-label="Open dashboard">
           <div class="brand-mark" aria-hidden="true">
             <img src="/static/assets/swooshz-mark.png" alt="">
           </div>
           <div>
             <h1>Swooshz Quote Generator</h1>
           </div>
-        </div>
+        </button>
         <div class="topbar-controls">
           <a class="topbar-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
           <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>
@@ -86,13 +86,6 @@
                         <span>Exports ready</span>
                       </div>
                     </article>
-                    <article class="dashboard-summary-card">
-                      <span class="stat-card-icon red" aria-hidden="true">!</span>
-                      <div>
-                        <strong id="dashboardMissingSessions">0</strong>
-                        <span>Missing files</span>
-                      </div>
-                    </article>
                   </section>
 
                   <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
@@ -113,8 +106,6 @@
                           <option value="all">All statuses</option>
                           <option value="draft">Draft</option>
                           <option value="generated">Generated</option>
-                          <option value="exported">Exported</option>
-                          <option value="missing">Missing files</option>
                         </select>
                       </label>
                     </div>

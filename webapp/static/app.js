@@ -281,6 +281,7 @@ const elements = {
   fileList: qs("#fileList"),
   quoteDashboardPanel: qs("#quoteDashboardPanel"),
   quoteFlowPanel: qs("#panel-analysis"),
+  topbarBrandButton: qs("#topbarBrandButton"),
   dashboardEmptyNewQuoteButton: qs("#dashboardEmptyNewQuoteButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
@@ -296,7 +297,6 @@ const elements = {
   dashboardTotalSessions: qs("#dashboardTotalSessions"),
   dashboardGeneratedSessions: qs("#dashboardGeneratedSessions"),
   dashboardExportedSessions: qs("#dashboardExportedSessions"),
-  dashboardMissingSessions: qs("#dashboardMissingSessions"),
   dashboardSidePanel: qs("#dashboardSidePanel"),
   dashboardEmptySelectionPanel: qs("#dashboardEmptySelectionPanel"),
   dashboardSelectedSessionPanel: qs("#dashboardSelectedSessionPanel"),
@@ -8578,6 +8578,16 @@ async function returnToDashboard() {
   showDashboard();
 }
 
+async function handleTopbarBrandClick() {
+  if (appIsBusy()) return;
+  if (state.activeAppView === "dashboard") {
+    elements.quoteDashboardPanel?.scrollTo?.({ top: 0, behavior: "smooth" });
+    window.scrollTo?.({ top: 0, behavior: "smooth" });
+    return;
+  }
+  await returnToDashboard();
+}
+
 async function loadQuoteDashboard() {
   if (!elements.quoteDashboardPanel) return;
   state.quoteSessionLoadError = "";
@@ -8606,9 +8616,7 @@ function quoteSessionHasAvailableExport(session = {}) {
 }
 
 function quoteSessionStatus(session = {}) {
-  if (quoteSessionHasMissingExport(session)) return { key: "missing", label: "Missing files", className: "is-missing" };
-  if (quoteSessionHasAvailableExport(session)) return { key: "exported", label: "Exported", className: "is-exported" };
-  if (session.status?.quote_generated) return { key: "generated", label: "Generated", className: "is-generated" };
+  if (session.status?.quote_generated || quoteSessionHasAvailableExport(session)) return { key: "generated", label: "Generated", className: "is-generated" };
   return { key: "draft", label: "Draft", className: "is-draft" };
 }
 
@@ -8709,11 +8717,9 @@ function updateDashboardSummary() {
   const sessions = state.quoteSessions;
   const generated = sessions.filter((session) => session.status?.quote_generated).length;
   const exported = sessions.filter(quoteSessionHasAvailableExport).length;
-  const missing = sessions.filter(quoteSessionHasMissingExport).length;
   if (elements.dashboardTotalSessions) elements.dashboardTotalSessions.textContent = String(sessions.length);
   if (elements.dashboardGeneratedSessions) elements.dashboardGeneratedSessions.textContent = String(generated);
   if (elements.dashboardExportedSessions) elements.dashboardExportedSessions.textContent = String(exported);
-  if (elements.dashboardMissingSessions) elements.dashboardMissingSessions.textContent = String(missing);
 }
 
 function dashboardLastExportText(session = {}) {
@@ -9455,6 +9461,11 @@ function syncControlStates() {
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.hidden = state.activeAppView !== "dashboard";
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
+  if (elements.topbarBrandButton) {
+    elements.topbarBrandButton.disabled = busy;
+    elements.topbarBrandButton.setAttribute("aria-disabled", String(busy));
+    elements.topbarBrandButton.title = busy ? appBusyTitle() : "Open dashboard";
+  }
   [elements.dashboardEmptyNewQuoteButton, elements.backToDashboardButton]
     .filter(Boolean)
     .forEach((button) => {
@@ -10353,6 +10364,7 @@ function wireEvents() {
   });
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
+  elements.topbarBrandButton?.addEventListener("click", handleTopbarBrandClick);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
   elements.dashboardEmptyNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardSessionsList?.addEventListener("click", handleDashboardSessionAction);
