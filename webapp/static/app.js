@@ -158,6 +158,7 @@ const state = {
   quoteSessions: [],
   quoteSessionLoadError: "",
   quoteSessionRestoreBusy: false,
+  quoteSessionDraftSaveStarted: false,
   dashboardStatusFilter: "all",
   dashboardSearch: "",
   dashboardSelectionMode: false,
@@ -1258,7 +1259,6 @@ async function addImagesFromFiles(files) {
   }
   state.images = [...state.images, ...unique];
   await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
-  await ensureQuoteSession({ quoteGenerated: false, includeDraftState: true });
   renderFiles();
   setWorkflowStage("ready_to_analyze");
   const generator = currentGenerator();
@@ -2143,6 +2143,7 @@ function buildSessionSnapshot() {
     pricingReferenceSource: state.pricingReferenceSource,
     selectedPresetValue: state.selectedPresetValue,
     quoteSessionId: state.quoteSessionId,
+    quoteSessionDraftSaveStarted: state.quoteSessionDraftSaveStarted,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES).map(sessionImageMetadata),
     quoteDetails: collectQuoteDetails(),
     workflowStage: state.workflowStage,
@@ -2241,6 +2242,7 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
   state.pricingReferenceSource = saved.pricingReferenceSource || "";
   state.quoteSessionId = safeQuoteSessionId(options.sessionId || saved.quoteSessionId || "");
+  state.quoteSessionDraftSaveStarted = Boolean(saved.quoteSessionDraftSaveStarted || options.sessionId);
   state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {}) || lastSelectedPresetValue();
   syncSelectedPricingReference();
   renderProfileOptions();
@@ -3170,6 +3172,7 @@ async function startNewQuote() {
 
 function resetCurrentQuoteDraftState() {
   state.quoteSessionId = "";
+  state.quoteSessionDraftSaveStarted = false;
   state.profileId = "";
   state.pricingReferenceId = "";
   state.pricingReferenceSource = "";
@@ -5683,7 +5686,7 @@ async function setSampleDetails() {
     state.images = Array.isArray(data.images) ? data.images.slice(0, MAX_REFERENCE_IMAGES) : [];
     await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
     if (state.images.length) {
-      await ensureQuoteSession({ quoteGenerated: false, includeDraftState: true });
+      saveSessionState();
     }
     renderFiles();
     setImageUploadStatus(`${state.images.length} sample reference file${state.images.length === 1 ? "" : "s"} loaded.`);
@@ -8361,8 +8364,12 @@ function quoteDraftHasOutputState() {
   );
 }
 
+function quoteSessionDraftStateCanSave() {
+  return Boolean(state.quoteSessionDraftSaveStarted);
+}
+
 function quoteDraftShouldPersistToDashboard() {
-  return quoteDraftHasReferenceFiles() || quoteDraftHasAiAnalysis() || quoteDraftHasOutputState();
+  return quoteSessionDraftStateCanSave() && (quoteDraftHasReferenceFiles() || quoteDraftHasAiAnalysis() || quoteDraftHasOutputState());
 }
 
 function currentQuoteSessionDraftState() {
@@ -8370,6 +8377,7 @@ function currentQuoteSessionDraftState() {
   return {
     version: snapshot.version,
     savedAt: snapshot.savedAt,
+    quoteSessionDraftSaveStarted: snapshot.quoteSessionDraftSaveStarted,
     profileId: snapshot.profileId,
     pricingReferenceId: snapshot.pricingReferenceId,
     pricingReferenceSource: snapshot.pricingReferenceSource,
@@ -8424,7 +8432,7 @@ function currentQuoteSessionPayload(options = {}) {
       quote_generated: quoteGenerated,
     },
   };
-  if (options.includeDraftState === true) {
+  if (options.includeDraftState === true && quoteSessionDraftStateCanSave()) {
     payload.draft_state = currentQuoteSessionDraftState();
   }
   return payload;
@@ -8446,6 +8454,14 @@ async function ensureQuoteSession(options = {}) {
   if (safeQuoteSessionId(state.quoteSessionId)) return state.quoteSessionId;
   const session = await saveCurrentQuoteSession(options);
   return safeQuoteSessionId(session?.session_id || state.quoteSessionId);
+}
+
+async function startQuoteSessionDraftSaveAfterCustomerStep() {
+  if (state.quoteSessionDraftSaveStarted || !state.images.length) return;
+  state.quoteSessionDraftSaveStarted = true;
+  saveSessionState();
+  const sessionId = await ensureQuoteSession({ quoteGenerated: false, includeDraftState: true });
+  if (sessionId) saveSessionState();
 }
 
 function hasCurrentQuoteDraft() {
@@ -9900,7 +9916,7 @@ function goToPreviousSidePanel() {
   setSidePanel(SIDE_PANEL_SEQUENCE[index - 1]);
 }
 
-function goToNextSidePanel() {
+async function goToNextSidePanel() {
   const index = activeSidePanelIndex();
   if (elements.sideNextButton?.getAttribute("aria-disabled") === "true") {
     const reason = elements.sideNextButton.title || "This step is not ready yet.";
@@ -9918,7 +9934,11 @@ function goToNextSidePanel() {
     return;
   }
   if (state.activeSidePanel === "output") return;
-  setSidePanel(SIDE_PANEL_SEQUENCE[index + 1], { notify: true });
+  const nextPanel = SIDE_PANEL_SEQUENCE[index + 1];
+  const moved = setSidePanel(nextPanel, { notify: true });
+  if (moved && nextPanel === "customer") {
+    await startQuoteSessionDraftSaveAfterCustomerStep();
+  }
 }
 
 function handleQuoteBasisClick(event) {

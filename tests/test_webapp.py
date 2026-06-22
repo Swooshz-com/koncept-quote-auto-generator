@@ -7903,6 +7903,18 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("discardCurrentQuoteDraftSession", js)
         self.assertIn("includeDraftState: true", js)
         self.assertIn("payload.draft_state = currentQuoteSessionDraftState()", js)
+        self.assertIn("quoteSessionDraftSaveStarted", js)
+        self.assertIn("quoteSessionDraftStateCanSave", js)
+        self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
+        self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", js)
+        self.assertIn("options.includeDraftState === true && quoteSessionDraftStateCanSave()", js)
+        add_images_body = js.split("async function addImagesFromFiles", 1)[1].split("function removeImageAt", 1)[0]
+        self.assertNotIn("ensureQuoteSession", add_images_body)
+        sample_details_body = js.split("async function setSampleDetails", 1)[1].split("function buildPayload", 1)[0]
+        self.assertNotIn("ensureQuoteSession", sample_details_body)
+        next_panel_body = js.split("async function goToNextSidePanel", 1)[1].split("function handleQuoteBasisClick", 1)[0]
+        self.assertIn('nextPanel === "customer"', next_panel_body)
+        self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", next_panel_body)
         start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
         self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
         self.assertIn("/api/quote-sessions", js)

@@ -314,6 +314,20 @@ async function main() {
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#sampleDetailsButton").click();
     await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+    const preCustomerQuoteSessionId = await currentQuoteSessionId(page);
+    if (preCustomerQuoteSessionId) {
+      throw new Error(`Expected dashboard draft saving to wait until Next: Customer, found ${preCustomerQuoteSessionId}.`);
+    }
+    await page.locator("#sideNextButton", { hasText: "Next: Customer" }).click();
+    await page.locator("#customerDetailsPanel").waitFor({ state: "visible", timeout: 15000 });
+    await page.waitForFunction(() => {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem("swooshz_quote_session_v1") || "{}");
+        return Boolean(saved.quoteSessionId);
+      } catch {
+        return false;
+      }
+    }, null, { timeout: 15000 });
     await page.locator('.rail-button[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
     await page.locator('.rail-button[data-side-panel="quote_company"]').click();
     await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
@@ -338,7 +352,7 @@ async function main() {
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
     ));
-    if (restoredActiveRailTexts.length !== 1 || !["Upload", "Quote Company"].includes(restoredActiveRailTexts[0])) {
+    if (restoredActiveRailTexts.length !== 1 || !["Upload", "Customer", "Quote Company"].includes(restoredActiveRailTexts[0])) {
       throw new Error(`Expected Modify quote to restore a usable quote panel, found ${JSON.stringify(restoredActiveRailTexts)}.`);
     }
     const restoredFiles = await page.locator("#fileList .file-item").evaluateAll((items) => (
