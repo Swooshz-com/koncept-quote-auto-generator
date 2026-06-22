@@ -20,7 +20,6 @@
         </div>
         <div class="topbar-controls">
           <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>Dashboard</button>
-          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M12 5v14"></path>
@@ -28,6 +27,7 @@
             </svg>
             <span>New Quote</span>
           </button>
+          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
         </div>
       </header>
 
@@ -148,11 +148,11 @@
                     <p class="settings-note">Select a quote session to view downloads, delete actions, and any available draft controls.</p>
                   </section>
                   <section class="dashboard-selected-card" id="dashboardSelectedSessionPanel" aria-labelledby="dashboardSelectedSessionTitle" hidden></section>
+                  <nav class="dashboard-bottom-menu" aria-label="Dashboard links">
+                    <a class="dashboard-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
+                  </nav>
                 </aside>
               </div>
-              <nav class="dashboard-bottom-menu" aria-label="Dashboard links">
-                <a class="dashboard-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
-              </nav>
             </div>
           </section>
 

@@ -7860,8 +7860,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Select a quote session to view downloads, delete actions, and any available draft controls.", html)
         topbar_controls = html.split('<div class="topbar-controls">', 1)[1].split('</div>', 1)[0]
         self.assertNotIn("Privacy", topbar_controls)
-        self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="settingsButton"'))
-        self.assertLess(topbar_controls.index('id="settingsButton"'), topbar_controls.index('id="newQuoteButton"'))
+        self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="newQuoteButton"'))
+        self.assertLess(topbar_controls.index('id="newQuoteButton"'), topbar_controls.index('id="settingsButton"'))
         self.assertIn('class="dashboard-privacy-link"', html)
         self.assertIn('class="panel quote-dashboard-panel is-active"', html)
         self.assertIn('class="panel quote-shell"', html)
@@ -7909,9 +7909,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSelectionMode", js)
         self.assertIn("handleDashboardSelectModeButton", js)
         self.assertIn("Bulk selection", js)
-        self.assertIn("Combined grand total", js)
+        self.assertIn("Combined Value", js)
         self.assertIn("dashboardSelectedItemList", js)
-        self.assertIn("dashboard-bulk-summary-grid", js)
+        self.assertIn("dashboard-bulk-breakdown", js)
+        self.assertIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
         self.assertIn("dashboardVisibleSessionIds", js)
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]

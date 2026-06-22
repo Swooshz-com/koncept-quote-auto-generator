@@ -8521,48 +8521,29 @@ function dashboardSessionCard(session = {}) {
           <input type="checkbox" data-dashboard-select aria-label="${escapeHtml(checkboxLabel)}" ${selected ? "checked" : ""}>
           <span aria-hidden="true"></span>
         </label>
-        <div class="dashboard-session-card-top">
+        <span class="dashboard-session-file-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M7 3h7l5 5v13H7V3Z"></path>
+            <path d="M14 3v5h5"></path>
+          </svg>
+        </span>
+        <div class="dashboard-session-card-body">
           <div class="dashboard-customer-cell">
             <strong>${escapeHtml(customer)}</strong>
             <span>${escapeHtml(project)}</span>
-            ${shortReference ? `<span class="dashboard-session-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+            <span class="dashboard-session-inline-meta">
+              ${shortReference ? `<span>Ref ${escapeHtml(shortReference)}</span>` : ""}
+              <span>Created ${escapeHtml(formatDashboardDateTime(session.created_at))}</span>
+              <span>${escapeHtml(profile)}</span>
+            </span>
           </div>
-          <div class="dashboard-session-card-aside">
-            <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
-            <span class="dashboard-session-total">${escapeHtml(formatDashboardMoney(session))}</span>
-          </div>
+        </div>
+        <div class="dashboard-session-card-aside">
+          <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+          <span class="dashboard-session-total">${escapeHtml(formatDashboardMoney(session))}</span>
+          <span>${escapeHtml(dashboardTaxText(session))}</span>
         </div>
       </div>
-      <dl class="dashboard-session-meta">
-        <div>
-          <dt>Created</dt>
-          <dd>${escapeHtml(formatDashboardDateTime(session.created_at))}</dd>
-        </div>
-        <div>
-          <dt>Last export</dt>
-          <dd>${escapeHtml(dashboardLastExportText(session))}</dd>
-        </div>
-        <div>
-          <dt>Quote Company</dt>
-          <dd>${escapeHtml(profile)}</dd>
-        </div>
-        <div>
-          <dt>Pricing Reference</dt>
-          <dd>${escapeHtml(pricing)}</dd>
-        </div>
-        <div>
-          <dt>Currency / GST</dt>
-          <dd>${escapeHtml(dashboardTaxText(session))}</dd>
-        </div>
-        <div>
-          <dt>Grand Total</dt>
-          <dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(session))}</span></dd>
-        </div>
-        <div>
-          <dt>Exports</dt>
-          <dd>${escapeHtml(dashboardExportAvailabilityText(session))}</dd>
-        </div>
-      </dl>
     </article>
   `;
 }
@@ -8695,19 +8676,18 @@ function dashboardSelectedItemList(sessions = []) {
   if (!sessions.length) return "";
   return `
     <div class="dashboard-selected-items" aria-label="Selected quote sessions">
-      <span>Selected item list</span>
+      <span>Selected items</span>
       <ul>
         ${sessions.slice(0, 6).map((session) => {
           const customer = dashboardSessionCustomerText(session);
-          const project = dashboardSessionProjectText(session);
           const shortReference = dashboardShortSessionReference(session);
           return `
             <li>
               <div>
                 <strong>${escapeHtml(customer)}</strong>
-                <span>${escapeHtml(project)}</span>
+                <span>${shortReference ? `Ref ${escapeHtml(shortReference)}` : escapeHtml(dashboardSessionProjectText(session))}</span>
               </div>
-              <span>${shortReference ? `Ref ${escapeHtml(shortReference)}` : escapeHtml(formatDashboardMoney(session))}</span>
+              <button class="dashboard-selected-item-remove" type="button" data-dashboard-remove-selected="${escapeHtml(safeQuoteSessionId(session.session_id || ""))}" aria-label="Remove ${escapeHtml(customer)} from selection">x</button>
             </li>
           `;
         }).join("")}
@@ -8731,9 +8711,10 @@ function dashboardSelectedCloseButton(label = "Clear selection") {
 function renderDashboardBulkPanel(selectedIds = []) {
   const sessions = dashboardSelectedSessions();
   const total = sessions.length;
-  const exportsReady = sessions.filter(quoteSessionHasAvailableExport).length;
-  const missingFiles = sessions.filter(quoteSessionHasMissingExport).length;
   const generated = sessions.filter((session) => session.status?.quote_generated).length;
+  const draft = sessions.filter((session) => quoteSessionStatus(session).key === "draft").length;
+  const statusLabel = generated ? "Generated" : draft ? "Draft" : "Selected";
+  const statusCount = generated || draft || total;
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
@@ -8746,14 +8727,18 @@ function renderDashboardBulkPanel(selectedIds = []) {
     <div class="dashboard-selected-status-row">
       ${dashboardSelectionSummaryPills(sessions)}
     </div>
-    <dl class="dashboard-bulk-summary-grid">
-      <div><dt>Selected</dt><dd>${total}</dd></div>
-      <div><dt>Generated</dt><dd>${generated}</dd></div>
-      <div><dt>Exports ready</dt><dd>${exportsReady}</dd></div>
-      <div><dt>Missing files</dt><dd>${missingFiles}</dd></div>
-      <div class="dashboard-bulk-total"><dt>Combined grand total</dt><dd>${escapeHtml(dashboardCombinedGrandTotalText(sessions))}</dd></div>
-    </dl>
+    <section class="dashboard-bulk-breakdown" aria-label="Status breakdown">
+      <h4>Status breakdown</h4>
+      <div>
+        <span><i aria-hidden="true"></i>${escapeHtml(statusLabel)}</span>
+        <strong>${statusCount}</strong>
+      </div>
+    </section>
     ${dashboardSelectedItemList(sessions)}
+    <div class="dashboard-bulk-value-card">
+      <span>Combined Value<br>(SGD)</span>
+      <strong>${escapeHtml(dashboardCombinedGrandTotalText(sessions))}</strong>
+    </div>
     <div class="dashboard-selected-actions">
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-selected">Delete selected</button>
       <button class="secondary-button" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
@@ -9032,6 +9017,12 @@ function handleDashboardSessionKeydown(event) {
 }
 
 function handleDashboardSidePanelAction(event) {
+  const removeSelected = event.target?.closest?.("[data-dashboard-remove-selected]");
+  if (removeSelected && elements.dashboardSidePanel?.contains(removeSelected)) {
+    event.preventDefault();
+    setDashboardSelection(removeSelected.dataset.dashboardRemoveSelected || "", { mode: "toggle" });
+    return;
+  }
   const action = event.target?.closest?.("[data-dashboard-panel-action]");
   if (!action || !elements.dashboardSidePanel?.contains(action)) return;
   const selectedId = safeQuoteSessionId(state.dashboardActiveSessionId || dashboardSelectedSessionIds()[0] || "");

@@ -558,7 +558,8 @@ async function main() {
     await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: "Bulk selection" }).waitFor({ state: "visible", timeout: 15000 });
-    await page.locator(".dashboard-bulk-summary-grid").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator(".dashboard-bulk-breakdown").waitFor({ state: "visible", timeout: 15000 });
+    await page.locator(".dashboard-bulk-value-card").waitFor({ state: "visible", timeout: 15000 });
     const selectAllChecked = await page.locator("#dashboardSelectModeButton").evaluate((button) => button.classList.contains("is-all-selected"));
     if (!selectAllChecked) {
       throw new Error("Select all control did not enter the checked visual state after selecting all visible rows.");
@@ -586,6 +587,9 @@ async function main() {
     await page.locator("#dashboardSelectionHint").waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectModeButton", { hasText: "Select all visible" }).click();
     await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
+    await page.locator("#quoteDashboardPanel").evaluate((panel) => {
+      panel.scrollTop = 0;
+    });
     const dashboardSelectedShot = await screenshot(page, "dashboard-selected.png");
     await page.locator('[data-dashboard-panel-action="delete-selected"]', { hasText: "Delete selected" }).click();
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
