@@ -273,8 +273,7 @@ const elements = {
   fileList: qs("#fileList"),
   quoteDashboardPanel: qs("#quoteDashboardPanel"),
   quoteFlowPanel: qs("#panel-analysis"),
-  dashboardSideNewQuoteButton: qs("#dashboardSideNewQuoteButton"),
-  dashboardRefreshButton: qs("#dashboardRefreshButton"),
+  dashboardEmptyNewQuoteButton: qs("#dashboardEmptyNewQuoteButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
@@ -295,8 +294,6 @@ const elements = {
   dashboardSelectionHint: qs("#dashboardSelectionHint"),
   dashboardBulkActionBar: qs("#dashboardBulkActionBar"),
   dashboardBulkSelectionCount: qs("#dashboardBulkSelectionCount"),
-  dashboardBulkClearButton: qs("#dashboardBulkClearButton"),
-  dashboardBulkDeleteButton: qs("#dashboardBulkDeleteButton"),
   newQuoteButton: qs("#newQuoteButton"),
   sideWorkspace: qs("#sideWorkspace"),
   sideDrawerTitle: qs("#sideDrawerTitle"),
@@ -8265,6 +8262,20 @@ function formatDashboardMoney(session = {}) {
   return `${currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function dashboardGrandTotalValue(session = {}) {
+  return dashboardNumberOrNull(session.commercials?.grand_total);
+}
+
+function dashboardSessionCurrency(session = {}) {
+  return String(session.commercials?.currency || DEFAULT_CURRENCY_LABEL).trim() || DEFAULT_CURRENCY_LABEL;
+}
+
+function formatDashboardMoneyValue(total, currency = DEFAULT_CURRENCY_LABEL) {
+  if (total === null || total === undefined || !Number.isFinite(Number(total))) return "-";
+  const normalizedCurrency = String(currency || DEFAULT_CURRENCY_LABEL).trim() || DEFAULT_CURRENCY_LABEL;
+  return `${normalizedCurrency} ${Number(total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function dashboardCommercialsFromState() {
   const tax = collectTaxDetails();
   const stats = matchSummaryStats(state.outputRows);
@@ -8450,7 +8461,7 @@ function dashboardLastExportText(session = {}) {
 
 function dashboardTaxText(session = {}) {
   const commercials = session.commercials || {};
-  const currency = String(commercials.currency || DEFAULT_CURRENCY_LABEL).trim() || DEFAULT_CURRENCY_LABEL;
+  const currency = dashboardSessionCurrency(session);
   const label = String(commercials.tax_label || DEFAULT_TAX_LABEL).trim() || DEFAULT_TAX_LABEL;
   const rate = Number(commercials.tax_rate ?? DEFAULT_TAX_RATE);
   const rateText = Number.isFinite(rate) ? `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "";
@@ -8484,11 +8495,18 @@ function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") 
   return `${label} unavailable`;
 }
 
+function dashboardExportAvailabilityText(session = {}) {
+  return [
+    dashboardExportStatusText(session, "xlsx", "XLSX"),
+    dashboardExportStatusText(session, "pdf", "PDF"),
+  ].join(" / ");
+}
+
 function dashboardSessionCard(session = {}) {
   const status = quoteSessionStatus(session);
   const customer = dashboardSessionCustomerText(session);
   const project = dashboardSessionProjectText(session);
-  const profile = session.quote_company_profile?.display_name || "Quote Company Profile";
+  const profile = session.quote_company_profile?.display_name || "Quote Company";
   const pricing = session.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   const shortReference = dashboardShortSessionReference(session);
@@ -8503,12 +8521,17 @@ function dashboardSessionCard(session = {}) {
           <input type="checkbox" data-dashboard-select aria-label="${escapeHtml(checkboxLabel)}" ${selected ? "checked" : ""}>
           <span aria-hidden="true"></span>
         </label>
-        <div class="dashboard-customer-cell">
-          <strong>${escapeHtml(customer)}</strong>
-          <span>${escapeHtml(project)}</span>
-          ${shortReference ? `<span class="dashboard-session-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+        <div class="dashboard-session-card-top">
+          <div class="dashboard-customer-cell">
+            <strong>${escapeHtml(customer)}</strong>
+            <span>${escapeHtml(project)}</span>
+            ${shortReference ? `<span class="dashboard-session-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+          </div>
+          <div class="dashboard-session-card-aside">
+            <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+            <span class="dashboard-session-total">${escapeHtml(formatDashboardMoney(session))}</span>
+          </div>
         </div>
-        <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
       </div>
       <dl class="dashboard-session-meta">
         <div>
@@ -8520,24 +8543,24 @@ function dashboardSessionCard(session = {}) {
           <dd>${escapeHtml(dashboardLastExportText(session))}</dd>
         </div>
         <div>
-          <dt>Profile</dt>
+          <dt>Quote Company</dt>
           <dd>${escapeHtml(profile)}</dd>
         </div>
         <div>
-          <dt>Pricing</dt>
+          <dt>Pricing Reference</dt>
           <dd>${escapeHtml(pricing)}</dd>
         </div>
         <div>
-          <dt>Currency / tax</dt>
+          <dt>Currency / GST</dt>
           <dd>${escapeHtml(dashboardTaxText(session))}</dd>
         </div>
         <div>
-          <dt>Total</dt>
+          <dt>Grand Total</dt>
           <dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(session))}</span></dd>
         </div>
         <div>
           <dt>Exports</dt>
-          <dd>${escapeHtml(dashboardExportStatusText(session, "xlsx", "XLSX"))} / ${escapeHtml(dashboardExportStatusText(session, "pdf", "PDF"))}</dd>
+          <dd>${escapeHtml(dashboardExportAvailabilityText(session))}</dd>
         </div>
       </dl>
     </article>
@@ -8657,6 +8680,43 @@ function dashboardSelectionSummaryPills(sessions = []) {
     .join("");
 }
 
+function dashboardCombinedGrandTotalText(sessions = []) {
+  const totals = sessions
+    .map((session) => ({ total: dashboardGrandTotalValue(session), currency: dashboardSessionCurrency(session) }))
+    .filter((item) => item.total !== null);
+  if (!totals.length) return "-";
+  const currencies = new Set(totals.map((item) => item.currency));
+  if (currencies.size > 1) return "Mixed currencies";
+  const total = totals.reduce((sum, item) => sum + item.total, 0);
+  return formatDashboardMoneyValue(total, totals[0].currency);
+}
+
+function dashboardSelectedItemList(sessions = []) {
+  if (!sessions.length) return "";
+  return `
+    <div class="dashboard-selected-items" aria-label="Selected quote sessions">
+      <span>Selected item list</span>
+      <ul>
+        ${sessions.slice(0, 6).map((session) => {
+          const customer = dashboardSessionCustomerText(session);
+          const project = dashboardSessionProjectText(session);
+          const shortReference = dashboardShortSessionReference(session);
+          return `
+            <li>
+              <div>
+                <strong>${escapeHtml(customer)}</strong>
+                <span>${escapeHtml(project)}</span>
+              </div>
+              <span>${shortReference ? `Ref ${escapeHtml(shortReference)}` : escapeHtml(formatDashboardMoney(session))}</span>
+            </li>
+          `;
+        }).join("")}
+      </ul>
+      ${sessions.length > 6 ? `<p>${sessions.length - 6} more selected.</p>` : ""}
+    </div>
+  `;
+}
+
 function dashboardSelectedCloseButton(label = "Clear selection") {
   return `
     <button class="icon-button dashboard-selected-close" type="button" data-dashboard-panel-action="clear-selection" aria-label="${escapeHtml(label)}">
@@ -8677,9 +8737,9 @@ function renderDashboardBulkPanel(selectedIds = []) {
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
-        <p class="workspace-pane-eyebrow">Bulk Selection</p>
-        <h3 id="dashboardSelectedSessionTitle">${total} sessions selected</h3>
-        <p class="settings-note">Bulk actions apply only to the checked visible sessions.</p>
+        <p class="workspace-pane-eyebrow">LOCAL QUOTE HISTORY</p>
+        <h3 id="dashboardSelectedSessionTitle">Bulk selection</h3>
+        <p class="settings-note">${total} quote session${total === 1 ? "" : "s"} selected</p>
       </div>
       ${dashboardSelectedCloseButton("Clear selected sessions")}
     </header>
@@ -8691,7 +8751,9 @@ function renderDashboardBulkPanel(selectedIds = []) {
       <div><dt>Generated</dt><dd>${generated}</dd></div>
       <div><dt>Exports ready</dt><dd>${exportsReady}</dd></div>
       <div><dt>Missing files</dt><dd>${missingFiles}</dd></div>
+      <div class="dashboard-bulk-total"><dt>Combined grand total</dt><dd>${escapeHtml(dashboardCombinedGrandTotalText(sessions))}</dd></div>
     </dl>
+    ${dashboardSelectedItemList(sessions)}
     <div class="dashboard-selected-actions">
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-selected">Delete selected</button>
       <button class="secondary-button" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
@@ -8703,7 +8765,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
   const status = quoteSessionStatus(activeSession);
   const customer = activeSession.customer_summary?.customer_name || "Untitled customer";
   const project = activeSession.customer_summary?.project_name || "Untitled quote";
-  const profile = activeSession.quote_company_profile?.display_name || "Quote Company Profile";
+  const profile = activeSession.quote_company_profile?.display_name || "Quote Company";
   const pricing = activeSession.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
   const shortReference = dashboardShortSessionReference(activeSession);
@@ -8713,7 +8775,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
-        <p class="workspace-pane-eyebrow">Selected Session</p>
+        <p class="workspace-pane-eyebrow">SELECTED SESSION</p>
         <h3 id="dashboardSelectedSessionTitle">${escapeHtml(customer)}</h3>
         <p class="settings-note">${escapeHtml(project)}</p>
       </div>
@@ -8724,15 +8786,13 @@ function renderDashboardSinglePanel(activeSession = {}) {
       ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
     </div>
     <dl class="dashboard-selected-summary-grid">
-      <div><dt>Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
+      <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
       <div><dt>Created</dt><dd>${escapeHtml(formatDashboardDateTime(activeSession.created_at))}</dd></div>
       <div><dt>Last export</dt><dd>${escapeHtml(dashboardLastExportText(activeSession))}</dd></div>
-      <div><dt>Currency / tax</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+      <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+      <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
+      <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
     </dl>
-    <div class="dashboard-selected-setup">
-      <div><span>Profile</span><strong>${escapeHtml(profile)}</strong></div>
-      <div><span>Pricing</span><strong>${escapeHtml(pricing)}</strong></div>
-    </div>
     <div class="dashboard-selected-actions">
       ${continueMarkup}
       <div class="dashboard-export-action-row">
@@ -8772,7 +8832,7 @@ function renderDashboardSelectionControls(filtered) {
   const allVisibleSelected = hasVisibleRows && visibleIds.every((sessionId) => selectedSet.has(sessionId));
   if (elements.dashboardSelectionToolbar) elements.dashboardSelectionToolbar.hidden = !hasVisibleRows;
   if (elements.dashboardSelectModeButton) {
-    elements.dashboardSelectModeButton.textContent = state.dashboardSelectionMode ? "Select All" : "Select";
+    elements.dashboardSelectModeButton.textContent = state.dashboardSelectionMode ? "Select all visible" : "Select";
     elements.dashboardSelectModeButton.disabled = !hasVisibleRows || state.quoteSessionDeleteBusy;
     elements.dashboardSelectModeButton.setAttribute("aria-disabled", String(elements.dashboardSelectModeButton.disabled));
     elements.dashboardSelectModeButton.setAttribute("aria-pressed", String(state.dashboardSelectionMode));
@@ -8781,16 +8841,12 @@ function renderDashboardSelectionControls(filtered) {
     elements.dashboardSelectModeButton.classList.toggle("is-all-selected", allVisibleSelected);
   }
   if (elements.dashboardSelectionHint) {
-    elements.dashboardSelectionHint.hidden = !state.dashboardSelectionMode || selected.length > 0;
+    elements.dashboardSelectionHint.hidden = !state.dashboardSelectionMode;
   }
   if (elements.dashboardBulkActionBar) elements.dashboardBulkActionBar.hidden = selected.length === 0;
   if (elements.dashboardBulkSelectionCount) {
-    elements.dashboardBulkSelectionCount.textContent = `${selected.length} selected`;
+    elements.dashboardBulkSelectionCount.textContent = `${selected.length} quote session${selected.length === 1 ? "" : "s"} selected`;
   }
-  [elements.dashboardBulkClearButton, elements.dashboardBulkDeleteButton].filter(Boolean).forEach((button) => {
-    button.disabled = state.quoteSessionDeleteBusy;
-    button.setAttribute("aria-disabled", String(button.disabled));
-  });
 }
 
 async function deleteQuoteSessionById(sessionId) {
@@ -8850,7 +8906,7 @@ function renderQuoteSessionDeleteModal() {
     return;
   }
   const bulk = state.quoteSessionDeleteBulk || sessionIds.length > 1;
-  if (elements.quoteSessionDeleteTitle) elements.quoteSessionDeleteTitle.textContent = "Delete quote session?";
+  if (elements.quoteSessionDeleteTitle) elements.quoteSessionDeleteTitle.textContent = bulk ? "Delete selected quote sessions?" : "Delete quote session?";
   if (elements.quoteSessionDeleteText) {
     elements.quoteSessionDeleteText.textContent = bulk ? QUOTE_SESSION_DELETE_BULK_MESSAGE : QUOTE_SESSION_DELETE_SINGLE_MESSAGE;
   }
@@ -8865,7 +8921,7 @@ function renderQuoteSessionDeleteModal() {
   }
   modal.hidden = false;
   modal.classList.add("is-open");
-  queueActionButtonFocus(elements.confirmQuoteSessionDeleteButton);
+  queueActionButtonFocus(elements.cancelQuoteSessionDeleteButton);
 }
 
 function requestQuoteSessionDelete(sessionIds, options = {}) {
@@ -9012,6 +9068,8 @@ function renderQuoteDashboard() {
     const detail = elements.dashboardEmptyState.querySelector("p");
     if (strong) strong.textContent = hasSessions ? "No matching quote sessions" : "No quote sessions yet";
     if (detail) detail.textContent = hasSessions ? "Adjust the filter or search terms." : "Start a new quote to create the first local session.";
+    const emptyAction = elements.dashboardEmptyState.querySelector("button");
+    if (emptyAction) emptyAction.hidden = hasSessions;
   }
   if (elements.dashboardSessionsList) {
     elements.dashboardSessionsList.hidden = hasError || !hasRows;
@@ -9104,7 +9162,7 @@ function syncControlStates() {
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.hidden = state.activeAppView !== "dashboard";
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
-  [elements.dashboardSideNewQuoteButton, elements.dashboardRefreshButton, elements.backToDashboardButton]
+  [elements.dashboardEmptyNewQuoteButton, elements.backToDashboardButton]
     .filter(Boolean)
     .forEach((button) => {
       button.disabled = busy;
@@ -9989,14 +10047,11 @@ function wireEvents() {
 
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
-  elements.dashboardSideNewQuoteButton?.addEventListener("click", startNewQuote);
-  elements.dashboardRefreshButton?.addEventListener("click", loadQuoteDashboard);
+  elements.dashboardEmptyNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardSessionsList?.addEventListener("click", handleDashboardSessionAction);
   elements.dashboardSessionsList?.addEventListener("keydown", handleDashboardSessionKeydown);
   elements.dashboardSidePanel?.addEventListener("click", handleDashboardSidePanelAction);
   elements.dashboardSelectModeButton?.addEventListener("click", handleDashboardSelectModeButton);
-  elements.dashboardBulkClearButton?.addEventListener("click", () => setDashboardSelection("", { mode: "clear" }));
-  elements.dashboardBulkDeleteButton?.addEventListener("click", () => requestQuoteSessionDelete(dashboardSelectedSessionIds(), { bulk: true }));
   elements.backToDashboardButton?.addEventListener("click", returnToDashboard);
   elements.dashboardStatusFilter?.addEventListener("change", () => {
     state.dashboardStatusFilter = elements.dashboardStatusFilter.value || "all";
