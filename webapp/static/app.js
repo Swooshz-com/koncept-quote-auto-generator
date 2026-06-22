@@ -8747,38 +8747,6 @@ function dashboardSelectedSessions() {
   return dashboardSelectedSessionIds().map(dashboardSessionById).filter(Boolean);
 }
 
-function dashboardSelectionSummaryPills(sessions = []) {
-  const order = [
-    ["draft", "Draft"],
-    ["generated", "Generated"],
-    ["exported", "Exported"],
-    ["missing", "Missing files"],
-  ];
-  const counts = new Map(order.map(([key]) => [key, 0]));
-  sessions.forEach((session) => {
-    const key = quoteSessionStatus(session).key;
-    counts.set(key, (counts.get(key) || 0) + 1);
-  });
-  return order
-    .filter(([key]) => (counts.get(key) || 0) > 0)
-    .map(([key, label]) => {
-      const statusClass = key === "missing" ? "is-missing" : key === "draft" ? "is-draft" : "is-generated";
-      return `<span class="dashboard-status-pill ${statusClass}">${counts.get(key)} ${escapeHtml(label)}</span>`;
-    })
-    .join("");
-}
-
-function dashboardCombinedGrandTotalText(sessions = []) {
-  const totals = sessions
-    .map((session) => ({ total: dashboardGrandTotalValue(session), currency: dashboardSessionCurrency(session) }))
-    .filter((item) => item.total !== null);
-  if (!totals.length) return "-";
-  const currencies = new Set(totals.map((item) => item.currency));
-  if (currencies.size > 1) return "Mixed currencies";
-  const total = totals.reduce((sum, item) => sum + item.total, 0);
-  return formatDashboardMoneyValue(total, totals[0].currency);
-}
-
 function dashboardSelectedItemList(sessions = []) {
   if (!sessions.length) return "";
   return `
@@ -8818,10 +8786,6 @@ function dashboardSelectedCloseButton(label = "Clear selection") {
 function renderDashboardBulkPanel(selectedIds = []) {
   const sessions = dashboardSelectedSessions();
   const total = sessions.length;
-  const generated = sessions.filter((session) => session.status?.quote_generated).length;
-  const draft = sessions.filter((session) => quoteSessionStatus(session).key === "draft").length;
-  const statusLabel = generated ? "Generated" : draft ? "Draft" : "Selected";
-  const statusCount = generated || draft || total;
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
@@ -8831,18 +8795,7 @@ function renderDashboardBulkPanel(selectedIds = []) {
       </div>
       ${dashboardSelectedCloseButton("Clear selected sessions")}
     </header>
-    <section class="dashboard-bulk-breakdown" aria-label="Status breakdown">
-      <h4>Status breakdown</h4>
-      <div>
-        <span><i aria-hidden="true"></i>${escapeHtml(statusLabel)}</span>
-        <strong>${statusCount}</strong>
-      </div>
-    </section>
     ${dashboardSelectedItemList(sessions)}
-    <div class="dashboard-bulk-value-card">
-      <span>Combined Value<br>(SGD)</span>
-      <strong>${escapeHtml(dashboardCombinedGrandTotalText(sessions))}</strong>
-    </div>
     <div class="dashboard-selected-actions">
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-selected">Delete selected</button>
       <button class="secondary-button" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>

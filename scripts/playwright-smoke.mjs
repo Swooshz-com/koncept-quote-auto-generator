@@ -580,8 +580,14 @@ async function main() {
     await page.locator("#dashboardBulkActionBar", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: "Bulk selection" }).waitFor({ state: "visible", timeout: 15000 });
-    await page.locator(".dashboard-bulk-breakdown").waitFor({ state: "visible", timeout: 15000 });
-    await page.locator(".dashboard-bulk-value-card").waitFor({ state: "visible", timeout: 15000 });
+    const bulkExtraBlocks = await page.locator(".dashboard-bulk-breakdown, .dashboard-bulk-value-card").count();
+    if (bulkExtraBlocks !== 0) {
+      throw new Error("Bulk panel should not show status breakdown or combined value blocks.");
+    }
+    const bulkPanelText = await page.locator("#dashboardSelectedSessionPanel").innerText();
+    if (bulkPanelText.includes("Status breakdown") || bulkPanelText.includes("Combined Value")) {
+      throw new Error("Bulk panel copy still includes removed status or combined value sections.");
+    }
     const selectAllChecked = await page.locator("#dashboardSelectModeButton").evaluate((button) => button.classList.contains("is-all-selected"));
     if (!selectAllChecked) {
       throw new Error("Select all control did not enter the checked visual state after selecting all visible rows.");

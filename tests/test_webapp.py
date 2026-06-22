@@ -7939,10 +7939,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSelectionMode", js)
         self.assertIn("handleDashboardSelectModeButton", js)
         self.assertIn("Bulk selection", js)
-        self.assertIn("Combined Value", js)
         self.assertIn("dashboardSelectedItemList", js)
-        self.assertIn("dashboard-bulk-breakdown", js)
-        self.assertIn("dashboard-bulk-value-card", js)
+        self.assertNotIn("Combined Value", js)
+        self.assertNotIn("dashboard-bulk-breakdown", js)
+        self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
         self.assertIn("dashboardVisibleSessionIds", js)
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]
