@@ -11212,6 +11212,8 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         return {}
     session_id = normalized["session_id"]
     public = copy.deepcopy(normalized)
+    draft_state = normalized.get("draft_state") if isinstance(normalized.get("draft_state"), dict) else {}
+    public["has_draft_state"] = bool(draft_state)
     if not include_draft_state:
         public.pop("draft_state", None)
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():

@@ -2085,7 +2085,7 @@ h3 {
 }
 
 .quote-dashboard {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: calc(100dvh - var(--topbar-height) - 20px);
   min-height: 0;
   overflow: hidden;
@@ -2100,10 +2100,14 @@ h3 {
 
 .dashboard-main-column {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 18px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 16px;
   min-width: 0;
   min-height: 0;
+}
+
+.dashboard-hero {
+  min-height: 94px;
 }
 
 .dashboard-summary-grid {
@@ -2138,9 +2142,25 @@ h3 {
   position: static;
   display: flex;
   flex-direction: column;
+  gap: 14px;
   min-height: 0;
   max-height: none;
   overflow: hidden;
+}
+
+.dashboard-new-quote-button {
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 56px;
+  border-radius: var(--radius-pill);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.dashboard-new-quote-button svg {
+  width: 20px;
+  height: 20px;
 }
 
 .dashboard-start-card,

@@ -157,6 +157,7 @@ const state = {
   quoteSessionId: "",
   quoteSessions: [],
   quoteSessionLoadError: "",
+  quoteSessionRestoreBusy: false,
   dashboardStatusFilter: "all",
   dashboardSearch: "",
   dashboardSelectionMode: false,
@@ -274,6 +275,7 @@ const elements = {
   quoteDashboardPanel: qs("#quoteDashboardPanel"),
   quoteFlowPanel: qs("#panel-analysis"),
   dashboardEmptyNewQuoteButton: qs("#dashboardEmptyNewQuoteButton"),
+  dashboardTopNewQuoteButton: qs("#dashboardTopNewQuoteButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
@@ -2216,20 +2218,34 @@ async function restoreSessionImages(savedImages = []) {
     .filter((image) => String(image.data_url || "").trim());
 }
 
-async function restoreSessionState() {
-  const saved = safeSessionJson();
-  if (!saved || saved.version !== QUOTE_SESSION_STATE_VERSION) {
-    clearSessionState();
+function restoredWorkflowStage(saved = {}) {
+  const hasRestoredProgress = Boolean(
+    state.images.length
+    || state.lineItems.length
+    || state.outputRows.length
+    || state.quoteBasisSections.length
+    || Object.values(state.quoteBasis || {}).some((value) => splitLines(value).length > 0)
+  );
+  const savedStage = String(saved.workflowStage || "").trim();
+  if (savedStage && (state.images.length || hasRestoredProgress)) return savedStage;
+  if (state.images.length) return "ready_to_analyze";
+  if (hasRestoredProgress) return "basis_review";
+  return "needs_images";
+}
+
+async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
+  if (!saved || typeof saved !== "object" || saved.version !== QUOTE_SESSION_STATE_VERSION) {
     return false;
   }
   state.profileId = saved.profileId || "";
   state.pricingReferenceId = saved.pricingReferenceId || saved.profileId || "";
   state.pricingReferenceSource = saved.pricingReferenceSource || "";
-  state.quoteSessionId = safeQuoteSessionId(saved.quoteSessionId || "");
-  state.selectedPresetValue = lastSelectedPresetValue() || presetValueFromQuoteDetails(saved.quoteDetails || {});
+  state.quoteSessionId = safeQuoteSessionId(options.sessionId || saved.quoteSessionId || "");
+  state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {}) || lastSelectedPresetValue();
   syncSelectedPricingReference();
   renderProfileOptions();
   renderPresetOptions();
+  state.pendingFeedback = "";
   applyQuoteDetails(saved.quoteDetails || {}, { includeLogo: true, clearLogo: true });
   state.images = await restoreSessionImages(saved.images);
   state.quoteBasis = cloneQuoteBasis(saved.quoteBasis || {});
@@ -2275,7 +2291,7 @@ async function restoreSessionState() {
   }
   updateDownloadButton();
   setResultStatus(state.aiFailed ? "No usable AI draft" : state.downloadFile ? "Completed" : "No job yet", state.aiFailed ? "is-bad" : state.downloadFile ? "is-ok" : "");
-  setWorkflowStage(saved.workflowStage || (state.images.length ? "ready_to_analyze" : "needs_images"));
+  setWorkflowStage(restoredWorkflowStage(saved));
   if (state.aiFailed) {
     showAiFailureBanner();
   } else {
@@ -2284,6 +2300,15 @@ async function restoreSessionState() {
   const restoredPanel = SIDE_PANEL_SEQUENCE.includes(saved.activeSidePanel) ? saved.activeSidePanel : "images";
   setSidePanel(restoredPanel, { force: true });
   return true;
+}
+
+async function restoreSessionState() {
+  const saved = safeSessionJson();
+  if (!saved || saved.version !== QUOTE_SESSION_STATE_VERSION) {
+    clearSessionState();
+    return false;
+  }
+  return applyQuoteSessionSnapshot(saved);
 }
 
 function clearLegacyLocalCompanyPresets() {
@@ -5822,10 +5847,11 @@ function pdfFileIsFresh(file = state.pdfFile) {
 }
 
 function appIsBusy() {
-  return state.isAnalysisRunning || state.isGenerating || state.isPreparingOutput;
+  return state.isAnalysisRunning || state.isGenerating || state.isPreparingOutput || state.quoteSessionRestoreBusy;
 }
 
 function appBusyTitle() {
+  if (state.quoteSessionRestoreBusy) return "Quote session is loading.";
   if (state.isAnalysisRunning) return "Analysis is running.";
   if (state.isPreparingOutput) return "Output is being prepared.";
   if (state.isGenerating) return "Quotation generation is running.";
@@ -8595,6 +8621,64 @@ function dashboardSessionCanResume(session = {}) {
   );
 }
 
+function dashboardSessionCanModify(session = {}) {
+  return Boolean(
+    safeQuoteSessionId(session.session_id || "")
+    && (session.has_draft_state || dashboardSessionCanResume(session))
+  );
+}
+
+async function loadQuoteSessionDetail(sessionId = "") {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  if (!safeSessionId) return null;
+  const { ok, data } = await getJson(`/api/quote-sessions/${encodeURIComponent(safeSessionId)}`);
+  if (!ok) {
+    state.quoteSessionLoadError = genericFailureMessage(data);
+    renderQuoteDashboard();
+    return null;
+  }
+  const session = data.quote_session && typeof data.quote_session === "object" ? data.quote_session : null;
+  return session && safeQuoteSessionId(session.session_id || "") === safeSessionId ? session : null;
+}
+
+function dashboardRestoreError(message) {
+  state.quoteSessionLoadError = message || "This quote session does not have saved draft data to modify.";
+  renderQuoteDashboard();
+}
+
+async function modifyDashboardQuote(sessionId) {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  const session = dashboardSessionById(safeSessionId);
+  if (!safeSessionId || appIsBusy() || state.quoteSessionRestoreBusy || !dashboardSessionCanModify(session)) return;
+  state.quoteSessionRestoreBusy = true;
+  syncControlStates();
+  try {
+    const detailedSession = await loadQuoteSessionDetail(safeSessionId);
+    const draftState = detailedSession?.draft_state && typeof detailedSession.draft_state === "object"
+      ? detailedSession.draft_state
+      : {};
+    if (!Object.keys(draftState).length) {
+      dashboardRestoreError("This quote session does not have saved draft data to modify.");
+      return;
+    }
+    const restored = await applyQuoteSessionSnapshot(
+      { ...draftState, quoteSessionId: safeSessionId },
+      { sessionId: safeSessionId }
+    );
+    if (!restored) {
+      dashboardRestoreError("This quote session was saved with an incompatible draft format.");
+      return;
+    }
+    state.dashboardSelectionMode = false;
+    state.dashboardSelectedSessionIds = [];
+    state.dashboardActiveSessionId = safeSessionId;
+    showQuoteFlow();
+  } finally {
+    state.quoteSessionRestoreBusy = false;
+    syncControlStates();
+  }
+}
+
 function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") {
   const exportInfo = quoteSessionExport(session, kind);
   if (exportInfo.exists && exportInfo.url) return `${label} ready`;
@@ -8811,9 +8895,8 @@ function renderDashboardSinglePanel(activeSession = {}) {
   const pricing = activeSession.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
   const shortReference = dashboardShortSessionReference(activeSession);
-  const continueMarkup = dashboardSessionCanResume(activeSession)
-    ? '<button class="primary-button dashboard-selected-action" type="button" data-dashboard-panel-action="continue-session">Continue draft</button>'
-    : "";
+  const canModify = dashboardSessionCanModify(activeSession);
+  const modifyTitle = canModify ? "Load the saved quote draft for editing." : "No saved draft data is available for this session.";
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
@@ -8836,7 +8919,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
     </dl>
     <div class="dashboard-selected-actions">
-      ${continueMarkup}
+      <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
       <div class="dashboard-export-action-row">
         ${dashboardSelectedExportAction(activeSession, "xlsx", "XLSX")}
         ${dashboardSelectedExportAction(activeSession, "pdf", "PDF")}
@@ -9083,7 +9166,9 @@ function handleDashboardSidePanelAction(event) {
   const action = event.target?.closest?.("[data-dashboard-panel-action]");
   if (!action || !elements.dashboardSidePanel?.contains(action)) return;
   const selectedId = safeQuoteSessionId(state.dashboardActiveSessionId || dashboardSelectedSessionIds()[0] || "");
-  if (action.dataset.dashboardPanelAction === "continue-session") {
+  if (action.dataset.dashboardPanelAction === "modify-session") {
+    modifyDashboardQuote(action.dataset.quoteSessionId || selectedId);
+  } else if (action.dataset.dashboardPanelAction === "continue-session") {
     continueDashboardDraft(selectedId);
   } else if (action.dataset.dashboardPanelAction === "delete-session") {
     requestQuoteSessionDelete(action.dataset.quoteSessionId || selectedId);
@@ -9210,7 +9295,7 @@ function syncControlStates() {
   elements.newQuoteButton.disabled = busy;
   elements.newQuoteButton.hidden = state.activeAppView !== "dashboard";
   elements.newQuoteButton.title = busy ? appBusyTitle() : "";
-  [elements.dashboardEmptyNewQuoteButton, elements.backToDashboardButton]
+  [elements.dashboardEmptyNewQuoteButton, elements.dashboardTopNewQuoteButton, elements.backToDashboardButton]
     .filter(Boolean)
     .forEach((button) => {
       button.disabled = busy;
@@ -10096,6 +10181,7 @@ function wireEvents() {
   elements.sampleDetailsButton.addEventListener("click", setSampleDetails);
   elements.newQuoteButton.addEventListener("click", startNewQuote);
   elements.dashboardEmptyNewQuoteButton?.addEventListener("click", startNewQuote);
+  elements.dashboardTopNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardSessionsList?.addEventListener("click", handleDashboardSessionAction);
   elements.dashboardSessionsList?.addEventListener("keydown", handleDashboardSessionKeydown);
   elements.dashboardSidePanel?.addEventListener("click", handleDashboardSidePanelAction);

@@ -325,20 +325,21 @@ async function main() {
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
     await expectTopbarPrimaryAction(page, "new-quote");
+    await page.locator("#dashboardTopNewQuoteButton", { hasText: "New Quote" }).waitFor({ state: "visible", timeout: 15000 });
     const restoredQuoteSessionId = await currentQuoteSessionId(page);
     if (!restoredQuoteSessionId) {
       throw new Error("Expected refresh recovery to keep the current quote session id.");
     }
     await page.locator(`.dashboard-session-card[data-quote-session-id="${restoredQuoteSessionId}"]`).click();
-    await page.locator('[data-dashboard-panel-action="continue-session"]', { hasText: "Continue draft" }).waitFor({ timeout: 15000 });
-    await page.locator('[data-dashboard-panel-action="continue-session"]', { hasText: "Continue draft" }).click();
-    await page.locator("#quoteCompanyPanel").waitFor({ state: "visible" });
+    await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).waitFor({ timeout: 15000 });
+    await page.locator('[data-dashboard-panel-action="modify-session"]', { hasText: "Modify quote" }).click();
+    await page.locator("#panel-analysis.is-active").waitFor({ state: "visible", timeout: 15000 });
     await expectTopbarPrimaryAction(page, "dashboard");
     const restoredActiveRailTexts = await page.locator(".rail-button.is-active").evaluateAll((buttons) => (
       buttons.map((button) => button.textContent?.trim() || "")
     ));
-    if (restoredActiveRailTexts.length !== 1 || restoredActiveRailTexts[0] !== "Quote Company") {
-      throw new Error(`Expected refresh to restore Quote Company panel, found ${JSON.stringify(restoredActiveRailTexts)}.`);
+    if (restoredActiveRailTexts.length !== 1 || !["Upload", "Quote Company"].includes(restoredActiveRailTexts[0])) {
+      throw new Error(`Expected Modify quote to restore a usable quote panel, found ${JSON.stringify(restoredActiveRailTexts)}.`);
     }
     const restoredFiles = await page.locator("#fileList .file-item").evaluateAll((items) => (
       items.map((item) => item.textContent?.trim() || "")
@@ -346,6 +347,9 @@ async function main() {
     if (restoredFiles.length !== 1 || !restoredFiles[0].includes("kent-group.pdf")) {
       throw new Error(`Expected refresh to preserve the sample PDF reference, found ${JSON.stringify(restoredFiles)}.`);
     }
+    await page.locator('.rail-button[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
+    await page.locator('.rail-button[data-side-panel="quote_company"]').click();
+    await page.locator("#quoteCompanyPanel").waitFor({ state: "visible", timeout: 15000 });
     const restoredPresetValue = await page.locator("#presetSelect").inputValue();
     if (restoredPresetValue !== "profile:synthetic-fixture-default") {
       throw new Error(`Expected refresh to preserve company preset, found ${restoredPresetValue}.`);

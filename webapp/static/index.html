@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=55">
+    <link rel="stylesheet" href="/static/styles.css?v=56">
   </head>
   <body>
     <div class="app-shell">
@@ -35,16 +35,16 @@
         <main class="panels">
           <section class="panel quote-dashboard-panel is-active" id="quoteDashboardPanel" data-panel-id="dashboard">
             <div class="quote-dashboard">
-              <section class="dashboard-hero" aria-labelledby="quoteDashboardTitle">
-                <div>
-                  <p class="workspace-pane-eyebrow">QUOTE DASHBOARD</p>
-                  <h2 id="quoteDashboardTitle">Dashboard</h2>
-                  <p class="workspace-pane-subtitle">Quote sessions saved in the active local runtime.</p>
-                </div>
-              </section>
-
               <div class="dashboard-content-grid">
                 <section class="dashboard-main-column" aria-label="Local quote sessions">
+                  <section class="dashboard-hero" aria-labelledby="quoteDashboardTitle">
+                    <div>
+                      <p class="workspace-pane-eyebrow">QUOTE DASHBOARD</p>
+                      <h2 id="quoteDashboardTitle">Dashboard</h2>
+                      <p class="workspace-pane-subtitle">Quote sessions saved in the active local runtime.</p>
+                    </div>
+                  </section>
+
                   <section class="dashboard-summary-grid" aria-label="Quote session summary">
                     <article class="dashboard-summary-card">
                       <span class="stat-card-icon blue" aria-hidden="true">T</span>
@@ -136,6 +136,13 @@
                 </section>
 
                 <aside class="dashboard-side-panel" id="dashboardSidePanel" aria-live="polite">
+                  <button class="primary-button dashboard-new-quote-button" type="button" id="dashboardTopNewQuoteButton">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                      <path d="M12 5v14"></path>
+                      <path d="M5 12h14"></path>
+                    </svg>
+                    <span>New Quote</span>
+                  </button>
                   <section class="dashboard-start-card dashboard-context-card" id="dashboardEmptySelectionPanel" aria-labelledby="dashboardStartTitle">
                     <div class="dashboard-start-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" focusable="false">
