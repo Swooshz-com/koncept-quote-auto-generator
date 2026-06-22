@@ -8759,7 +8759,7 @@ function dashboardSessionCanResume(session = {}) {
 }
 
 function dashboardSessionCanModify(session = {}) {
-  return Boolean(safeQuoteSessionId(session.session_id || ""));
+  return Boolean(safeQuoteSessionId(session.session_id || "") && session.has_draft_state === true);
 }
 
 async function loadQuoteSessionDetail(sessionId = "") {
@@ -8791,6 +8791,7 @@ async function modifyDashboardQuote(sessionId) {
       ? detailedSession.draft_state
       : {};
     if (!Object.keys(draftState).length) {
+      mergeDashboardQuoteSession({ ...(detailedSession || {}), session_id: safeSessionId, has_draft_state: false });
       dashboardRestoreError("This quote session does not have saved draft data to modify.");
       return;
     }
@@ -9038,7 +9039,9 @@ function renderDashboardBulkPanel(selectedIds = []) {
       </div>
       ${dashboardSelectedCloseButton("Clear selected sessions")}
     </header>
-    ${dashboardSelectedItemList(sessions)}
+    <div class="dashboard-selected-body dashboard-selected-body--bulk">
+      ${dashboardSelectedItemList(sessions)}
+    </div>
     <div class="dashboard-selected-actions">
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-selected">Delete selected</button>
       <button class="secondary-button" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
@@ -9066,18 +9069,20 @@ function renderDashboardSinglePanel(activeSession = {}) {
       </div>
       ${dashboardSelectedCloseButton("Clear selected session")}
     </header>
-    <div class="dashboard-selected-status-row">
-      <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
-      ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+    <div class="dashboard-selected-body dashboard-selected-body--single">
+      <div class="dashboard-selected-status-row">
+        <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+        ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+      </div>
+      <dl class="dashboard-selected-summary-grid">
+        <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
+        <div><dt>Created</dt><dd>${escapeHtml(formatDashboardDateTime(activeSession.created_at))}</dd></div>
+        <div><dt>Last export</dt><dd>${escapeHtml(dashboardLastExportText(activeSession))}</dd></div>
+        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+        <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
+        <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
+      </dl>
     </div>
-    <dl class="dashboard-selected-summary-grid">
-      <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
-      <div><dt>Created</dt><dd>${escapeHtml(formatDashboardDateTime(activeSession.created_at))}</dd></div>
-      <div><dt>Last export</dt><dd>${escapeHtml(dashboardLastExportText(activeSession))}</dd></div>
-      <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
-      <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
-      <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
-    </dl>
     <div class="dashboard-selected-actions">
       <div class="dashboard-export-action-row">
         ${dashboardSelectedExportAction(activeSession, "xlsx", "XLSX")}

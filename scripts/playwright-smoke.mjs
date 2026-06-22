@@ -106,6 +106,19 @@ async function expectTopbarPrimaryAction(page, expectedAction) {
   }
 }
 
+async function dashboardPanelActionBottomGap(page, label) {
+  const panelBox = await page.locator("#dashboardSelectedSessionPanel").boundingBox();
+  const actionBox = await page.locator("#dashboardSelectedSessionPanel .dashboard-selected-actions").boundingBox();
+  if (!panelBox || !actionBox) {
+    throw new Error(`Dashboard ${label} action footer was not measurable.`);
+  }
+  const bottomGap = Math.round((panelBox.y + panelBox.height) - (actionBox.y + actionBox.height));
+  if (bottomGap < 8 || bottomGap > 36) {
+    throw new Error(`Dashboard ${label} action footer is not bottom anchored: ${bottomGap}px gap.`);
+  }
+  return bottomGap;
+}
+
 async function installMockProfiles(page) {
   await page.route("**/api/settings/pricing-references/synthetic-exhibition-fixture-pricing**", async (route) => {
     await route.fulfill({
@@ -510,6 +523,7 @@ async function main() {
     if (normalModeCheckboxVisible) {
       throw new Error("Row checkbox should stay hidden until Select mode is enabled.");
     }
+    const singlePanelActionBottomGap = await dashboardPanelActionBottomGap(page, "single selection");
     const dashboardSingleSelectedShot = await screenshot(page, "dashboard-single-selected.png");
     await createDashboardSmokeSession(page, "reference-c", {
       sessionIdPrefix: "quote-4f-search-row",
@@ -614,6 +628,10 @@ async function main() {
     await page.locator(".dashboard-bulk-selection-summary", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: `${visibleBulkRows} quote sessions selected` }).waitFor({ state: "visible", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel", { hasText: "Bulk selection" }).waitFor({ state: "visible", timeout: 15000 });
+    const bulkPanelActionBottomGap = await dashboardPanelActionBottomGap(page, "bulk selection");
+    if (Math.abs(bulkPanelActionBottomGap - singlePanelActionBottomGap) > 8) {
+      throw new Error(`Dashboard action footer moved between single and bulk states: ${singlePanelActionBottomGap}px -> ${bulkPanelActionBottomGap}px.`);
+    }
     const bulkExtraBlocks = await page.locator(".dashboard-bulk-breakdown, .dashboard-bulk-value-card").count();
     if (bulkExtraBlocks !== 0) {
       throw new Error("Bulk panel should not show status breakdown or combined value blocks.");

@@ -1140,6 +1140,23 @@ h3 {
   flex-wrap: wrap;
 }
 
+.dashboard-selected-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+}
+
+.dashboard-selected-body--single {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.dashboard-selected-body--bulk {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .dashboard-selected-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1333,7 +1350,11 @@ h3 {
 
 .dashboard-selected-actions {
   display: grid;
+  flex: 0 0 auto;
   gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-subtle);
+  background: #ffffff;
 }
 
 .dashboard-action-separator {
@@ -2204,40 +2225,35 @@ h3 {
   overflow: hidden;
 }
 
-.dashboard-selected-card:has(.dashboard-selected-items) {
+.dashboard-selected-card:has(.dashboard-selected-body) {
   display: flex;
   flex-direction: column;
   align-content: stretch;
 }
 
-.dashboard-selected-card:not(:has(.dashboard-selected-items)) {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  align-content: stretch;
+.dashboard-selected-body {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-summary-grid {
+.dashboard-selected-body--single .dashboard-selected-summary-grid {
   min-height: 0;
   overflow: auto;
   align-content: stretch;
-  grid-template-rows: repeat(3, minmax(78px, 1fr));
+  grid-template-rows: repeat(3, minmax(64px, 1fr));
   padding-right: 2px;
   scrollbar-gutter: stable;
 }
 
-.dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-summary-grid div {
+.dashboard-selected-body--single .dashboard-selected-summary-grid div {
   align-content: center;
-}
-
-.dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-actions {
-  align-self: end;
 }
 
 .dashboard-selected-items {
   min-height: 0;
 }
 
-.dashboard-selected-card:has(.dashboard-selected-items) .dashboard-selected-items {
+.dashboard-selected-body--bulk .dashboard-selected-items {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -2251,7 +2267,7 @@ h3 {
   min-height: 76px;
 }
 
-.dashboard-selected-card:has(.dashboard-selected-items) .dashboard-selected-actions {
+.dashboard-selected-card:has(.dashboard-selected-body) .dashboard-selected-actions {
   flex: 0 0 auto;
 }
 
@@ -2340,6 +2356,15 @@ h3 {
     padding: 20px;
   }
 
+  .dashboard-selected-body--single,
+  .dashboard-selected-body--bulk {
+    overflow: visible;
+  }
+
+  .dashboard-selected-body--single {
+    grid-template-rows: none;
+  }
+
   .dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-summary-grid,
   .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-summary-grid {
     grid-template-rows: none;
@@ -2359,6 +2384,16 @@ h3 {
   .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-actions {
     align-self: stretch;
     width: 100%;
+  }
+
+  .dashboard-selected-body--bulk .dashboard-selected-items {
+    overflow: visible;
+  }
+
+  .dashboard-selected-body--bulk .dashboard-selected-items ul {
+    flex: 0 1 auto;
+    max-height: 320px;
+    overflow: auto;
   }
 
   .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) .dashboard-selected-card:not(:has(.dashboard-selected-items)) .dashboard-selected-header h3 {

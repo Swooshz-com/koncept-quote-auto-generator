@@ -7961,6 +7961,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Modify quote", js)
         self.assertIn("Clear selection", js)
         self.assertIn("handleTopbarBrandClick", js)
+        self.assertIn("dashboard-selected-body--single", js)
+        self.assertIn("dashboard-selected-body--bulk", js)
         self.assertIn("dashboard-session-primary-zone", js)
         self.assertIn("dashboard-session-meta-zone", js)
         self.assertIn("dashboard-session-result-zone", js)
@@ -7975,7 +7977,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("Missing files", status_body)
         self.assertNotIn('label: "Exported"', status_body)
         can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
-        self.assertIn('return Boolean(safeQuoteSessionId(session.session_id || ""));', can_modify_body)
+        self.assertIn("session.has_draft_state === true", can_modify_body)
         restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
         self.assertIn("detailedSession?.draft_state", restore_body)
         self.assertIn("This quote session does not have saved draft data to modify.", restore_body)
