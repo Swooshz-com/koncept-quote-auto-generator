@@ -2792,6 +2792,16 @@ h3 {
   line-height: 1.25;
 }
 
+@media (min-width: 1101px) {
+  .dashboard-session-result-zone {
+    gap: 4px;
+  }
+
+  .dashboard-session-total {
+    margin-top: 6px;
+  }
+}
+
 .dashboard-bulk-selection-summary {
   display: flex;
   flex-wrap: wrap;
