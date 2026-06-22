@@ -7900,7 +7900,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardVisibleSessionIds", js)
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]
         self.assertIn("dashboardShortSessionReference", search_body)
-        self.assertIn("session.session_id", search_body)
+        self.assertNotIn("session.session_id,", search_body)
+        self.assertNotIn("quote_company_profile?.display_name", search_body)
+        self.assertNotIn("pricing_reference?.display_name", search_body)
+        self.assertNotIn("commercials?.currency", search_body)
+        self.assertNotIn("quoteSessionStatus(session).label", search_body)
         self.assertIn('mode: "visible"', js)
         self.assertNotIn('data-dashboard-action="continue"', js)
         self.assertNotIn('data-dashboard-action="delete"', js)
