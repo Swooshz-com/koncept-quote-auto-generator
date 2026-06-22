@@ -280,7 +280,7 @@ async function main() {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
-    await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
+    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
     await expectTopbarPrimaryAction(page, "new-quote");
     await page.waitForFunction(() => {
       const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
@@ -463,7 +463,7 @@ async function main() {
     });
     await page.getByRole("button", { name: "Clear selected session", exact: true }).click();
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
+    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("4f");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const characterSearchRows = await page.locator(".dashboard-session-card").count();
@@ -478,7 +478,7 @@ async function main() {
     await createDashboardSmokeSession(page, "alpha", { sessionIdPrefix: "quote-7a-playwright-alpha" });
     await createDashboardSmokeSession(page, "beta", { sessionIdPrefix: "quote-2c-hidden-3" });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
+    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("7a");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const referenceSearchRows = await page.locator(".dashboard-session-card").count();
@@ -506,7 +506,7 @@ async function main() {
       projectName: "",
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Past Quote Sessions" }).waitFor();
+    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("untitled customer");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const untitledCustomerTexts = await page.locator(".dashboard-session-card").evaluateAll((cards) => (
