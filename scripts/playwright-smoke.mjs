@@ -183,19 +183,20 @@ async function currentQuoteSessionId(page) {
   });
 }
 
-async function createDashboardSmokeSession(page, suffix) {
-  return page.evaluate(async ({ suffix }) => {
+async function createDashboardSmokeSession(page, suffix, options = {}) {
+  return page.evaluate(async ({ suffix, sessionIdPrefix }) => {
     const sessionResponse = await fetch("/api/session");
     if (!sessionResponse.ok) throw new Error(`Session bootstrap failed: ${sessionResponse.status}`);
     const session = await sessionResponse.json();
     const headers = { "Content-Type": "application/json" };
     if (session.csrf_token) headers[session.csrf_header || "X-CSRF-Token"] = session.csrf_token;
     const safeSuffix = String(suffix || "session").replace(/[^A-Za-z0-9_-]/g, "-");
+    const safePrefix = String(sessionIdPrefix || `playwright-bulk-${safeSuffix}`).replace(/[^A-Za-z0-9_-]/g, "-");
     const response = await fetch("/api/quote-sessions", {
       method: "POST",
       headers,
       body: JSON.stringify({
-        session_id: `playwright-bulk-${safeSuffix}-${Date.now()}`,
+        session_id: `${safePrefix}-${Date.now()}`,
         customer_summary: {
           customer_name: "Playwright Bulk Smoke",
           project_name: `Selection fixture ${safeSuffix}`,
@@ -224,7 +225,7 @@ async function createDashboardSmokeSession(page, suffix) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`Quote session fixture failed: ${response.status}`);
     return data.quote_session?.session_id || "";
-  }, { suffix });
+  }, { suffix, sessionIdPrefix: options.sessionIdPrefix || "" });
 }
 
 async function main() {
@@ -417,10 +418,20 @@ async function main() {
       throw new Error("Row checkbox should stay hidden until Select mode is enabled.");
     }
     const dashboardSingleSelectedShot = await screenshot(page, "dashboard-single-selected.png");
-    await createDashboardSmokeSession(page, "alpha");
+    await createDashboardSmokeSession(page, "alpha", { sessionIdPrefix: "quote-43-playwright-alpha" });
     await createDashboardSmokeSession(page, "beta");
     await page.getByRole("button", { name: "Clear selected session", exact: true }).click();
     await page.locator("#dashboardRefreshButton").click();
+    await page.locator("#dashboardSearchInput").fill("43");
+    await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
+    const referenceSearchRows = await page.locator(".dashboard-session-card").count();
+    if (referenceSearchRows !== 1) {
+      throw new Error(`Expected search for 43 to match exactly the REF QUOTE-43 row, found ${referenceSearchRows}.`);
+    }
+    const referenceSearchText = await page.locator(".dashboard-session-card").first().innerText();
+    if (!referenceSearchText.includes("REF QUOTE-43")) {
+      throw new Error(`Search for 43 did not return the visible quote reference row: ${referenceSearchText}`);
+    }
     await page.locator("#dashboardSearchInput").fill("Playwright Bulk Smoke");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const visibleBulkRows = await page.locator(".dashboard-session-card").count();

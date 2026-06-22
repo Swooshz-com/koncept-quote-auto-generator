@@ -7898,6 +7898,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-bulk-summary-grid", js)
         self.assertIn("dashboard-selected-summary-grid", js)
         self.assertIn("dashboardVisibleSessionIds", js)
+        search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]
+        self.assertIn("dashboardShortSessionReference", search_body)
+        self.assertIn("session.session_id", search_body)
         self.assertIn('mode: "visible"', js)
         self.assertNotIn('data-dashboard-action="continue"', js)
         self.assertNotIn('data-dashboard-action="delete"', js)

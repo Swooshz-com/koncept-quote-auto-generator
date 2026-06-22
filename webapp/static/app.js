@@ -8401,7 +8401,11 @@ function quoteSessionStatus(session = {}) {
 }
 
 function dashboardSessionSearchText(session = {}) {
+  const shortReference = dashboardShortSessionReference(session);
   return [
+    session.session_id,
+    shortReference,
+    shortReference ? `ref ${shortReference}` : "",
     session.customer_summary?.customer_name,
     session.customer_summary?.project_name,
     session.quote_company_profile?.display_name,
