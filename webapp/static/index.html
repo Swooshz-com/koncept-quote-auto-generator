@@ -43,39 +43,40 @@
                 </div>
               </section>
 
-              <section class="dashboard-summary-grid" aria-label="Quote session summary">
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon blue" aria-hidden="true">T</span>
-                  <div>
-                    <strong id="dashboardTotalSessions">0</strong>
-                    <span>Total sessions</span>
-                  </div>
-                </article>
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon green" aria-hidden="true">G</span>
-                  <div>
-                    <strong id="dashboardGeneratedSessions">0</strong>
-                    <span>Generated</span>
-                  </div>
-                </article>
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon blue" aria-hidden="true">E</span>
-                  <div>
-                    <strong id="dashboardExportedSessions">0</strong>
-                    <span>Exports ready</span>
-                  </div>
-                </article>
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon red" aria-hidden="true">!</span>
-                  <div>
-                    <strong id="dashboardMissingSessions">0</strong>
-                    <span>Missing files</span>
-                  </div>
-                </article>
-              </section>
-
               <div class="dashboard-content-grid">
-                <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
+                <section class="dashboard-main-column" aria-label="Local quote sessions">
+                  <section class="dashboard-summary-grid" aria-label="Quote session summary">
+                    <article class="dashboard-summary-card">
+                      <span class="stat-card-icon blue" aria-hidden="true">T</span>
+                      <div>
+                        <strong id="dashboardTotalSessions">0</strong>
+                        <span>Total sessions</span>
+                      </div>
+                    </article>
+                    <article class="dashboard-summary-card">
+                      <span class="stat-card-icon green" aria-hidden="true">G</span>
+                      <div>
+                        <strong id="dashboardGeneratedSessions">0</strong>
+                        <span>Generated</span>
+                      </div>
+                    </article>
+                    <article class="dashboard-summary-card">
+                      <span class="stat-card-icon blue" aria-hidden="true">E</span>
+                      <div>
+                        <strong id="dashboardExportedSessions">0</strong>
+                        <span>Exports ready</span>
+                      </div>
+                    </article>
+                    <article class="dashboard-summary-card">
+                      <span class="stat-card-icon red" aria-hidden="true">!</span>
+                      <div>
+                        <strong id="dashboardMissingSessions">0</strong>
+                        <span>Missing files</span>
+                      </div>
+                    </article>
+                  </section>
+
+                  <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
                   <div class="dashboard-card-header">
                     <div>
                       <h3 id="dashboardSessionsTitle">Recent Quotes</h3>
@@ -131,6 +132,7 @@
                     </div>
                   </div>
                   <div class="dashboard-session-list" id="dashboardSessionsList" aria-live="polite"></div>
+                  </section>
                 </section>
 
                 <aside class="dashboard-side-panel" id="dashboardSidePanel" aria-live="polite">

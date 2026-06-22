@@ -8724,9 +8724,6 @@ function renderDashboardBulkPanel(selectedIds = []) {
       </div>
       ${dashboardSelectedCloseButton("Clear selected sessions")}
     </header>
-    <div class="dashboard-selected-status-row">
-      ${dashboardSelectionSummaryPills(sessions)}
-    </div>
     <section class="dashboard-bulk-breakdown" aria-label="Status breakdown">
       <h4>Status breakdown</h4>
       <div>

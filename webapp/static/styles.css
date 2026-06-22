@@ -2137,6 +2137,33 @@ h3 {
 }
 
 /* Final dashboard hierarchy: full-width stats, fixed controls, scrollable lists only. */
+.quote-dashboard-panel.is-active {
+  overflow: hidden;
+}
+
+.quote-dashboard {
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100dvh - var(--topbar-height) - 20px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-content-grid,
+.dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])),
+.dashboard-content-grid:has(.dashboard-bulk-breakdown) {
+  grid-template-columns: minmax(0, 1fr) clamp(400px, 31vw, 500px);
+  align-items: stretch;
+  min-height: 0;
+}
+
+.dashboard-main-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  min-width: 0;
+  min-height: 0;
+}
+
 .dashboard-summary-grid {
   width: 100%;
   max-width: none;
@@ -2146,12 +2173,9 @@ h3 {
 .dashboard-sessions-card {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   max-height: none;
-  overflow: visible;
-}
-
-.dashboard-sessions-card:has(#dashboardSessionsList:not([hidden])) {
-  max-height: calc(100dvh - var(--topbar-height) - 330px);
+  overflow: hidden;
 }
 
 .dashboard-session-list {
@@ -2159,22 +2183,57 @@ h3 {
   min-height: 0;
   overflow: auto;
   padding-right: 4px;
+  align-content: start;
+  grid-auto-rows: max-content;
 }
 
 .dashboard-empty-state {
-  min-height: min(340px, calc(100dvh - var(--topbar-height) - 350px));
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .dashboard-side-panel {
-  overflow: visible;
+  position: static;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   max-height: none;
+  overflow: hidden;
+}
+
+.dashboard-start-card,
+.dashboard-selected-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .dashboard-selected-card:has(.dashboard-selected-items) {
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - var(--topbar-height) - 96px);
-  overflow: hidden;
+  align-content: stretch;
+}
+
+.dashboard-bottom-menu {
+  flex: 0 0 auto;
+}
+
+.dashboard-selected-card:not(:has(.dashboard-bulk-breakdown)) {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+
+.dashboard-selected-card:not(:has(.dashboard-bulk-breakdown)) .dashboard-selected-summary-grid {
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-selected-card:not(:has(.dashboard-bulk-breakdown)) .dashboard-selected-actions {
+  align-self: end;
 }
 
 .dashboard-bulk-breakdown {
@@ -2258,9 +2317,23 @@ h3 {
   min-height: 0;
 }
 
-.dashboard-selected-items ul {
-  max-height: min(260px, calc(100dvh - var(--topbar-height) - 470px));
+.dashboard-selected-card:has(.dashboard-selected-items) .dashboard-selected-items {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-selected-items ul {
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 76px;
+}
+
+.dashboard-selected-card:has(.dashboard-selected-items) .dashboard-bulk-value-card,
+.dashboard-selected-card:has(.dashboard-selected-items) .dashboard-selected-actions {
+  flex: 0 0 auto;
 }
 
 .dashboard-selected-item-remove {
