@@ -157,6 +157,7 @@ const state = {
   quoteSessionId: "",
   quoteSessions: [],
   quoteSessionLoadError: "",
+  quoteSessionRestoreError: "",
   quoteSessionRestoreBusy: false,
   quoteSessionDraftSaveStarted: false,
   dashboardStatusFilter: "all",
@@ -2711,6 +2712,7 @@ function updatePresetButtons() {
 function handlePresetSelectChange() {
   const value = elements.presetSelect.value || "";
   state.selectedPresetValue = value;
+  persistLastProfilePresetSelection(value);
   clearPendingProfilePack();
   const preset = selectedPreset();
   updatePresetSourceBadge(preset);
@@ -3197,7 +3199,7 @@ function resetCurrentQuoteDraftState() {
   renderFiles();
   renderProfileOptions();
   renderPresetOptions();
-  loadDefaultProfilePreset({ silent: true, preferLastSelection: false });
+  loadDefaultProfilePreset({ silent: true });
   renderHeaderLogoPreview();
   renderPresetStatus("Started a new quote.");
   setWorkflowStage("needs_images");
@@ -8408,9 +8410,24 @@ function currentQuoteSessionDraftState() {
     draftSource: snapshot.draftSource,
     lastAnalysisMode: snapshot.lastAnalysisMode,
     activeSidePanel: snapshot.activeSidePanel,
+    downloadFile: snapshot.downloadFile,
+    pdfFile: snapshot.pdfFile,
     outputRevision: snapshot.outputRevision,
+    downloadFileRevision: snapshot.downloadFileRevision,
+    pdfFileRevision: snapshot.pdfFileRevision,
     pricingMatches: snapshot.pricingMatches,
   };
+}
+
+function mergeDashboardQuoteSession(session = {}) {
+  const safeSessionId = safeQuoteSessionId(session.session_id || "");
+  if (!safeSessionId) return;
+  const existing = Array.isArray(state.quoteSessions) ? state.quoteSessions : [];
+  const nextSession = { ...session, session_id: safeSessionId };
+  const index = existing.findIndex((item) => safeQuoteSessionId(item.session_id || "") === safeSessionId);
+  state.quoteSessions = index >= 0
+    ? existing.map((item, itemIndex) => (itemIndex === index ? { ...item, ...nextSession } : item))
+    : [nextSession, ...existing];
 }
 
 function currentQuoteSessionPayload(options = {}) {
@@ -8454,6 +8471,7 @@ async function saveCurrentQuoteSession(options = {}) {
   }
   const session = data.quote_session || {};
   state.quoteSessionId = safeQuoteSessionId(session.session_id || payload.session_id);
+  mergeDashboardQuoteSession(session);
   return session;
 }
 
@@ -8666,10 +8684,7 @@ function dashboardSessionCanResume(session = {}) {
 }
 
 function dashboardSessionCanModify(session = {}) {
-  return Boolean(
-    safeQuoteSessionId(session.session_id || "")
-    && (session.has_draft_state || dashboardSessionCanResume(session))
-  );
+  return Boolean(safeQuoteSessionId(session.session_id || ""));
 }
 
 async function loadQuoteSessionDetail(sessionId = "") {
@@ -8686,14 +8701,13 @@ async function loadQuoteSessionDetail(sessionId = "") {
 }
 
 function dashboardRestoreError(message) {
-  state.quoteSessionLoadError = message || "This quote session does not have saved draft data to modify.";
+  state.quoteSessionRestoreError = message || "This quote session does not have saved draft data to modify.";
   renderQuoteDashboard();
 }
 
 async function modifyDashboardQuote(sessionId) {
   const safeSessionId = safeQuoteSessionId(sessionId || "");
-  const session = dashboardSessionById(safeSessionId);
-  if (!safeSessionId || appIsBusy() || state.quoteSessionRestoreBusy || !dashboardSessionCanModify(session)) return;
+  if (!safeSessionId || appIsBusy() || state.quoteSessionRestoreBusy) return;
   state.quoteSessionRestoreBusy = true;
   syncControlStates();
   try {
@@ -8716,6 +8730,7 @@ async function modifyDashboardQuote(sessionId) {
     state.dashboardSelectionMode = false;
     state.dashboardSelectedSessionIds = [];
     state.dashboardActiveSessionId = safeSessionId;
+    mergeDashboardQuoteSession({ ...detailedSession, has_draft_state: true });
     showQuoteFlow();
   } finally {
     state.quoteSessionRestoreBusy = false;
@@ -8817,6 +8832,7 @@ function pruneDashboardSelection(visibleSessions = filteredDashboardSessions()) 
 function setDashboardSelection(sessionId, options = {}) {
   const safeSessionId = safeQuoteSessionId(sessionId || "");
   const mode = options.mode || "single";
+  state.quoteSessionRestoreError = "";
   if (mode === "clear") {
     state.dashboardSelectedSessionIds = [];
     state.dashboardSelectionMode = false;
@@ -8943,6 +8959,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
   const shortReference = dashboardShortSessionReference(activeSession);
   const canModify = dashboardSessionCanModify(activeSession);
   const modifyTitle = canModify ? "Load the saved quote draft for editing." : "No saved draft data is available for this session.";
+  const restoreError = String(state.quoteSessionRestoreError || "").trim();
   elements.dashboardSelectedSessionPanel.innerHTML = `
     <header class="dashboard-selected-header">
       <div>
@@ -8969,9 +8986,11 @@ function renderDashboardSinglePanel(activeSession = {}) {
         ${dashboardSelectedExportAction(activeSession, "xlsx", "XLSX")}
         ${dashboardSelectedExportAction(activeSession, "pdf", "PDF")}
       </div>
+      <div class="dashboard-action-separator" aria-hidden="true"></div>
+      ${restoreError ? `<p class="dashboard-restore-message" role="status">${escapeHtml(restoreError)}</p>` : ""}
       <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
-      <button class="secondary-button dashboard-selected-action dashboard-clear-selection-action" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-session" data-quote-session-id="${escapeHtml(safeSessionId)}">Delete session</button>
+      <button class="secondary-button dashboard-selected-action dashboard-clear-selection-action" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
     </div>
   `;
 }

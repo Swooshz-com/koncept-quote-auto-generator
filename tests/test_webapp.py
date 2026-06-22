@@ -516,6 +516,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertIn("Swooshz Quote Generator Privacy Notice", body)
+        self.assertNotIn("Back to Quote Generator", body)
         self.assertIn('class="privacy-notice-card"', body)
         self.assertIn("<details class=\"privacy-section\"", body)
         self.assertEqual(body.count("<details class=\"privacy-section\" open>"), 8)
@@ -7887,6 +7888,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('class="topbar-privacy-link"', topbar_controls)
         self.assertIn("Pricing Reference", topbar_controls)
         self.assertIn('aria-label="Open pricing reference settings"', topbar_controls)
+        self.assertLess(topbar_controls.index('class="topbar-privacy-link"'), topbar_controls.index('id="backToDashboardButton"'))
         self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="newQuoteButton"'))
         self.assertLess(topbar_controls.index('id="newQuoteButton"'), topbar_controls.index('id="settingsButton"'))
         self.assertNotIn('class="dashboard-privacy-link"', html)
@@ -7951,7 +7953,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSessionCanModify", js)
         self.assertIn("Modify quote", js)
         self.assertIn("Clear selection", js)
-        self.assertIn("has_draft_state", js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0])
+        can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
+        self.assertIn('return Boolean(safeQuoteSessionId(session.session_id || ""));', can_modify_body)
+        restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
+        self.assertIn("detailedSession?.draft_state", restore_body)
+        self.assertIn("This quote session does not have saved draft data to modify.", restore_body)
         self.assertIn("applyQuoteSessionSnapshot", js)
         self.assertNotIn("QUOTE_SESSION_RESTORE_NOTE", js)
         self.assertNotIn("Saved dashboard records include quote metadata and export links only.", js)

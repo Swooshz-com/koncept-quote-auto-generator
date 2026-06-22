@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=57">
+    <link rel="stylesheet" href="/static/styles.css?v=58">
   </head>
   <body>
     <div class="app-shell">
@@ -19,6 +19,7 @@
           </div>
         </div>
         <div class="topbar-controls">
+          <a class="topbar-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
           <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M4 5h7v7H4z"></path>
@@ -35,8 +36,17 @@
             </svg>
             <span>New Quote</span>
           </button>
-          <a class="topbar-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
-          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open pricing reference settings">Pricing Reference</button>
+          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open pricing reference settings">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M4 5h16"></path>
+              <path d="M4 12h16"></path>
+              <path d="M4 19h16"></path>
+              <path d="M8 3v4"></path>
+              <path d="M16 10v4"></path>
+              <path d="M11 17v4"></path>
+            </svg>
+            <span>Pricing Reference</span>
+          </button>
         </div>
       </header>
 
