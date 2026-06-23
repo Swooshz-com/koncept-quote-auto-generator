@@ -8761,7 +8761,7 @@ function dashboardSessionProgressLabel(session = {}) {
 
 function dashboardSessionProgressPill(session = {}) {
   const label = dashboardSessionProgressLabel(session);
-  return label ? `<span class="dashboard-status-pill is-progress">${escapeHtml(label)}</span>` : "";
+  return label ? `<span class="dashboard-status-pill dashboard-progress-pill is-progress" aria-label="Latest saved workflow step: ${escapeHtml(label)}">${escapeHtml(label)}</span>` : "";
 }
 
 function dashboardSessionCustomerText(session = {}) {
@@ -8968,18 +8968,33 @@ async function modifyDashboardQuote(sessionId) {
   }
 }
 
-function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") {
+function dashboardExportAvailabilityItem(session = {}, kind = "xlsx", label = "XLSX") {
   const exportInfo = quoteSessionExport(session, kind);
-  if (exportInfo.exists && exportInfo.url) return `${label} ready`;
-  if (exportInfo.missing) return `Missing ${label}`;
-  return `${label} unavailable`;
+  if (exportInfo.exists && exportInfo.url) {
+    return { kind, label, exportInfo, available: true, statusText: `${label} ready`, className: "is-available" };
+  }
+  if (exportInfo.missing) {
+    return { kind, label, exportInfo, available: false, statusText: `Missing ${label}`, className: "is-unavailable" };
+  }
+  return { kind, label, exportInfo, available: false, statusText: `${label} unavailable`, className: "is-unavailable" };
 }
 
-function dashboardExportAvailabilityText(session = {}) {
+function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") {
+  return dashboardExportAvailabilityItem(session, kind, label).statusText;
+}
+
+function dashboardExportAvailabilityItems(session = {}) {
   return [
-    dashboardExportStatusText(session, "xlsx", "XLSX"),
-    dashboardExportStatusText(session, "pdf", "PDF"),
-  ].join(" / ");
+    dashboardExportAvailabilityItem(session, "xlsx", "XLSX"),
+    dashboardExportAvailabilityItem(session, "pdf", "PDF"),
+  ];
+}
+
+function dashboardExportAvailabilityHtml(session = {}) {
+  return dashboardExportAvailabilityItems(session).map((item, index) => {
+    const separator = index > 0 ? '<span class="dashboard-export-separator" aria-hidden="true">/</span>' : "";
+    return `${separator}<span class="dashboard-export-status ${escapeHtml(item.className)}" title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}">${escapeHtml(item.label)}</span>`;
+  }).join("");
 }
 
 function dashboardSessionCard(session = {}) {
@@ -8992,7 +9007,7 @@ function dashboardSessionCard(session = {}) {
   const shortReference = dashboardShortSessionReference(session);
   const grandTotal = formatDashboardMoney(session);
   const grandTotalHtml = grandTotal === "-" ? "&mdash;" : escapeHtml(grandTotal);
-  const exportAvailability = dashboardExportAvailabilityText(session);
+  const exportAvailabilityHtml = dashboardExportAvailabilityHtml(session);
   const selected = dashboardSelectedSessionIds().includes(safeSessionId);
   const active = safeQuoteSessionId(state.dashboardActiveSessionId || "") === safeSessionId;
   const selectionMode = Boolean(state.dashboardSelectionMode);
@@ -9036,15 +9051,15 @@ function dashboardSessionCard(session = {}) {
         </dl>
         <div class="dashboard-session-record-zone dashboard-session-result-zone">
           <div class="dashboard-session-status-row">
-            <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
             ${dashboardSessionProgressPill(session)}
+            <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
           </div>
           <div class="dashboard-session-output-row">
             <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
               <span>Total</span>
               <strong>${grandTotalHtml}</strong>
             </span>
-            <span class="dashboard-session-export">${escapeHtml(exportAvailability)}</span>
+            <span class="dashboard-session-export">${exportAvailabilityHtml}</span>
           </div>
         </div>
       </div>
@@ -9131,14 +9146,11 @@ function continueDashboardDraft(sessionId) {
 }
 
 function dashboardSelectedExportAction(session = {}, kind = "xlsx", label = "XLSX") {
-  const exportInfo = quoteSessionExport(session, kind);
-  if (exportInfo.exists && exportInfo.url) {
-    return `<a class="dashboard-selected-action dashboard-export-link" href="${escapeHtml(exportInfo.url)}" download>Download ${escapeHtml(label)}</a>`;
+  const item = dashboardExportAvailabilityItem(session, kind, label);
+  if (item.available) {
+    return `<a class="dashboard-selected-action dashboard-export-link ${escapeHtml(item.className)}" href="${escapeHtml(item.exportInfo.url)}" download title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}">${escapeHtml(label)}</a>`;
   }
-  if (exportInfo.missing) {
-    return `<span class="dashboard-selected-action dashboard-export-missing" aria-disabled="true">Missing ${escapeHtml(label)}</span>`;
-  }
-  return `<span class="dashboard-selected-action dashboard-export-missing" aria-disabled="true">${escapeHtml(label)} unavailable</span>`;
+  return `<span class="dashboard-selected-action dashboard-export-missing ${escapeHtml(item.className)}" aria-disabled="true" title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}">${escapeHtml(label)}</span>`;
 }
 
 function dashboardSelectedSessions() {
@@ -9230,8 +9242,8 @@ function renderDashboardSinglePanel(activeSession = {}) {
     </header>
     <div class="dashboard-selected-body dashboard-selected-body--single">
       <div class="dashboard-selected-status-row">
-        <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
         ${dashboardSessionProgressPill(activeSession)}
+        <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
         ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
       </div>
       <dl class="dashboard-selected-summary-grid">
@@ -9478,7 +9490,15 @@ function handleDashboardSessionKeydown(event) {
   const card = event.target?.closest?.("[data-quote-session-id]");
   if (!card || !elements.dashboardSessionsList?.contains(card)) return;
   event.preventDefault();
-  setDashboardSelection(card.dataset.quoteSessionId || "", { mode: state.dashboardSelectionMode ? "toggle" : "single" });
+  const safeSessionId = safeQuoteSessionId(card.dataset.quoteSessionId || "");
+  const selectedIds = dashboardSelectedSessionIds();
+  const activeId = safeQuoteSessionId(state.dashboardActiveSessionId || "");
+  const singleSelectedId = selectedIds.length === 1 ? selectedIds[0] : activeId;
+  if (event.key === "Enter" && !state.dashboardSelectionMode && safeSessionId && safeSessionId === singleSelectedId && dashboardSessionCanModify(dashboardSessionById(safeSessionId))) {
+    modifyDashboardQuote(safeSessionId);
+    return;
+  }
+  setDashboardSelection(safeSessionId, { mode: state.dashboardSelectionMode ? "toggle" : "single" });
 }
 
 function handleDashboardListArrowKey(event) {
@@ -9511,6 +9531,32 @@ function handleDashboardListArrowKey(event) {
   }
   event.preventDefault();
   setDashboardSelection(visibleIds[nextIndex], { mode: "single" });
+  return true;
+}
+
+function handleDashboardEnterKey(event) {
+  if (event.key !== "Enter" || event.defaultPrevented) return false;
+  if (state.activeAppView !== "dashboard") return false;
+  if (event.target?.closest?.("input, button, a, select, textarea, [contenteditable='true']")) return false;
+  if (profileActionsMenuIsOpen()) return false;
+  if (elements.pricingReferenceTableOverlay && !elements.pricingReferenceTableOverlay.hidden) return false;
+  if (elements.basisChatOverlay && !elements.basisChatOverlay.hidden) return false;
+  if (elements.profileLoadModal && !elements.profileLoadModal.hidden) return false;
+  if (elements.profileOverwriteModal && !elements.profileOverwriteModal.hidden) return false;
+  if (elements.profileNameModal && !elements.profileNameModal.hidden) return false;
+  if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) return false;
+  if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) return false;
+  if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) return false;
+  if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) return false;
+  if (elements.analysisConfirmModal && !elements.analysisConfirmModal.hidden) return false;
+
+  const selectedIds = dashboardSelectedSessionIds();
+  if (selectedIds.length > 1) return false;
+  const selectedId = safeQuoteSessionId(selectedIds[0] || state.dashboardActiveSessionId || "");
+  if (!selectedId) return false;
+  if (!dashboardSessionCanModify(dashboardSessionById(selectedId))) return false;
+  event.preventDefault();
+  modifyDashboardQuote(selectedId);
   return true;
 }
 
@@ -10526,6 +10572,7 @@ function wireEvents() {
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (handleDashboardEnterKey(event)) return;
     if (handleDashboardListArrowKey(event)) return;
     if (handleDashboardDeleteKey(event)) return;
     if (event.key === "Escape") {

@@ -8008,11 +8008,18 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         result_zone_css = css.split(".dashboard-session-result-zone {", 1)[1].split("}", 1)[0]
         status_row_css = css.split(".dashboard-session-status-row {", 1)[1].split("}", 1)[0]
         status_pill_css = css.split(".dashboard-session-status-row .dashboard-status-pill {", 1)[1].split("}", 1)[0]
+        progress_pill_css = css.split(".dashboard-status-pill.is-progress {", 1)[1].split("}", 1)[0]
+        card_status_row = js.split('<div class="dashboard-session-status-row">', 1)[1].split("</div>", 1)[0]
+        selected_status_row = js.split('<div class="dashboard-selected-status-row">', 1)[1].split("</div>", 1)[0]
+        self.assertLess(card_status_row.index("dashboardSessionProgressPill(session)"), card_status_row.index("status.className"))
+        self.assertLess(selected_status_row.index("dashboardSessionProgressPill(activeSession)"), selected_status_row.index("status.className"))
         self.assertIn("overflow: hidden;", result_zone_css)
         self.assertIn("width: 100%;", status_row_css)
         self.assertIn("overflow: hidden;", status_row_css)
         self.assertIn("max-width: 100%;", status_pill_css)
         self.assertIn("text-overflow: ellipsis;", status_pill_css)
+        self.assertIn("box-shadow:", progress_pill_css)
+        self.assertIn("var(--green-dark)", progress_pill_css)
         self.assertIn("dashboard-bulk-selection-summary", js)
         self.assertIn("DASHBOARD_DEFAULT_PAGE_SIZE = 5", js)
         self.assertIn("pagedDashboardSessions", js)
@@ -8020,6 +8027,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("renderDashboardPageControls", js)
         self.assertIn("dashboardPageSizeSelect", js)
         self.assertIn("Grand Total", js)
+        self.assertIn("dashboardExportAvailabilityHtml", js)
+        self.assertIn(".dashboard-export-status.is-available", css)
+        self.assertIn(".dashboard-export-status.is-unavailable", css)
+        self.assertIn(".dashboard-selected-action.is-available", css)
+        self.assertIn(".dashboard-selected-action.is-unavailable", css)
         status_body = js.split("function quoteSessionStatus", 1)[1].split("function dashboardSessionCustomerText", 1)[0]
         self.assertNotIn("Missing files", status_body)
         self.assertNotIn('label: "Exported"', status_body)
@@ -9884,6 +9896,187 @@ assert.deepStrictEqual(deleteRequest, {
   ids: ["quote-active123"],
   options: { bulk: false },
 });
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_dashboard_enter_key_modifies_active_single_selection(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  activeAppView: "dashboard",
+  quoteSessions: [{ session_id: "quote-active123" }],
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "quote-active123",
+  quoteSessionRestoreBusy: false,
+};
+const elements = {
+  pricingReferenceTableOverlay: { hidden: true },
+  basisChatOverlay: { hidden: true },
+  profileLoadModal: { hidden: true },
+  profileOverwriteModal: { hidden: true },
+  profileNameModal: { hidden: true },
+  outputDeleteModal: { hidden: true },
+  quoteSessionDeleteModal: { hidden: true },
+  profileDeleteModal: { hidden: true },
+  pricingReferenceModal: { hidden: true },
+  analysisConfirmModal: { hidden: true },
+};
+let modifiedSessionId = "";
+function profileActionsMenuIsOpen() { return false; }
+function modifyDashboardQuote(sessionId) { modifiedSessionId = sessionId; }
+
+eval([
+  extractFunction("safeQuoteSessionId"),
+  extractFunction("dashboardSelectedSessionIds"),
+  extractFunction("dashboardSessionById"),
+  extractFunction("dashboardSessionCanModify"),
+  extractFunction("handleDashboardEnterKey"),
+].join("\n"));
+
+let prevented = false;
+const event = {
+  key: "Enter",
+  defaultPrevented: false,
+  target: { closest() { return null; } },
+  preventDefault() { prevented = true; },
+};
+
+assert.strictEqual(handleDashboardEnterKey(event), true);
+assert.strictEqual(prevented, true);
+assert.strictEqual(modifiedSessionId, "quote-active123");
+
+modifiedSessionId = "";
+state.dashboardSelectedSessionIds = ["quote-active123", "quote-other123"];
+state.dashboardActiveSessionId = "";
+assert.strictEqual(handleDashboardEnterKey(event), false);
+assert.strictEqual(modifiedSessionId, "");
+
+state.dashboardSelectedSessionIds = ["quote-active123"];
+const inputEvent = {
+  key: "Enter",
+  defaultPrevented: false,
+  target: { closest(selector) { return selector.includes("input") ? {} : null; } },
+  preventDefault() { throw new Error("input Enter should not be intercepted"); },
+};
+assert.strictEqual(handleDashboardEnterKey(inputEvent), false);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_dashboard_export_labels_keep_availability_in_title(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+function quoteSessionExport(session = {}, kind = "xlsx") {
+  return session.exports?.[kind] || {};
+}
+function visibleText(html) {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+eval([
+  extractFunction("dashboardExportAvailabilityItem"),
+  extractFunction("dashboardExportStatusText"),
+  extractFunction("dashboardExportAvailabilityItems"),
+  extractFunction("dashboardExportAvailabilityHtml"),
+  extractFunction("dashboardSelectedExportAction"),
+].join("\n"));
+
+const unavailable = {};
+const unavailableHtml = dashboardExportAvailabilityHtml(unavailable);
+assert.strictEqual(visibleText(unavailableHtml), "XLSX / PDF");
+assert.ok(unavailableHtml.includes('title="XLSX unavailable"'));
+assert.ok(unavailableHtml.includes('title="PDF unavailable"'));
+assert.ok(unavailableHtml.includes("is-unavailable"));
+assert.ok(!visibleText(unavailableHtml).includes("unavailable"));
+
+const mixed = { exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: { missing: true } } };
+const mixedHtml = dashboardExportAvailabilityHtml(mixed);
+assert.strictEqual(visibleText(mixedHtml), "XLSX / PDF");
+assert.ok(mixedHtml.includes('title="XLSX ready"'));
+assert.ok(mixedHtml.includes('title="Missing PDF"'));
+assert.ok(mixedHtml.includes("is-available"));
+assert.ok(mixedHtml.includes("is-unavailable"));
+
+const xlsxAction = dashboardSelectedExportAction(mixed, "xlsx", "XLSX");
+assert.ok(xlsxAction.includes(">XLSX</a>"));
+assert.ok(xlsxAction.includes('title="XLSX ready"'));
+assert.ok(xlsxAction.includes("is-available"));
+assert.ok(!visibleText(xlsxAction).includes("Download"));
+
+const pdfAction = dashboardSelectedExportAction(unavailable, "pdf", "PDF");
+assert.ok(pdfAction.includes(">PDF</span>"));
+assert.ok(pdfAction.includes('title="PDF unavailable"'));
+assert.ok(pdfAction.includes("is-unavailable"));
+assert.ok(!visibleText(pdfAction).includes("unavailable"));
 """
         completed = subprocess.run(
             [node, "-e", script],
