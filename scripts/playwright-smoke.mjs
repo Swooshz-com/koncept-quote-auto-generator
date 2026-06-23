@@ -366,6 +366,61 @@ async function verifyConcurrentInitialDraftSaveUsesSingleSession(page) {
   }, null, { timeout: 15000 });
 }
 
+async function verifyInitialDraftSaveReservesSessionIdBeforeNetwork(page) {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+  const emptyNewQuoteButton = page.locator("#dashboardEmptyNewQuoteButton:not([disabled])");
+  if (await emptyNewQuoteButton.isVisible()) {
+    await emptyNewQuoteButton.click();
+  } else {
+    await page.locator("#newQuoteButton:not([disabled])").click();
+  }
+  await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
+  await page.locator("#sampleDetailsButton").click();
+  await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+  const reservation = await page.evaluate(async () => {
+    setSidePanel("customer", { force: true });
+    state.quoteSessionId = "";
+    state.quoteSessionDraftSaveStarted = false;
+    saveSessionState();
+    const savePromise = startQuoteSessionDraftSaveAfterCustomerStep();
+    const savedDuringStart = JSON.parse(window.localStorage.getItem("swooshz_quote_session_v1") || "{}");
+    const reservedSessionId = String(savedDuringStart.quoteSessionId || "");
+    const stateSessionIdDuringStart = String(state.quoteSessionId || "");
+    const session = await savePromise;
+    const createdSessionId = session?.session_id || state.quoteSessionId || "";
+    await deleteQuoteSessionRecord(createdSessionId);
+    window.localStorage.removeItem("swooshz_quote_session_v1");
+    return {
+      reservedSessionId,
+      stateSessionIdDuringStart,
+      createdSessionId,
+    };
+  });
+  if (!reservation.reservedSessionId || !reservation.stateSessionIdDuringStart) {
+    throw new Error(`Initial draft save should reserve a client session id before the network response, found ${JSON.stringify(reservation)}.`);
+  }
+  if (reservation.createdSessionId !== reservation.reservedSessionId) {
+    throw new Error(`Initial draft save should use the reserved session id, found ${JSON.stringify(reservation)}.`);
+  }
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+}
+
 async function verifyDashboardClearsStaleSessionsBeforeRefresh(page) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
@@ -464,6 +519,7 @@ async function main() {
   try {
     await installMockProfiles(page);
     await verifyConcurrentInitialDraftSaveUsesSingleSession(page);
+    await verifyInitialDraftSaveReservesSessionIdBeforeNetwork(page);
     await verifyDashboardClearsStaleSessionsBeforeRefresh(page);
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
@@ -726,6 +782,21 @@ async function main() {
     });
     const currentDashboardCard = page.locator(`.dashboard-session-card[data-quote-session-id="${currentDashboardSessionId}"]`);
     await currentDashboardCard.waitFor({ state: "visible", timeout: 15000 });
+    const createdDateMetrics = await currentDashboardCard.locator(".dashboard-session-meta-zone div").nth(1).locator("dd").evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const lineRects = Array.from(range.getClientRects()).filter((rect) => rect.width > 1 && rect.height > 1);
+      range.detach();
+      return {
+        text: element.textContent?.trim() || "",
+        lines: lineRects.length,
+        height: Math.round(element.getBoundingClientRect().height),
+        lineHeight: Number.parseFloat(window.getComputedStyle(element).lineHeight) || 0,
+      };
+    });
+    if (createdDateMetrics.lines > 1 || createdDateMetrics.height > Math.ceil(createdDateMetrics.lineHeight * 1.35)) {
+      throw new Error(`Dashboard created timestamp should stay on one line, found ${JSON.stringify(createdDateMetrics)}.`);
+    }
     const currentDashboardDetail = await dashboardQuoteSessionDetail(page, currentDashboardSessionId);
     const currentDraftState = currentDashboardDetail.quote_session?.draft_state || {};
     if (!Array.isArray(currentDraftState.images) || !currentDraftState.images.some((image) => /kent-group\.pdf/i.test(image.name || ""))) {

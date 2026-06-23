@@ -566,6 +566,27 @@ function safeQuoteSessionId(value = "") {
   return /^quote-[A-Za-z0-9_-]{3,64}$/.test(text) ? text : "";
 }
 
+function randomQuoteSessionToken() {
+  const bytes = new Uint8Array(12);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`.slice(0, 24);
+}
+
+function newClientQuoteSessionId() {
+  return safeQuoteSessionId(`quote-${randomQuoteSessionToken()}`);
+}
+
+function ensureClientQuoteSessionId() {
+  const existingSessionId = safeQuoteSessionId(state.quoteSessionId || "");
+  if (existingSessionId) return existingSessionId;
+  state.quoteSessionId = newClientQuoteSessionId();
+  saveSessionState();
+  return state.quoteSessionId;
+}
+
 function safeProfileId(value = "", fallback = "company-profile") {
   return safeId(value, fallback);
 }
@@ -8528,12 +8549,16 @@ function currentQuoteSessionPayload(options = {}) {
 }
 
 async function saveCurrentQuoteSession(options = {}) {
-  const requestedSessionId = safeQuoteSessionId(options.sessionId || state.quoteSessionId || "");
+  let requestedSessionId = safeQuoteSessionId(options.sessionId || state.quoteSessionId || "");
   if (!requestedSessionId && quoteSessionInitialSavePromise) {
     await quoteSessionInitialSavePromise.catch(() => null);
+    requestedSessionId = safeQuoteSessionId(options.sessionId || state.quoteSessionId || "");
   }
-  const payload = currentQuoteSessionPayload(options);
-  const isInitialSave = !safeQuoteSessionId(payload.session_id || "");
+  const isInitialSave = !requestedSessionId;
+  if (isInitialSave) {
+    requestedSessionId = ensureClientQuoteSessionId();
+  }
+  const payload = currentQuoteSessionPayload({ ...options, sessionId: requestedSessionId });
   const savePromise = (async () => {
     const { ok, data } = await postJson("/api/quote-sessions", payload);
     if (!ok) {
