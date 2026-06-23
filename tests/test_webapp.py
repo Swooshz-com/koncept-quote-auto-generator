@@ -7999,7 +7999,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Saved at ${label}", js)
         self.assertIn("dashboardSessionProgressPill(session)", js)
         self.assertIn("dashboardSessionProgressPill(activeSession)", js)
+        self.assertIn("dashboard-session-status-row", js)
+        self.assertIn("dashboard-session-output-row", js)
         self.assertIn(".dashboard-status-pill.is-progress", css)
+        self.assertIn(".dashboard-session-status-row", css)
+        self.assertIn(".dashboard-session-output-row", css)
         self.assertIn("dashboard-bulk-selection-summary", js)
         self.assertIn("DASHBOARD_DEFAULT_PAGE_SIZE = 5", js)
         self.assertIn("pagedDashboardSessions", js)
@@ -13929,6 +13933,9 @@ assert.ok(!standardHtml.includes(">High Quality<"));
         self.assertIn("basisConfirmBlockReason", js)
         self.assertIn("Resolve all review lines before confirming quotation basis.", js)
         self.assertIn('confirmBasis();', js)
+        next_body = js.split("async function goToNextSidePanel", 1)[1].split("function handleQuoteBasisClick", 1)[0]
+        self.assertIn('state.activeSidePanel === "basis"', next_body)
+        self.assertIn('showBlockedAction(reason, { details: false });', next_body)
         self.assertNotIn("Next: Output", js)
 
         node = require_node(self)
@@ -15147,8 +15154,14 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             confirm_body.index("refreshOutputRowsFromLineItems();"),
         )
         missing_branch = confirm_body.split("if (missing.length)", 1)[1].split("state.isPreparingOutput", 1)[0]
+        confirm_block_branch = confirm_body.split("if (confirmBlockReason)", 1)[1].split("if (state.aiFailed)", 1)[0]
+        empty_items_branch = confirm_body.split("if (!state.lineItems.length)", 1)[1].split("const missing", 1)[0]
+        self.assertIn("showBlockedAction(confirmBlockReason, { details: false });", confirm_block_branch)
+        self.assertIn("showBlockedAction(", empty_items_branch)
+        self.assertIn("{ details: false }", empty_items_branch)
         self.assertIn("await saveQuoteSessionDraftState({ quoteGenerated: false });", missing_branch)
         self.assertIn("showBlockedAction(", missing_branch)
+        self.assertIn("{ details: false }", missing_branch)
         self.assertIn("state.outputRows = snapshotOutputRows(state.originalOutputRows);", reset_body)
         self.assertIn("state.lineItems = outputRowsToLineItems();", reset_body)
         self.assertNotIn("refreshLineItemsFromServer", reset_body)

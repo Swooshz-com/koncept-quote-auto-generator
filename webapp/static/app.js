@@ -9035,13 +9035,17 @@ function dashboardSessionCard(session = {}) {
           </div>
         </dl>
         <div class="dashboard-session-record-zone dashboard-session-result-zone">
-          <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
-          ${dashboardSessionProgressPill(session)}
-          <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
-            <span>Total</span>
-            <strong>${grandTotalHtml}</strong>
-          </span>
-          <span class="dashboard-session-export">${escapeHtml(exportAvailability)}</span>
+          <div class="dashboard-session-status-row">
+            <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+            ${dashboardSessionProgressPill(session)}
+          </div>
+          <div class="dashboard-session-output-row">
+            <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
+              <span>Total</span>
+              <strong>${grandTotalHtml}</strong>
+            </span>
+            <span class="dashboard-session-export">${escapeHtml(exportAvailability)}</span>
+          </div>
         </div>
       </div>
     </article>
@@ -9786,22 +9790,27 @@ async function confirmBasis() {
   const confirmBlockReason = basisConfirmBlockReason();
   if (confirmBlockReason) {
     setWorkflowStage("basis_review");
+    showBlockedAction(confirmBlockReason, { details: false });
     syncControlStates();
     return;
   }
   if (state.aiFailed) {
+    setWorkflowStage("basis_review");
     showAiFailureBanner();
+    syncControlStates();
     return;
   }
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
+    showBlockedAction("Quote basis has no line items ready for output. Re-run analysis or resolve the quote basis before confirming.", { details: false });
+    syncControlStates();
     return;
   }
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
     await saveQuoteSessionDraftState({ quoteGenerated: false });
-    showBlockedAction(`Complete Customer and Quote Company details before confirming quotation basis: ${missing.join(", ")}.`);
+    showBlockedAction(`Complete Customer and Quote Company details before confirming quotation basis: ${missing.join(", ")}.`, { details: false });
     syncControlStates();
     return;
   }
@@ -10277,6 +10286,7 @@ async function goToNextSidePanel() {
     elements.sideNextButton.title = "";
     elements.sideNextButton.blur();
     if (state.activeSidePanel === "quote_company") showBlockedAction(reason);
+    if (state.activeSidePanel === "basis") showBlockedAction(reason, { details: false });
     return;
   }
   if (state.activeSidePanel === "quote_company") {

@@ -2678,7 +2678,7 @@ h3 {
 .dashboard-session-main,
 .dashboard-session-card:not(.is-selection-mode) .dashboard-session-main {
   display: grid;
-  grid-template-columns: minmax(210px, 0.9fr) minmax(350px, 1.15fr) minmax(158px, 0.5fr);
+  grid-template-columns: minmax(200px, 0.82fr) minmax(340px, 1.08fr) minmax(260px, 0.7fr);
   gap: 16px;
   align-items: center;
 }
@@ -2767,19 +2767,37 @@ h3 {
 
 .dashboard-session-result-zone {
   display: grid;
+  align-content: center;
   justify-items: end;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
   text-align: right;
 }
 
-.dashboard-session-result-zone .dashboard-status-pill {
-  justify-self: end;
+.dashboard-session-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dashboard-session-output-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  column-gap: 12px;
+  width: min(100%, 360px);
+  min-width: 0;
 }
 
 .dashboard-session-total {
   display: inline-flex;
   align-items: baseline;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  justify-self: start;
   gap: 6px;
   white-space: nowrap;
 }
@@ -2801,6 +2819,8 @@ h3 {
 }
 
 .dashboard-session-export {
+  justify-self: end;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   color: var(--muted);
@@ -2861,22 +2881,17 @@ h3 {
   }
 
   .dashboard-session-result-zone {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
     justify-items: start;
     text-align: left;
   }
 
-  .dashboard-session-result-zone .dashboard-status-pill {
+  .dashboard-session-status-row {
+    justify-content: flex-start;
+  }
+
+  .dashboard-session-output-row {
     justify-self: start;
-  }
-
-  .dashboard-session-total {
-    justify-items: start;
-  }
-
-  .dashboard-session-export {
-    grid-column: 1 / -1;
+    width: min(100%, 420px);
   }
 }
 
@@ -2932,8 +2947,17 @@ h3 {
   }
 
   .dashboard-session-result-zone {
-    grid-template-columns: minmax(0, 1fr);
     gap: 7px;
+  }
+
+  .dashboard-session-output-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    width: 100%;
+  }
+
+  .dashboard-session-export {
+    justify-self: start;
   }
 }
 
