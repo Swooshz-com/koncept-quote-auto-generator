@@ -165,6 +165,7 @@ const state = {
   quoteSessionRestoredSessionId: "",
   quoteSessionRestoredDraftKey: "",
   dashboardStatusFilter: "all",
+  dashboardDateFilter: "all",
   dashboardSearch: "",
   dashboardPageSize: DASHBOARD_DEFAULT_PAGE_SIZE,
   dashboardPageIndex: 0,
@@ -288,6 +289,7 @@ const elements = {
   dashboardEmptyNewQuoteButton: qs("#dashboardEmptyNewQuoteButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
+  dashboardDateFilter: qs("#dashboardDateFilter"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
   dashboardPageControls: qs("#dashboardPageControls"),
   dashboardPageSizeSelect: qs("#dashboardPageSizeSelect"),
@@ -295,6 +297,7 @@ const elements = {
   dashboardSessionsList: qs("#dashboardSessionsList"),
   dashboardSessionCount: qs("#dashboardSessionCount"),
   dashboardEmptyState: qs("#dashboardEmptyState"),
+  dashboardEmptyEyebrow: qs("#dashboardEmptyEyebrow"),
   dashboardErrorState: qs("#dashboardErrorState"),
   dashboardErrorText: qs("#dashboardErrorText"),
   dashboardTotalSessions: qs("#dashboardTotalSessions"),
@@ -8968,12 +8971,32 @@ function dashboardSessionSearchText(session = {}) {
   ].map((value) => String(value || "").toLowerCase()).join(" ");
 }
 
+function dashboardDateFilterMatches(session = {}, filter = "all") {
+  const normalizedFilter = String(filter || "all");
+  if (normalizedFilter === "all") return true;
+  const timestamp = dashboardTimestampMs(session.updated_at || session.created_at);
+  if (!timestamp) return false;
+  const now = Date.now();
+  if (normalizedFilter === "today") {
+    const sessionDate = new Date(timestamp);
+    const today = new Date(now);
+    return sessionDate.getFullYear() === today.getFullYear()
+      && sessionDate.getMonth() === today.getMonth()
+      && sessionDate.getDate() === today.getDate();
+  }
+  const days = normalizedFilter === "7d" ? 7 : normalizedFilter === "30d" ? 30 : 0;
+  if (!days) return true;
+  return timestamp >= now - days * 24 * 60 * 60 * 1000;
+}
+
 function filteredDashboardSessions() {
   const statusFilter = state.dashboardStatusFilter || "all";
+  const dateFilter = state.dashboardDateFilter || "all";
   const search = String(state.dashboardSearch || "").trim().toLowerCase();
   return state.quoteSessions.filter((session) => {
     const status = quoteSessionStatus(session).key;
     if (statusFilter !== "all" && status !== statusFilter) return false;
+    if (!dashboardDateFilterMatches(session, dateFilter)) return false;
     if (search && !dashboardSessionSearchText(session).includes(search)) return false;
     return true;
   });
@@ -9022,11 +9045,11 @@ function renderDashboardPageControls(filtered = []) {
   const sessions = Array.isArray(filtered) ? filtered : [];
   const total = sessions.length;
   const pageSize = dashboardPageSizeValue();
-  const hasRows = total > 0 && !state.quoteSessionLoadError;
-  if (elements.dashboardPageControls) elements.dashboardPageControls.hidden = !hasRows;
+  const hasStoredSessions = state.quoteSessions.length > 0 && !state.quoteSessionLoadError;
+  if (elements.dashboardPageControls) elements.dashboardPageControls.hidden = !hasStoredSessions;
   if (elements.dashboardPageSizeSelect) {
     elements.dashboardPageSizeSelect.value = String(pageSize);
-    elements.dashboardPageSizeSelect.disabled = !hasRows;
+    elements.dashboardPageSizeSelect.disabled = !hasStoredSessions;
   }
   if (!elements.dashboardRangeSelect) return;
   const pageCount = dashboardPageCount(total, pageSize);
@@ -9040,7 +9063,7 @@ function renderDashboardPageControls(filtered = []) {
   }
   elements.dashboardRangeSelect.innerHTML = options.join("");
   elements.dashboardRangeSelect.value = String(activePageIndex);
-  elements.dashboardRangeSelect.disabled = !hasRows || pageCount <= 1;
+  elements.dashboardRangeSelect.disabled = !hasStoredSessions;
 }
 
 function updateDashboardSummary() {
@@ -9052,12 +9075,8 @@ function updateDashboardSummary() {
   if (elements.dashboardExportedSessions) elements.dashboardExportedSessions.textContent = String(exported);
 }
 
-function dashboardLastExportText(session = {}) {
-  const times = ["xlsx", "pdf"]
-    .map((kind) => dashboardTimestampMs(quoteSessionExport(session, kind).created_at))
-    .filter(Boolean)
-    .sort((left, right) => right - left);
-  return times.length ? formatDashboardDateTime(new Date(times[0]).toISOString()) : "-";
+function dashboardModifiedText(session = {}) {
+  return formatDashboardDateTime(session.updated_at || session.created_at);
 }
 
 function dashboardTaxText(session = {}) {
@@ -9220,24 +9239,6 @@ function dashboardExportAvailabilityItem(session = {}, kind = "xlsx", label = "X
   return { kind, label, exportInfo, available: false, statusText: `${label} unavailable`, className: "is-unavailable" };
 }
 
-function dashboardExportStatusText(session = {}, kind = "xlsx", label = "XLSX") {
-  return dashboardExportAvailabilityItem(session, kind, label).statusText;
-}
-
-function dashboardExportAvailabilityItems(session = {}) {
-  return [
-    dashboardExportAvailabilityItem(session, "xlsx", "XLSX"),
-    dashboardExportAvailabilityItem(session, "pdf", "PDF"),
-  ];
-}
-
-function dashboardExportAvailabilityHtml(session = {}) {
-  return dashboardExportAvailabilityItems(session).map((item, index) => {
-    const separator = index > 0 ? '<span class="dashboard-export-separator" aria-hidden="true">/</span>' : "";
-    return `${separator}<span class="dashboard-export-status ${escapeHtml(item.className)}" title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}">${escapeHtml(item.label)}</span>`;
-  }).join("");
-}
-
 function dashboardSessionCard(session = {}) {
   const status = quoteSessionStatus(session);
   const customer = dashboardSessionCustomerText(session);
@@ -9248,7 +9249,6 @@ function dashboardSessionCard(session = {}) {
   const shortReference = dashboardShortSessionReference(session);
   const grandTotal = formatDashboardMoney(session);
   const grandTotalHtml = grandTotal === "-" ? "&mdash;" : escapeHtml(grandTotal);
-  const exportAvailabilityHtml = dashboardExportAvailabilityHtml(session);
   const selected = dashboardSelectedSessionIds().includes(safeSessionId);
   const active = safeQuoteSessionId(state.dashboardActiveSessionId || "") === safeSessionId;
   const selectionMode = Boolean(state.dashboardSelectionMode);
@@ -9278,8 +9278,12 @@ function dashboardSessionCard(session = {}) {
             <dd>${shortReference ? `Ref ${escapeHtml(shortReference)}` : "-"}</dd>
           </div>
           <div>
-            <dt>Created</dt>
-            <dd>${escapeHtml(formatDashboardDateTime(session.created_at))}</dd>
+            <dt>Modified</dt>
+            <dd>${escapeHtml(dashboardModifiedText(session))}</dd>
+          </div>
+          <div class="dashboard-session-total-cell">
+            <dt>Total</dt>
+            <dd><span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">${grandTotalHtml}</span></dd>
           </div>
           <div>
             <dt>Quote Company</dt>
@@ -9294,13 +9298,6 @@ function dashboardSessionCard(session = {}) {
           <div class="dashboard-session-status-row">
             ${dashboardSessionProgressPill(session)}
             <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
-          </div>
-          <div class="dashboard-session-output-row">
-            <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
-              <span>Total</span>
-              <strong>${grandTotalHtml}</strong>
-            </span>
-            <span class="dashboard-session-export">${exportAvailabilityHtml}</span>
           </div>
         </div>
       </div>
@@ -9328,6 +9325,13 @@ function dashboardSessionById(sessionId) {
 
 function dashboardVisibleSessionIds(sessions = pagedDashboardSessions()) {
   return sessions.map((session) => safeQuoteSessionId(session.session_id || "")).filter(Boolean);
+}
+
+function scrollDashboardSessionIntoView(sessionId = state.dashboardActiveSessionId) {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  if (!safeSessionId || !elements.dashboardSessionsList) return;
+  const card = elements.dashboardSessionsList.querySelector(`[data-quote-session-id="${safeSessionId}"]`);
+  card?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
 }
 
 function pruneDashboardSelection(visibleSessions = filteredDashboardSessions()) {
@@ -9389,9 +9393,9 @@ function continueDashboardDraft(sessionId) {
 function dashboardSelectedExportAction(session = {}, kind = "xlsx", label = "XLSX") {
   const item = dashboardExportAvailabilityItem(session, kind, label);
   if (item.available) {
-    return `<a class="dashboard-selected-action dashboard-export-link ${escapeHtml(item.className)}" href="${escapeHtml(item.exportInfo.url)}" download title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}">${escapeHtml(label)}</a>`;
+    return `<a class="dashboard-selected-action dashboard-export-link ${escapeHtml(item.className)}" href="${escapeHtml(item.exportInfo.url)}" download title="${escapeHtml(item.statusText)}" aria-label="Download ${escapeHtml(label)}"><span class="dashboard-selected-action-kicker">Download</span><span class="dashboard-selected-action-label">${escapeHtml(label)}</span></a>`;
   }
-  return `<span class="dashboard-selected-action dashboard-export-missing ${escapeHtml(item.className)}" aria-disabled="true" title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}">${escapeHtml(label)}</span>`;
+  return `<span class="dashboard-selected-action dashboard-export-missing ${escapeHtml(item.className)}" aria-disabled="true" title="${escapeHtml(item.statusText)}" aria-label="${escapeHtml(item.statusText)}"><span class="dashboard-selected-action-label">${escapeHtml(label)}</span></span>`;
 }
 
 function dashboardSelectedSessions() {
@@ -9490,7 +9494,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Created</dt><dd>${escapeHtml(formatDashboardDateTime(activeSession.created_at))}</dd></div>
-        <div><dt>Last export</dt><dd>${escapeHtml(dashboardLastExportText(activeSession))}</dd></div>
+        <div><dt>Modified</dt><dd>${escapeHtml(dashboardModifiedText(activeSession))}</dd></div>
         <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
         <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
@@ -9535,9 +9539,10 @@ function renderDashboardSelectionControls(filtered) {
   const visibleIds = dashboardVisibleSessionIds(filtered);
   const selected = dashboardSelectedSessionIds();
   const hasVisibleRows = visibleIds.length > 0 && !state.quoteSessionLoadError;
+  const hasStoredSessions = state.quoteSessions.length > 0 && !state.quoteSessionLoadError;
   const selectedSet = new Set(selected);
   const allVisibleSelected = hasVisibleRows && visibleIds.every((sessionId) => selectedSet.has(sessionId));
-  if (elements.dashboardSelectionToolbar) elements.dashboardSelectionToolbar.hidden = !hasVisibleRows;
+  if (elements.dashboardSelectionToolbar) elements.dashboardSelectionToolbar.hidden = !hasStoredSessions;
   if (elements.dashboardSelectModeButton) {
     elements.dashboardSelectModeButton.textContent = state.dashboardSelectionMode ? "Select all visible" : "Select";
     elements.dashboardSelectModeButton.disabled = !hasVisibleRows || state.quoteSessionDeleteBusy;
@@ -9688,8 +9693,10 @@ async function confirmQuoteSessionDelete() {
 function handleDashboardSelectModeButton() {
   if (appIsBusy() || state.quoteSessionDeleteBusy) return;
   if (!state.dashboardSelectionMode) {
+    const activeId = safeQuoteSessionId(state.dashboardActiveSessionId || "");
+    const visibleIds = dashboardVisibleSessionIds();
     state.dashboardSelectionMode = true;
-    state.dashboardSelectedSessionIds = [];
+    state.dashboardSelectedSessionIds = activeId && visibleIds.includes(activeId) ? [activeId] : [];
     renderQuoteDashboard();
     return;
   }
@@ -9771,7 +9778,9 @@ function handleDashboardListArrowKey(event) {
       : Math.min(visibleIds.length - 1, currentIndex + 1);
   }
   event.preventDefault();
-  setDashboardSelection(visibleIds[nextIndex], { mode: "single" });
+  const nextId = visibleIds[nextIndex];
+  setDashboardSelection(nextId, { mode: "single" });
+  scrollDashboardSessionIntoView(nextId);
   return true;
 }
 
@@ -9840,6 +9849,8 @@ function handleDashboardSidePanelAction(event) {
 
 function renderQuoteDashboard() {
   updateDashboardSummary();
+  if (elements.dashboardDateFilter) elements.dashboardDateFilter.value = state.dashboardDateFilter || "all";
+  if (elements.dashboardStatusFilter) elements.dashboardStatusFilter.value = state.dashboardStatusFilter || "all";
   const filtered = filteredDashboardSessions();
   const paged = pagedDashboardSessions(filtered);
   const range = dashboardPageRange(filtered.length);
@@ -9863,6 +9874,7 @@ function renderQuoteDashboard() {
   if (elements.dashboardErrorText) elements.dashboardErrorText.textContent = state.quoteSessionLoadError || GENERIC_FAILURE_MESSAGE;
   if (elements.dashboardEmptyState) {
     elements.dashboardEmptyState.hidden = hasError || hasRows;
+    if (elements.dashboardEmptyEyebrow) elements.dashboardEmptyEyebrow.textContent = hasSessions ? "NO MATCHES" : "QUOTE LIST";
     const strong = elements.dashboardEmptyState.querySelector("strong");
     const detail = elements.dashboardEmptyState.querySelector("p");
     if (strong) strong.textContent = hasSessions ? "No matching quote sessions" : "No quote sessions yet";
@@ -10865,6 +10877,11 @@ function wireEvents() {
   elements.backToDashboardButton?.addEventListener("click", returnToDashboard);
   elements.dashboardStatusFilter?.addEventListener("change", () => {
     state.dashboardStatusFilter = elements.dashboardStatusFilter.value || "all";
+    state.dashboardPageIndex = 0;
+    renderQuoteDashboard();
+  });
+  elements.dashboardDateFilter?.addEventListener("change", () => {
+    state.dashboardDateFilter = elements.dashboardDateFilter.value || "all";
     state.dashboardPageIndex = 0;
     renderQuoteDashboard();
   });

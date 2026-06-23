@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=62">
+    <link rel="stylesheet" href="/static/styles.css?v=64">
   </head>
   <body>
     <div class="app-shell">
@@ -59,8 +59,8 @@
                   <section class="dashboard-hero" aria-labelledby="quoteDashboardTitle">
                     <div>
                       <p class="workspace-pane-eyebrow">QUOTE DASHBOARD</p>
-                      <h2 id="quoteDashboardTitle">Dashboard</h2>
-                      <p class="workspace-pane-subtitle">Quote sessions saved in the active local runtime.</p>
+                      <h2 id="quoteDashboardTitle">Quote List</h2>
+                      <p class="workspace-pane-subtitle" id="dashboardSessionCount" aria-live="polite">Loading sessions...</p>
                     </div>
                   </section>
 
@@ -90,15 +90,27 @@
 
                   <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
                   <div class="dashboard-card-header">
-                    <div class="dashboard-card-heading">
-                      <h3 id="dashboardSessionsTitle">Recent Quotes</h3>
-                      <p class="settings-note" id="dashboardSessionCount">Loading sessions...</p>
+                    <h3 class="sr-only" id="dashboardSessionsTitle">Quote sessions</h3>
+                    <div class="dashboard-list-toolbar" aria-label="Quote list controls">
+                    <div class="dashboard-selection-toolbar" id="dashboardSelectionToolbar" hidden>
+                      <div class="dashboard-selection-mode">
+                        <button class="secondary-button dashboard-select-mode-button" type="button" id="dashboardSelectModeButton">Select</button>
+                        <span class="dashboard-selection-hint" id="dashboardSelectionHint" hidden>Select individual sessions, or select all visible quote sessions.</span>
+                      </div>
                     </div>
-                    <div class="dashboard-list-toolbar" aria-label="Recent Quotes controls">
                     <div class="dashboard-controls">
                       <label class="compact-control dashboard-search-control">
                         Search
                         <input id="dashboardSearchInput" type="search" autocomplete="off" placeholder="Search quote sessions…">
+                      </label>
+                      <label class="compact-control dashboard-date-control">
+                        Date range
+                        <select id="dashboardDateFilter">
+                          <option value="all">All dates</option>
+                          <option value="today">Today</option>
+                          <option value="7d">Last 7 days</option>
+                          <option value="30d">Last 30 days</option>
+                        </select>
                       </label>
                       <label class="compact-control dashboard-status-control">
                         Status
@@ -124,12 +136,6 @@
                         <select id="dashboardRangeSelect" aria-label="Displayed quote session range"></select>
                       </label>
                     </div>
-                    <div class="dashboard-selection-toolbar" id="dashboardSelectionToolbar" hidden>
-                      <div class="dashboard-selection-mode">
-                        <button class="secondary-button dashboard-select-mode-button" type="button" id="dashboardSelectModeButton">Select</button>
-                        <span class="dashboard-selection-hint" id="dashboardSelectionHint" hidden>Select individual sessions, or select all visible quote sessions.</span>
-                      </div>
-                    </div>
                     </div>
                   </div>
                   <div class="dashboard-empty-state" id="dashboardEmptyState" hidden>
@@ -141,6 +147,7 @@
                         <path d="M10 17h4"></path>
                       </svg>
                     </div>
+                    <span class="dashboard-empty-eyebrow" id="dashboardEmptyEyebrow">QUOTE LIST</span>
                     <strong>No quote sessions yet</strong>
                     <p>Start a new quote to create the first local session.</p>
                     <button class="primary-button" type="button" id="dashboardEmptyNewQuoteButton">

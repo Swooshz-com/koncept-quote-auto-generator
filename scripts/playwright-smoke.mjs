@@ -597,7 +597,7 @@ async function main() {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
-    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "Quote List" }).waitFor();
     const statusFilterLabels = await page.locator("#dashboardStatusFilter option").evaluateAll((options) => (
       options.map((option) => option.textContent?.trim())
     ));
@@ -692,7 +692,7 @@ async function main() {
       window.localStorage.setItem(storageKey, JSON.stringify(saved));
     }, "swooshz_quote_session_v1");
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "Quote List" }).waitFor();
     const unrelatedLocalQuoteSessionId = await currentQuoteSessionId(page);
     if (unrelatedLocalQuoteSessionId === restoredQuoteSessionId) {
       throw new Error(`Expected Modify quote regression to use a non-current browser draft, found ${unrelatedLocalQuoteSessionId}.`);
@@ -859,7 +859,7 @@ async function main() {
     if (!savedStepPills.some((text) => /Saved at Customer/i.test(text))) {
       throw new Error(`Expected dashboard card to show saved step pill for the current draft, found ${JSON.stringify(savedStepPills)}.`);
     }
-    const createdDateMetrics = await currentDashboardCard.locator(".dashboard-session-meta-zone div").nth(1).locator("dd").evaluate((element) => {
+    const modifiedDateMetrics = await currentDashboardCard.locator(".dashboard-session-meta-zone div").nth(1).locator("dd").evaluate((element) => {
       const range = document.createRange();
       range.selectNodeContents(element);
       const lineRects = Array.from(range.getClientRects()).filter((rect) => rect.width > 1 && rect.height > 1);
@@ -871,8 +871,8 @@ async function main() {
         lineHeight: Number.parseFloat(window.getComputedStyle(element).lineHeight) || 0,
       };
     });
-    if (createdDateMetrics.lines > 1 || createdDateMetrics.height > Math.ceil(createdDateMetrics.lineHeight * 1.35)) {
-      throw new Error(`Dashboard created timestamp should stay on one line, found ${JSON.stringify(createdDateMetrics)}.`);
+    if (modifiedDateMetrics.lines > 1 || modifiedDateMetrics.height > Math.ceil(modifiedDateMetrics.lineHeight * 1.35)) {
+      throw new Error(`Dashboard modified timestamp should stay on one line, found ${JSON.stringify(modifiedDateMetrics)}.`);
     }
     const currentDashboardDetail = await dashboardQuoteSessionDetail(page, currentDashboardSessionId);
     const currentDraftState = currentDashboardDetail.quote_session?.draft_state || {};
@@ -910,7 +910,7 @@ async function main() {
     });
     await page.getByRole("button", { name: "Clear selected session", exact: true }).click();
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "Quote List" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("Four Foxtrot Smoke Search");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const characterSearchRows = await page.locator(".dashboard-session-card").count();
@@ -927,7 +927,7 @@ async function main() {
     await createDashboardSmokeSession(page, "gamma", { sessionIdPrefix: "quote-bulk-extra-1" });
     await createDashboardSmokeSession(page, "delta", { sessionIdPrefix: "quote-bulk-extra-2" });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "Quote List" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("7a");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const referenceSearchRows = await page.locator(".dashboard-session-card").count();
@@ -955,7 +955,7 @@ async function main() {
       projectName: "",
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "Dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "Quote List" }).waitFor();
     await page.locator("#dashboardSearchInput").fill("untitled customer");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const untitledCustomerTexts = await page.locator(".dashboard-session-card").evaluateAll((cards) => (

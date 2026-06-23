@@ -7884,8 +7884,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('id="dashboardContinueQuoteButton"', html)
         self.assertNotIn("Continue Current Quote", html)
         self.assertIn("QUOTE DASHBOARD", html)
-        self.assertIn(">Dashboard</h2>", html)
-        self.assertIn("Quote sessions saved in the active local runtime.", html)
+        self.assertIn(">Quote List</h2>", html)
+        self.assertIn('id="dashboardSessionCount"', html)
+        self.assertIn('id="dashboardEmptyEyebrow"', html)
+        self.assertNotIn("Quote sessions saved in the active local runtime.", html)
+        self.assertNotIn(">Recent Quotes</h3>", html)
         self.assertIn('placeholder="Search quote sessions…"', html)
         self.assertIn("No session selected", html)
         self.assertIn("Select a quote session to view downloads, delete actions, and any available draft controls.", html)
@@ -7904,6 +7907,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-session-list", css)
         self.assertIn("dashboard-selected-card", css)
         self.assertIn("dashboard-context-card", css)
+        self.assertIn("dashboard-empty-eyebrow", css)
         self.assertIn("dashboard-selected-items", css)
         self.assertNotIn("dashboard-session-table", css)
         self.assertIn("showDashboard", js)
@@ -7972,6 +7976,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn('<option value="missing">', html)
         self.assertNotIn(">Missing files<", html)
         self.assertIn("dashboard-list-toolbar", html)
+        self.assertIn('aria-label="Quote list controls"', html)
+        self.assertIn('id="dashboardDateFilter"', html)
+        self.assertIn(">Last 7 days<", html)
         self.assertIn('id="dashboardPageSizeSelect"', html)
         self.assertIn('id="dashboardRangeSelect"', html)
         self.assertIn('<option value="all">All</option>', html)
@@ -8006,8 +8013,15 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Saved at ${label}", js)
         self.assertIn("dashboardSessionProgressPill(session)", js)
         self.assertIn("dashboardSessionProgressPill(activeSession)", js)
+        self.assertIn("dashboardModifiedText", js)
+        self.assertIn("dashboardDateFilterMatches", js)
+        self.assertIn('elements.dashboardEmptyEyebrow.textContent = hasSessions ? "NO MATCHES" : "QUOTE LIST"', js)
+        self.assertIn("<dt>Modified</dt>", js)
+        self.assertIn("dashboard-session-total-cell", js)
+        self.assertNotIn("dashboardLastExportText", js)
+        self.assertNotIn("<dt>Last export</dt>", js)
         self.assertIn("dashboard-session-status-row", js)
-        self.assertIn("dashboard-session-output-row", js)
+        self.assertNotIn("dashboard-session-output-row", js)
         self.assertIn(".dashboard-status-pill.is-progress", css)
         self.assertIn(".dashboard-status-pill.is-progress-upload", css)
         self.assertIn(".dashboard-status-pill.is-progress-quote-company", css)
@@ -8018,7 +8032,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-status-pill.is-generated", css)
         self.assertIn(".dashboard-status-control", css)
         self.assertIn(".dashboard-session-status-row", css)
-        self.assertIn(".dashboard-session-output-row", css)
+        self.assertIn(".dashboard-session-total-cell", css)
         self.assertIn(".dashboard-session-status-row .dashboard-status-pill {", css)
         result_zone_css = css.split(".dashboard-session-result-zone {", 1)[1].split("}", 1)[0]
         status_row_css = css.split(".dashboard-session-status-row {", 1)[1].split("}", 1)[0]
@@ -8060,16 +8074,15 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("renderDashboardPageControls", js)
         self.assertIn("dashboardPageSizeSelect", js)
         self.assertIn("Grand Total", js)
-        self.assertIn("dashboardExportAvailabilityHtml", js)
-        self.assertIn(".dashboard-export-status.is-available", css)
-        self.assertIn(".dashboard-export-status.is-unavailable", css)
+        self.assertNotIn("dashboardExportAvailabilityHtml", js)
+        self.assertNotIn(".dashboard-export-status.is-available", css)
+        self.assertNotIn(".dashboard-export-status.is-unavailable", css)
         self.assertIn(".dashboard-selected-action.is-available", css)
         self.assertIn(".dashboard-selected-action.is-unavailable", css)
-        unavailable_export_css = css.split(".dashboard-export-status.is-unavailable {", 1)[1].split("}", 1)[0]
+        self.assertIn(".dashboard-selected-action-kicker", css)
+        self.assertIn(".dashboard-selected-action.dashboard-export-missing", css)
         unavailable_selected_css = css.split(".dashboard-selected-action.is-unavailable {", 1)[1].split("}", 1)[0]
-        self.assertIn("color: #64748b;", unavailable_export_css)
         self.assertIn("color: #64748b;", unavailable_selected_css)
-        self.assertNotIn("#7f1d1d", unavailable_export_css)
         self.assertNotIn("#7f1d1d", unavailable_selected_css)
         status_body = js.split("function quoteSessionStatus", 1)[1].split("function dashboardSessionCustomerText", 1)[0]
         self.assertNotIn("Missing files", status_body)
@@ -8077,7 +8090,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
         self.assertIn("safeQuoteSessionId(session.session_id", can_modify_body)
         self.assertNotIn("session.has_draft_state === true", can_modify_body)
-        restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
+        restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportAvailabilityItem", 1)[0]
         self.assertIn("clearQuoteSessionDraftSaveTimer", restore_body)
         self.assertIn("detailedSession?.draft_state", restore_body)
         self.assertIn("hydrateDashboardDraftImagePayloads", restore_body)
@@ -8100,6 +8113,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
         self.assertIn("dashboardVisibleSessionIds", js)
+        self.assertIn("scrollDashboardSessionIntoView", js)
+        self.assertIn("elements.dashboardPageControls.hidden = !hasStoredSessions", js)
+        self.assertIn("elements.dashboardSelectionToolbar.hidden = !hasStoredSessions", js)
+        self.assertIn("elements.dashboardPageSizeSelect.disabled = !hasStoredSessions", js)
+        self.assertIn("elements.dashboardRangeSelect.disabled = !hasStoredSessions", js)
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]
         self.assertIn("dashboardShortSessionReference", search_body)
         self.assertIn("dashboardSessionCustomerText(session)", search_body)
@@ -10096,36 +10114,24 @@ function visibleText(html) {
 
 eval([
   extractFunction("dashboardExportAvailabilityItem"),
-  extractFunction("dashboardExportStatusText"),
-  extractFunction("dashboardExportAvailabilityItems"),
-  extractFunction("dashboardExportAvailabilityHtml"),
   extractFunction("dashboardSelectedExportAction"),
 ].join("\n"));
 
 const unavailable = {};
-const unavailableHtml = dashboardExportAvailabilityHtml(unavailable);
-assert.strictEqual(visibleText(unavailableHtml), "XLSX / PDF");
-assert.ok(unavailableHtml.includes('title="XLSX unavailable"'));
-assert.ok(unavailableHtml.includes('title="PDF unavailable"'));
-assert.ok(unavailableHtml.includes("is-unavailable"));
-assert.ok(!visibleText(unavailableHtml).includes("unavailable"));
 
 const mixed = { exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: { missing: true } } };
-const mixedHtml = dashboardExportAvailabilityHtml(mixed);
-assert.strictEqual(visibleText(mixedHtml), "XLSX / PDF");
-assert.ok(mixedHtml.includes('title="XLSX ready"'));
-assert.ok(mixedHtml.includes('title="Missing PDF"'));
-assert.ok(mixedHtml.includes("is-available"));
-assert.ok(mixedHtml.includes("is-unavailable"));
+assert.strictEqual(dashboardExportAvailabilityItem(mixed, "xlsx", "XLSX").statusText, "XLSX ready");
+assert.strictEqual(dashboardExportAvailabilityItem(mixed, "pdf", "PDF").statusText, "Missing PDF");
 
 const xlsxAction = dashboardSelectedExportAction(mixed, "xlsx", "XLSX");
-assert.ok(xlsxAction.includes(">XLSX</a>"));
+assert.ok(xlsxAction.includes("dashboard-selected-action-kicker"));
+assert.strictEqual(visibleText(xlsxAction), "Download XLSX");
 assert.ok(xlsxAction.includes('title="XLSX ready"'));
+assert.ok(xlsxAction.includes('aria-label="Download XLSX"'));
 assert.ok(xlsxAction.includes("is-available"));
-assert.ok(!visibleText(xlsxAction).includes("Download"));
 
 const pdfAction = dashboardSelectedExportAction(unavailable, "pdf", "PDF");
-assert.ok(pdfAction.includes(">PDF</span>"));
+assert.strictEqual(visibleText(pdfAction), "PDF");
 assert.ok(pdfAction.includes('title="PDF unavailable"'));
 assert.ok(pdfAction.includes("is-unavailable"));
 assert.ok(!visibleText(pdfAction).includes("unavailable"));
@@ -10248,17 +10254,30 @@ const state = {
   dashboardActiveSessionId: "",
   quoteSessionRestoreError: "",
 };
+const scrollCalls = [];
 const elements = {
   quoteSessionDeleteModal: { hidden: true },
+  dashboardSessionsList: {
+    querySelector(selector) {
+      return {
+        scrollIntoView(options) {
+          scrollCalls.push({ selector, options });
+        },
+      };
+    },
+  },
 };
 function quoteSessionStatus() { return { key: "draft" }; }
 function dashboardSessionSearchText() { return ""; }
 function profileActionsMenuIsOpen() { return false; }
+function appIsBusy() { return false; }
 let renderCount = 0;
 function renderQuoteDashboard() { renderCount += 1; }
 
 eval([
   extractFunction("safeQuoteSessionId"),
+  extractFunction("dashboardTimestampMs"),
+  extractFunction("dashboardDateFilterMatches"),
   extractFunction("filteredDashboardSessions"),
   extractFunction("dashboardPageSizeValue"),
   extractFunction("dashboardPageCount"),
@@ -10267,9 +10286,30 @@ eval([
   extractFunction("pagedDashboardSessions"),
   extractFunction("dashboardSelectedSessionIds"),
   extractFunction("dashboardVisibleSessionIds"),
+  extractFunction("scrollDashboardSessionIntoView"),
   extractFunction("setDashboardSelection"),
+  extractFunction("handleDashboardSelectModeButton"),
   extractFunction("handleDashboardListArrowKey"),
 ].join("\n"));
+
+const originalDateNow = Date.now;
+Date.now = () => Date.parse("2026-06-24T12:00:00Z");
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-24T01:00:00Z" }, "today"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-20T12:00:00Z" }, "7d"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-01T12:00:00Z" }, "7d"), false);
+state.quoteSessions = [
+  { session_id: "quote-recent", updated_at: "2026-06-22T12:00:00Z" },
+  { session_id: "quote-old", updated_at: "2026-05-01T12:00:00Z" },
+];
+state.dashboardDateFilter = "30d";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
+state.dashboardDateFilter = "all";
+state.quoteSessions = [
+  { session_id: "quote-first" },
+  { session_id: "quote-second" },
+  { session_id: "quote-third" },
+];
+Date.now = originalDateNow;
 
 function keyEvent(key) {
   return {
@@ -10287,14 +10327,26 @@ assert.strictEqual(event.prevented, true);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
 assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
 assert.strictEqual(state.dashboardSelectionMode, false);
+assert.deepStrictEqual(scrollCalls[scrollCalls.length - 1], {
+  selector: '[data-quote-session-id="quote-first"]',
+  options: { block: "nearest", inline: "nearest" },
+});
 
 event = keyEvent("ArrowDown");
 assert.strictEqual(handleDashboardListArrowKey(event), true);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-second");
+assert.deepStrictEqual(scrollCalls[scrollCalls.length - 1], {
+  selector: '[data-quote-session-id="quote-second"]',
+  options: { block: "nearest", inline: "nearest" },
+});
 
 event = keyEvent("ArrowDown");
 assert.strictEqual(handleDashboardListArrowKey(event), true);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-third");
+assert.deepStrictEqual(scrollCalls[scrollCalls.length - 1], {
+  selector: '[data-quote-session-id="quote-third"]',
+  options: { block: "nearest", inline: "nearest" },
+});
 
 event = keyEvent("ArrowDown");
 assert.strictEqual(handleDashboardListArrowKey(event), true);
@@ -10310,6 +10362,11 @@ assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
 
 event = keyEvent("ArrowUp");
 assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+handleDashboardSelectModeButton();
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
 
 state.dashboardActiveSessionId = "";
@@ -12797,6 +12854,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricing-reference-table-open", js)
         self.assertIn(".pricing-reference-table-panel", css)
         self.assertIn(".pricing-reference-table-wrap", css)
+        pricing_table_wrap_css = css.split(".pricing-reference-table-wrap {", 1)[1].split("}", 1)[0]
+        self.assertIn("max-height: min(540px, calc(100vh - 310px));", pricing_table_wrap_css)
+        self.assertIn("border-bottom: 1px solid var(--line-subtle);", pricing_table_wrap_css)
         self.assertIn(".pricing-reference-full-table {\n  min-width: 1120px;", css)
         self.assertIn(".pricing-reference-col-description {\n  width: 300px;", css)
         self.assertIn(".pricing-reference-col-remarks {\n  width: 185px;", css)
@@ -12805,6 +12865,11 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-row-actions", css)
         self.assertIn(".pricing-reference-row-remove", css)
         self.assertIn(".pricing-reference-table-actions", css)
+        pricing_table_actions_css = css.split(".pricing-reference-table-actions {", 1)[1].split("}", 1)[0]
+        self.assertIn("margin-top: 14px;", pricing_table_actions_css)
+        self.assertIn("padding: 18px 18px 28px;", pricing_table_actions_css)
+        self.assertNotIn("border-top:", pricing_table_actions_css)
+        self.assertIn("linear-gradient(180deg, #f8fafc 0, #ffffff 16px)", pricing_table_actions_css)
         self.assertIn(".pricing-reference-table-actions .secondary-button,\n.pricing-reference-table-actions .primary-button {\n  min-height: 48px;", css)
         self.assertIn(".pricing-reference-table-actions .primary-button {\n  min-width: 168px;", css)
         self.assertIn("pricingReferenceStatusClass", js)
