@@ -366,6 +366,70 @@ async function verifyConcurrentInitialDraftSaveUsesSingleSession(page) {
   }, null, { timeout: 15000 });
 }
 
+async function verifyDashboardClearsStaleSessionsBeforeRefresh(page) {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+  await page.evaluate(() => {
+    const staleSession = (suffix) => ({
+      session_id: `quote-stale-${suffix}`,
+      created_at: "2026-06-23T00:00:00Z",
+      updated_at: "2026-06-23T00:00:00Z",
+      customer_summary: { customer_name: "Stale Customer", project_name: `Stale Project ${suffix}` },
+      status: { quote_generated: false, xlsx_exported: false, pdf_exported: false },
+      exports: {},
+      has_draft_state: true,
+    });
+    state.quoteSessions = [staleSession("a"), staleSession("b")];
+    state.dashboardActiveSessionId = "quote-stale-a";
+    state.dashboardSelectedSessionIds = [];
+    renderQuoteDashboard();
+  });
+  const staleCount = await page.locator(".dashboard-session-card").count();
+  if (staleCount !== 2) {
+    throw new Error(`Expected two injected stale dashboard rows before refresh, found ${staleCount}.`);
+  }
+  let releaseDashboardFetch;
+  const releaseFetch = new Promise((resolve) => {
+    releaseDashboardFetch = resolve;
+  });
+  let resolveStarted;
+  const started = new Promise((resolve) => {
+    resolveStarted = resolve;
+  });
+  await page.route("**/api/quote-sessions", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    resolveStarted();
+    await releaseFetch;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ quote_sessions: [] }),
+    });
+  });
+  await page.evaluate(() => showDashboard());
+  await started;
+  await page.waitForTimeout(100);
+  const staleCountDuringRefresh = await page.locator(".dashboard-session-card").count();
+  releaseDashboardFetch();
+  await page.waitForFunction(() => {
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    return emptyState && !emptyState.hidden;
+  }, null, { timeout: 15000 });
+  await page.unroute("**/api/quote-sessions");
+  if (staleCountDuringRefresh !== 0) {
+    throw new Error(`Dashboard should clear stale rows before refreshed sessions load, found ${staleCountDuringRefresh}.`);
+  }
+}
 async function main() {
   let serverInfo = null;
   const hasExistingServer = await healthOk();
@@ -394,6 +458,7 @@ async function main() {
   try {
     await installMockProfiles(page);
     await verifyConcurrentInitialDraftSaveUsesSingleSession(page);
+    await verifyDashboardClearsStaleSessionsBeforeRefresh(page);
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });

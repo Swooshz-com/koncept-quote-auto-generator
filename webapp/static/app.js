@@ -8692,6 +8692,10 @@ async function handleTopbarBrandClick() {
 async function loadQuoteDashboard() {
   if (!elements.quoteDashboardPanel) return;
   state.quoteSessionLoadError = "";
+  state.quoteSessions = [];
+  state.dashboardActiveSessionId = "";
+  state.dashboardSelectedSessionIds = [];
+  renderQuoteDashboard();
   const { ok, data } = await getJson("/api/quote-sessions", { logFetchFailure: false });
   if (!ok) {
     state.quoteSessions = [];
