@@ -8921,6 +8921,60 @@ function dashboardSessionHasCurrentDraft(session = {}) {
   return Boolean(sessionId && sessionId === safeQuoteSessionId(state.quoteSessionId) && quoteDraftShouldPersistToDashboard());
 }
 
+function dashboardDraftImagePayloadMatches(candidate = {}, image = {}) {
+  const candidateKey = String(candidate?.session_file_key || "").trim();
+  const imageKey = String(image?.session_file_key || "").trim();
+  if (candidateKey && imageKey) return candidateKey === imageKey;
+  const candidateName = String(candidate?.name || "").trim().toLowerCase();
+  const imageName = String(image?.name || "").trim().toLowerCase();
+  if (!candidateName || !imageName || candidateName !== imageName) return false;
+  const candidateType = referenceFileType(candidate);
+  const imageType = referenceFileType(image);
+  const candidateSize = Number(candidate?.size);
+  const imageSize = Number(image?.size);
+  const typeMatches = !candidateType || !imageType || candidateType === imageType;
+  const sizeMatches = !Number.isFinite(candidateSize) || !Number.isFinite(imageSize) || candidateSize === imageSize;
+  return typeMatches && sizeMatches;
+}
+
+function mergeDashboardDraftImagesWithAvailablePayloads(draftState = {}, availableImages = []) {
+  const draftImages = Array.isArray(draftState?.images) ? draftState.images.slice(0, MAX_REFERENCE_IMAGES) : [];
+  const payloadImages = (Array.isArray(availableImages) ? availableImages : [])
+    .slice(0, MAX_REFERENCE_IMAGES)
+    .filter((image) => String(image?.data_url || "").trim());
+  if (!draftImages.length || !payloadImages.length) return draftState;
+  const usedPayloadIndexes = new Set();
+  const mergedImages = draftImages.map((image, index) => {
+    if (String(image?.data_url || "").trim()) return image;
+    let payloadIndex = payloadImages.findIndex((candidate, candidateIndex) => (
+      !usedPayloadIndexes.has(candidateIndex)
+      && dashboardDraftImagePayloadMatches(candidate, image)
+    ));
+    if (payloadIndex < 0 && payloadImages.length === draftImages.length && !usedPayloadIndexes.has(index)) {
+      payloadIndex = index;
+    }
+    const payloadImage = payloadIndex >= 0 ? payloadImages[payloadIndex] : null;
+    const dataUrl = String(payloadImage?.data_url || "").trim();
+    if (!dataUrl) return image;
+    usedPayloadIndexes.add(payloadIndex);
+    const size = Number.isFinite(Number(image?.size)) ? Number(image.size) : Number(payloadImage?.size);
+    return {
+      ...image,
+      data_url: dataUrl,
+      type: image?.type || payloadImage?.type || referenceFileType(payloadImage),
+      size: Number.isFinite(size) ? size : 0,
+      session_file_key: image?.session_file_key || payloadImage?.session_file_key || "",
+    };
+  });
+  return { ...draftState, images: mergedImages };
+}
+
+function hydrateDashboardDraftImagePayloads(draftState = {}, sessionId = "") {
+  const safeSessionId = safeQuoteSessionId(sessionId || "");
+  if (!safeSessionId || safeSessionId !== safeQuoteSessionId(state.quoteSessionId || "")) return draftState;
+  return mergeDashboardDraftImagesWithAvailablePayloads(draftState, state.images);
+}
+
 function dashboardSessionCanModify(session = {}) {
   return Boolean(safeQuoteSessionId(session.session_id || ""));
 }
@@ -8962,6 +9016,7 @@ async function modifyDashboardQuote(sessionId) {
       dashboardRestoreError("This quote session does not have saved draft data to modify.");
       return;
     }
+    draftState = hydrateDashboardDraftImagePayloads(draftState, safeSessionId);
     const restored = await applyQuoteSessionSnapshot(
       { ...draftState, quoteSessionId: safeSessionId },
       { sessionId: safeSessionId, forceQuoteView: true }

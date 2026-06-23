@@ -8028,6 +8028,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         quote_company_progress_css = css.split(".dashboard-status-pill.is-progress-quote-company {", 1)[1].split("}", 1)[0]
         customer_progress_css = css.split(".dashboard-status-pill.is-progress-customer {", 1)[1].split("}", 1)[0]
         quote_basis_progress_css = css.split(".dashboard-status-pill.is-progress-quote-basis {", 1)[1].split("}", 1)[0]
+        output_progress_css = css.split(".dashboard-status-pill.is-progress-output {", 1)[1].split("}", 1)[0]
         draft_pill_css = css.split(".dashboard-status-pill.is-draft {", 1)[1].split("}", 1)[0]
         generated_pill_css = css.split(".dashboard-status-pill.is-generated {", 1)[1].split("}", 1)[0]
         card_status_row = js.split('<div class="dashboard-session-status-row">', 1)[1].split("</div>", 1)[0]
@@ -8041,6 +8042,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("text-overflow: ellipsis;", status_pill_css)
         self.assertIn("box-shadow:", progress_pill_css)
         self.assertIn("var(--green-dark)", progress_pill_css)
+        self.assertIn("background: #fbfffd;", upload_progress_css)
+        self.assertIn("background: #f3fbf6;", customer_progress_css)
+        self.assertIn("background: #eaf7f0;", quote_company_progress_css)
+        self.assertIn("background: #dcefe5;", quote_basis_progress_css)
+        self.assertIn("background: #dcefe5;", output_progress_css)
+        for overly_bright_green in ("#99f6e4", "#ccfbf1", "#bbf7d0"):
+            self.assertNotIn(overly_bright_green, css)
         self.assertNotEqual(upload_progress_css, customer_progress_css)
         self.assertNotEqual(quote_company_progress_css, customer_progress_css)
         self.assertNotEqual(customer_progress_css, quote_basis_progress_css)
@@ -8072,6 +8080,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportStatusText", 1)[0]
         self.assertIn("clearQuoteSessionDraftSaveTimer", restore_body)
         self.assertIn("detailedSession?.draft_state", restore_body)
+        self.assertIn("hydrateDashboardDraftImagePayloads", restore_body)
         self.assertIn("currentQuoteSessionDraftState()", restore_body)
         self.assertIn("rememberRestoredQuoteSessionBaseline", restore_body)
         self.assertIn("This quote session does not have saved draft data to modify.", restore_body)
@@ -11418,6 +11427,126 @@ updateSidePanelNav();
 assert.strictEqual(elements.analyseAgainButton.disabled, false);
 assert.strictEqual(elements.analyseAgainButton["aria-disabled"], "false");
 assert.strictEqual(elements.analyseAgainButton.title, "Re-analyse the quote basis using the uploaded reference images.");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_modify_dashboard_quote_reuses_current_image_payloads(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const MAX_REFERENCE_IMAGES = 8;
+const QUOTE_SESSION_STATE_VERSION = 4;
+const state = {
+  quoteSessionId: "quote-active123",
+  quoteSessionRestoreBusy: false,
+  quoteSessionLoadError: "",
+  dashboardSelectionMode: true,
+  dashboardSelectedSessionIds: ["quote-active123"],
+  dashboardActiveSessionId: "",
+  images: [{
+    name: "render.jpg",
+    type: "image/jpeg",
+    size: 12,
+    session_file_key: "browser-file-key",
+    data_url: "data:image/jpeg;base64,UkVOREVS",
+  }],
+};
+let appliedSnapshot = null;
+let shownQuoteFlow = false;
+let rememberedBaseline = "";
+let controlsSynced = 0;
+
+function appIsBusy() { return false; }
+function clearQuoteSessionDraftSaveTimer() {}
+function syncControlStates() { controlsSynced += 1; }
+function quoteDraftShouldPersistToDashboard() { return true; }
+function currentQuoteSessionDraftState() { throw new Error("Server draft state should be used."); }
+function mergeDashboardQuoteSession() {}
+function dashboardRestoreError(message) { throw new Error(message); }
+async function loadQuoteSessionDetail() {
+  return {
+    session_id: "quote-active123",
+    draft_state: {
+      version: QUOTE_SESSION_STATE_VERSION,
+      activeAppView: "quote",
+      activeSidePanel: "basis",
+      quoteSessionDraftSaveStarted: true,
+      images: [{
+        name: "render.jpg",
+        type: "image/jpeg",
+        size: 12,
+        session_file_key: "browser-file-key",
+      }],
+    },
+  };
+}
+async function applyQuoteSessionSnapshot(snapshot) {
+  appliedSnapshot = snapshot;
+  state.images = snapshot.images;
+  return true;
+}
+function rememberRestoredQuoteSessionBaseline(sessionId) { rememberedBaseline = sessionId; }
+function showQuoteFlow() { shownQuoteFlow = true; }
+
+eval([
+  "safeQuoteSessionId",
+  "referenceFileType",
+  "dashboardDraftImagePayloadMatches",
+  "mergeDashboardDraftImagesWithAvailablePayloads",
+  "hydrateDashboardDraftImagePayloads",
+  "modifyDashboardQuote",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  await modifyDashboardQuote("quote-active123");
+
+  assert.ok(appliedSnapshot);
+  assert.strictEqual(appliedSnapshot.images.length, 1);
+  assert.strictEqual(appliedSnapshot.images[0].data_url, "data:image/jpeg;base64,UkVOREVS");
+  assert.strictEqual(appliedSnapshot.images[0].session_file_key, "browser-file-key");
+  assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+  assert.strictEqual(state.dashboardSelectionMode, false);
+  assert.strictEqual(state.dashboardActiveSessionId, "quote-active123");
+  assert.strictEqual(rememberedBaseline, "quote-active123");
+  assert.strictEqual(shownQuoteFlow, true);
+  assert.ok(controlsSynced >= 2);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
 """
         completed = subprocess.run(
             [node, "-e", script],
