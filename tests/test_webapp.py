@@ -7958,6 +7958,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
         css = (static_dir / "styles.css").read_text(encoding="utf-8")
+        smoke_script = (ROOT / "scripts" / "playwright-smoke.mjs").read_text(encoding="utf-8")
 
         self.assertNotIn("dashboardContinueQuoteButton", html)
         self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
@@ -7975,6 +7976,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('id="dashboardRangeSelect"', html)
         self.assertIn('<option value="all">All</option>', html)
         self.assertNotIn("All statuses", html)
+        self.assertIn('["All", "Draft", "Generated"]', smoke_script)
+        self.assertNotIn('["All statuses", "Draft", "Generated"]', smoke_script)
         self.assertIn("dashboard-status-control", html)
         self.assertIn('id="quoteSessionDeleteModal"', html)
         self.assertIn("Delete quote session?", html)
@@ -12367,7 +12370,7 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: calc(100dvh - 32px);", css)
         self.assertIn("max-height: calc(100dvh - 32px);", css)
         settings_panel_css = css.split(".pricing-reference-settings-panel {", 1)[1].split("}", 1)[0]
-        self.assertIn("width: min(540px, calc(100vw - 32px));", settings_panel_css)
+        self.assertIn("width: min(630px, calc(100vw - 32px));", settings_panel_css)
         self.assertNotIn("width: min(720px", settings_panel_css)
         self.assertIn("grid-template-rows: minmax(0, 1fr) auto;", css)
         self.assertIn(".pricing-reference-editor-body {\n  display: grid;\n  gap: 14px;\n  align-content: start;\n  grid-auto-rows: max-content;\n  min-height: 0;", css)

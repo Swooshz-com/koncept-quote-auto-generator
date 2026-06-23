@@ -601,7 +601,7 @@ async function main() {
     const statusFilterLabels = await page.locator("#dashboardStatusFilter option").evaluateAll((options) => (
       options.map((option) => option.textContent?.trim())
     ));
-    if (JSON.stringify(statusFilterLabels) !== JSON.stringify(["All statuses", "Draft", "Generated"])) {
+    if (JSON.stringify(statusFilterLabels) !== JSON.stringify(["All", "Draft", "Generated"])) {
       throw new Error(`Unexpected dashboard status filters: ${JSON.stringify(statusFilterLabels)}`);
     }
     await expectTopbarPrimaryAction(page, "new-quote");

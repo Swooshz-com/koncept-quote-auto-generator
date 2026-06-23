@@ -6204,7 +6204,7 @@ td input {
 }
 
 .pricing-reference-settings-panel {
-  width: min(540px, calc(100vw - 32px));
+  width: min(630px, calc(100vw - 32px));
   height: calc(100dvh - 32px);
   max-height: calc(100dvh - 32px);
   margin: 0 auto;
