@@ -9895,6 +9895,133 @@ assert.deepStrictEqual(deleteRequest, {
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_dashboard_arrow_keys_move_single_selection_without_looping(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DASHBOARD_DEFAULT_PAGE_SIZE = 5;
+const DASHBOARD_PAGE_SIZE_OPTIONS = [5, 10, 25];
+const state = {
+  activeAppView: "dashboard",
+  quoteSessionLoadError: "",
+  quoteSessions: [
+    { session_id: "quote-first" },
+    { session_id: "quote-second" },
+    { session_id: "quote-third" },
+  ],
+  dashboardStatusFilter: "all",
+  dashboardSearch: "",
+  dashboardPageSize: 5,
+  dashboardPageIndex: 0,
+  dashboardSelectionMode: false,
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "",
+  quoteSessionRestoreError: "",
+};
+const elements = {
+  quoteSessionDeleteModal: { hidden: true },
+};
+function quoteSessionStatus() { return { key: "draft" }; }
+function dashboardSessionSearchText() { return ""; }
+function profileActionsMenuIsOpen() { return false; }
+let renderCount = 0;
+function renderQuoteDashboard() { renderCount += 1; }
+
+eval([
+  extractFunction("safeQuoteSessionId"),
+  extractFunction("filteredDashboardSessions"),
+  extractFunction("dashboardPageSizeValue"),
+  extractFunction("dashboardPageCount"),
+  extractFunction("clampDashboardPageIndex"),
+  extractFunction("dashboardPageRange"),
+  extractFunction("pagedDashboardSessions"),
+  extractFunction("dashboardSelectedSessionIds"),
+  extractFunction("dashboardVisibleSessionIds"),
+  extractFunction("setDashboardSelection"),
+  extractFunction("handleDashboardListArrowKey"),
+].join("\n"));
+
+function keyEvent(key) {
+  return {
+    key,
+    defaultPrevented: false,
+    target: { closest() { return null; } },
+    prevented: false,
+    preventDefault() { this.prevented = true; },
+  };
+}
+
+let event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(event.prevented, true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+assert.strictEqual(state.dashboardSelectionMode, false);
+
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-second");
+
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-third");
+
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-third");
+
+event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-second");
+
+event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+state.dashboardActiveSessionId = "";
+state.activeAppView = "quote";
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), false);
+assert.strictEqual(event.prevented, false);
+assert.strictEqual(state.dashboardActiveSessionId, "");
+assert.ok(renderCount >= 1);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_modals_focus_primary_actions_without_forced_enter_override(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")

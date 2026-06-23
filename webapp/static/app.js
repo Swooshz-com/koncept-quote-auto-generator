@@ -9481,6 +9481,39 @@ function handleDashboardSessionKeydown(event) {
   setDashboardSelection(card.dataset.quoteSessionId || "", { mode: state.dashboardSelectionMode ? "toggle" : "single" });
 }
 
+function handleDashboardListArrowKey(event) {
+  if (!["ArrowUp", "ArrowDown"].includes(event.key) || event.defaultPrevented) return false;
+  if (state.activeAppView !== "dashboard") return false;
+  if (event.target?.closest?.("input, button, a, select, textarea, [contenteditable='true']")) return false;
+  if (profileActionsMenuIsOpen()) return false;
+  if (elements.pricingReferenceTableOverlay && !elements.pricingReferenceTableOverlay.hidden) return false;
+  if (elements.basisChatOverlay && !elements.basisChatOverlay.hidden) return false;
+  if (elements.profileLoadModal && !elements.profileLoadModal.hidden) return false;
+  if (elements.profileOverwriteModal && !elements.profileOverwriteModal.hidden) return false;
+  if (elements.profileNameModal && !elements.profileNameModal.hidden) return false;
+  if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) return false;
+  if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) return false;
+  if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) return false;
+  if (elements.pricingReferenceModal && !elements.pricingReferenceModal.hidden) return false;
+  if (elements.analysisConfirmModal && !elements.analysisConfirmModal.hidden) return false;
+
+  const visibleIds = dashboardVisibleSessionIds();
+  if (!visibleIds.length) return false;
+  const activeId = safeQuoteSessionId(state.dashboardActiveSessionId || "");
+  const selectedIds = dashboardSelectedSessionIds();
+  const currentId = activeId || (selectedIds.length === 1 ? selectedIds[0] : "");
+  const currentIndex = visibleIds.indexOf(currentId);
+  let nextIndex = 0;
+  if (currentIndex >= 0) {
+    nextIndex = event.key === "ArrowUp"
+      ? Math.max(0, currentIndex - 1)
+      : Math.min(visibleIds.length - 1, currentIndex + 1);
+  }
+  event.preventDefault();
+  setDashboardSelection(visibleIds[nextIndex], { mode: "single" });
+  return true;
+}
+
 function handleDashboardDeleteKey(event) {
   if (event.key !== "Delete" || event.defaultPrevented) return false;
   if (state.activeAppView !== "dashboard") return false;
@@ -10493,6 +10526,7 @@ function wireEvents() {
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (handleDashboardListArrowKey(event)) return;
     if (handleDashboardDeleteKey(event)) return;
     if (event.key === "Escape") {
       if (profileActionsMenuIsOpen()) {
