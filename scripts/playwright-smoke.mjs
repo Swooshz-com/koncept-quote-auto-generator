@@ -386,6 +386,12 @@ async function verifyDashboardClearsStaleSessionsBeforeRefresh(page) {
       exports: {},
       has_draft_state: true,
     });
+    state.quoteSessionLoadError = "";
+    state.dashboardStatusFilter = "all";
+    state.dashboardSearch = "";
+    state.dashboardPageIndex = 0;
+    if (elements.dashboardStatusFilter) elements.dashboardStatusFilter.value = "all";
+    if (elements.dashboardSearchInput) elements.dashboardSearchInput.value = "";
     state.quoteSessions = [staleSession("a"), staleSession("b")];
     state.dashboardActiveSessionId = "quote-stale-a";
     state.dashboardSelectedSessionIds = [];
