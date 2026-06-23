@@ -8759,9 +8759,23 @@ function dashboardSessionProgressLabel(session = {}) {
   return label ? `Saved at ${label}` : "";
 }
 
+function dashboardProgressStageClass(label = "") {
+  const normalized = String(label || "")
+    .replace(/^Saved at\s+/i, "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "upload") return "is-progress-upload";
+  if (normalized === "customer") return "is-progress-customer";
+  if (normalized === "quote company") return "is-progress-quote-company";
+  if (normalized === "quote basis") return "is-progress-quote-basis";
+  if (normalized === "output") return "is-progress-output";
+  return "is-progress-generic";
+}
+
 function dashboardSessionProgressPill(session = {}) {
   const label = dashboardSessionProgressLabel(session);
-  return label ? `<span class="dashboard-status-pill dashboard-progress-pill is-progress" aria-label="Latest saved workflow step: ${escapeHtml(label)}">${escapeHtml(label)}</span>` : "";
+  const stageClass = dashboardProgressStageClass(label);
+  return label ? `<span class="dashboard-status-pill dashboard-progress-pill is-progress ${escapeHtml(stageClass)}" aria-label="Latest saved workflow step: ${escapeHtml(label)}">${escapeHtml(label)}</span>` : "";
 }
 
 function dashboardSessionCustomerText(session = {}) {
@@ -10306,7 +10320,14 @@ function updateSidePanelNav() {
   elements.resetImagesButton.disabled = busy || !state.images.length;
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
-  elements.analyseAgainButton.disabled = busy || !state.images.length;
+  const canReanalyseBasis = state.images.length > 0;
+  elements.analyseAgainButton.disabled = busy || !canReanalyseBasis;
+  elements.analyseAgainButton.title = busy
+    ? appBusyTitle()
+    : canReanalyseBasis
+      ? "Re-analyse the quote basis using the uploaded reference images."
+      : "Images from this saved quote are unavailable in this browser. Upload the reference images again before re-analysing.";
+  elements.analyseAgainButton.setAttribute?.("aria-disabled", String(elements.analyseAgainButton.disabled));
   elements.resetQuoteBasisButton.disabled = busy || !state.originalAnalysisSnapshot;
   elements.resetOutputButton.disabled = busy || !state.originalOutputRows.length;
   document.querySelectorAll("button[data-side-panel]").forEach((button) => {

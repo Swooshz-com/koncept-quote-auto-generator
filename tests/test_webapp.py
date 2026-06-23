@@ -7973,6 +7973,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-list-toolbar", html)
         self.assertIn('id="dashboardPageSizeSelect"', html)
         self.assertIn('id="dashboardRangeSelect"', html)
+        self.assertIn('<option value="all">All</option>', html)
+        self.assertNotIn("All statuses", html)
+        self.assertIn("dashboard-status-control", html)
         self.assertIn('id="quoteSessionDeleteModal"', html)
         self.assertIn("Delete quote session?", html)
         self.assertIn("Delete selected quote sessions?", js)
@@ -7995,6 +7998,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-session-meta-zone", js)
         self.assertIn("dashboard-session-result-zone", js)
         self.assertIn("dashboardSessionProgressLabel", js)
+        self.assertIn("dashboardProgressStageClass", js)
         self.assertIn("dashboardSessionProgressPill", js)
         self.assertIn("Saved at ${label}", js)
         self.assertIn("dashboardSessionProgressPill(session)", js)
@@ -8002,6 +8006,14 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-session-status-row", js)
         self.assertIn("dashboard-session-output-row", js)
         self.assertIn(".dashboard-status-pill.is-progress", css)
+        self.assertIn(".dashboard-status-pill.is-progress-upload", css)
+        self.assertIn(".dashboard-status-pill.is-progress-quote-company", css)
+        self.assertIn(".dashboard-status-pill.is-progress-customer", css)
+        self.assertIn(".dashboard-status-pill.is-progress-quote-basis", css)
+        self.assertIn(".dashboard-status-pill.is-progress-output", css)
+        self.assertIn(".dashboard-status-pill.is-draft", css)
+        self.assertIn(".dashboard-status-pill.is-generated", css)
+        self.assertIn(".dashboard-status-control", css)
         self.assertIn(".dashboard-session-status-row", css)
         self.assertIn(".dashboard-session-output-row", css)
         self.assertIn(".dashboard-session-status-row .dashboard-status-pill {", css)
@@ -8009,6 +8021,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         status_row_css = css.split(".dashboard-session-status-row {", 1)[1].split("}", 1)[0]
         status_pill_css = css.split(".dashboard-session-status-row .dashboard-status-pill {", 1)[1].split("}", 1)[0]
         progress_pill_css = css.split(".dashboard-status-pill.is-progress {", 1)[1].split("}", 1)[0]
+        upload_progress_css = css.split(".dashboard-status-pill.is-progress-upload {", 1)[1].split("}", 1)[0]
+        quote_company_progress_css = css.split(".dashboard-status-pill.is-progress-quote-company {", 1)[1].split("}", 1)[0]
+        customer_progress_css = css.split(".dashboard-status-pill.is-progress-customer {", 1)[1].split("}", 1)[0]
+        quote_basis_progress_css = css.split(".dashboard-status-pill.is-progress-quote-basis {", 1)[1].split("}", 1)[0]
+        draft_pill_css = css.split(".dashboard-status-pill.is-draft {", 1)[1].split("}", 1)[0]
+        generated_pill_css = css.split(".dashboard-status-pill.is-generated {", 1)[1].split("}", 1)[0]
         card_status_row = js.split('<div class="dashboard-session-status-row">', 1)[1].split("</div>", 1)[0]
         selected_status_row = js.split('<div class="dashboard-selected-status-row">', 1)[1].split("</div>", 1)[0]
         self.assertLess(card_status_row.index("dashboardSessionProgressPill(session)"), card_status_row.index("status.className"))
@@ -8020,6 +8038,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("text-overflow: ellipsis;", status_pill_css)
         self.assertIn("box-shadow:", progress_pill_css)
         self.assertIn("var(--green-dark)", progress_pill_css)
+        self.assertNotEqual(upload_progress_css, customer_progress_css)
+        self.assertNotEqual(quote_company_progress_css, customer_progress_css)
+        self.assertNotEqual(customer_progress_css, quote_basis_progress_css)
+        self.assertNotEqual(draft_pill_css, generated_pill_css)
         self.assertIn("dashboard-bulk-selection-summary", js)
         self.assertIn("DASHBOARD_DEFAULT_PAGE_SIZE = 5", js)
         self.assertIn("pagedDashboardSessions", js)
@@ -8032,6 +8054,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-export-status.is-unavailable", css)
         self.assertIn(".dashboard-selected-action.is-available", css)
         self.assertIn(".dashboard-selected-action.is-unavailable", css)
+        unavailable_export_css = css.split(".dashboard-export-status.is-unavailable {", 1)[1].split("}", 1)[0]
+        unavailable_selected_css = css.split(".dashboard-selected-action.is-unavailable {", 1)[1].split("}", 1)[0]
+        self.assertIn("color: #64748b;", unavailable_export_css)
+        self.assertIn("color: #64748b;", unavailable_selected_css)
+        self.assertNotIn("#7f1d1d", unavailable_export_css)
+        self.assertNotIn("#7f1d1d", unavailable_selected_css)
         status_body = js.split("function quoteSessionStatus", 1)[1].split("function dashboardSessionCustomerText", 1)[0]
         self.assertNotIn("Missing files", status_body)
         self.assertNotIn('label: "Exported"', status_body)
@@ -10088,6 +10116,69 @@ assert.ok(!visibleText(pdfAction).includes("unavailable"));
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_dashboard_progress_pill_uses_stage_specific_classes(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+eval([
+  extractFunction("dashboardSessionProgressLabel"),
+  extractFunction("dashboardProgressStageClass"),
+  extractFunction("dashboardSessionProgressPill"),
+].join("\n"));
+
+assert.strictEqual(dashboardProgressStageClass("Saved at Upload"), "is-progress-upload");
+assert.strictEqual(dashboardProgressStageClass("Saved at Quote Company"), "is-progress-quote-company");
+assert.strictEqual(dashboardProgressStageClass("Saved at Customer"), "is-progress-customer");
+assert.strictEqual(dashboardProgressStageClass("Saved at Quote Basis"), "is-progress-quote-basis");
+assert.strictEqual(dashboardProgressStageClass("Saved at Output"), "is-progress-output");
+assert.strictEqual(dashboardProgressStageClass("Saved at Something Else"), "is-progress-generic");
+
+const html = dashboardSessionProgressPill({ draft_progress: { label: "Quote Basis" } });
+assert.ok(html.includes("dashboard-progress-pill is-progress is-progress-quote-basis"));
+assert.ok(html.includes("Saved at Quote Basis"));
+assert.ok(html.includes('aria-label="Latest saved workflow step: Saved at Quote Basis"'));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_dashboard_arrow_keys_move_single_selection_without_looping(self):
         node = require_node(self)
 
@@ -11238,6 +11329,103 @@ assert.strictEqual(currentPricingReference().label, "Default Ref");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_quote_basis_reanalyse_explains_missing_restored_images(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "output"];
+const classList = () => ({ add() {}, remove() {}, toggle() {} });
+const control = () => ({
+  hidden: false,
+  disabled: false,
+  title: "",
+  textContent: "",
+  classList: classList(),
+  setAttribute(name, value) { this[name] = value; },
+});
+const state = {
+  activeSidePanel: "basis",
+  images: [],
+  isAnalysisRunning: false,
+  isGenerating: false,
+  isPreparingOutput: false,
+  quoteSessionRestoreBusy: false,
+  originalAnalysisSnapshot: { quote_basis_sections: [] },
+  originalOutputRows: [],
+};
+const elements = {
+  sampleDetailsButton: control(),
+  resetImagesButton: control(),
+  clearCustomerButton: control(),
+  clearQuoteCompanyButton: control(),
+  analyseAgainButton: control(),
+  resetQuoteBasisButton: control(),
+  resetOutputButton: control(),
+  sideBackButton: control(),
+  sideNextButton: control(),
+  workspacePaneFooter: { classList: classList() },
+  sideDownloadButton: control(),
+  sideViewPdfButton: control(),
+};
+const document = { querySelectorAll() { return []; } };
+function appIsBusy() { return false; }
+function appBusyTitle() { return "Busy"; }
+function currentGenerator() { return { analyzeLabel: "Start Analysis" }; }
+function sidePanelBlockReason() { return ""; }
+function basisConfirmBlockReason() { return ""; }
+function startAnalysisBlockReason() { return ""; }
+function updateDownloadButton() {}
+function activeSidePanelIndex() { return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel)); }
+
+eval(extractFunction("updateSidePanelNav"));
+
+updateSidePanelNav();
+assert.strictEqual(elements.analyseAgainButton.hidden, false);
+assert.strictEqual(elements.analyseAgainButton.disabled, true);
+assert.strictEqual(elements.analyseAgainButton["aria-disabled"], "true");
+assert.strictEqual(
+  elements.analyseAgainButton.title,
+  "Images from this saved quote are unavailable in this browser. Upload the reference images again before re-analysing."
+);
+
+state.images = [{ name: "render.jpg" }];
+updateSidePanelNav();
+assert.strictEqual(elements.analyseAgainButton.disabled, false);
+assert.strictEqual(elements.analyseAgainButton["aria-disabled"], "false");
+assert.strictEqual(elements.analyseAgainButton.title, "Re-analyse the quote basis using the uploaded reference images.");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_pricing_reference_manage_select_can_review_local_reference(self):
         node = require_node(self)
 
@@ -12178,6 +12366,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-modal-panel .modal-form", css)
         self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: calc(100dvh - 32px);", css)
         self.assertIn("max-height: calc(100dvh - 32px);", css)
+        settings_panel_css = css.split(".pricing-reference-settings-panel {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: min(540px, calc(100vw - 32px));", settings_panel_css)
+        self.assertNotIn("width: min(720px", settings_panel_css)
         self.assertIn("grid-template-rows: minmax(0, 1fr) auto;", css)
         self.assertIn(".pricing-reference-editor-body {\n  display: grid;\n  gap: 14px;\n  align-content: start;\n  grid-auto-rows: max-content;\n  min-height: 0;", css)
         self.assertIn("scroll-padding-bottom: 28px;", css)
