@@ -4840,6 +4840,12 @@ select:focus {
   margin-bottom: 2px;
 }
 
+.basis-line-row.is-attention {
+  border-color: var(--amber-border);
+  background: #fffaf0;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.12);
+}
+
 .basis-line-icon {
   display: inline-grid;
   place-items: center;

@@ -11526,6 +11526,106 @@ eval([
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_restore_quote_details_logo_uses_file_store_or_profile_fallback(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+let requestedKeys = [];
+let selectedPresetResponse = null;
+let fileMap = new Map();
+function loadSessionFileMap(keys) {
+  requestedKeys = keys;
+  return Promise.resolve(fileMap);
+}
+function selectedPreset() {
+  return selectedPresetResponse;
+}
+
+eval([
+  "selectedPresetCompanyLogo",
+  "restoreQuoteDetailsLogo",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  fileMap = new Map([["logo-key", {
+    name: "stored-logo.png",
+    type: "image/png",
+    data_url: "data:image/png;base64,U1RPUkVE",
+  }]]);
+  const restored = await restoreQuoteDetailsLogo({
+    company: {
+      name: "Stored Logo Co",
+      logo_session_file_key: "logo-key",
+      logo_name: "old-logo.png",
+      logo_type: "image/jpeg",
+    },
+  });
+  assert.deepStrictEqual(requestedKeys, ["logo-key"]);
+  assert.strictEqual(restored.company.logo_data_url, "data:image/png;base64,U1RPUkVE");
+  assert.strictEqual(restored.company.logo_name, "stored-logo.png");
+  assert.strictEqual(restored.company.logo_type, "image/png");
+
+  requestedKeys = [];
+  fileMap = new Map();
+  selectedPresetResponse = {
+    details: {
+      company: {
+        logo_data_url: "data:image/png;base64,UFJPRklMRQ==",
+        logo_name: "profile-logo.png",
+        logo_type: "image/png",
+      },
+    },
+  };
+  const fallback = await restoreQuoteDetailsLogo({
+    company: {
+      name: "Profile Logo Co",
+      logo_session_file_key: "missing-logo-key",
+    },
+  });
+  assert.deepStrictEqual(requestedKeys, ["missing-logo-key"]);
+  assert.strictEqual(fallback.company.logo_data_url, "data:image/png;base64,UFJPRklMRQ==");
+  assert.strictEqual(fallback.company.logo_name, "profile-logo.png");
+  assert.strictEqual(fallback.company.logo_type, "image/png");
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_modify_dashboard_quote_reuses_current_image_payloads(self):
         node = require_node(self)
 
@@ -12025,6 +12125,12 @@ const state = {
   pricingReferenceId: "synthetic-exhibition-fixture-pricing",
   pricingReferenceSource: "bundled",
   selectedPresetValue: "profile:synthetic-fixture-default",
+  headerLogo: {
+    name: "logo.png",
+    type: "image/png",
+    size: 512,
+    data_url: "data:image/png;base64,TE9HTw==",
+  },
   images: [{
     name: "huge-reference.pdf",
     type: "application/pdf",
@@ -12054,7 +12160,15 @@ const state = {
   activeJob: null,
 };
 function collectQuoteDetails() {
-  return { project: { title: "Persistent project" } };
+  return {
+    project: { title: "Persistent project" },
+    company: {
+      name: "Persistent Company",
+      logo_data_url: state.headerLogo.data_url,
+      logo_name: state.headerLogo.name,
+      logo_type: state.headerLogo.type,
+    },
+  };
 }
 function referenceFileType(entry = {}) {
   return entry.type || "image";
@@ -12077,8 +12191,12 @@ function persistSessionFiles(records) {
 
 eval([
   "sessionFileKeyForImage",
+  "sessionFileKeyForLogo",
   "sessionImageMetadata",
+  "quoteDetailsWithSessionLogoMetadata",
   "sessionFileRecordsFromImages",
+  "sessionFileRecordFromHeaderLogo",
+  "sessionFileRecordsFromDraft",
   "buildSessionSnapshot",
   "saveSessionState",
 ].map(extractFunction).join("\n"));
@@ -12087,13 +12205,21 @@ saveSessionState();
 
 const saved = JSON.parse(savedPayload);
 assert.strictEqual(saved.quoteDetails.project.title, "Persistent project");
+assert.strictEqual(saved.quoteDetails.company.name, "Persistent Company");
+assert.strictEqual(saved.quoteDetails.company.logo_data_url, undefined);
+assert.strictEqual(saved.quoteDetails.company.logo_name, "logo.png");
+assert.strictEqual(saved.quoteDetails.company.logo_type, "image/png");
+assert.ok(saved.quoteDetails.company.logo_session_file_key);
 assert.strictEqual(saved.images.length, 1);
 assert.strictEqual(saved.images[0].name, "huge-reference.pdf");
 assert.strictEqual(saved.images[0].data_url, undefined);
 assert.ok(saved.images[0].session_file_key);
-assert.strictEqual(persistedRecords.length, 1);
+assert.strictEqual(persistedRecords.length, 2);
 assert.strictEqual(persistedRecords[0].data_url.startsWith("data:application/pdf;base64,"), true);
+assert.strictEqual(persistedRecords[1].data_url, "data:image/png;base64,TE9HTw==");
+assert.strictEqual(persistedRecords[1].session_file_key, saved.quoteDetails.company.logo_session_file_key);
 assert.strictEqual(state.images[0].session_file_key, saved.images[0].session_file_key);
+assert.strictEqual(state.headerLogo.session_file_key, saved.quoteDetails.company.logo_session_file_key);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -14589,6 +14715,69 @@ assert.ok(!status.innerHTML.includes(">Review</button>"));
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_wait_for_ui_paint_has_timeout_fallback(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+let timeoutDelay = null;
+const window = {
+  requestAnimationFrame() {},
+  setTimeout(callback, delay) {
+    timeoutDelay = delay;
+    callback();
+    return 1;
+  },
+};
+
+eval(extractFunction("waitForUiPaint"));
+
+(async () => {
+  let resolved = false;
+  const failTimer = globalThis.setTimeout(() => {
+    console.error("waitForUiPaint did not resolve without animation frames");
+    process.exit(2);
+  }, 50);
+  await waitForUiPaint().then(() => { resolved = true; });
+  globalThis.clearTimeout(failTimer);
+  assert.strictEqual(resolved, true);
+  assert.ok(timeoutDelay > 0);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_quote_basis_high_quality_pill_follows_analysis_mode(self):
         node = require_node(self)
 
@@ -14674,8 +14863,12 @@ assert.ok(!standardHtml.includes(">High Quality<"));
         self.assertIn("Resolve all review lines before confirming quotation basis.", js)
         self.assertIn('confirmBasis();', js)
         next_body = js.split("async function goToNextSidePanel", 1)[1].split("function handleQuoteBasisClick", 1)[0]
+        blocked_basis_body = js.split("function showBlockedBasisAction", 1)[1].split("function basisTagLabel", 1)[0]
         self.assertIn('state.activeSidePanel === "basis"', next_body)
-        self.assertIn('showBlockedAction(reason, { details: false });', next_body)
+        self.assertIn("showBlockedBasisAction(reason);", next_body)
+        self.assertIn("revealBlockedBasisAction();", blocked_basis_body)
+        self.assertIn("function firstUnresolvedBasisLineRef", js)
+        self.assertIn("function revealBlockedBasisAction", js)
         self.assertNotIn("Next: Output", js)
 
         node = require_node(self)
@@ -15896,12 +16089,10 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
         missing_branch = confirm_body.split("if (missing.length)", 1)[1].split("state.isPreparingOutput", 1)[0]
         confirm_block_branch = confirm_body.split("if (confirmBlockReason)", 1)[1].split("if (state.aiFailed)", 1)[0]
         empty_items_branch = confirm_body.split("if (!state.lineItems.length)", 1)[1].split("const missing", 1)[0]
-        self.assertIn("showBlockedAction(confirmBlockReason, { details: false });", confirm_block_branch)
-        self.assertIn("showBlockedAction(", empty_items_branch)
-        self.assertIn("{ details: false }", empty_items_branch)
+        self.assertIn("showBlockedBasisAction(confirmBlockReason);", confirm_block_branch)
+        self.assertIn("showBlockedBasisAction(", empty_items_branch)
         self.assertIn("await saveQuoteSessionDraftState({ quoteGenerated: false });", missing_branch)
-        self.assertIn("showBlockedAction(", missing_branch)
-        self.assertIn("{ details: false }", missing_branch)
+        self.assertIn("showBlockedBasisAction(", missing_branch)
         self.assertIn("state.outputRows = snapshotOutputRows(state.originalOutputRows);", reset_body)
         self.assertIn("state.lineItems = outputRowsToLineItems();", reset_body)
         self.assertNotIn("refreshLineItemsFromServer", reset_body)

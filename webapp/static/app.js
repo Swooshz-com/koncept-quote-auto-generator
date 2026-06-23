@@ -2121,6 +2121,21 @@ function sessionFileKeyForImage(image = {}, index = 0) {
   return key;
 }
 
+function sessionFileKeyForLogo(logo = state.headerLogo) {
+  const existing = String(logo?.session_file_key || "").trim();
+  if (existing) return existing;
+  if (!logo || typeof logo !== "object") return "";
+  const namePart = String(logo.name || "header-logo")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "header-logo";
+  const sizePart = String(Number.isFinite(Number(logo.size)) ? Number(logo.size) : 0);
+  const key = `${Date.now().toString(36)}-logo-${sizePart}-${namePart}-${Math.random().toString(36).slice(2, 10)}`;
+  logo.session_file_key = key;
+  return key;
+}
+
 function sessionImageMetadata(image = {}, index = 0) {
   const sessionFileKey = sessionFileKeyForImage(image, index);
   return {
@@ -2131,6 +2146,27 @@ function sessionImageMetadata(image = {}, index = 0) {
   };
 }
 
+function quoteDetailsWithSessionLogoMetadata(details = collectQuoteDetails()) {
+  const company = { ...(details.company || {}) };
+  const logo = state.headerLogo?.data_url ? state.headerLogo : null;
+  const logoDataUrl = String(logo?.data_url || company.logo_data_url || "").trim();
+  if (!logoDataUrl) return { ...details, company };
+  const logoSource = logo || {
+    name: company.logo_name || "header-logo",
+    type: company.logo_type || "image/png",
+    size: Number.isFinite(Number(company.logo_size)) ? Number(company.logo_size) : 0,
+    data_url: logoDataUrl,
+    session_file_key: company.logo_session_file_key || "",
+  };
+  const sessionFileKey = sessionFileKeyForLogo(logoSource);
+  company.logo_name = logoSource.name || company.logo_name || "header-logo";
+  company.logo_type = logoSource.type || company.logo_type || "image/png";
+  company.logo_size = Number.isFinite(Number(logoSource.size)) ? Number(logoSource.size) : 0;
+  company.logo_session_file_key = sessionFileKey;
+  delete company.logo_data_url;
+  return { ...details, company };
+}
+
 function sessionFileRecordsFromImages(images = state.images) {
   return images
     .slice(0, MAX_REFERENCE_IMAGES)
@@ -2139,6 +2175,26 @@ function sessionFileRecordsFromImages(images = state.images) {
       data_url: String(image.data_url || "").trim(),
     }))
     .filter((record) => record.session_file_key && record.data_url);
+}
+
+function sessionFileRecordFromHeaderLogo(logo = state.headerLogo) {
+  const dataUrl = String(logo?.data_url || "").trim();
+  if (!dataUrl) return null;
+  const sessionFileKey = sessionFileKeyForLogo(logo);
+  return {
+    name: String(logo.name || "header-logo").trim() || "header-logo",
+    type: String(logo.type || "image/png").trim() || "image/png",
+    size: Number.isFinite(Number(logo.size)) ? Number(logo.size) : 0,
+    session_file_key: sessionFileKey,
+    data_url: dataUrl,
+  };
+}
+
+function sessionFileRecordsFromDraft() {
+  return [
+    ...sessionFileRecordsFromImages(),
+    sessionFileRecordFromHeaderLogo(),
+  ].filter(Boolean);
 }
 
 function persistSessionFiles(records = []) {
@@ -2197,7 +2253,7 @@ function buildSessionSnapshot() {
     quoteSessionRestoredSessionId: state.quoteSessionRestoredSessionId,
     quoteSessionRestoredDraftKey: state.quoteSessionRestoredDraftKey,
     images: state.images.slice(0, MAX_REFERENCE_IMAGES).map(sessionImageMetadata),
-    quoteDetails: collectQuoteDetails(),
+    quoteDetails: quoteDetailsWithSessionLogoMetadata(collectQuoteDetails()),
     workflowStage: state.workflowStage,
     quoteBasis: state.quoteBasis,
     quoteBasisSections: state.quoteBasisSections,
@@ -2242,7 +2298,7 @@ function saveSessionState() {
       window.localStorage.removeItem(QUOTE_SESSION_STORAGE_KEY);
       return;
     }
-    const fileRecords = sessionFileRecordsFromImages();
+    const fileRecords = sessionFileRecordsFromDraft();
     const snapshot = buildSessionSnapshot();
     window.localStorage.setItem(QUOTE_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
     persistSessionFiles(fileRecords).catch(() => {});
@@ -2272,6 +2328,36 @@ async function restoreSessionImages(savedImages = []) {
       referenceFileHasPayload(image)
       || String(image.session_file_key || image.name || "").trim()
     ));
+}
+
+function selectedPresetCompanyLogo() {
+  const preset = selectedPreset();
+  const details = preset?.details && typeof preset.details === "object" ? preset.details : {};
+  const company = details.company && typeof details.company === "object" ? details.company : {};
+  return String(company.logo_data_url || "").trim() ? company : null;
+}
+
+async function restoreQuoteDetailsLogo(details = {}) {
+  const company = details.company && typeof details.company === "object" ? details.company : {};
+  if (String(company.logo_data_url || "").trim()) return details;
+  const sessionFileKey = String(company.logo_session_file_key || "").trim();
+  let restoredLogo = null;
+  if (sessionFileKey) {
+    const fileMap = await loadSessionFileMap([sessionFileKey]).catch(() => new Map());
+    restoredLogo = fileMap.get(sessionFileKey) || null;
+  }
+  const presetLogo = restoredLogo ? null : selectedPresetCompanyLogo();
+  const source = restoredLogo || presetLogo;
+  if (!source?.data_url && !source?.logo_data_url) return details;
+  return {
+    ...details,
+    company: {
+      ...company,
+      logo_data_url: source.data_url || source.logo_data_url,
+      logo_name: source.name || source.logo_name || company.logo_name || "header-logo",
+      logo_type: source.type || source.logo_type || company.logo_type || "image/png",
+    },
+  };
 }
 
 function restoredWorkflowStage(saved = {}) {
@@ -2307,7 +2393,8 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   renderProfileOptions();
   renderPresetOptions();
   state.pendingFeedback = "";
-  applyQuoteDetails(saved.quoteDetails || {}, { includeLogo: true, clearLogo: true });
+  const restoredQuoteDetails = await restoreQuoteDetailsLogo(saved.quoteDetails || {});
+  applyQuoteDetails(restoredQuoteDetails, { includeLogo: true, clearLogo: true });
   state.images = await restoreSessionImages(saved.images);
   state.quoteBasis = cloneQuoteBasis(saved.quoteBasis || {});
   state.quoteBasisSections = normalizeQuoteBasisSections(saved.quoteBasisSections || saved.quoteBasis || {});
@@ -5753,7 +5840,7 @@ async function setSampleDetails() {
     updateGeneratorCopy();
     applyQuoteDetails(data.details || {}, { partial: true });
     state.images = Array.isArray(data.images) ? data.images.slice(0, MAX_REFERENCE_IMAGES) : [];
-    await persistSessionFiles(sessionFileRecordsFromImages(state.images)).catch(() => {});
+    await persistSessionFiles(sessionFileRecordsFromDraft()).catch(() => {});
     if (state.images.length) {
       saveSessionState();
     }
@@ -5932,7 +6019,20 @@ function appBusyTitle() {
 
 function waitForUiPaint() {
   return new Promise((resolve) => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+    let settled = false;
+    let fallbackId = 0;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (fallbackId && typeof window.clearTimeout === "function") window.clearTimeout(fallbackId);
+      resolve();
+    };
+    fallbackId = window.setTimeout(finish, 120);
+    if (typeof window.requestAnimationFrame !== "function") {
+      finish();
+      return;
+    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(finish));
   });
 }
 
@@ -6973,6 +7073,55 @@ function basisConfirmBlockReason(sections = state.quoteBasisSections) {
   return unresolvedConfirmLines(sections).length
     ? "Resolve all review lines before confirming quotation basis."
     : "";
+}
+
+function firstUnresolvedBasisLineRef(sections = state.quoteBasisSections) {
+  const normalizedSections = basisSections(sections);
+  for (let sectionIndex = 0; sectionIndex < normalizedSections.length; sectionIndex += 1) {
+    const section = normalizedSections[sectionIndex];
+    const lines = Array.isArray(section.lines) ? section.lines : [];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      if (basisLineIsInformationalDimension(line)) continue;
+      if (normalizeBasisTag(line.tag) !== "Confirm" && !isPendingAiProposalLine(line)) continue;
+      return {
+        sectionId: String(section.id || "").trim(),
+        lineIndex,
+      };
+    }
+  }
+  return null;
+}
+
+function basisLineRowForRef(ref = {}) {
+  if (!ref || !elements.basisReviewSurface) return null;
+  const controls = Array.from(elements.basisReviewSurface.querySelectorAll("[data-basis-section][data-basis-line-index]"));
+  const match = controls.find((control) => (
+    String(control.dataset.basisSection || "") === String(ref.sectionId || "")
+    && Number(control.dataset.basisLineIndex) === Number(ref.lineIndex)
+  ));
+  return match?.closest(".basis-line-row") || null;
+}
+
+function revealBlockedBasisAction() {
+  const unresolvedRef = firstUnresolvedBasisLineRef();
+  const unresolvedRow = basisLineRowForRef(unresolvedRef);
+  if (unresolvedRow) {
+    unresolvedRow.classList.remove("is-attention");
+    void unresolvedRow.offsetWidth;
+    unresolvedRow.classList.add("is-attention");
+    unresolvedRow.scrollIntoView({ block: "center", behavior: "smooth" });
+    window.setTimeout(() => unresolvedRow.classList.remove("is-attention"), 2600);
+    return;
+  }
+  if (elements.aiFailureBanner && !elements.aiFailureBanner.hidden) {
+    elements.aiFailureBanner.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+}
+
+function showBlockedBasisAction(message = "Resolve the quotation basis before continuing.") {
+  showBlockedAction(message, { details: false });
+  revealBlockedBasisAction();
 }
 
 function basisTagLabel(tag = "") {
@@ -9961,7 +10110,7 @@ async function confirmBasis() {
   const confirmBlockReason = basisConfirmBlockReason();
   if (confirmBlockReason) {
     setWorkflowStage("basis_review");
-    showBlockedAction(confirmBlockReason, { details: false });
+    showBlockedBasisAction(confirmBlockReason);
     syncControlStates();
     return;
   }
@@ -9973,7 +10122,7 @@ async function confirmBasis() {
   }
   if (!state.lineItems.length) {
     setWorkflowStage("basis_review");
-    showBlockedAction("Quote basis has no line items ready for output. Re-run analysis or resolve the quote basis before confirming.", { details: false });
+    showBlockedBasisAction("Quote basis has no line items ready for output. Re-run analysis or resolve the quote basis before confirming.");
     syncControlStates();
     return;
   }
@@ -9981,7 +10130,7 @@ async function confirmBasis() {
   if (missing.length) {
     setWorkflowStage("details_review");
     await saveQuoteSessionDraftState({ quoteGenerated: false });
-    showBlockedAction(`Complete Customer and Quote Company details before confirming quotation basis: ${missing.join(", ")}.`, { details: false });
+    showBlockedBasisAction(`Complete Customer and Quote Company details before confirming quotation basis: ${missing.join(", ")}.`);
     syncControlStates();
     return;
   }
@@ -10464,7 +10613,7 @@ async function goToNextSidePanel() {
     elements.sideNextButton.title = "";
     elements.sideNextButton.blur();
     if (state.activeSidePanel === "quote_company") showBlockedAction(reason);
-    if (state.activeSidePanel === "basis") showBlockedAction(reason, { details: false });
+    if (state.activeSidePanel === "basis") showBlockedBasisAction(reason);
     return;
   }
   if (state.activeSidePanel === "quote_company") {
