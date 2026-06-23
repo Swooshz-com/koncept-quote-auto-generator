@@ -15352,8 +15352,8 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 
         command = run.call_args.args[0]
         self.assertEqual(result["status"], "completed")
-        self.assertIn(str(reference_dir / "pricing-catalog.json"), command)
-        self.assertIn(str(profile_dir / "quotation-layout.xlsx"), command)
+        self.assertIn(str((reference_dir / "pricing-catalog.json").resolve()), command)
+        self.assertIn(str((profile_dir / "quotation-layout.xlsx").resolve()), command)
         self.assertNotIn(str(KONCEPT_CATALOG), command)
         self.assertNotIn(str(KONCEPT_LAYOUT), command)
     def test_exported_quote_company_profile_imports_to_default_company_store(self):
