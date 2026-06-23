@@ -269,6 +269,7 @@ let analysisElapsedTimerId = 0;
 const elapsedTimerIds = new Map();
 let sessionFileDbPromise = null;
 let quoteSessionDraftSaveTimer = null;
+let quoteSessionInitialSavePromise = null;
 
 const elements = {
   healthText: qs("#healthText"),
@@ -8527,19 +8528,33 @@ function currentQuoteSessionPayload(options = {}) {
 }
 
 async function saveCurrentQuoteSession(options = {}) {
+  const requestedSessionId = safeQuoteSessionId(options.sessionId || state.quoteSessionId || "");
+  if (!requestedSessionId && quoteSessionInitialSavePromise) {
+    await quoteSessionInitialSavePromise.catch(() => null);
+  }
   const payload = currentQuoteSessionPayload(options);
-  const { ok, data } = await postJson("/api/quote-sessions", payload);
-  if (!ok) {
-    state.quoteSessionLoadError = genericFailureMessage(data);
-    return null;
+  const isInitialSave = !safeQuoteSessionId(payload.session_id || "");
+  const savePromise = (async () => {
+    const { ok, data } = await postJson("/api/quote-sessions", payload);
+    if (!ok) {
+      state.quoteSessionLoadError = genericFailureMessage(data);
+      return null;
+    }
+    const session = data.quote_session || {};
+    state.quoteSessionId = safeQuoteSessionId(session.session_id || payload.session_id);
+    mergeDashboardQuoteSession(session);
+    if (currentQuoteSessionIsRestoredFromDashboard()) {
+      state.quoteSessionRestoredDraftKey = quoteSessionDraftComparisonKey();
+    }
+    return session;
+  })();
+  if (isInitialSave) {
+    quoteSessionInitialSavePromise = savePromise;
+    savePromise.finally(() => {
+      if (quoteSessionInitialSavePromise === savePromise) quoteSessionInitialSavePromise = null;
+    }).catch(() => {});
   }
-  const session = data.quote_session || {};
-  state.quoteSessionId = safeQuoteSessionId(session.session_id || payload.session_id);
-  mergeDashboardQuoteSession(session);
-  if (currentQuoteSessionIsRestoredFromDashboard()) {
-    state.quoteSessionRestoredDraftKey = quoteSessionDraftComparisonKey();
-  }
-  return session;
+  return savePromise;
 }
 
 async function ensureQuoteSession(options = {}) {

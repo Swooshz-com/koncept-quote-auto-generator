@@ -309,6 +309,63 @@ async function createDashboardSmokeSession(page, suffix, options = {}) {
   });
 }
 
+async function verifyConcurrentInitialDraftSaveUsesSingleSession(page) {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+  const emptyNewQuoteButton = page.locator("#dashboardEmptyNewQuoteButton:not([disabled])");
+  if (await emptyNewQuoteButton.isVisible()) {
+    await emptyNewQuoteButton.click();
+  } else {
+    await page.locator("#newQuoteButton:not([disabled])").click();
+  }
+  await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
+  await page.locator("#sampleDetailsButton").click();
+  await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+  const raceResult = await page.evaluate(async () => {
+    setSidePanel("customer", { force: true });
+    state.quoteSessionId = "";
+    state.quoteSessionDraftSaveStarted = true;
+    saveSessionState();
+    const beforeData = await fetch("/api/quote-sessions").then((response) => response.json());
+    const beforeIds = new Set((beforeData.quote_sessions || []).map((session) => session.session_id));
+    const responses = await Promise.all([
+      saveQuoteSessionDraftState({ quoteGenerated: false }),
+      saveQuoteSessionDraftState({ quoteGenerated: false }),
+    ]);
+    const afterData = await fetch("/api/quote-sessions").then((response) => response.json());
+    const afterIds = (afterData.quote_sessions || []).map((session) => session.session_id);
+    const createdIds = afterIds.filter((sessionId) => !beforeIds.has(sessionId));
+    await Promise.all(createdIds.map((sessionId) => deleteQuoteSessionRecord(sessionId)));
+    window.localStorage.removeItem("swooshz_quote_session_v1");
+    return {
+      createdIds,
+      responseIds: responses.map((session) => session?.session_id || ""),
+      stateSessionId: state.quoteSessionId,
+    };
+  });
+  const uniqueCreatedIds = new Set(raceResult.createdIds.filter(Boolean));
+  const uniqueResponseIds = new Set(raceResult.responseIds.filter(Boolean));
+  if (raceResult.createdIds.length !== 1 || uniqueCreatedIds.size !== 1 || uniqueResponseIds.size !== 1) {
+    throw new Error(`Concurrent initial draft saves should create one session, found ${JSON.stringify(raceResult)}.`);
+  }
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+}
+
 async function main() {
   let serverInfo = null;
   const hasExistingServer = await healthOk();
@@ -336,6 +393,7 @@ async function main() {
 
   try {
     await installMockProfiles(page);
+    await verifyConcurrentInitialDraftSaveUsesSingleSession(page);
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();
     await page.locator("#quoteDashboardPanel").waitFor({ state: "visible" });
