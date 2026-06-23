@@ -907,6 +907,14 @@ async function main() {
       panel.scrollTop = 0;
     });
     const dashboardSelectedShot = await screenshot(page, "dashboard-selected.png");
+    await page.keyboard.press("Delete");
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    const keyboardDeleteTitle = await page.locator("#quoteSessionDeleteTitle").innerText();
+    if (keyboardDeleteTitle !== "Delete selected quote sessions?") {
+      throw new Error(`Unexpected keyboard bulk delete confirmation title: ${keyboardDeleteTitle}`);
+    }
+    await page.locator("#cancelQuoteSessionDeleteButton").click();
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "hidden", timeout: 15000 });
     await page.locator('[data-dashboard-panel-action="delete-selected"]', { hasText: "Delete selected" }).click();
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
     const dashboardDeleteModalShot = await screenshot(page, "dashboard-delete-modal.png");

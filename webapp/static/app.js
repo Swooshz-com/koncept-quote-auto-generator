@@ -9436,6 +9436,18 @@ function handleDashboardSessionKeydown(event) {
   setDashboardSelection(card.dataset.quoteSessionId || "", { mode: state.dashboardSelectionMode ? "toggle" : "single" });
 }
 
+function handleDashboardDeleteKey(event) {
+  if (event.key !== "Delete" || event.defaultPrevented) return false;
+  if (state.activeAppView !== "dashboard") return false;
+  if (event.target?.closest?.("input, select, textarea, [contenteditable='true']")) return false;
+  if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) return false;
+  const selectedIds = dashboardSelectedSessionIds();
+  if (!selectedIds.length) return false;
+  event.preventDefault();
+  requestQuoteSessionDelete(selectedIds, { bulk: selectedIds.length > 1 });
+  return true;
+}
+
 function handleDashboardSidePanelAction(event) {
   const removeSelected = event.target?.closest?.("[data-dashboard-remove-selected]");
   if (removeSelected && elements.dashboardSidePanel?.contains(removeSelected)) {
@@ -10469,6 +10481,7 @@ function wireEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (handleModalEnterKey(event)) return;
+    if (handleDashboardDeleteKey(event)) return;
     if (event.key === "Escape") {
       if (profileActionsMenuIsOpen()) {
         closeProfileActionsMenu({ focusButton: true });
