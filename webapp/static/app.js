@@ -1216,6 +1216,21 @@ function referenceFileTypeLabel(entry = {}) {
   return isPdfReference(entry) ? "PDF" : (entry.type || "image");
 }
 
+function referenceFileHasPayload(entry = {}) {
+  return Boolean(String(entry?.data_url || "").trim());
+}
+
+function hasReferenceFilesForNavigation() {
+  return state.images.some((image) => (
+    referenceFileHasPayload(image)
+    || String(image?.session_file_key || image?.name || "").trim()
+  ));
+}
+
+function hasReferenceFilesForAnalysis() {
+  return state.images.some(referenceFileHasPayload);
+}
+
 async function filesToImageEntries(files, limit = MAX_REFERENCE_IMAGES) {
   return Promise.all(
     Array.from(files)
@@ -1710,15 +1725,19 @@ function renderFiles() {
   }
   elements.fileList.innerHTML = state.images
     .map((image, index) => {
+      const hasPayload = referenceFileHasPayload(image);
       const thumb = isPdfReference(image)
         ? `<span class="file-thumb file-thumb-file" aria-hidden="true">PDF</span>`
-        : `<img class="file-thumb" src="${escapeHtml(image.data_url)}" alt="">`;
+        : hasPayload
+          ? `<img class="file-thumb" src="${escapeHtml(image.data_url)}" alt="">`
+          : `<span class="file-thumb file-thumb-file" aria-hidden="true">IMG</span>`;
+      const payloadNotice = hasPayload ? "" : " - file unavailable";
       return `
         <div class="file-item">
           ${thumb}
           <div>
             <strong>${escapeHtml(image.name)}</strong>
-            <span>${escapeHtml(referenceFileTypeLabel(image))} - ${formatBytes(image.size)}</span>
+            <span>${escapeHtml(referenceFileTypeLabel(image))} - ${formatBytes(image.size)}${payloadNotice}</span>
           </div>
           <button class="file-remove" type="button" data-remove-image="${index}" aria-label="Remove ${escapeHtml(image.name)}">x</button>
         </div>
@@ -2249,7 +2268,10 @@ async function restoreSessionImages(savedImages = []) {
         size: Number.isFinite(Number(stored?.size ?? image?.size)) ? Number(stored?.size ?? image?.size) : 0,
       };
     })
-    .filter((image) => String(image.data_url || "").trim());
+    .filter((image) => (
+      referenceFileHasPayload(image)
+      || String(image.session_file_key || image.name || "").trim()
+    ));
 }
 
 function restoredWorkflowStage(saved = {}) {
@@ -7983,7 +8005,8 @@ function startAnalysisBlockReason() {
   if (state.isAnalysisRunning) return "Analysis is already running.";
   if (state.isGenerating) return "Quotation generation is already running.";
   if (state.isPreparingOutput) return "Output is being prepared.";
-  if (!state.images.length) return "Add at least one reference file before starting analysis.";
+  if (!hasReferenceFilesForNavigation()) return "Add at least one reference file before starting analysis.";
+  if (!hasReferenceFilesForAnalysis()) return "Reference files from this saved quote are unavailable in this browser. Upload the reference images again before starting analysis.";
   return customerDetailsBlockReason("Complete Customer details before starting analysis")
     || quoteCompanyDetailsBlockReason("Complete Quote Company details before starting analysis");
 }
@@ -10282,7 +10305,7 @@ function isSensitiveChatRequest(normalizedText) {
 
 function sidePanelBlockReason(panelName) {
   if (panelName === "images") return "";
-  if (!state.images.length) return "Add reference files before opening this step.";
+  if (!hasReferenceFilesForNavigation()) return "Add reference files before opening this step.";
   if (panelName === "quote_company") {
     return customerDetailsBlockReason("Complete Customer details before opening Quote Company");
   }
@@ -10372,10 +10395,10 @@ function updateSidePanelNav() {
   elements.analyseAgainButton.hidden = state.activeSidePanel !== "basis";
   elements.resetQuoteBasisButton.hidden = state.activeSidePanel !== "basis";
   elements.resetOutputButton.hidden = state.activeSidePanel !== "output";
-  elements.resetImagesButton.disabled = busy || !state.images.length;
+  elements.resetImagesButton.disabled = busy || !hasReferenceFilesForNavigation();
   elements.clearCustomerButton.disabled = busy;
   elements.clearQuoteCompanyButton.disabled = busy;
-  const canReanalyseBasis = state.images.length > 0;
+  const canReanalyseBasis = hasReferenceFilesForAnalysis();
   elements.analyseAgainButton.disabled = busy || !canReanalyseBasis;
   elements.analyseAgainButton.title = busy
     ? appBusyTitle()

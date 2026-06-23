@@ -8931,13 +8931,25 @@ eval([
   "missingDetailFields",
   "customerDetailsBlockReason",
   "quoteCompanyDetailsBlockReason",
+  "referenceFileHasPayload",
+  "hasReferenceFilesForNavigation",
+  "hasReferenceFilesForAnalysis",
   "startAnalysisBlockReason",
   "sidePanelBlockReason",
   "canStartAnalysis",
 ].map(extractFunction).join("\n"));
 
 assert.strictEqual(startAnalysisBlockReason(), "Add at least one reference file before starting analysis.");
-state.images = [{}];
+state.images = [{ name: "render.jpg", type: "image/jpeg", size: 12, session_file_key: "stored-reference-key" }];
+assert.strictEqual(sidePanelBlockReason("customer"), "");
+assert.strictEqual(sidePanelBlockReason("quote_company"), "");
+assert.strictEqual(
+  startAnalysisBlockReason(),
+  "Reference files from this saved quote are unavailable in this browser. Upload the reference images again before starting analysis."
+);
+assert.strictEqual(hasReferenceFilesForNavigation(), true);
+assert.strictEqual(hasReferenceFilesForAnalysis(), false);
+state.images = [{ name: "render.jpg", type: "image/jpeg", size: 12, data_url: "data:image/jpeg;base64,ZmFrZQ==" }];
 assert.strictEqual(startAnalysisBlockReason(), "");
 elements.notesHeading.value = "";
 assert.strictEqual(startAnalysisBlockReason(), "");
@@ -11270,6 +11282,8 @@ function basisConfirmBlockReason() { return ""; }
 function startAnalysisBlockReason() { return ""; }
 function updateDownloadButton() {}
 function activeSidePanelIndex() { return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel)); }
+function hasReferenceFilesForNavigation() { return state.images.some((image) => image?.data_url || image?.session_file_key || image?.name); }
+function hasReferenceFilesForAnalysis() { return state.images.some((image) => image?.data_url); }
 
 eval([
   "pricingReferenceSelectValue",
@@ -11410,6 +11424,8 @@ function basisConfirmBlockReason() { return ""; }
 function startAnalysisBlockReason() { return ""; }
 function updateDownloadButton() {}
 function activeSidePanelIndex() { return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel)); }
+function hasReferenceFilesForNavigation() { return state.images.some((image) => image?.data_url || image?.session_file_key || image?.name); }
+function hasReferenceFilesForAnalysis() { return state.images.some((image) => image?.data_url); }
 
 eval(extractFunction("updateSidePanelNav"));
 
@@ -11422,11 +11438,83 @@ assert.strictEqual(
   "Images from this saved quote are unavailable in this browser. Upload the reference images again before re-analysing."
 );
 
-state.images = [{ name: "render.jpg" }];
+state.images = [{ name: "render.jpg", data_url: "data:image/jpeg;base64,ZmFrZQ==" }];
 updateSidePanelNav();
 assert.strictEqual(elements.analyseAgainButton.disabled, false);
 assert.strictEqual(elements.analyseAgainButton["aria-disabled"], "false");
 assert.strictEqual(elements.analyseAgainButton.title, "Re-analyse the quote basis using the uploaded reference images.");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_restore_session_images_keeps_metadata_without_payload(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const MAX_REFERENCE_IMAGES = 8;
+let requestedKeys = [];
+function referenceFileType(entry = {}) { return entry.type || (String(entry.name || "").endsWith(".pdf") ? "application/pdf" : "image"); }
+function loadSessionFileMap(keys) {
+  requestedKeys = keys;
+  return Promise.resolve(new Map());
+}
+
+eval([
+  "referenceFileHasPayload",
+  "restoreSessionImages",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  const restored = await restoreSessionImages([{
+    name: "restored-render.jpg",
+    type: "image/jpeg",
+    size: 12000,
+    session_file_key: "missing-payload-key",
+  }]);
+
+  assert.deepStrictEqual(requestedKeys, ["missing-payload-key"]);
+  assert.strictEqual(restored.length, 1);
+  assert.strictEqual(restored[0].name, "restored-render.jpg");
+  assert.strictEqual(restored[0].session_file_key, "missing-payload-key");
+  assert.strictEqual(restored[0].data_url, undefined);
+  assert.strictEqual(restored[0].type, "image/jpeg");
+  assert.strictEqual(restored[0].size, 12000);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
 """
         completed = subprocess.run(
             [node, "-e", script],
