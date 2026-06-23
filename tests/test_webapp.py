@@ -7652,6 +7652,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     },
                     "draft_state": {
                         "outputRows": [{"description": "Edited output row", "quantity": 2}],
+                        "workflowStage": "completed",
+                        "activeSidePanel": "output",
                         "analysisFindings": [{"text": "Synthetic visible finding"}],
                         "images": [{
                             "name": "reference.pdf",
@@ -7681,6 +7683,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertFalse(sessions[1]["has_draft_state"])
             self.assertIn("draft_state", detailed_new_session)
             self.assertNotIn("draft_state", sessions[0])
+            self.assertEqual(sessions[0]["draft_progress"]["active_side_panel"], "output")
+            self.assertEqual(sessions[0]["draft_progress"]["workflow_stage"], "completed")
+            self.assertEqual(sessions[0]["draft_progress"]["label"], "Output")
+            self.assertNotIn("draft_progress", sessions[1])
             self.assertTrue((data_root / "quote-sessions" / "quote-new" / "quote-session.json").is_file())
 
     def test_quote_session_exports_are_recorded_and_missing_artifacts_are_safe(self):
@@ -7951,6 +7957,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
 
         self.assertNotIn("dashboardContinueQuoteButton", html)
         self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
@@ -7987,6 +7994,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-session-primary-zone", js)
         self.assertIn("dashboard-session-meta-zone", js)
         self.assertIn("dashboard-session-result-zone", js)
+        self.assertIn("dashboardSessionProgressLabel", js)
+        self.assertIn("dashboardSessionProgressPill", js)
+        self.assertIn("Saved at ${label}", js)
+        self.assertIn("dashboardSessionProgressPill(session)", js)
+        self.assertIn("dashboardSessionProgressPill(activeSession)", js)
+        self.assertIn(".dashboard-status-pill.is-progress", css)
         self.assertIn("dashboard-bulk-selection-summary", js)
         self.assertIn("DASHBOARD_DEFAULT_PAGE_SIZE = 5", js)
         self.assertIn("pagedDashboardSessions", js)
@@ -8816,6 +8829,8 @@ const state = {
   profiles: [{ id: "synthetic-exhibition-fixture-template", label: "Synthetic" }],
   pricingReferences: [{ id: "synthetic-exhibition-fixture-pricing", label: "Synthetic", profile_id: "synthetic-exhibition-fixture-template" }],
   images: [],
+  quoteBasisSections: [],
+  outputRows: [],
   headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
   isAnalysisRunning: false,
   isGenerating: false,
@@ -9797,120 +9812,24 @@ assert.strictEqual(elements.profileLoadModal.hidden, true);
         self.assertNotIn("PROFILE_PRESET_ACTION_DELETE", js)
         self.assertIn('id="profileNameInput"', html)
 
-    def test_static_modal_enter_key_activates_visible_primary_action(self):
-        node = require_node(self)
+    def test_static_modals_focus_primary_actions_without_forced_enter_override(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
 
-        script = r"""
-const fs = require("fs");
-const assert = require("assert");
-const source = fs.readFileSync("webapp/static/app.js", "utf8");
+        self.assertNotIn("handleModalEnterKey", js)
+        self.assertNotIn("visiblePrimaryModalActionButton", js)
+        keydown_body = js.split('document.addEventListener("keydown"', 1)[1].split("elements.sampleDetailsButton", 1)[0]
+        self.assertNotIn('event.key === "Enter"', keydown_body)
+        queue_focus_body = js.split("function queueActionButtonFocus(button)", 1)[1].split("function profileActionsMenuItems", 1)[0]
+        self.assertIn("focusActionButton(button);", queue_focus_body)
 
-function extractFunction(name) {
-  const marker = `function ${name}(`;
-  const start = source.indexOf(marker);
-  if (start < 0) throw new Error(`Missing function ${name}`);
-  const bodyStart = source.indexOf(") {", start) + 2;
-  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
-  let depth = 0;
-  for (let index = bodyStart; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "{") depth += 1;
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) return source.slice(start, index + 1);
-    }
-  }
-  throw new Error(`Unclosed function ${name}`);
-}
-
-const clicks = [];
-function modal(hidden = true) { return { hidden }; }
-function button(name, options = {}) {
-  return {
-    hidden: Boolean(options.hidden),
-    disabled: Boolean(options.disabled),
-    click() { clicks.push(name); },
-    getAttribute() { return options.ariaDisabled ? "true" : "false"; },
-    closest(selector) { return selector === "button, a" ? this : null; },
-  };
-}
-
-const elements = {
-  profileLoadModal: modal(false),
-  confirmProfileLoadButton: button("load"),
-  profileOverwriteModal: modal(true),
-  confirmProfileOverwriteButton: button("overwrite"),
-  profileNameModal: modal(true),
-  confirmProfileNameButton: button("save"),
-  outputDeleteModal: modal(true),
-  confirmOutputDeleteButton: button("delete-output"),
-  quoteSessionDeleteModal: modal(true),
-  confirmQuoteSessionDeleteButton: button("delete-session"),
-  cancelQuoteSessionDeleteButton: button("cancel-delete-session"),
-  profileDeleteModal: modal(true),
-  confirmProfileDeleteButton: button("delete-profile"),
-  cancelProfileDeleteButton: button("close-profile-delete"),
-  pricingReferenceModal: modal(true),
-  pricingReferenceDeleteConfirm: modal(true),
-  confirmPricingReferenceDeleteButton: button("delete-pricing-reference"),
-  analysisConfirmModal: modal(true),
-  analysisConfirmStartButton: button("start-analysis"),
-};
-const document = { activeElement: null };
-
-eval([
-  extractFunction("buttonCanAcceptClick"),
-  extractFunction("visiblePrimaryModalActionButton"),
-  extractFunction("handleModalEnterKey"),
-].join("\n"));
-
-let prevented = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
-assert.strictEqual(prevented, true);
-assert.deepStrictEqual(clicks, ["load"]);
-
-elements.profileLoadModal.hidden = true;
-elements.profileOverwriteModal.hidden = false;
-prevented = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
-assert.strictEqual(prevented, true);
-assert.deepStrictEqual(clicks, ["load", "overwrite"]);
-
-elements.profileOverwriteModal.hidden = true;
-elements.profileNameModal.hidden = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", defaultPrevented: true, preventDefault() { throw new Error("should not run"); } }), false);
-assert.deepStrictEqual(clicks, ["load", "overwrite"]);
-
-elements.profileNameModal.hidden = true;
-elements.quoteSessionDeleteModal.hidden = false;
-document.activeElement = elements.cancelQuoteSessionDeleteButton;
-prevented = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
-assert.strictEqual(prevented, true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "delete-session"]);
-
-elements.quoteSessionDeleteModal.hidden = true;
-document.activeElement = null;
-elements.profileDeleteModal.hidden = false;
-elements.confirmProfileDeleteButton.hidden = true;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "delete-session", "close-profile-delete"]);
-
-elements.profileDeleteModal.hidden = true;
-elements.pricingReferenceModal.hidden = false;
-elements.pricingReferenceDeleteConfirm.hidden = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "delete-session", "close-profile-delete", "delete-pricing-reference"]);
-"""
-        completed = subprocess.run(
-            [node, "-e", script],
-            cwd=str(ROOT),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+        quote_delete_body = js.split("function renderQuoteSessionDeleteModal()", 1)[1].split("function requestQuoteSessionDelete", 1)[0]
+        self.assertIn("queueActionButtonFocus(elements.confirmQuoteSessionDeleteButton)", quote_delete_body)
+        self.assertNotIn("queueActionButtonFocus(elements.cancelQuoteSessionDeleteButton)", quote_delete_body)
+        self.assertIn("queueActionButtonFocus(elements.confirmOutputDeleteButton)", js)
+        self.assertIn("queueActionButtonFocus(elements.confirmPricingReferenceDeleteButton)", js)
+        self.assertIn("queueActionButtonFocus(elements.confirmProfileLoadButton)", js)
+        self.assertIn("queueActionButtonFocus(elements.confirmProfileOverwriteButton)", js)
 
     def test_static_reset_quote_company_forces_default_profile_template(self):
         node = require_node(self)
@@ -10037,6 +9956,8 @@ function applyQuoteDetails(details, options) { appliedDetails = details; applied
 function applyDefaultQuoteCompanyFields() { appliedDefaults = true; }
 function renderHeaderLogoPreview() {}
 function clearGeneratedQuoteState() { clearedGeneratedState = true; }
+function quoteDraftHasAiAnalysis() { return Boolean(state.quoteBasisSections.length); }
+function quoteDraftHasOutputState() { return Boolean(state.outputRows.length); }
 function setWorkflowStage(stage) { workflowStage = stage; }
 function syncControlStates() {}
 function renderPresetStatus(message = "") { statusMessage = message; }
@@ -10073,6 +9994,21 @@ assert.strictEqual(elements.headerLogoInput.value, "");
 assert.strictEqual(clearedGeneratedState, true);
 assert.strictEqual(workflowStage, "needs_images");
 assert.strictEqual(statusMessage, 'Loaded "Default".');
+clearedGeneratedState = false;
+workflowStage = "basis_review";
+appliedDefaults = false;
+appliedDetails = null;
+elements.quoteCompanyName.value = "Analysis company";
+elements.headerDetails.value = "Analysis header";
+state.images = [{ name: "reference.pdf" }];
+state.quoteBasisSections = [{ id: "basis", lines: [{ text: "AI line" }] }];
+loadSelectedPreset({ silent: true });
+assert.strictEqual(clearedGeneratedState, false);
+assert.strictEqual(workflowStage, "basis_review");
+assert.strictEqual(appliedDetails, null);
+assert.strictEqual(appliedDefaults, false);
+assert.strictEqual(elements.quoteCompanyName.value, "Analysis company");
+assert.strictEqual(elements.headerDetails.value, "Analysis header");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -15140,6 +15076,9 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             confirm_body.index("await refreshLineItemsFromServer();"),
             confirm_body.index("refreshOutputRowsFromLineItems();"),
         )
+        missing_branch = confirm_body.split("if (missing.length)", 1)[1].split("state.isPreparingOutput", 1)[0]
+        self.assertIn("await saveQuoteSessionDraftState({ quoteGenerated: false });", missing_branch)
+        self.assertIn("showBlockedAction(", missing_branch)
         self.assertIn("state.outputRows = snapshotOutputRows(state.originalOutputRows);", reset_body)
         self.assertIn("state.lineItems = outputRowsToLineItems();", reset_body)
         self.assertNotIn("refreshLineItemsFromServer", reset_body)

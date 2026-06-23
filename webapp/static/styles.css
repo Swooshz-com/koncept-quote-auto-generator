@@ -898,6 +898,12 @@ h3 {
   color: #7c3f00;
 }
 
+.dashboard-status-pill.is-progress {
+  border-color: rgba(51, 65, 85, 0.14);
+  background: #f8fafc;
+  color: var(--ink-secondary);
+}
+
 .dashboard-status-pill.is-draft {
   color: var(--muted);
 }

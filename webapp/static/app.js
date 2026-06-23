@@ -2515,6 +2515,7 @@ function focusActionButton(button) {
 }
 
 function queueActionButtonFocus(button) {
+  focusActionButton(button);
   window.setTimeout(() => focusActionButton(button), 0);
 }
 
@@ -3087,28 +3088,34 @@ function loadSelectedPreset(options = {}) {
   state.selectedPresetValue = elements.presetSelect.value || presetOptionValue(preset);
   persistLastProfilePresetSelection(state.selectedPresetValue);
   clearPendingProfilePack();
+  const shouldPreserveExistingQuoteState = options.silent === true && (quoteDraftHasAiAnalysis() || quoteDraftHasOutputState());
   const details = preset.details || {};
   const emptyDefaultProfilePreset = preset.source === "profile"
     && preset.id === "default"
     && details
     && typeof details === "object"
     && !Object.keys(details).length;
-  const clearsLogo = Boolean(details.company && typeof details.company === "object");
-  applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
-  if (emptyDefaultProfilePreset) {
-    setInputValue(elements.headerDetails, "");
-    setInputValue(elements.paymentTerms, "");
-    setInputValue(elements.standardNotes, "");
-    setInputValue(elements.quoteCompanyName, "");
-    setInputValue(elements.companySignatory, "");
-    setInputValue(elements.companyTitle, "");
-    state.headerLogo = null;
-    if (elements.headerLogoInput) elements.headerLogoInput.value = "";
-    applyDefaultQuoteCompanyFields();
-    renderHeaderLogoPreview();
+  if (!shouldPreserveExistingQuoteState) {
+    const clearsLogo = Boolean(details.company && typeof details.company === "object");
+    applyQuoteDetails(details, { includeLogo: true, clearLogo: clearsLogo, partial: true });
+    if (emptyDefaultProfilePreset) {
+      setInputValue(elements.headerDetails, "");
+      setInputValue(elements.paymentTerms, "");
+      setInputValue(elements.standardNotes, "");
+      setInputValue(elements.quoteCompanyName, "");
+      setInputValue(elements.companySignatory, "");
+      setInputValue(elements.companyTitle, "");
+      state.headerLogo = null;
+      if (elements.headerLogoInput) elements.headerLogoInput.value = "";
+      applyDefaultQuoteCompanyFields();
+      renderHeaderLogoPreview();
+    }
   }
-  clearGeneratedQuoteState();
-  setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
+  const shouldResetGeneratedState = options.resetGeneratedState !== false && !shouldPreserveExistingQuoteState && options.silent !== true;
+  if (shouldResetGeneratedState) {
+    clearGeneratedQuoteState();
+    setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
+  }
   syncControlStates();
   renderPresetStatus(`Loaded "${preset.name}".`);
 }
@@ -8746,6 +8753,17 @@ function quoteSessionStatus(session = {}) {
   return { key: "draft", label: "Draft", className: "is-draft" };
 }
 
+function dashboardSessionProgressLabel(session = {}) {
+  const progress = session.draft_progress && typeof session.draft_progress === "object" ? session.draft_progress : {};
+  const label = String(progress.label || "").trim();
+  return label ? `Saved at ${label}` : "";
+}
+
+function dashboardSessionProgressPill(session = {}) {
+  const label = dashboardSessionProgressLabel(session);
+  return label ? `<span class="dashboard-status-pill is-progress">${escapeHtml(label)}</span>` : "";
+}
+
 function dashboardSessionCustomerText(session = {}) {
   return String(session.customer_summary?.customer_name || "").trim() || "Untitled customer";
 }
@@ -9018,6 +9036,7 @@ function dashboardSessionCard(session = {}) {
         </dl>
         <div class="dashboard-session-record-zone dashboard-session-result-zone">
           <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+          ${dashboardSessionProgressPill(session)}
           <span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">
             <span>Total</span>
             <strong>${grandTotalHtml}</strong>
@@ -9208,6 +9227,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
     <div class="dashboard-selected-body dashboard-selected-body--single">
       <div class="dashboard-selected-status-row">
         <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
+        ${dashboardSessionProgressPill(activeSession)}
         ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
       </div>
       <dl class="dashboard-selected-summary-grid">
@@ -9347,7 +9367,7 @@ function renderQuoteSessionDeleteModal() {
   }
   modal.hidden = false;
   modal.classList.add("is-open");
-  queueActionButtonFocus(elements.cancelQuoteSessionDeleteButton);
+  queueActionButtonFocus(elements.confirmQuoteSessionDeleteButton);
 }
 
 function requestQuoteSessionDelete(sessionIds, options = {}) {
@@ -9778,7 +9798,8 @@ async function confirmBasis() {
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
-    setDetailsDrawer(true);
+    await saveQuoteSessionDraftState({ quoteGenerated: false });
+    showBlockedAction(`Complete Customer and Quote Company details before confirming quotation basis: ${missing.join(", ")}.`);
     syncControlStates();
     return;
   }
@@ -9840,7 +9861,8 @@ async function handleGenerate(options = {}) {
   const missing = missingDetailFields();
   if (missing.length) {
     setWorkflowStage("details_review");
-    setDetailsDrawer(true);
+    await saveQuoteSessionDraftState({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
+    showBlockedAction(`Complete Customer and Quote Company details before generating quotation: ${missing.join(", ")}.`);
     syncControlStates();
     return;
   }
@@ -10340,48 +10362,6 @@ function handleBeforeUnload(event) {
   return "";
 }
 
-function visiblePrimaryModalActionButton() {
-  if (elements.profileLoadModal && !elements.profileLoadModal.hidden) return elements.confirmProfileLoadButton;
-  if (elements.profileOverwriteModal && !elements.profileOverwriteModal.hidden) return elements.confirmProfileOverwriteButton;
-  if (elements.profileNameModal && !elements.profileNameModal.hidden) return elements.confirmProfileNameButton;
-  if (elements.outputDeleteModal && !elements.outputDeleteModal.hidden) return elements.confirmOutputDeleteButton;
-  if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) return elements.confirmQuoteSessionDeleteButton;
-  if (elements.profileDeleteModal && !elements.profileDeleteModal.hidden) {
-    return buttonCanAcceptClick(elements.confirmProfileDeleteButton)
-      ? elements.confirmProfileDeleteButton
-      : elements.cancelProfileDeleteButton;
-  }
-  if (
-    elements.pricingReferenceModal
-    && !elements.pricingReferenceModal.hidden
-    && elements.pricingReferenceDeleteConfirm
-    && !elements.pricingReferenceDeleteConfirm.hidden
-  ) {
-    return elements.confirmPricingReferenceDeleteButton;
-  }
-  if (elements.analysisConfirmModal && !elements.analysisConfirmModal.hidden) return elements.analysisConfirmStartButton;
-  return null;
-}
-
-function handleModalEnterKey(event) {
-  if (
-    event.key !== "Enter"
-    || event.defaultPrevented
-    || event.shiftKey
-    || event.ctrlKey
-    || event.altKey
-    || event.metaKey
-    || event.isComposing
-  ) {
-    return false;
-  }
-  const actionButton = visiblePrimaryModalActionButton();
-  if (!buttonCanAcceptClick(actionButton)) return false;
-  event.preventDefault();
-  actionButton.click();
-  return true;
-}
-
 function wireEvents() {
   wireRichTextEditors();
   if (elements.pricingReferenceFile) {
@@ -10501,7 +10481,6 @@ function wireEvents() {
     }
   });
   document.addEventListener("keydown", (event) => {
-    if (handleModalEnterKey(event)) return;
     if (handleDashboardDeleteKey(event)) return;
     if (event.key === "Escape") {
       if (profileActionsMenuIsOpen()) {

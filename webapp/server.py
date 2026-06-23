@@ -11206,6 +11206,41 @@ def create_or_update_quote_session(
     return public_quote_session(metadata)
 
 
+QUOTE_SESSION_DRAFT_PROGRESS_LABELS = {
+    "images": "Upload",
+    "customer": "Customer",
+    "quote_company": "Quote Company",
+    "basis": "Quote Basis",
+    "output": "Output",
+}
+
+
+def quote_session_draft_progress(draft_state: dict[str, Any]) -> dict[str, str]:
+    if not isinstance(draft_state, dict) or not draft_state:
+        return {}
+    active_side_panel = clean_text(draft_state.get("activeSidePanel"))
+    workflow_stage = clean_text(draft_state.get("workflowStage"))
+    if active_side_panel not in QUOTE_SESSION_DRAFT_PROGRESS_LABELS:
+        active_side_panel = ""
+    if not active_side_panel:
+        if workflow_stage in {"completed", "pricing_review", "generating"} or draft_state.get("basisConfirmed"):
+            active_side_panel = "output"
+        elif draft_state.get("lineItems") or draft_state.get("quoteBasisSections") or draft_state.get("analysisFindings"):
+            active_side_panel = "basis"
+        elif draft_state.get("quoteDetails"):
+            active_side_panel = "quote_company"
+        elif draft_state.get("images"):
+            active_side_panel = "customer"
+    label = QUOTE_SESSION_DRAFT_PROGRESS_LABELS.get(active_side_panel, "")
+    if not label:
+        return {}
+    return {
+        "active_side_panel": active_side_panel,
+        "workflow_stage": workflow_stage,
+        "label": label,
+    }
+
+
 def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool = False) -> dict[str, Any]:
     normalized = normalized_quote_session_metadata(metadata)
     if not normalized:
@@ -11214,6 +11249,9 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
     public = copy.deepcopy(normalized)
     draft_state = normalized.get("draft_state") if isinstance(normalized.get("draft_state"), dict) else {}
     public["has_draft_state"] = bool(draft_state)
+    draft_progress = quote_session_draft_progress(draft_state)
+    if draft_progress:
+        public["draft_progress"] = draft_progress
     if not include_draft_state:
         public.pop("draft_state", None)
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():

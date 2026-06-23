@@ -91,6 +91,10 @@ async function screenshot(page, name) {
   return filePath;
 }
 
+async function expectQuoteSessionDeleteButtonFocused(page) {
+  await page.waitForFunction(() => document.activeElement?.id === "confirmQuoteSessionDeleteButton", null, { timeout: 15000 });
+}
+
 async function expectTopbarPrimaryAction(page, expectedAction) {
   const dashboardVisible = await page.locator("#backToDashboardButton").isVisible();
   const newQuoteVisible = await page.locator("#newQuoteButton").isVisible();
@@ -851,6 +855,10 @@ async function main() {
     });
     const currentDashboardCard = page.locator(`.dashboard-session-card[data-quote-session-id="${currentDashboardSessionId}"]`);
     await currentDashboardCard.waitFor({ state: "visible", timeout: 15000 });
+    const savedStepPills = await currentDashboardCard.locator(".dashboard-status-pill.is-progress").allTextContents();
+    if (!savedStepPills.some((text) => /Saved at Customer/i.test(text))) {
+      throw new Error(`Expected dashboard card to show saved step pill for the current draft, found ${JSON.stringify(savedStepPills)}.`);
+    }
     const createdDateMetrics = await currentDashboardCard.locator(".dashboard-session-meta-zone div").nth(1).locator("dd").evaluate((element) => {
       const range = document.createRange();
       range.selectNodeContents(element);
@@ -1049,6 +1057,7 @@ async function main() {
     const dashboardSelectedShot = await screenshot(page, "dashboard-selected.png");
     await page.keyboard.press("Delete");
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    await expectQuoteSessionDeleteButtonFocused(page);
     const keyboardDeleteTitle = await page.locator("#quoteSessionDeleteTitle").innerText();
     if (keyboardDeleteTitle !== "Delete selected quote sessions?") {
       throw new Error(`Unexpected keyboard bulk delete confirmation title: ${keyboardDeleteTitle}`);
@@ -1057,6 +1066,7 @@ async function main() {
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "hidden", timeout: 15000 });
     await page.locator('[data-dashboard-panel-action="delete-selected"]', { hasText: "Delete selected" }).click();
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    await expectQuoteSessionDeleteButtonFocused(page);
     const dashboardDeleteModalShot = await screenshot(page, "dashboard-delete-modal.png");
     const bulkDeleteTitle = await page.locator("#quoteSessionDeleteTitle").innerText();
     if (bulkDeleteTitle !== "Delete selected quote sessions?") {
@@ -1070,6 +1080,7 @@ async function main() {
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "hidden", timeout: 15000 });
     await page.locator('[data-dashboard-panel-action="delete-selected"]', { hasText: "Delete selected" }).click();
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    await expectQuoteSessionDeleteButtonFocused(page);
     await page.locator("#confirmQuoteSessionDeleteButton").click();
     await page.waitForFunction(() => document.querySelectorAll(".dashboard-session-card").length === 0, null, { timeout: 15000 });
     await page.locator("#dashboardSearchInput").fill("");
@@ -1077,11 +1088,11 @@ async function main() {
     await currentDashboardCard.click();
     await page.locator('[data-dashboard-panel-action="delete-session"]', { hasText: "Delete session" }).click();
     await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    await expectQuoteSessionDeleteButtonFocused(page);
     const singleDeleteCopy = await page.locator("#quoteSessionDeleteText").innerText();
     if (singleDeleteCopy !== "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.") {
       throw new Error(`Unexpected single delete confirmation copy: ${singleDeleteCopy}`);
     }
-    await page.locator("#cancelQuoteSessionDeleteButton").focus();
     await page.keyboard.press("Enter");
     await currentDashboardCard.waitFor({ state: "detached", timeout: 15000 });
 
