@@ -421,6 +421,74 @@ async function verifyInitialDraftSaveReservesSessionIdBeforeNetwork(page) {
   }, null, { timeout: 15000 });
 }
 
+async function verifyDashboardNewQuoteDoesNotSaveHiddenDraft(page) {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+  const emptyNewQuoteButton = page.locator("#dashboardEmptyNewQuoteButton:not([disabled])");
+  if (await emptyNewQuoteButton.isVisible()) {
+    await emptyNewQuoteButton.click();
+  } else {
+    await page.locator("#newQuoteButton:not([disabled])").click();
+  }
+  await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
+  await page.locator("#sampleDetailsButton").click();
+  await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+  const beforeIds = await page.evaluate(async () => {
+    const beforeData = await fetch("/api/quote-sessions").then((response) => response.json());
+    const ids = (beforeData.quote_sessions || []).map((session) => session.session_id);
+    setSidePanel("customer", { force: true });
+    state.quoteSessionId = "";
+    state.quoteSessionDraftSaveStarted = true;
+    saveSessionState();
+    showDashboard({ load: false });
+    return ids;
+  });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.locator("#newQuoteButton:not([disabled])").click();
+  await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
+  await page.locator("#sampleDetailsButton").click();
+  await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+  await page.locator("#sideNextButton", { hasText: "Next: Customer" }).click();
+  await page.waitForFunction(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("swooshz_quote_session_v1") || "{}");
+      return Boolean(saved.quoteSessionId);
+    } catch {
+      return false;
+    }
+  }, null, { timeout: 15000 });
+  await page.locator("#backToDashboardButton", { hasText: "Dashboard" }).click();
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  const result = await page.evaluate(async (beforeIds) => {
+    const beforeSet = new Set(beforeIds);
+    const afterData = await fetch("/api/quote-sessions").then((response) => response.json());
+    const afterIds = (afterData.quote_sessions || []).map((session) => session.session_id);
+    const createdIds = afterIds.filter((sessionId) => !beforeSet.has(sessionId));
+    await Promise.all(createdIds.map((sessionId) => deleteQuoteSessionRecord(sessionId)));
+    window.localStorage.removeItem("swooshz_quote_session_v1");
+    return { createdIds, afterIds };
+  }, beforeIds);
+  if (result.createdIds.length !== 1) {
+    throw new Error(`Dashboard New Quote should not save a hidden stale draft, found ${JSON.stringify(result)}.`);
+  }
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const countText = document.querySelector("#dashboardSessionCount")?.textContent || "";
+    const emptyState = document.querySelector("#dashboardEmptyState");
+    const sessionList = document.querySelector("#dashboardSessionsList");
+    return !/Loading sessions/i.test(countText)
+      && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
+  }, null, { timeout: 15000 });
+}
+
 async function verifyDashboardClearsStaleSessionsBeforeRefresh(page) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.locator("#quoteDashboardPanel").waitFor({ state: "visible", timeout: 15000 });
@@ -431,7 +499,7 @@ async function verifyDashboardClearsStaleSessionsBeforeRefresh(page) {
     return !/Loading sessions/i.test(countText)
       && ((emptyState && !emptyState.hidden) || (sessionList && !sessionList.hidden));
   }, null, { timeout: 15000 });
-  await page.evaluate(() => {
+  const staleCount = await page.evaluate(() => {
     const staleSession = (suffix) => ({
       session_id: `quote-stale-${suffix}`,
       created_at: "2026-06-23T00:00:00Z",
@@ -451,8 +519,8 @@ async function verifyDashboardClearsStaleSessionsBeforeRefresh(page) {
     state.dashboardActiveSessionId = "quote-stale-a";
     state.dashboardSelectedSessionIds = [];
     renderQuoteDashboard();
+    return document.querySelectorAll(".dashboard-session-card").length;
   });
-  const staleCount = await page.locator(".dashboard-session-card").count();
   if (staleCount !== 2) {
     throw new Error(`Expected two injected stale dashboard rows before refresh, found ${staleCount}.`);
   }
@@ -520,6 +588,7 @@ async function main() {
     await installMockProfiles(page);
     await verifyConcurrentInitialDraftSaveUsesSingleSession(page);
     await verifyInitialDraftSaveReservesSessionIdBeforeNetwork(page);
+    await verifyDashboardNewQuoteDoesNotSaveHiddenDraft(page);
     await verifyDashboardClearsStaleSessionsBeforeRefresh(page);
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Swooshz Quote Generator" }).waitFor();

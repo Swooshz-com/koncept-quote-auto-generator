@@ -7935,9 +7935,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         wire_events_body = js.split("function wireEvents", 1)[1].split("function renderQuoteDashboard", 1)[0]
         self.assertIn("saveQuoteSessionDraftStateAfterPanelMove(panelName)", wire_events_body)
         start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
-        self.assertIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", start_new_quote_body)
-        self.assertIn("quoteDraftShouldPersistToDashboard()", start_new_quote_body)
-        self.assertIn("saveQuoteSessionDraftState", start_new_quote_body)
+        self.assertIn("clearSessionState", start_new_quote_body)
+        self.assertIn("resetCurrentQuoteDraftState", start_new_quote_body)
+        self.assertNotIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", start_new_quote_body)
+        self.assertNotIn("quoteDraftShouldPersistToDashboard()", start_new_quote_body)
+        self.assertNotIn("saveQuoteSessionDraftState", start_new_quote_body)
         self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
         return_dashboard_body = js.split("async function returnToDashboard()", 1)[1].split("async function handleTopbarBrandClick", 1)[0]
         self.assertIn("currentQuoteSessionIsRestoredFromDashboard() && !restoredQuoteSessionHasChanged()", return_dashboard_body)

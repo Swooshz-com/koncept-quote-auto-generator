@@ -3202,10 +3202,6 @@ function resetImagesDraft() {
 
 async function startNewQuote() {
   if (appIsBusy()) return;
-  markQuoteSessionDraftSaveStartedAfterCustomerStep();
-  if (quoteDraftShouldPersistToDashboard()) {
-    await saveQuoteSessionDraftState({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
-  }
   clearSessionState();
   resetCurrentQuoteDraftState();
   showQuoteFlow();
