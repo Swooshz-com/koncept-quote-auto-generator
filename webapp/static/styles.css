@@ -2770,7 +2770,9 @@ h3 {
   align-content: center;
   justify-items: end;
   gap: 8px;
+  width: 100%;
   min-width: 0;
+  overflow: hidden;
   text-align: right;
 }
 
@@ -2780,8 +2782,17 @@ h3 {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-session-status-row .dashboard-status-pill {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-session-output-row {
@@ -2789,7 +2800,9 @@ h3 {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: end;
   column-gap: 12px;
-  width: min(100%, 360px);
+  justify-self: end;
+  width: 100%;
+  max-width: 360px;
   min-width: 0;
 }
 

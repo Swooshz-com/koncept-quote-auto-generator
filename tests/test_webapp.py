@@ -8004,6 +8004,15 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-status-pill.is-progress", css)
         self.assertIn(".dashboard-session-status-row", css)
         self.assertIn(".dashboard-session-output-row", css)
+        self.assertIn(".dashboard-session-status-row .dashboard-status-pill {", css)
+        result_zone_css = css.split(".dashboard-session-result-zone {", 1)[1].split("}", 1)[0]
+        status_row_css = css.split(".dashboard-session-status-row {", 1)[1].split("}", 1)[0]
+        status_pill_css = css.split(".dashboard-session-status-row .dashboard-status-pill {", 1)[1].split("}", 1)[0]
+        self.assertIn("overflow: hidden;", result_zone_css)
+        self.assertIn("width: 100%;", status_row_css)
+        self.assertIn("overflow: hidden;", status_row_css)
+        self.assertIn("max-width: 100%;", status_pill_css)
+        self.assertIn("text-overflow: ellipsis;", status_pill_css)
         self.assertIn("dashboard-bulk-selection-summary", js)
         self.assertIn("DASHBOARD_DEFAULT_PAGE_SIZE = 5", js)
         self.assertIn("pagedDashboardSessions", js)

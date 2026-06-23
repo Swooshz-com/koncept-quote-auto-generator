@@ -906,20 +906,20 @@ async function main() {
     await createDashboardSmokeSession(page, "reference-c", {
       sessionIdPrefix: "quote-4f-search-row",
       customerName: "Kent Group Exhibition Booth",
-      projectName: "Marina Bay Product Launch",
+      projectName: "Four Foxtrot Smoke Search",
     });
     await page.getByRole("button", { name: "Clear selected session", exact: true }).click();
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Dashboard" }).waitFor();
-    await page.locator("#dashboardSearchInput").fill("4f");
+    await page.locator("#dashboardSearchInput").fill("Four Foxtrot Smoke Search");
     await page.locator(".dashboard-session-card").first().waitFor({ state: "visible", timeout: 15000 });
     const characterSearchRows = await page.locator(".dashboard-session-card").count();
     if (characterSearchRows !== 1) {
-      throw new Error(`Expected search for 4f to match only the REF QUOTE-4F row, found ${characterSearchRows}.`);
+      throw new Error(`Expected search for Four Foxtrot Smoke Search to match only the REF QUOTE-4F row, found ${characterSearchRows}.`);
     }
     const characterSearchText = await page.locator(".dashboard-session-card").first().innerText();
     if (!characterSearchText.includes("REF QUOTE-4F")) {
-      throw new Error(`Search for 4f did not return the visible quote reference row: ${characterSearchText}`);
+      throw new Error(`Search for Four Foxtrot Smoke Search did not return the visible quote reference row: ${characterSearchText}`);
     }
     await page.locator("#dashboardSearchInput").fill("");
     await createDashboardSmokeSession(page, "alpha", { sessionIdPrefix: "quote-7a-playwright-alpha" });
