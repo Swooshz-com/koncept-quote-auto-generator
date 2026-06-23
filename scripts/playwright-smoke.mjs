@@ -883,6 +883,19 @@ async function main() {
       throw new Error("Dashboard session draft state should not store raw PDF data URLs.");
     }
     await currentDashboardCard.click();
+    await page.keyboard.press("Delete");
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+    await expectQuoteSessionDeleteButtonFocused(page);
+    const keyboardSingleDeleteTitle = await page.locator("#quoteSessionDeleteTitle").innerText();
+    if (keyboardSingleDeleteTitle !== "Delete quote session?") {
+      throw new Error(`Unexpected keyboard single delete confirmation title: ${keyboardSingleDeleteTitle}`);
+    }
+    const keyboardSingleDeleteCopy = await page.locator("#quoteSessionDeleteText").innerText();
+    if (keyboardSingleDeleteCopy !== "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.") {
+      throw new Error(`Unexpected keyboard single delete confirmation copy: ${keyboardSingleDeleteCopy}`);
+    }
+    await page.locator("#cancelQuoteSessionDeleteButton").click();
+    await page.locator("#quoteSessionDeleteModal").waitFor({ state: "hidden", timeout: 15000 });
     await page.locator("#dashboardSelectedSessionPanel").waitFor({ state: "visible", timeout: 15000 });
     const normalModeCheckboxVisible = await currentDashboardCard.locator(".dashboard-session-select-control").isVisible();
     if (normalModeCheckboxVisible) {

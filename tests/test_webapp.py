@@ -9812,6 +9812,76 @@ assert.strictEqual(elements.profileLoadModal.hidden, true);
         self.assertNotIn("PROFILE_PRESET_ACTION_DELETE", js)
         self.assertIn('id="profileNameInput"', html)
 
+    def test_static_dashboard_delete_key_uses_active_single_selection(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  activeAppView: "dashboard",
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "quote-active123",
+};
+const elements = {
+  quoteSessionDeleteModal: { hidden: true },
+};
+let deleteRequest = null;
+function requestQuoteSessionDelete(ids, options) {
+  deleteRequest = { ids, options };
+}
+
+eval([
+  extractFunction("safeQuoteSessionId"),
+  extractFunction("dashboardSelectedSessionIds"),
+  extractFunction("handleDashboardDeleteKey"),
+].join("\n"));
+
+let prevented = false;
+const event = {
+  key: "Delete",
+  defaultPrevented: false,
+  target: { closest() { return null; } },
+  preventDefault() { prevented = true; },
+};
+
+assert.strictEqual(handleDashboardDeleteKey(event), true);
+assert.strictEqual(prevented, true);
+assert.deepStrictEqual(deleteRequest, {
+  ids: ["quote-active123"],
+  options: { bulk: false },
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_modals_focus_primary_actions_without_forced_enter_override(self):
         static_dir = ROOT / "webapp" / "static"
         js = (static_dir / "app.js").read_text(encoding="utf-8")

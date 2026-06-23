@@ -9483,9 +9483,11 @@ function handleDashboardDeleteKey(event) {
   if (event.target?.closest?.("input, select, textarea, [contenteditable='true']")) return false;
   if (elements.quoteSessionDeleteModal && !elements.quoteSessionDeleteModal.hidden) return false;
   const selectedIds = dashboardSelectedSessionIds();
-  if (!selectedIds.length) return false;
+  const activeId = safeQuoteSessionId(state.dashboardActiveSessionId || "");
+  const deleteIds = selectedIds.length ? selectedIds : (activeId ? [activeId] : []);
+  if (!deleteIds.length) return false;
   event.preventDefault();
-  requestQuoteSessionDelete(selectedIds, { bulk: selectedIds.length > 1 });
+  requestQuoteSessionDelete(deleteIds, { bulk: deleteIds.length > 1 });
   return true;
 }
 
