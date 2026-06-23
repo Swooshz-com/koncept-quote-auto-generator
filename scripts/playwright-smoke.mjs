@@ -441,8 +441,17 @@ async function main() {
     if (preCustomerQuoteSessionId) {
       throw new Error(`Expected dashboard draft saving to wait until Next: Customer, found ${preCustomerQuoteSessionId}.`);
     }
+    await page.setViewportSize({ width: 520, height: 720 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForFunction(() => window.scrollY > 40, null, { timeout: 15000 });
     await page.locator("#sideNextButton", { hasText: "Next: Customer" }).click();
     await page.locator("#customerDetailsPanel").waitFor({ state: "visible", timeout: 15000 });
+    await page.waitForTimeout(50);
+    const postNextScrollY = await page.evaluate(() => window.scrollY);
+    if (postNextScrollY > 2) {
+      throw new Error(`Next: Customer should reset the page scroll to the top, found scrollY=${postNextScrollY}.`);
+    }
+    await page.setViewportSize({ width: 1365, height: 768 });
     await page.waitForFunction(() => {
       try {
         const saved = JSON.parse(window.localStorage.getItem("swooshz_quote_session_v1") || "{}");

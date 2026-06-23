@@ -10085,6 +10085,18 @@ function sidePanelBlockReason(panelName) {
   return "";
 }
 
+function resetQuoteFlowScroll() {
+  const scrollTargets = [elements.sideWorkspace, document.querySelector(".workspace-pane-scroll")].filter(Boolean);
+  scrollTargets.forEach((target) => {
+    if (typeof target.scrollTo === "function") {
+      target.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } else {
+      target.scrollTop = 0;
+    }
+  });
+  window.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+}
+
 function setSidePanel(panelName, options = {}) {
   const panelTitles = {
     images: ["Upload", "Reference Inputs", currentGenerator().intakeSubtitle],
@@ -10099,6 +10111,7 @@ function setSidePanel(panelName, options = {}) {
     updateSidePanelNav();
     return false;
   }
+  const previousPanel = state.activeSidePanel;
   const [title, eyebrow, subtitle] = panelTitles[nextPanel] || panelTitles.images;
   state.activeSidePanel = nextPanel;
   document.body.dataset.sidePanel = state.activeSidePanel;
@@ -10117,6 +10130,7 @@ function setSidePanel(panelName, options = {}) {
   elements.sideWorkspace.setAttribute("aria-hidden", "false");
   updateSidePanelNav();
   saveSessionState();
+  if (nextPanel !== previousPanel) resetQuoteFlowScroll();
   return true;
 }
 
