@@ -953,6 +953,12 @@ h3 {
   color: #1e3a8a;
 }
 
+.dashboard-status-pill.is-draft-modified {
+  border-color: rgba(180, 83, 9, 0.24);
+  background: #fff7ed;
+  color: #92400e;
+}
+
 .dashboard-selected-action {
   width: 100%;
   min-width: 0;
@@ -1204,6 +1210,14 @@ h3 {
   margin-bottom: 4px;
   font-size: 18px;
   line-height: 1.2;
+}
+
+.dashboard-selected-created {
+  margin: 5px 0 0;
+  color: var(--muted-light);
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1.25;
 }
 
 .dashboard-selected-close {
@@ -2891,8 +2905,7 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.dashboard-session-meta-zone div:nth-child(2) dd,
-.dashboard-session-total-cell dd {
+.dashboard-session-meta-zone div:nth-child(2) dd {
   overflow-wrap: normal;
   white-space: nowrap;
 }
@@ -2933,6 +2946,19 @@ h3 {
   text-overflow: ellipsis;
 }
 
+.dashboard-session-total-cell {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.dashboard-session-money-pair {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  overflow-wrap: normal;
+}
+
 .dashboard-session-total {
   display: inline-block;
   color: var(--ink);
@@ -2940,6 +2966,17 @@ h3 {
   font-weight: 900;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-session-subtotal {
+  display: block;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.28;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 @media (min-width: 1101px) {

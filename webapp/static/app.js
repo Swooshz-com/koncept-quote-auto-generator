@@ -6781,6 +6781,15 @@ function formatSubtotalValue(stats = {}) {
   return stats.totalPending ? `${totalText} + ???` : totalText;
 }
 
+function formatOutputTotalValue(stats = {}) {
+  const subtotal = Number(stats.total || 0);
+  const tax = collectTaxDetails();
+  const taxRate = Number(tax.rate ?? DEFAULT_TAX_RATE);
+  const grandTotal = Number.isFinite(taxRate) ? subtotal + (subtotal * taxRate) : subtotal;
+  const totalText = `${selectedPricingReferenceCurrency()} ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return stats.totalPending ? `${totalText} + ???` : totalText;
+}
+
 function outputPricingSourceLabel() {
   const reference = currentPricingReference();
   if (!reference) return "Pricing reference";
@@ -6819,7 +6828,8 @@ function renderMatchSummary(result = {}) {
     return;
   }
   const stats = matchSummaryStats(rows);
-  const totalValue = formatSubtotalValue(stats);
+  const subtotalValue = formatSubtotalValue(stats);
+  const totalValue = formatOutputTotalValue(stats);
   elements.matchSummary.innerHTML = `
     <div class="stat-card-row output-stat-card-row">
       <div class="stat-card">
@@ -6833,14 +6843,14 @@ function renderMatchSummary(result = {}) {
         <span class="stat-card-label">Priced rows</span>
       </div>
       <div class="stat-card">
-        <span class="stat-card-icon red" aria-hidden="true">!</span>
-        <span class="stat-card-value">${stats.needsManualInput}</span>
-        <span class="stat-card-label">Needs manual input</span>
+        <span class="stat-card-icon amber" aria-hidden="true">$</span>
+        <span class="stat-card-value">${subtotalValue}</span>
+        <span class="stat-card-label">Subtotal</span>
       </div>
       <div class="stat-card">
         <span class="stat-card-icon amber" aria-hidden="true">$</span>
         <span class="stat-card-value">${totalValue}</span>
-        <span class="stat-card-label">Subtotal</span>
+        <span class="stat-card-label">Total</span>
       </div>
     </div>
   `;
@@ -8528,6 +8538,11 @@ function formatDashboardMoney(session = {}) {
   return `${currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatDashboardSubtotal(session = {}) {
+  const commercials = session.commercials || {};
+  return formatDashboardMoneyValue(dashboardNumberOrNull(commercials.subtotal), dashboardSessionCurrency(session));
+}
+
 function dashboardGrandTotalValue(session = {}) {
   return dashboardNumberOrNull(session.commercials?.grand_total);
 }
@@ -8923,7 +8938,12 @@ function quoteSessionHasAvailableExport(session = {}) {
   return ["xlsx", "pdf"].some((kind) => Boolean(quoteSessionExport(session, kind).exists));
 }
 
+function quoteSessionHasStaleExport(session = {}) {
+  return ["xlsx", "pdf"].some((kind) => Boolean(quoteSessionExport(session, kind).stale));
+}
+
 function quoteSessionStatus(session = {}) {
+  if (session.status?.draft_modified || quoteSessionHasStaleExport(session)) return { key: "draft", label: "Draft Modified", className: "is-draft-modified" };
   if (session.status?.quote_generated || quoteSessionHasAvailableExport(session)) return { key: "generated", label: "Generated", className: "is-generated" };
   return { key: "draft", label: "Draft", className: "is-draft" };
 }
@@ -9233,6 +9253,9 @@ function dashboardExportAvailabilityItem(session = {}, kind = "xlsx", label = "X
   if (exportInfo.exists && exportInfo.url) {
     return { kind, label, exportInfo, available: true, statusText: `${label} ready`, className: "is-available" };
   }
+  if (exportInfo.stale) {
+    return { kind, label, exportInfo, available: false, statusText: `${label} needs regeneration`, className: "is-unavailable" };
+  }
   if (exportInfo.missing) {
     return { kind, label, exportInfo, available: false, statusText: `Missing ${label}`, className: "is-unavailable" };
   }
@@ -9248,7 +9271,9 @@ function dashboardSessionCard(session = {}) {
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   const shortReference = dashboardShortSessionReference(session);
   const grandTotal = formatDashboardMoney(session);
+  const subtotal = formatDashboardSubtotal(session);
   const grandTotalHtml = grandTotal === "-" ? "&mdash;" : escapeHtml(grandTotal);
+  const subtotalHtml = subtotal === "-" ? "&mdash;" : escapeHtml(subtotal);
   const selected = dashboardSelectedSessionIds().includes(safeSessionId);
   const active = safeQuoteSessionId(state.dashboardActiveSessionId || "") === safeSessionId;
   const selectionMode = Boolean(state.dashboardSelectionMode);
@@ -9282,8 +9307,14 @@ function dashboardSessionCard(session = {}) {
             <dd>${escapeHtml(dashboardModifiedText(session))}</dd>
           </div>
           <div class="dashboard-session-total-cell">
-            <dt>Total</dt>
-            <dd><span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">${grandTotalHtml}</span></dd>
+            <div class="dashboard-session-money-pair">
+              <dt>Total</dt>
+              <dd class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">${grandTotalHtml}</dd>
+            </div>
+            <div class="dashboard-session-money-pair dashboard-session-subtotal-pair">
+              <dt>Subtotal</dt>
+              <dd class="dashboard-session-subtotal">${subtotalHtml}</dd>
+            </div>
           </div>
           <div>
             <dt>Quote Company</dt>
@@ -9473,6 +9504,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
   const pricing = activeSession.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
   const shortReference = dashboardShortSessionReference(activeSession);
+  const createdText = formatDashboardDateTime(activeSession.created_at);
   const canModify = dashboardSessionCanModify(activeSession);
   const modifyTitle = canModify ? "Load the saved quote draft for editing." : "No saved draft data is available for this session.";
   const restoreError = String(state.quoteSessionRestoreError || "").trim();
@@ -9482,6 +9514,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
         <p class="workspace-pane-eyebrow">SELECTED SESSION</p>
         <h3 id="dashboardSelectedSessionTitle">${escapeHtml(customer)}</h3>
         <p class="settings-note">${escapeHtml(project)}</p>
+        <p class="dashboard-selected-created">Created ${escapeHtml(createdText)}</p>
       </div>
       ${dashboardSelectedCloseButton("Clear selected session")}
     </header>
@@ -9493,7 +9526,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
       </div>
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
-        <div><dt>Created</dt><dd>${escapeHtml(formatDashboardDateTime(activeSession.created_at))}</dd></div>
+        <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
         <div><dt>Modified</dt><dd>${escapeHtml(dashboardModifiedText(activeSession))}</dd></div>
         <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>

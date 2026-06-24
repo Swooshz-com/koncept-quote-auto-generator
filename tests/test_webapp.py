@@ -7731,6 +7731,78 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(refreshed["exports"]["pdf"]["missing"], True)
             self.assertNotIn(str(tmp_path), json.dumps(refreshed))
 
+    def test_quote_session_draft_update_marks_existing_exports_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_root = tmp_path / "data"
+            output_dir = tmp_path / "out" / "job-stale"
+            output_dir.mkdir(parents=True)
+            (output_dir / "quotation.xlsx").write_bytes(b"xlsx")
+            (output_dir / "quotation.pdf").write_bytes(b"pdf")
+            payload = valid_payload()
+            payload["quote_session"] = {
+                "session_id": "quote-stale",
+                "status": {"quote_generated": True},
+                "commercials": {
+                    "currency": "SGD",
+                    "tax_label": "GST",
+                    "tax_rate": 0.09,
+                    "subtotal": 100,
+                    "tax_amount": 9,
+                    "grand_total": 109,
+                },
+                "draft_state": {
+                    "version": 1,
+                    "activeSidePanel": "output",
+                    "outputRows": [{"description": "Generated row", "amount": 100}],
+                    "outputRevision": 0,
+                },
+            }
+            result = {
+                "status": "completed",
+                "files": [
+                    {"name": "quotation.xlsx", "url": "/api/jobs/job-stale/files/quotation.xlsx"},
+                    {"name": "quotation.pdf", "url": "/api/jobs/job-stale/files/quotation.pdf"},
+                ],
+            }
+            stale_payload = valid_payload()
+            stale_payload["quote_session"] = {
+                **payload["quote_session"],
+                "commercials": {
+                    "currency": "SGD",
+                    "tax_label": "GST",
+                    "tax_rate": 0.09,
+                    "subtotal": 200,
+                    "tax_amount": 18,
+                    "grand_total": 218,
+                },
+                "draft_state": {
+                    "version": 1,
+                    "activeSidePanel": "output",
+                    "outputRows": [{"description": "Modified row", "amount": 200}],
+                    "outputRevision": 1,
+                },
+            }
+
+            with mock.patch.object(webapp, "configured_data_root", return_value=data_root):
+                generated = webapp.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+                stale = webapp.create_or_update_quote_session(stale_payload)
+
+            self.assertTrue(generated["exports"]["xlsx"]["exists"])
+            self.assertEqual(generated["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-stale/download/xlsx")
+            self.assertTrue(generated["status"]["quote_generated"])
+            self.assertFalse(generated["status"].get("draft_modified", False))
+            self.assertEqual(stale["commercials"]["grand_total"], 218)
+            self.assertFalse(stale["status"]["quote_generated"])
+            self.assertTrue(stale["status"]["draft_modified"])
+            self.assertEqual(stale["exports"]["xlsx"]["filename"], "quotation.xlsx")
+            self.assertFalse(stale["exports"]["xlsx"]["exists"])
+            self.assertTrue(stale["exports"]["xlsx"]["stale"])
+            self.assertIsNone(stale["exports"]["xlsx"]["url"])
+            self.assertFalse(stale["exports"]["pdf"]["exists"])
+            self.assertTrue(stale["exports"]["pdf"]["stale"])
+            self.assertNotIn(str(tmp_path), json.dumps(stale))
+
     def test_quote_session_api_empty_state_and_download_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_root = Path(tmp) / "data"
@@ -7765,10 +7837,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     (exports_dir / "quotation.xlsx").write_bytes(b"xlsx")
                     metadata_path = webapp.quote_session_metadata_path("quote-api")
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    metadata["updated_at"] = "2026-01-01T00:00:00Z"
                     metadata["status"]["xlsx_exported"] = True
                     metadata["exports"]["xlsx"] = {
                         "filename": "quotation.xlsx",
-                        "created_at": "2026-01-01T00:00:00Z",
+                        "created_at": "2026-01-02T00:00:00Z",
                         "size_bytes": 4,
                     }
                     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -7779,6 +7852,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     ) as response:
                         self.assertEqual(response.status, 200)
                         self.assertEqual(response.read(), b"xlsx")
+
+                    metadata["updated_at"] = "2026-01-03T00:00:00Z"
+                    metadata["exports"]["xlsx"]["created_at"] = "2026-01-02T00:00:00Z"
+                    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(f"{runner.base_url}/api/quote-sessions/quote-api/download/xlsx", timeout=3)
+                    self.assertEqual(error.exception.code, 404)
 
                     for path in (
                         "/api/quote-sessions/quote-api/download/docx",
@@ -8016,7 +8096,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardModifiedText", js)
         self.assertIn("dashboardDateFilterMatches", js)
         self.assertIn('elements.dashboardEmptyEyebrow.textContent = hasSessions ? "NO MATCHES" : "QUOTE LIST"', js)
+        self.assertIn("formatDashboardSubtotal", js)
+        self.assertIn("dashboard-session-money-pair", js)
+        self.assertIn("dashboard-session-subtotal", js)
+        self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
+        self.assertIn("<dt>Subtotal</dt>", js)
+        self.assertIn("dashboard-selected-created", js)
         self.assertIn("dashboard-session-total-cell", js)
         self.assertNotIn("dashboardLastExportText", js)
         self.assertNotIn("<dt>Last export</dt>", js)
@@ -8029,7 +8115,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-status-pill.is-progress-quote-basis", css)
         self.assertIn(".dashboard-status-pill.is-progress-output", css)
         self.assertIn(".dashboard-status-pill.is-draft", css)
+        self.assertIn(".dashboard-status-pill.is-draft-modified", css)
         self.assertIn(".dashboard-status-pill.is-generated", css)
+        self.assertIn(".dashboard-session-money-pair", css)
+        self.assertIn(".dashboard-session-subtotal", css)
+        self.assertNotIn(".dashboard-session-amount-stack", css)
+        self.assertIn(".dashboard-selected-created", css)
         self.assertIn(".dashboard-status-control", css)
         self.assertIn(".dashboard-session-status-row", css)
         self.assertIn(".dashboard-session-total-cell", css)
@@ -9244,11 +9335,14 @@ assert.strictEqual(synced, true);
         self.assertNotIn('!== "unmatched"', summary_body)
         self.assertIn("rowNeedsManualInput", js)
         self.assertIn("Priced rows", summary_body)
-        self.assertIn("Needs manual input", summary_body)
+        self.assertNotIn("Needs manual input", summary_body)
         self.assertIn("Subtotal", summary_body)
+        self.assertIn("Total", summary_body)
         css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertNotIn("grid-template-columns: repeat(5, minmax(0, 1fr));", css)
         self.assertIn(".output-stat-card-row .stat-card-value {\n  font-size: 18px;\n  letter-spacing: 0;", css)
         self.assertIn("formatSubtotalValue", js)
+        self.assertIn("formatOutputTotalValue", js)
         self.assertIn("+ ???", js)
         self.assertNotIn('? "???"', summary_body)
         self.assertIn('data-output-edit-field="${field}"', js)
@@ -9311,6 +9405,10 @@ function selectedPricingReferenceCurrency() {
   return "SGD";
 }
 eval(extractFunction("formatSubtotalValue"));
+function collectTaxDetails() {
+  return { label: "GST", rate: 0.09 };
+}
+eval(extractFunction("formatOutputTotalValue"));
 
 const rows = [
   { status: "matched", price_mode: "Priced", description: "A", quantity: 1, pricing_keyword: "a", catalog_unit_price: 1200, amount: "1,200" },
@@ -9324,6 +9422,7 @@ assert.strictEqual(stats.pricedRows, 2);
 assert.strictEqual(stats.needsManualInput, 2);
 assert.strictEqual(stats.total, 1700);
 assert.strictEqual(formatSubtotalValue(stats), "SGD 1,700.00 + ???");
+assert.strictEqual(formatOutputTotalValue(stats), "SGD 1,853.00 + ???");
 assert.strictEqual(pricingStatusLabel("matched-from-ambiguous"), "Ambiguous match selected");
 assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price");
 
@@ -9335,6 +9434,7 @@ assert.strictEqual(effectiveOutputUnitPrice({ catalog_unit_price: "10.50", unit_
 assert.strictEqual(pendingStats.needsManualInput, 1);
 assert.strictEqual(pendingStats.totalPending, true);
 assert.strictEqual(formatSubtotalValue(pendingStats), "SGD 378.00 + ???");
+assert.strictEqual(formatOutputTotalValue(pendingStats), "SGD 412.02 + ???");
 const zeroManualRow = recalculateOutputRow({
   price_mode: "Priced",
   description: "Manual zero price",
@@ -9348,6 +9448,7 @@ assert.strictEqual(zeroManualRow.amount, 0);
 assert.strictEqual(rowNeedsManualInput(zeroManualRow), false);
 assert.deepStrictEqual(outputRowsValid([zeroManualRow]), { valid: true, errors: [] });
 assert.strictEqual(formatSubtotalValue({ total: 6480, totalPending: false }), "SGD 6,480.00");
+assert.strictEqual(formatOutputTotalValue({ total: 6480, totalPending: false }), "SGD 7,063.20");
 const multiwordUnitRow = outputRowFromPricingMatch({
   status: "matched",
   section: "Booth Structure",
@@ -10115,6 +10216,10 @@ function visibleText(html) {
 eval([
   extractFunction("dashboardExportAvailabilityItem"),
   extractFunction("dashboardSelectedExportAction"),
+  extractFunction("quoteSessionHasMissingExport"),
+  extractFunction("quoteSessionHasAvailableExport"),
+  extractFunction("quoteSessionHasStaleExport"),
+  extractFunction("quoteSessionStatus"),
 ].join("\n"));
 
 const unavailable = {};
@@ -10122,6 +10227,13 @@ const unavailable = {};
 const mixed = { exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: { missing: true } } };
 assert.strictEqual(dashboardExportAvailabilityItem(mixed, "xlsx", "XLSX").statusText, "XLSX ready");
 assert.strictEqual(dashboardExportAvailabilityItem(mixed, "pdf", "PDF").statusText, "Missing PDF");
+
+const stale = {
+  status: { quote_generated: false, draft_modified: true },
+  exports: { xlsx: { stale: true, filename: "quotation.xlsx" }, pdf: { stale: true, filename: "quotation.pdf" } },
+};
+assert.strictEqual(dashboardExportAvailabilityItem(stale, "xlsx", "XLSX").statusText, "XLSX needs regeneration");
+assert.deepStrictEqual(quoteSessionStatus(stale), { key: "draft", label: "Draft Modified", className: "is-draft-modified" });
 
 const xlsxAction = dashboardSelectedExportAction(mixed, "xlsx", "XLSX");
 assert.ok(xlsxAction.includes("dashboard-selected-action-kicker"));
@@ -16069,10 +16181,14 @@ eval([
   "rowNeedsManualInput",
   "matchSummaryStats",
   "formatSubtotalValue",
+  "formatOutputTotalValue",
 ].map(extractFunction).join("\n"));
 
 function selectedPricingReferenceCurrency() {
   return "SGD";
+}
+function collectTaxDetails() {
+  return { label: "GST", rate: 0.09 };
 }
 
 const row = outputRowFromLineItem({
@@ -16099,6 +16215,7 @@ const stats = matchSummaryStats([row]);
 assert.strictEqual(stats.needsManualInput, 1);
 assert.strictEqual(stats.pricedRows, 0);
 assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
+assert.strictEqual(formatOutputTotalValue(stats), "SGD 0.00 + ???");
 
 const invalidOverrideRow = normalizeOutputRow({
   section: "Furniture",
@@ -16121,6 +16238,7 @@ const invalidOverrideStats = matchSummaryStats([invalidOverrideRow]);
 assert.strictEqual(invalidOverrideStats.needsManualInput, 1);
 assert.strictEqual(invalidOverrideStats.pricedRows, 0);
 assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
+assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 """
         completed = subprocess.run(
             [node, "-e", script],

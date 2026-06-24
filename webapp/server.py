@@ -11153,6 +11153,41 @@ def result_has_generated_quote(result: dict[str, Any] | None) -> bool:
     return clean_text(result.get("status")) in {"completed", "needs_confirmation", "needs_review", "degraded"}
 
 
+def quote_session_timestamp_sort_value(value: Any) -> float:
+    text = clean_text(value)
+    if not text:
+        return 0.0
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def quote_session_export_is_stale(metadata: dict[str, Any], export: dict[str, Any] | None) -> bool:
+    if not isinstance(export, dict):
+        return False
+    if not clean_text(export.get("filename")):
+        return False
+    if export.get("stale") is True:
+        return True
+    updated_at = quote_session_timestamp_sort_value(metadata.get("updated_at"))
+    exported_at = quote_session_timestamp_sort_value(export.get("created_at"))
+    return bool(updated_at and exported_at and updated_at > exported_at)
+
+
+def mark_quote_session_exports_stale(metadata: dict[str, Any]) -> None:
+    exports = metadata.get("exports") if isinstance(metadata.get("exports"), dict) else {}
+    for kind in QUOTE_SESSION_EXPORT_KINDS:
+        export = exports.get(kind)
+        if not isinstance(export, dict) or not clean_text(export.get("filename")):
+            continue
+        export["stale"] = True
+        metadata["status"][f"{kind}_exported"] = False
+    if any(isinstance(exports.get(kind), dict) and exports[kind].get("stale") is True for kind in QUOTE_SESSION_EXPORT_KINDS):
+        metadata["status"]["quote_generated"] = False
+        metadata["status"]["draft_modified"] = True
+
+
 def copy_quote_session_exports(session_id: str, metadata: dict[str, Any], result: dict[str, Any] | None, output_dir: Path | None) -> None:
     if not result_has_generated_quote(result) or output_dir is None:
         return
@@ -11169,6 +11204,7 @@ def copy_quote_session_exports(session_id: str, metadata: dict[str, Any], result
             "filename": filename,
             "created_at": utc_timestamp(),
             "size_bytes": stat.st_size,
+            "stale": False,
         }
         metadata["status"][f"{kind}_exported"] = True
 
@@ -11202,6 +11238,8 @@ def create_or_update_quote_session(
     if result_has_generated_quote(result):
         metadata["status"]["quote_generated"] = True
     copy_quote_session_exports(resolved_session_id, metadata, result, output_dir)
+    if not result_has_generated_quote(result):
+        mark_quote_session_exports_stale(metadata)
     write_quote_session_metadata(metadata)
     return public_quote_session(metadata)
 
@@ -11254,19 +11292,27 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         public["draft_progress"] = draft_progress
     if not include_draft_state:
         public.pop("draft_state", None)
+    has_stale_export = False
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
         raw_export = public["exports"].get(kind) if isinstance(public["exports"].get(kind), dict) else {}
         recorded_filename = clean_text(raw_export.get("filename"))
         safe_recorded = recorded_filename if recorded_filename == filename else ""
         export_path = quote_session_export_path(session_id, kind) if safe_recorded else None
-        exists = bool(export_path and export_path.exists() and export_path.is_file())
+        file_exists = bool(export_path and export_path.exists() and export_path.is_file())
+        stale = bool(file_exists and quote_session_export_is_stale(normalized, raw_export))
+        exists = bool(file_exists and not stale)
+        has_stale_export = has_stale_export or stale
         raw_export["filename"] = safe_recorded or None
         raw_export["exists"] = exists
-        raw_export["missing"] = bool(safe_recorded and not exists)
+        raw_export["missing"] = bool(safe_recorded and not file_exists)
+        raw_export["stale"] = stale
         raw_export["url"] = f"/api/quote-sessions/{session_id}/download/{kind}" if exists else None
-        if exists and export_path is not None:
+        if file_exists and export_path is not None:
             raw_export["size_bytes"] = export_path.stat().st_size
         public["exports"][kind] = raw_export
+    public["status"]["draft_modified"] = has_stale_export
+    if has_stale_export:
+        public["status"]["quote_generated"] = False
     return public
 
 
@@ -11278,13 +11324,7 @@ def get_quote_session(session_id: str, *, include_draft_state: bool = False) -> 
 
 
 def iso_timestamp_sort_value(value: Any) -> float:
-    text = clean_text(value)
-    if not text:
-        return 0.0
-    try:
-        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return 0.0
+    return quote_session_timestamp_sort_value(value)
 
 
 def list_quote_sessions() -> list[dict[str, Any]]:
@@ -12427,6 +12467,9 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         export = metadata.get("exports", {}).get(normalized_kind) if metadata else None
         filename = clean_text(export.get("filename")) if isinstance(export, dict) else ""
         if filename != expected_filename:
+            self.send_json({"error": "Not found"}, status=404)
+            return
+        if quote_session_export_is_stale(metadata, export if isinstance(export, dict) else None):
             self.send_json({"error": "Not found"}, status=404)
             return
         export_dir = quote_session_export_dir(safe_id)
