@@ -7658,15 +7658,24 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                         "images": [{
                             "name": "reference.pdf",
                             "type": "application/pdf",
-                            "data_url": "data:application/pdf;base64,SECRET",
+                            "session_file_key": "reference-file-key",
+                            "data_url": "data:application/pdf;base64,UERG",
                         }],
                         "output_dir": str(data_root / "private-output"),
                     },
+                    "draft_files": [{
+                        "session_file_key": "reference-file-key",
+                        "name": "reference.pdf",
+                        "type": "application/pdf",
+                        "size": 3,
+                        "data_url": "data:application/pdf;base64,UERG",
+                    }],
                 }
                 new_session = webapp.create_or_update_quote_session(new_payload)
                 new_path = webapp.quote_session_metadata_path(new_session["session_id"])
                 new_data = json.loads(new_path.read_text(encoding="utf-8"))
                 detailed_new_session = webapp.get_quote_session("quote-new", include_draft_state=True)
+                draft_files_path = data_root / "quote-sessions" / "quote-new" / "draft-files.json"
 
                 sessions = webapp.list_quote_sessions()
 
@@ -7678,10 +7687,14 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(new_data["draft_state"]["analysisFindings"][0]["text"], "Synthetic visible finding")
             self.assertNotIn("data_url", json.dumps(new_data["draft_state"]))
             self.assertNotIn("output_dir", json.dumps(new_data["draft_state"]))
+            self.assertTrue(draft_files_path.is_file())
+            self.assertEqual(detailed_new_session["draft_files"][0]["session_file_key"], "reference-file-key")
+            self.assertEqual(detailed_new_session["draft_files"][0]["data_url"], "data:application/pdf;base64,UERG")
             self.assertTrue(detailed_new_session["has_draft_state"])
             self.assertTrue(sessions[0]["has_draft_state"])
             self.assertFalse(sessions[1]["has_draft_state"])
             self.assertIn("draft_state", detailed_new_session)
+            self.assertNotIn("draft_files", sessions[0])
             self.assertNotIn("draft_state", sessions[0])
             self.assertEqual(sessions[0]["draft_progress"]["active_side_panel"], "output")
             self.assertEqual(sessions[0]["draft_progress"]["workflow_stage"], "completed")
@@ -8045,6 +8058,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("discardCurrentQuoteDraftSession", js)
         self.assertIn("includeDraftState: true", js)
         self.assertIn("payload.draft_state = currentQuoteSessionDraftState()", js)
+        self.assertIn("payload.draft_files = sessionFileRecordsFromDraft()", js)
         self.assertIn("quoteSessionDraftSaveStarted", js)
         self.assertIn("quoteSessionDraftStateCanSave", js)
         self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
@@ -8835,7 +8849,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("clearGeneratedQuoteState();", profile_change_body)
         self.assertIn("syncControlStates();", profile_change_body)
         self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
-        self.assertIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
+        self.assertIn("selectPricingReferenceOptionValue(firstPricingReferenceOptionValue());", sample_loader_body)
+        self.assertIn("selectPresetValue(firstAvailablePresetValue());", sample_loader_body)
+        self.assertIn("loadSelectedPreset({ silent: true })", sample_loader_body)
+        self.assertNotIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
+        self.assertNotIn("state.profileId = data.profile_id", sample_loader_body)
+        self.assertNotIn("data.pricing_reference_id", sample_loader_body)
 
     def test_static_solution_ui_stays_on_approved_post_pr29_baseline(self):
         static_dir = ROOT / "webapp" / "static"
@@ -9134,6 +9153,8 @@ const elements = {
 eval([
   "normalizeTextNewlines",
   "splitLines",
+  "hasMeaningfulQuoteDetailValue",
+  "quoteDetailsWithFallbackDefaults",
   "currentPricingReference",
   "missingCustomerFields",
   "missingQuoteCompanyFields",
@@ -9147,6 +9168,25 @@ eval([
   "sidePanelBlockReason",
   "canStartAnalysis",
 ].map(extractFunction).join("\n"));
+
+const restoredDetails = quoteDetailsWithFallbackDefaults(
+  {
+    company: { name: "Default Co", header_details: "Default header", logo_data_url: "data:image/png;base64,AAA=" },
+    quote_text: { acceptance_text: "Default acceptance", person_label: "Default person" },
+    signature: { company_signatory: "Default signer", company_title: "Default title" },
+  },
+  {
+    company: { name: "Saved Co", header_details: "" },
+    quote_text: { acceptance_text: "", stamp_label: "Saved stamp" },
+    signature: { company_title: "Saved title" },
+  }
+);
+assert.strictEqual(restoredDetails.company.name, "Saved Co");
+assert.strictEqual(restoredDetails.company.header_details, "Default header");
+assert.strictEqual(restoredDetails.quote_text.acceptance_text, "Default acceptance");
+assert.strictEqual(restoredDetails.quote_text.stamp_label, "Saved stamp");
+assert.strictEqual(restoredDetails.signature.company_signatory, "Default signer");
+assert.strictEqual(restoredDetails.signature.company_title, "Saved title");
 
 assert.strictEqual(startAnalysisBlockReason(), "Add at least one reference file before starting analysis.");
 state.images = [{ name: "render.jpg", type: "image/jpeg", size: 12, session_file_key: "stored-reference-key" }];
@@ -12093,6 +12133,7 @@ let appliedSnapshot = null;
 let shownQuoteFlow = false;
 let rememberedBaseline = "";
 let controlsSynced = 0;
+let persistedRecords = [];
 
 function appIsBusy() { return false; }
 function clearQuoteSessionDraftSaveTimer() {}
@@ -12101,9 +12142,20 @@ function quoteDraftShouldPersistToDashboard() { return true; }
 function currentQuoteSessionDraftState() { throw new Error("Server draft state should be used."); }
 function mergeDashboardQuoteSession() {}
 function dashboardRestoreError(message) { throw new Error(message); }
+function persistSessionFiles(records) {
+  persistedRecords = records;
+  return Promise.resolve();
+}
 async function loadQuoteSessionDetail() {
   return {
     session_id: "quote-active123",
+    draft_files: [{
+      name: "render.jpg",
+      type: "image/jpeg",
+      size: 12,
+      session_file_key: "server-file-key",
+      data_url: "data:image/jpeg;base64,U0VSVkVS",
+    }],
     draft_state: {
       version: QUOTE_SESSION_STATE_VERSION,
       activeAppView: "quote",
@@ -12113,7 +12165,7 @@ async function loadQuoteSessionDetail() {
         name: "render.jpg",
         type: "image/jpeg",
         size: 12,
-        session_file_key: "browser-file-key",
+        session_file_key: "server-file-key",
       }],
     },
   };
@@ -12140,8 +12192,9 @@ eval([
 
   assert.ok(appliedSnapshot);
   assert.strictEqual(appliedSnapshot.images.length, 1);
-  assert.strictEqual(appliedSnapshot.images[0].data_url, "data:image/jpeg;base64,UkVOREVS");
-  assert.strictEqual(appliedSnapshot.images[0].session_file_key, "browser-file-key");
+  assert.strictEqual(persistedRecords.length, 1);
+  assert.strictEqual(appliedSnapshot.images[0].data_url, "data:image/jpeg;base64,U0VSVkVS");
+  assert.strictEqual(appliedSnapshot.images[0].session_file_key, "server-file-key");
   assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
   assert.strictEqual(state.dashboardSelectionMode, false);
   assert.strictEqual(state.dashboardActiveSessionId, "quote-active123");

@@ -222,6 +222,7 @@ QUOTE_SESSION_SCHEMA_VERSION = 1
 QUOTE_SESSION_ID_RE = re.compile(r"^quote-[A-Za-z0-9_-]{3,64}$")
 QUOTE_SESSION_DIR_NAME = "quote-sessions"
 QUOTE_SESSION_METADATA_FILENAME = "quote-session.json"
+QUOTE_SESSION_DRAFT_FILES_FILENAME = "draft-files.json"
 QUOTE_SESSION_EXPORT_DIR_NAME = "exports"
 QUOTE_SESSION_EXPORT_KINDS = {
     "xlsx": "quotation.xlsx",
@@ -10929,6 +10930,10 @@ def quote_session_metadata_path(session_id: str) -> Path:
     return quote_session_dir(session_id) / QUOTE_SESSION_METADATA_FILENAME
 
 
+def quote_session_draft_files_path(session_id: str) -> Path:
+    return quote_session_dir(session_id) / QUOTE_SESSION_DRAFT_FILES_FILENAME
+
+
 def quote_session_export_dir(session_id: str) -> Path:
     return quote_session_dir(session_id) / QUOTE_SESSION_EXPORT_DIR_NAME
 
@@ -11074,6 +11079,76 @@ def quote_session_draft_state(patch: dict[str, Any]) -> dict[str, Any]:
     supplied = patch.get("draft_state") if isinstance(patch.get("draft_state"), dict) else {}
     sanitized = quote_session_draft_state_value(supplied)
     return sanitized if isinstance(sanitized, dict) else {}
+
+
+def quote_session_draft_file_record(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    session_file_key = dashboard_safe_text(value.get("session_file_key"), 180)
+    data_url = str(value.get("data_url") or "").strip()
+    if not session_file_key or not data_url:
+        return {}
+    mime_type = reference_file_mime_type(value)
+    if not (mime_type.startswith("image/") or mime_type == "application/pdf"):
+        return {}
+    max_bytes = MAX_PDF_BYTES if mime_type == "application/pdf" else MAX_IMAGE_BYTES
+    decode_reference_data_url_bytes({**value, "data_url": data_url}, max_bytes)
+    size = dashboard_safe_number(value.get("size"))
+    return {
+        "session_file_key": session_file_key,
+        "name": dashboard_safe_text(value.get("name"), 180) or "reference-file",
+        "type": mime_type,
+        "size": int(size or 0),
+        "data_url": data_url,
+    }
+
+
+def quote_session_draft_files(patch: dict[str, Any]) -> list[dict[str, Any]]:
+    supplied = patch.get("draft_files") if isinstance(patch.get("draft_files"), list) else []
+    records: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for value in supplied[:MAX_REFERENCE_IMAGES + 2]:
+        try:
+            record = quote_session_draft_file_record(value)
+        except ValueError:
+            continue
+        key = clean_text(record.get("session_file_key"))
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        records.append(record)
+    return records
+
+
+def write_quote_session_draft_files(session_id: str, records: list[dict[str, Any]]) -> None:
+    path = quote_session_draft_files_path(session_id)
+    if not records:
+        if path.exists():
+            path.unlink()
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(records, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def read_quote_session_draft_files(session_id: str) -> list[dict[str, Any]]:
+    safe_id = safe_quote_session_id(session_id, "")
+    if not safe_id:
+        return []
+    try:
+        data = json.loads(quote_session_draft_files_path(safe_id).read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    records: list[dict[str, Any]] = []
+    for item in data:
+        try:
+            record = quote_session_draft_file_record(item)
+        except ValueError:
+            continue
+        if record:
+            records.append(record)
+    return records
 
 
 def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, Any]:
@@ -11288,6 +11363,7 @@ def create_or_update_quote_session(
         metadata["status"]["quote_generated"] = status_patch["quote_generated"]
     if isinstance(patch.get("draft_state"), dict):
         metadata["draft_state"] = quote_session_draft_state(patch)
+        write_quote_session_draft_files(resolved_session_id, quote_session_draft_files(patch))
     if result_has_generated_quote(result):
         metadata["status"]["quote_generated"] = True
     copy_quote_session_exports(resolved_session_id, metadata, result, output_dir)
@@ -11345,6 +11421,9 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         public["draft_progress"] = draft_progress
     if not include_draft_state:
         public.pop("draft_state", None)
+        public.pop("draft_files", None)
+    else:
+        public["draft_files"] = read_quote_session_draft_files(session_id)
     has_stale_export = False
     has_available_export = False
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():

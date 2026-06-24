@@ -1802,6 +1802,33 @@ function hasOwnValue(object, key) {
   return Object.prototype.hasOwnProperty.call(object || {}, key);
 }
 
+function hasMeaningfulQuoteDetailValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value).length > 0;
+  return String(value ?? "").trim().length > 0;
+}
+
+function quoteDetailsWithFallbackDefaults(defaults = {}, details = {}) {
+  const merge = (base = {}, override = {}) => {
+    const merged = { ...(base && typeof base === "object" ? base : {}) };
+    Object.entries(override && typeof override === "object" ? override : {}).forEach(([key, value]) => {
+      const current = merged[key];
+      if (
+        value && typeof value === "object" && !Array.isArray(value)
+        && current && typeof current === "object" && !Array.isArray(current)
+      ) {
+        merged[key] = merge(current, value);
+        return;
+      }
+      if (hasMeaningfulQuoteDetailValue(value) || !Object.prototype.hasOwnProperty.call(merged, key)) {
+        merged[key] = value;
+      }
+    });
+    return merged;
+  };
+  return merge(defaults, details);
+}
+
 function shouldApply(object, key, partial) {
   return !partial || hasOwnValue(object, key);
 }
@@ -2404,7 +2431,9 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   renderProfileOptions();
   renderPresetOptions();
   state.pendingFeedback = "";
-  const restoredQuoteDetails = await restoreQuoteDetailsLogo(saved.quoteDetails || {});
+  const restoredQuoteDetails = await restoreQuoteDetailsLogo(
+    quoteDetailsWithFallbackDefaults(selectedPreset()?.details || {}, saved.quoteDetails || {})
+  );
   applyQuoteDetails(restoredQuoteDetails, { includeLogo: true, clearLogo: true });
   state.images = await restoreSessionImages(saved.images);
   state.quoteBasis = cloneQuoteBasis(saved.quoteBasis || {});
@@ -2604,6 +2633,18 @@ function availablePresetValues() {
     ...selectableTemplateProfilePresets().map((preset) => profilePresetOptionValue(preset.id)),
     ...companyProfilePresets().map((preset) => companyProfileOptionValue(preset.id)),
   ]);
+}
+
+function firstAvailablePresetValue() {
+  return [...availablePresetValues()][0] || "";
+}
+
+function selectPresetValue(value = "") {
+  const presetValue = String(value || "").trim();
+  if (!presetValue || !availablePresetValues().has(presetValue)) return false;
+  state.selectedPresetValue = presetValue;
+  if (elements.presetSelect) elements.presetSelect.value = presetValue;
+  return true;
 }
 
 function lastSelectedPresetValue() {
@@ -3704,6 +3745,23 @@ function renderProfileOptions() {
   elements.profileSelect.setAttribute("aria-disabled", String(elements.profileSelect.disabled));
   renderSelectedPricingReferenceSummary();
   renderPricingReferenceDeleteOptions();
+}
+
+function firstPricingReferenceOptionValue() {
+  const firstReference = sortedPricingReferencesForDisplay(state.pricingReferences)[0] || null;
+  return firstReference ? pricingReferenceSelectValue(firstReference) : "";
+}
+
+function selectPricingReferenceOptionValue(value = "") {
+  const selection = pricingReferenceSelectionFromValue(value || "");
+  if (!selection.pricingReferenceId) return false;
+  state.pricingReferenceId = selection.pricingReferenceId;
+  state.pricingReferenceSource = selection.source;
+  syncSelectedPricingReference();
+  if (elements.profileSelect) elements.profileSelect.value = pricingReferenceSelectValue(currentPricingReference() || {});
+  renderSelectedPricingReferenceSummary();
+  renderPricingReferenceDeleteOptions();
+  return true;
 }
 
 function canManagePricingReferences() {
@@ -5842,12 +5900,11 @@ async function setSampleDetails() {
       return;
     }
     if (!state.profiles.length) await loadProfiles();
-    state.profileId = data.profile_id || DEFAULT_PROFILE_ID;
-    state.pricingReferenceId = data.pricing_reference_id || currentProfile()?.default_pricing_reference || state.defaultPricingReferenceId || DEFAULT_PRICING_REFERENCE_ID;
-    syncSelectedPricingReference();
     renderProfileOptions();
     renderPresetOptions();
-    loadConfiguredProfilePreset({ silent: true });
+    selectPricingReferenceOptionValue(firstPricingReferenceOptionValue());
+    selectPresetValue(firstAvailablePresetValue());
+    loadSelectedPreset({ silent: true });
     updateGeneratorCopy();
     applyQuoteDetails(data.details || {}, { partial: true });
     state.images = Array.isArray(data.images) ? data.images.slice(0, MAX_REFERENCE_IMAGES) : [];
@@ -8749,6 +8806,7 @@ function currentQuoteSessionPayload(options = {}) {
   };
   if (options.includeDraftState === true && quoteSessionDraftStateCanSave()) {
     payload.draft_state = currentQuoteSessionDraftState();
+    payload.draft_files = sessionFileRecordsFromDraft();
   }
   return payload;
 }
@@ -9310,6 +9368,11 @@ async function modifyDashboardQuote(sessionId) {
       mergeDashboardQuoteSession({ ...(detailedSession || {}), session_id: safeSessionId, has_draft_state: false });
       dashboardRestoreError("This quote session does not have saved draft data to modify.");
       return;
+    }
+    const draftFiles = Array.isArray(detailedSession?.draft_files) ? detailedSession.draft_files : [];
+    if (draftFiles.length) {
+      await persistSessionFiles(draftFiles).catch(() => {});
+      draftState = mergeDashboardDraftImagesWithAvailablePayloads(draftState, draftFiles);
     }
     draftState = hydrateDashboardDraftImagePayloads(draftState, safeSessionId);
     const restored = await applyQuoteSessionSnapshot(
