@@ -2905,7 +2905,9 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.dashboard-session-meta-zone div:nth-child(2) dd {
+.dashboard-session-meta-zone div:nth-child(2) dd,
+.dashboard-session-total-cell dd,
+.dashboard-session-subtotal-cell dd {
   overflow-wrap: normal;
   white-space: nowrap;
 }
@@ -2946,19 +2948,6 @@ h3 {
   text-overflow: ellipsis;
 }
 
-.dashboard-session-total-cell {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.dashboard-session-money-pair {
-  display: grid;
-  gap: 2px;
-  align-content: start;
-  overflow-wrap: normal;
-}
-
 .dashboard-session-total {
   display: inline-block;
   color: var(--ink);
@@ -2969,7 +2958,7 @@ h3 {
   white-space: nowrap;
 }
 
-.dashboard-session-subtotal {
+.dashboard-session-meta-zone .dashboard-session-subtotal {
   display: block;
   color: var(--ink-secondary);
   font-size: 12px;

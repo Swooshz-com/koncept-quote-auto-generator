@@ -11170,20 +11170,73 @@ def quote_session_export_is_stale(metadata: dict[str, Any], export: dict[str, An
         return False
     if export.get("stale") is True:
         return True
+    if export.get("stale") is False:
+        return False
     updated_at = quote_session_timestamp_sort_value(metadata.get("updated_at"))
     exported_at = quote_session_timestamp_sort_value(export.get("created_at"))
     return bool(updated_at and exported_at and updated_at > exported_at)
 
 
-def mark_quote_session_exports_stale(metadata: dict[str, Any]) -> None:
+def quote_session_revision_number(value: Any, fallback: int = -1) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if not math.isfinite(number):
+        return fallback
+    return int(number)
+
+
+def quote_session_current_draft_export_kinds(patch: dict[str, Any]) -> set[str]:
+    status = patch.get("status") if isinstance(patch.get("status"), dict) else {}
+    if status.get("quote_generated") is not True:
+        return set()
+    draft_state = patch.get("draft_state") if isinstance(patch.get("draft_state"), dict) else {}
+    if not draft_state:
+        return set()
+    output_revision = quote_session_revision_number(draft_state.get("outputRevision"), -1)
+    candidates = {
+        "xlsx": ("downloadFile", "downloadFileRevision"),
+        "pdf": ("pdfFile", "pdfFileRevision"),
+    }
+    current: set[str] = set()
+    for kind, (file_key, revision_key) in candidates.items():
+        file_value = draft_state.get(file_key)
+        if not isinstance(file_value, dict):
+            continue
+        if not clean_text(file_value.get("url")):
+            continue
+        file_revision = quote_session_revision_number(
+            draft_state.get(revision_key, file_value.get("output_revision")),
+            -1,
+        )
+        if output_revision >= 0 and file_revision >= 0 and file_revision != output_revision:
+            continue
+        current.add(kind)
+    return current
+
+
+def mark_quote_session_exports_stale(metadata: dict[str, Any], preserve_kinds: set[str] | None = None) -> None:
     exports = metadata.get("exports") if isinstance(metadata.get("exports"), dict) else {}
+    preserve_kinds = preserve_kinds or set()
+    preserved_any = False
+    stale_any = False
     for kind in QUOTE_SESSION_EXPORT_KINDS:
         export = exports.get(kind)
         if not isinstance(export, dict) or not clean_text(export.get("filename")):
             continue
+        if kind in preserve_kinds:
+            export["stale"] = False
+            metadata["status"][f"{kind}_exported"] = True
+            preserved_any = True
+            continue
         export["stale"] = True
         metadata["status"][f"{kind}_exported"] = False
-    if any(isinstance(exports.get(kind), dict) and exports[kind].get("stale") is True for kind in QUOTE_SESSION_EXPORT_KINDS):
+        stale_any = True
+    if preserved_any:
+        metadata["status"]["quote_generated"] = True
+        metadata["status"]["draft_modified"] = False
+    elif stale_any:
         metadata["status"]["quote_generated"] = False
         metadata["status"]["draft_modified"] = True
 
@@ -11239,7 +11292,7 @@ def create_or_update_quote_session(
         metadata["status"]["quote_generated"] = True
     copy_quote_session_exports(resolved_session_id, metadata, result, output_dir)
     if not result_has_generated_quote(result):
-        mark_quote_session_exports_stale(metadata)
+        mark_quote_session_exports_stale(metadata, quote_session_current_draft_export_kinds(patch))
     write_quote_session_metadata(metadata)
     return public_quote_session(metadata)
 
@@ -11293,6 +11346,7 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
     if not include_draft_state:
         public.pop("draft_state", None)
     has_stale_export = False
+    has_available_export = False
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
         raw_export = public["exports"].get(kind) if isinstance(public["exports"].get(kind), dict) else {}
         recorded_filename = clean_text(raw_export.get("filename"))
@@ -11302,6 +11356,7 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         stale = bool(file_exists and quote_session_export_is_stale(normalized, raw_export))
         exists = bool(file_exists and not stale)
         has_stale_export = has_stale_export or stale
+        has_available_export = has_available_export or exists
         raw_export["filename"] = safe_recorded or None
         raw_export["exists"] = exists
         raw_export["missing"] = bool(safe_recorded and not file_exists)
@@ -11310,8 +11365,12 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         if file_exists and export_path is not None:
             raw_export["size_bytes"] = export_path.stat().st_size
         public["exports"][kind] = raw_export
-    public["status"]["draft_modified"] = has_stale_export
-    if has_stale_export:
+    public["status"]["draft_modified"] = bool(has_stale_export and not has_available_export)
+    if has_stale_export and not has_available_export:
+        public["status"]["quote_generated"] = False
+    elif has_available_export:
+        public["status"]["quote_generated"] = True
+    else:
         public["status"]["quote_generated"] = False
     return public
 

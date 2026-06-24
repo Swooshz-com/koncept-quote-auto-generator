@@ -7783,10 +7783,45 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     "outputRevision": 1,
                 },
             }
+            no_export_payload = valid_payload()
+            no_export_payload["quote_session"] = {
+                "session_id": "quote-no-export",
+                "status": {"quote_generated": True},
+                "draft_state": {
+                    "version": 1,
+                    "activeSidePanel": "output",
+                    "outputRows": [{"description": "Output draft only", "amount": 100}],
+                    "outputRevision": 1,
+                },
+            }
 
             with mock.patch.object(webapp, "configured_data_root", return_value=data_root):
                 generated = webapp.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
                 stale = webapp.create_or_update_quote_session(stale_payload)
+                regenerated = webapp.create_or_update_quote_session(stale_payload, result=result, output_dir=output_dir)
+                post_generate_payload = valid_payload()
+                post_generate_payload["quote_session"] = {
+                    **stale_payload["quote_session"],
+                    "status": {"quote_generated": True},
+                    "draft_state": {
+                        **stale_payload["quote_session"]["draft_state"],
+                        "downloadFile": {
+                            "name": "quotation.xlsx",
+                            "url": "/api/jobs/job-stale/files/quotation.xlsx",
+                            "output_revision": 1,
+                        },
+                        "pdfFile": {
+                            "name": "quotation.pdf",
+                            "url": "/api/jobs/job-stale/files/quotation.pdf",
+                            "output_revision": 1,
+                        },
+                        "downloadFileRevision": 1,
+                        "pdfFileRevision": 1,
+                        "outputRevision": 1,
+                    },
+                }
+                saved_after_generate = webapp.create_or_update_quote_session(post_generate_payload)
+                no_export = webapp.create_or_update_quote_session(no_export_payload)
 
             self.assertTrue(generated["exports"]["xlsx"]["exists"])
             self.assertEqual(generated["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-stale/download/xlsx")
@@ -7802,6 +7837,19 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertFalse(stale["exports"]["pdf"]["exists"])
             self.assertTrue(stale["exports"]["pdf"]["stale"])
             self.assertNotIn(str(tmp_path), json.dumps(stale))
+            self.assertTrue(regenerated["status"]["quote_generated"])
+            self.assertTrue(regenerated["exports"]["xlsx"]["exists"])
+            self.assertFalse(regenerated["exports"]["xlsx"]["stale"])
+            self.assertTrue(saved_after_generate["status"]["quote_generated"])
+            self.assertFalse(saved_after_generate["status"].get("draft_modified", False))
+            self.assertTrue(saved_after_generate["exports"]["xlsx"]["exists"])
+            self.assertFalse(saved_after_generate["exports"]["xlsx"]["stale"])
+            self.assertEqual(saved_after_generate["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-stale/download/xlsx")
+            self.assertTrue(saved_after_generate["exports"]["pdf"]["exists"])
+            self.assertFalse(saved_after_generate["exports"]["pdf"]["stale"])
+            self.assertFalse(no_export["status"]["quote_generated"])
+            self.assertFalse(no_export["status"].get("draft_modified", False))
+            self.assertFalse(no_export["exports"]["xlsx"]["exists"])
 
     def test_quote_session_api_empty_state_and_download_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -8000,6 +8048,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("quoteSessionDraftSaveStarted", js)
         self.assertIn("quoteSessionDraftStateCanSave", js)
         self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
+        self.assertIn("quoteSessionHasFreshOutputExports", js)
+        self.assertIn("&& quoteSessionHasFreshOutputExports()", js)
         self.assertIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", js)
         self.assertIn("quoteSessionRestoredSessionId", js)
         self.assertIn("rememberRestoredQuoteSessionBaseline", js)
@@ -8097,8 +8147,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardDateFilterMatches", js)
         self.assertIn('elements.dashboardEmptyEyebrow.textContent = hasSessions ? "NO MATCHES" : "QUOTE LIST"', js)
         self.assertIn("formatDashboardSubtotal", js)
-        self.assertIn("dashboard-session-money-pair", js)
         self.assertIn("dashboard-session-subtotal", js)
+        self.assertIn("dashboard-session-subtotal-cell", js)
         self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
         self.assertIn("<dt>Subtotal</dt>", js)
@@ -8117,8 +8167,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-status-pill.is-draft", css)
         self.assertIn(".dashboard-status-pill.is-draft-modified", css)
         self.assertIn(".dashboard-status-pill.is-generated", css)
-        self.assertIn(".dashboard-session-money-pair", css)
         self.assertIn(".dashboard-session-subtotal", css)
+        self.assertIn(".dashboard-session-subtotal-cell", css)
         self.assertNotIn(".dashboard-session-amount-stack", css)
         self.assertIn(".dashboard-selected-created", css)
         self.assertIn(".dashboard-status-control", css)

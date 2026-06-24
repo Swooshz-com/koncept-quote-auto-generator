@@ -6008,6 +6008,10 @@ function pdfFileIsFresh(file = state.pdfFile) {
   return fileRevision >= 0 && fileRevision === revisionNumber(state.outputRevision, 0);
 }
 
+function quoteSessionHasFreshOutputExports() {
+  return downloadFileIsFresh(state.downloadFile) || pdfFileIsFresh(state.pdfFile);
+}
+
 function appIsBusy() {
   return state.isAnalysisRunning || state.isGenerating || state.isPreparingOutput || state.quoteSessionRestoreBusy;
 }
@@ -8714,7 +8718,7 @@ function currentQuoteSessionPayload(options = {}) {
   const selectedProfile = selectedPreset();
   const selectedReference = currentPricingReference();
   const profile = currentProfile();
-  const quoteGenerated = Boolean(options.quoteGenerated ?? (state.basisConfirmed || state.outputRows.length));
+  const quoteGenerated = Boolean(options.quoteGenerated ?? quoteSessionHasFreshOutputExports()) && quoteSessionHasFreshOutputExports();
   const payload = {
     session_id: safeQuoteSessionId(options.sessionId || state.quoteSessionId || ""),
     customer_summary: {
@@ -9307,14 +9311,8 @@ function dashboardSessionCard(session = {}) {
             <dd>${escapeHtml(dashboardModifiedText(session))}</dd>
           </div>
           <div class="dashboard-session-total-cell">
-            <div class="dashboard-session-money-pair">
-              <dt>Total</dt>
-              <dd class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">${grandTotalHtml}</dd>
-            </div>
-            <div class="dashboard-session-money-pair dashboard-session-subtotal-pair">
-              <dt>Subtotal</dt>
-              <dd class="dashboard-session-subtotal">${subtotalHtml}</dd>
-            </div>
+            <dt>Total</dt>
+            <dd><span class="dashboard-session-total" aria-label="Grand Total ${grandTotal === "-" ? "not available" : escapeHtml(grandTotal)}">${grandTotalHtml}</span></dd>
           </div>
           <div>
             <dt>Quote Company</dt>
@@ -9323,6 +9321,10 @@ function dashboardSessionCard(session = {}) {
           <div>
             <dt>Pricing Reference</dt>
             <dd>${escapeHtml(pricing)}</dd>
+          </div>
+          <div class="dashboard-session-subtotal-cell">
+            <dt>Subtotal</dt>
+            <dd class="dashboard-session-subtotal">${subtotalHtml}</dd>
           </div>
         </dl>
         <div class="dashboard-session-record-zone dashboard-session-result-zone">
