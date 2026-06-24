@@ -294,6 +294,7 @@ const elements = {
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardDateFilter: qs("#dashboardDateFilter"),
   dashboardCustomDateRange: qs("#dashboardCustomDateRange"),
+  dashboardDateFilterSummary: qs("#dashboardDateFilterSummary"),
   dashboardDateStartInput: qs("#dashboardDateStartInput"),
   dashboardDateEndInput: qs("#dashboardDateEndInput"),
   dashboardSortSelect: qs("#dashboardSortSelect"),
@@ -9965,6 +9966,14 @@ function syncDashboardCustomDateRangeControls() {
   if (elements.dashboardDateEndInput) elements.dashboardDateEndInput.value = state.dashboardCustomDateEnd || "";
 }
 
+function dashboardDateFilterSummaryText(filteredCount = 0, totalCount = 0) {
+  const filtered = Math.max(0, Number(filteredCount) || 0);
+  const total = Math.max(0, Number(totalCount) || 0);
+  const noun = total === 1 ? "session" : "sessions";
+  if (!state.dashboardCustomDateStart && !state.dashboardCustomDateEnd) return `Date filter: all ${total} ${noun}`;
+  return `Date filter: ${filtered} of ${total} ${noun}`;
+}
+
 function renderQuoteDashboard() {
   updateDashboardSummary();
   if (elements.dashboardDateFilter) elements.dashboardDateFilter.value = state.dashboardDateFilter || "all";
@@ -9974,6 +9983,9 @@ function renderQuoteDashboard() {
   const filtered = filteredDashboardSessions();
   const paged = pagedDashboardSessions(filtered);
   const range = dashboardPageRange(filtered.length);
+  if (elements.dashboardDateFilterSummary) {
+    elements.dashboardDateFilterSummary.textContent = dashboardDateFilterSummaryText(filtered.length, state.quoteSessions.length);
+  }
   pruneDashboardSelection(filtered);
   const hasError = Boolean(state.quoteSessionLoadError);
   const hasSessions = state.quoteSessions.length > 0;

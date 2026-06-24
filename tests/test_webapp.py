@@ -8109,6 +8109,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('aria-label="Quote list controls"', html)
         self.assertIn('id="dashboardDateFilter"', html)
         self.assertIn('id="dashboardCustomDateRange"', html)
+        self.assertIn('id="dashboardDateFilterSummary"', html)
+        self.assertIn('aria-live="polite"', html)
         self.assertIn('id="dashboardDateStartInput"', html)
         self.assertIn('id="dashboardDateEndInput"', html)
         self.assertIn('id="dashboardSortSelect"', html)
@@ -8153,6 +8155,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardModifiedText", js)
         self.assertIn("dashboardDateFilterMatches", js)
         self.assertIn("dashboardDateInputMs", js)
+        self.assertIn("dashboardDateFilterSummaryText", js)
+        self.assertIn("dashboardDateFilterSummary", js)
         self.assertIn("dashboardCustomDateStart", js)
         self.assertIn("dashboardSortMode", js)
         self.assertIn("dashboardSortSelect", js)
@@ -8191,6 +8195,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-selected-created span", css)
         self.assertIn(".dashboard-status-control", css)
         self.assertIn(".dashboard-custom-date-range", css)
+        self.assertIn(".dashboard-date-filter-summary", css)
         self.assertIn(".dashboard-sort-control", css)
         self.assertIn(".dashboard-session-status-row", css)
         self.assertIn(".dashboard-session-total-cell", css)
@@ -8284,6 +8289,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("width: 100%;", select_mode_button_css)
         self.assertIn("justify-content: flex-start;", select_mode_button_css)
         self.assertIn("white-space: nowrap;", select_mode_button_css)
+        custom_date_css = css.split(".dashboard-custom-date-range {", 1)[1].split("}", 1)[0]
+        self.assertIn("grid-column: 4 / -1;", custom_date_css)
+        self.assertIn("grid-template-columns: minmax(178px, 1fr) repeat(2, minmax(136px, 158px));", custom_date_css)
+        date_filter_summary_css = css.split(".dashboard-date-filter-summary {", 1)[1].split("}", 1)[0]
+        self.assertIn("min-height: 38px;", date_filter_summary_css)
+        self.assertIn("white-space: nowrap;", date_filter_summary_css)
         self.assertIn("dashboardVisibleSessionIds", js)
         self.assertIn("scrollDashboardSessionIntoView", js)
         self.assertIn("elements.dashboardPageControls.hidden = !hasStoredSessions", js)
@@ -10497,6 +10508,7 @@ eval([
   extractFunction("dashboardTimestampMs"),
   extractFunction("dashboardDateInputMs"),
   extractFunction("dashboardDateFilterMatches"),
+  extractFunction("dashboardDateFilterSummaryText"),
   extractFunction("dashboardSortValue"),
   extractFunction("filteredDashboardSessions"),
   extractFunction("dashboardPageSizeValue"),
@@ -10525,11 +10537,13 @@ assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-20T01:00:00
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-22T12:00:00Z" }, "custom"), true);
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-19T12:00:00Z" }, "custom"), false);
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-23T00:00:00Z" }, "custom"), false);
+assert.strictEqual(dashboardDateFilterSummaryText(2, 5), "Date filter: 2 of 5 sessions");
 state.dashboardCustomDateStart = "2026-06-22";
 state.dashboardCustomDateEnd = "2026-06-20";
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-21T12:00:00Z" }, "custom"), true);
 state.dashboardCustomDateStart = "";
 state.dashboardCustomDateEnd = "";
+assert.strictEqual(dashboardDateFilterSummaryText(5, 5), "Date filter: all 5 sessions");
 state.quoteSessions = [
   { session_id: "quote-recent", updated_at: "2026-06-22T12:00:00Z" },
   { session_id: "quote-old", updated_at: "2026-05-01T12:00:00Z" },

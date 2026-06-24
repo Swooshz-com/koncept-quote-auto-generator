@@ -2762,11 +2762,16 @@ h3 {
 
 .dashboard-custom-date-range {
   display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(2, minmax(136px, 158px));
+  grid-column: 4 / -1;
+  grid-template-columns: minmax(178px, 1fr) repeat(2, minmax(136px, 158px));
   gap: 10px;
-  justify-content: end;
+  align-items: end;
+  justify-content: stretch;
   width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(15, 118, 110, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.54);
 }
 
 .dashboard-custom-date-range[hidden] {
@@ -2775,6 +2780,22 @@ h3 {
 
 .dashboard-custom-date-range .compact-control {
   min-width: 0;
+}
+
+.dashboard-date-filter-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: var(--radius-sm);
+  background: rgba(239, 250, 248, 0.62);
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 .dashboard-custom-date-range input {
@@ -3071,6 +3092,7 @@ h3 {
 
   .dashboard-custom-date-range {
     grid-column: 1 / -1;
+    grid-template-columns: minmax(178px, 1fr) repeat(2, minmax(136px, 158px));
     justify-content: start;
   }
 
@@ -3121,6 +3143,10 @@ h3 {
 
   .dashboard-custom-date-range {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-date-filter-summary {
+    white-space: normal;
   }
 
   .dashboard-list-toolbar .dashboard-selection-toolbar {
