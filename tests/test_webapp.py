@@ -8185,6 +8185,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn(".dashboard-session-subtotal-cell", css)
         self.assertNotIn(".dashboard-session-amount-stack", css)
         self.assertIn(".dashboard-selected-created", css)
+        self.assertIn("--dashboard-select-control-width: 154px;", css)
+        self.assertIn("grid-template-columns: var(--dashboard-select-control-width) minmax(180px, 260px)", css)
+        self.assertIn("grid-template-columns: var(--dashboard-select-control-width) minmax(0, 1fr);", css)
+        self.assertIn(".dashboard-selected-created span", css)
         self.assertIn(".dashboard-status-control", css)
         self.assertIn(".dashboard-custom-date-range", css)
         self.assertIn(".dashboard-sort-control", css)
@@ -8269,10 +8273,17 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("dashboard-bulk-breakdown", js)
         self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
-        self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(390px, 30vw, 520px);", css)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(400px, 28vw, 540px);", css)
         selected_created_css = css.split(".dashboard-selected-created {", 1)[1].split("}", 1)[0]
         self.assertIn("font-size: 13px;", selected_created_css)
         self.assertIn("font-weight: 850;", selected_created_css)
+        selected_created_span_css = css.split(".dashboard-selected-created span {", 1)[1].split("}", 1)[0]
+        self.assertIn("display: block;", selected_created_span_css)
+        toolbar_select_button_css = css.split(".dashboard-list-toolbar .dashboard-selection-hint {", 1)[1]
+        select_mode_button_css = toolbar_select_button_css.split(".secondary-button.dashboard-select-mode-button {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 100%;", select_mode_button_css)
+        self.assertIn("justify-content: flex-start;", select_mode_button_css)
+        self.assertIn("white-space: nowrap;", select_mode_button_css)
         self.assertIn("dashboardVisibleSessionIds", js)
         self.assertIn("scrollDashboardSessionIntoView", js)
         self.assertIn("elements.dashboardPageControls.hidden = !hasStoredSessions", js)

@@ -9574,7 +9574,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
         <p class="workspace-pane-eyebrow">SELECTED SESSION</p>
         <h3 id="dashboardSelectedSessionTitle">${escapeHtml(customer)}</h3>
         <p class="settings-note">${escapeHtml(project)}</p>
-        <p class="dashboard-selected-created">Created ${escapeHtml(createdText)} / Modified ${escapeHtml(modifiedText)}</p>
+        <p class="dashboard-selected-created"><span>Created ${escapeHtml(createdText)}</span><span>Modified ${escapeHtml(modifiedText)}</span></p>
       </div>
       ${dashboardSelectedCloseButton("Clear selected session")}
     </header>

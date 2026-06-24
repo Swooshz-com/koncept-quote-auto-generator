@@ -1220,6 +1220,10 @@ h3 {
   line-height: 1.25;
 }
 
+.dashboard-selected-created span {
+  display: block;
+}
+
 .dashboard-selected-close {
   display: grid;
   place-items: center;
@@ -2303,7 +2307,7 @@ h3 {
 
 .dashboard-content-grid,
 .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) clamp(390px, 30vw, 520px);
+  grid-template-columns: minmax(0, 1fr) clamp(400px, 28vw, 540px);
   align-items: stretch;
   min-height: 0;
 }
@@ -2716,8 +2720,9 @@ h3 {
 }
 
 .dashboard-list-toolbar {
+  --dashboard-select-control-width: 154px;
   display: grid;
-  grid-template-columns: max-content minmax(180px, 260px) minmax(136px, 158px) minmax(118px, 138px) minmax(112px, 124px) minmax(118px, 134px) minmax(98px, 108px);
+  grid-template-columns: var(--dashboard-select-control-width) minmax(180px, 260px) minmax(136px, 158px) minmax(118px, 138px) minmax(112px, 124px) minmax(118px, 134px) minmax(98px, 108px);
   gap: 10px;
   align-items: end;
   justify-items: start;
@@ -2815,6 +2820,7 @@ h3 {
   justify-content: flex-start;
   align-items: flex-end;
   align-self: end;
+  width: 100%;
   height: auto;
   min-height: 38px;
   padding: 0;
@@ -2838,12 +2844,15 @@ h3 {
 }
 
 .secondary-button.dashboard-select-mode-button {
+  width: 100%;
   min-height: 38px;
   min-width: 98px;
+  justify-content: flex-start;
   padding: 0 12px 0 10px;
   border-color: rgba(15, 118, 110, 0.18);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: none;
+  white-space: nowrap;
 }
 
 .dashboard-session-card {
@@ -3027,7 +3036,7 @@ h3 {
   }
 
   .dashboard-list-toolbar {
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: var(--dashboard-select-control-width) minmax(0, 1fr);
   }
 
   .dashboard-list-toolbar .dashboard-controls {
