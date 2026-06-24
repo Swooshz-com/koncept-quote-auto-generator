@@ -9293,9 +9293,22 @@ function dashboardDraftImagePayloadMatches(candidate = {}, image = {}) {
 function mergeDashboardDraftImagesWithAvailablePayloads(draftState = {}, availableImages = []) {
   const draftImages = Array.isArray(draftState?.images) ? draftState.images.slice(0, MAX_REFERENCE_IMAGES) : [];
   const payloadImages = (Array.isArray(availableImages) ? availableImages : [])
+    .filter((image) => String(image?.data_url || "").trim())
     .slice(0, MAX_REFERENCE_IMAGES)
-    .filter((image) => String(image?.data_url || "").trim());
-  if (!draftImages.length || !payloadImages.length) return draftState;
+    .map((image) => ({
+      ...image,
+      type: referenceFileType(image),
+    }));
+  if (!payloadImages.length) return draftState;
+  if (!draftImages.length) {
+    return {
+      ...draftState,
+      images: payloadImages.slice(0, MAX_REFERENCE_IMAGES).map((payload) => ({
+        ...payload,
+        type: payload.type || referenceFileType(payload),
+      })),
+    };
+  }
   const usedPayloadIndexes = new Set();
   const mergedImages = draftImages.map((image, index) => {
     if (String(image?.data_url || "").trim()) return image;
@@ -9303,8 +9316,8 @@ function mergeDashboardDraftImagesWithAvailablePayloads(draftState = {}, availab
       !usedPayloadIndexes.has(candidateIndex)
       && dashboardDraftImagePayloadMatches(candidate, image)
     ));
-    if (payloadIndex < 0 && payloadImages.length === draftImages.length && !usedPayloadIndexes.has(index)) {
-      payloadIndex = index;
+    if (payloadIndex < 0 && payloadImages.length > 0 && !usedPayloadIndexes.has(index)) {
+      payloadIndex = payloadImages.findIndex((_, candidateIndex) => !usedPayloadIndexes.has(candidateIndex));
     }
     const payloadImage = payloadIndex >= 0 ? payloadImages[payloadIndex] : null;
     const dataUrl = String(payloadImage?.data_url || "").trim();
@@ -9319,9 +9332,19 @@ function mergeDashboardDraftImagesWithAvailablePayloads(draftState = {}, availab
       session_file_key: image?.session_file_key || payloadImage?.session_file_key || "",
     };
   });
-  return { ...draftState, images: mergedImages };
+  const remainingPayloads = payloadImages.filter((_, index) => !usedPayloadIndexes.has(index))
+    .slice(0, MAX_REFERENCE_IMAGES - mergedImages.length);
+  return {
+    ...draftState,
+    images: [
+      ...mergedImages,
+      ...remainingPayloads.map((payloadImage) => ({
+        ...payloadImage,
+        type: payloadImage.type || referenceFileType(payloadImage),
+      })),
+    ].slice(0, MAX_REFERENCE_IMAGES),
+  };
 }
-
 function hydrateDashboardDraftImagePayloads(draftState = {}, sessionId = "") {
   const safeSessionId = safeQuoteSessionId(sessionId || "");
   if (!safeSessionId || safeSessionId !== safeQuoteSessionId(state.quoteSessionId || "")) return draftState;
@@ -11420,3 +11443,6 @@ async function boot() {
 }
 
 boot();
+
+
+
