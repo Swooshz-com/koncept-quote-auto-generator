@@ -166,6 +166,7 @@ const state = {
   quoteSessionRestoredDraftKey: "",
   dashboardStatusFilter: "all",
   dashboardDateFilter: "all",
+  dashboardSortMode: "created",
   dashboardSearch: "",
   dashboardPageSize: DASHBOARD_DEFAULT_PAGE_SIZE,
   dashboardPageIndex: 0,
@@ -290,6 +291,7 @@ const elements = {
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardDateFilter: qs("#dashboardDateFilter"),
+  dashboardSortSelect: qs("#dashboardSortSelect"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
   dashboardPageControls: qs("#dashboardPageControls"),
   dashboardPageSizeSelect: qs("#dashboardPageSizeSelect"),
@@ -8947,8 +8949,11 @@ function quoteSessionHasStaleExport(session = {}) {
 }
 
 function quoteSessionStatus(session = {}) {
-  if (session.status?.draft_modified || quoteSessionHasStaleExport(session)) return { key: "draft", label: "Draft Modified", className: "is-draft-modified" };
-  if (session.status?.quote_generated || quoteSessionHasAvailableExport(session)) return { key: "generated", label: "Generated", className: "is-generated" };
+  const hasAvailableExport = quoteSessionHasAvailableExport(session);
+  const hasStaleExport = quoteSessionHasStaleExport(session);
+  if (hasAvailableExport) return { key: "generated", label: "Generated", className: "is-generated" };
+  if (session.status?.draft_modified || hasStaleExport) return { key: "draft-modified", label: "Draft Modified", className: "is-draft-modified" };
+  if (session.status?.quote_generated) return { key: "generated", label: "Generated", className: "is-generated" };
   return { key: "draft", label: "Draft", className: "is-draft" };
 }
 
@@ -9013,17 +9018,30 @@ function dashboardDateFilterMatches(session = {}, filter = "all") {
   return timestamp >= now - days * 24 * 60 * 60 * 1000;
 }
 
+function dashboardSortValue(session = {}, mode = state.dashboardSortMode || "created") {
+  const normalizedMode = String(mode || "created");
+  const primary = normalizedMode === "modified" ? session.updated_at || session.created_at : session.created_at;
+  return dashboardTimestampMs(primary);
+}
+
 function filteredDashboardSessions() {
   const statusFilter = state.dashboardStatusFilter || "all";
   const dateFilter = state.dashboardDateFilter || "all";
   const search = String(state.dashboardSearch || "").trim().toLowerCase();
-  return state.quoteSessions.filter((session) => {
+  const sortMode = state.dashboardSortMode || "created";
+  return state.quoteSessions.map((session, index) => ({ session, index })).filter(({ session }) => {
     const status = quoteSessionStatus(session).key;
     if (statusFilter !== "all" && status !== statusFilter) return false;
     if (!dashboardDateFilterMatches(session, dateFilter)) return false;
     if (search && !dashboardSessionSearchText(session).includes(search)) return false;
     return true;
-  });
+  }).sort((left, right) => {
+    const primaryDelta = dashboardSortValue(right.session, sortMode) - dashboardSortValue(left.session, sortMode);
+    if (primaryDelta) return primaryDelta;
+    const modifiedDelta = dashboardTimestampMs(right.session.updated_at || right.session.created_at) - dashboardTimestampMs(left.session.updated_at || left.session.created_at);
+    if (modifiedDelta) return modifiedDelta;
+    return left.index - right.index;
+  }).map(({ session }) => session);
 }
 
 function dashboardPageSizeValue() {
@@ -9092,7 +9110,7 @@ function renderDashboardPageControls(filtered = []) {
 
 function updateDashboardSummary() {
   const sessions = state.quoteSessions;
-  const generated = sessions.filter((session) => session.status?.quote_generated).length;
+  const generated = sessions.filter((session) => quoteSessionStatus(session).key === "generated").length;
   const exported = sessions.filter(quoteSessionHasAvailableExport).length;
   if (elements.dashboardTotalSessions) elements.dashboardTotalSessions.textContent = String(sessions.length);
   if (elements.dashboardGeneratedSessions) elements.dashboardGeneratedSessions.textContent = String(generated);
@@ -9117,7 +9135,7 @@ const QUOTE_SESSION_DELETE_BULK_MESSAGE = "This removes the selected local dashb
 
 function dashboardShortSessionReference(session = {}) {
   const sessionId = safeQuoteSessionId(session.session_id || "");
-  return sessionId ? sessionId.slice(0, 8) : "";
+  return sessionId ? sessionId.slice(0, 8).toUpperCase() : "";
 }
 
 function dashboardSessionCanResume(session = {}) {
@@ -9254,6 +9272,7 @@ async function modifyDashboardQuote(sessionId) {
 
 function dashboardExportAvailabilityItem(session = {}, kind = "xlsx", label = "XLSX") {
   const exportInfo = quoteSessionExport(session, kind);
+  const generatedStatus = quoteSessionStatus(session).key === "generated";
   if (exportInfo.exists && exportInfo.url) {
     return { kind, label, exportInfo, available: true, statusText: `${label} ready`, className: "is-available" };
   }
@@ -9261,9 +9280,11 @@ function dashboardExportAvailabilityItem(session = {}, kind = "xlsx", label = "X
     return { kind, label, exportInfo, available: false, statusText: `${label} needs regeneration`, className: "is-unavailable" };
   }
   if (exportInfo.missing) {
-    return { kind, label, exportInfo, available: false, statusText: `Missing ${label}`, className: "is-unavailable" };
+    const statusText = generatedStatus ? `${label} needs regeneration` : `Missing ${label}`;
+    return { kind, label, exportInfo, available: false, statusText, className: "is-unavailable" };
   }
-  return { kind, label, exportInfo, available: false, statusText: `${label} unavailable`, className: "is-unavailable" };
+  const statusText = generatedStatus ? `${label} needs regeneration` : `${label} unavailable`;
+  return { kind, label, exportInfo, available: false, statusText, className: "is-unavailable" };
 }
 
 function dashboardSessionCard(session = {}) {
@@ -9271,9 +9292,10 @@ function dashboardSessionCard(session = {}) {
   const customer = dashboardSessionCustomerText(session);
   const project = dashboardSessionProjectText(session);
   const profile = session.quote_company_profile?.display_name || "Quote Company";
-  const pricing = session.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   const shortReference = dashboardShortSessionReference(session);
+  const createdText = formatDashboardDateTime(session.created_at);
+  const modifiedText = dashboardModifiedText(session);
   const grandTotal = formatDashboardMoney(session);
   const subtotal = formatDashboardSubtotal(session);
   const grandTotalHtml = grandTotal === "-" ? "&mdash;" : escapeHtml(grandTotal);
@@ -9307,8 +9329,8 @@ function dashboardSessionCard(session = {}) {
             <dd>${shortReference ? `Ref ${escapeHtml(shortReference)}` : "-"}</dd>
           </div>
           <div>
-            <dt>Modified</dt>
-            <dd>${escapeHtml(dashboardModifiedText(session))}</dd>
+            <dt>Created</dt>
+            <dd>${escapeHtml(createdText)}</dd>
           </div>
           <div class="dashboard-session-total-cell">
             <dt>Total</dt>
@@ -9319,8 +9341,8 @@ function dashboardSessionCard(session = {}) {
             <dd>${escapeHtml(profile)}</dd>
           </div>
           <div>
-            <dt>Pricing Reference</dt>
-            <dd>${escapeHtml(pricing)}</dd>
+            <dt>Modified</dt>
+            <dd>${escapeHtml(modifiedText)}</dd>
           </div>
           <div class="dashboard-session-subtotal-cell">
             <dt>Subtotal</dt>
@@ -9507,6 +9529,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
   const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
   const shortReference = dashboardShortSessionReference(activeSession);
   const createdText = formatDashboardDateTime(activeSession.created_at);
+  const modifiedText = dashboardModifiedText(activeSession);
   const canModify = dashboardSessionCanModify(activeSession);
   const modifyTitle = canModify ? "Load the saved quote draft for editing." : "No saved draft data is available for this session.";
   const restoreError = String(state.quoteSessionRestoreError || "").trim();
@@ -9516,7 +9539,7 @@ function renderDashboardSinglePanel(activeSession = {}) {
         <p class="workspace-pane-eyebrow">SELECTED SESSION</p>
         <h3 id="dashboardSelectedSessionTitle">${escapeHtml(customer)}</h3>
         <p class="settings-note">${escapeHtml(project)}</p>
-        <p class="dashboard-selected-created">Created ${escapeHtml(createdText)}</p>
+        <p class="dashboard-selected-created">Created ${escapeHtml(createdText)} / Modified ${escapeHtml(modifiedText)}</p>
       </div>
       ${dashboardSelectedCloseButton("Clear selected session")}
     </header>
@@ -9529,10 +9552,10 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
-        <div><dt>Modified</dt><dd>${escapeHtml(dashboardModifiedText(activeSession))}</dd></div>
-        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
         <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
+        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+        <div><dt>Short Ref</dt><dd>${shortReference ? `Ref ${escapeHtml(shortReference)}` : "-"}</dd></div>
       </dl>
       <div class="dashboard-selected-downloads">
         <div class="dashboard-export-action-row">
@@ -9764,7 +9787,10 @@ function handleDashboardSessionAction(event) {
   }
   const card = event.target?.closest?.("[data-quote-session-id]");
   if (!card || !elements.dashboardSessionsList?.contains(card)) return;
-  setDashboardSelection(card.dataset.quoteSessionId || "", { mode: state.dashboardSelectionMode ? "toggle" : "single" });
+  const safeSessionId = safeQuoteSessionId(card.dataset.quoteSessionId || "");
+  const activeId = safeQuoteSessionId(state.dashboardActiveSessionId || "");
+  const mode = (state.dashboardSelectionMode || (safeSessionId && safeSessionId === activeId)) ? "toggle" : "single";
+  setDashboardSelection(safeSessionId, { mode });
 }
 
 function handleDashboardSessionKeydown(event) {
@@ -9885,6 +9911,7 @@ function handleDashboardSidePanelAction(event) {
 function renderQuoteDashboard() {
   updateDashboardSummary();
   if (elements.dashboardDateFilter) elements.dashboardDateFilter.value = state.dashboardDateFilter || "all";
+  if (elements.dashboardSortSelect) elements.dashboardSortSelect.value = state.dashboardSortMode || "created";
   if (elements.dashboardStatusFilter) elements.dashboardStatusFilter.value = state.dashboardStatusFilter || "all";
   const filtered = filteredDashboardSessions();
   const paged = pagedDashboardSessions(filtered);
@@ -10917,6 +10944,11 @@ function wireEvents() {
   });
   elements.dashboardDateFilter?.addEventListener("change", () => {
     state.dashboardDateFilter = elements.dashboardDateFilter.value || "all";
+    state.dashboardPageIndex = 0;
+    renderQuoteDashboard();
+  });
+  elements.dashboardSortSelect?.addEventListener("change", () => {
+    state.dashboardSortMode = elements.dashboardSortSelect.value || "created";
     state.dashboardPageIndex = 0;
     renderQuoteDashboard();
   });

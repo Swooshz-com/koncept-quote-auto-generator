@@ -103,6 +103,13 @@
                         Search
                         <input id="dashboardSearchInput" type="search" autocomplete="off" placeholder="Search quote sessions…">
                       </label>
+                      <label class="compact-control dashboard-sort-control">
+                        Sort by
+                        <select id="dashboardSortSelect">
+                          <option value="created">Date Created</option>
+                          <option value="modified">Modified Date</option>
+                        </select>
+                      </label>
                       <label class="compact-control dashboard-date-control">
                         Date range
                         <select id="dashboardDateFilter">
@@ -117,6 +124,7 @@
                         <select id="dashboardStatusFilter">
                           <option value="all">All</option>
                           <option value="draft">Draft</option>
+                          <option value="draft-modified">Draft Modified</option>
                           <option value="generated">Generated</option>
                         </select>
                       </label>

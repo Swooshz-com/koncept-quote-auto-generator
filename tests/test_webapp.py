@@ -8108,12 +8108,15 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-list-toolbar", html)
         self.assertIn('aria-label="Quote list controls"', html)
         self.assertIn('id="dashboardDateFilter"', html)
+        self.assertIn('id="dashboardSortSelect"', html)
+        self.assertIn(">Date Created<", html)
+        self.assertIn(">Modified Date<", html)
         self.assertIn(">Last 7 days<", html)
         self.assertIn('id="dashboardPageSizeSelect"', html)
         self.assertIn('id="dashboardRangeSelect"', html)
         self.assertIn('<option value="all">All</option>', html)
         self.assertNotIn("All statuses", html)
-        self.assertIn('["All", "Draft", "Generated"]', smoke_script)
+        self.assertIn('["All", "Draft", "Draft Modified", "Generated"]', smoke_script)
         self.assertNotIn('["All statuses", "Draft", "Generated"]', smoke_script)
         self.assertIn("dashboard-status-control", html)
         self.assertIn('id="quoteSessionDeleteModal"', html)
@@ -8145,13 +8148,18 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSessionProgressPill(activeSession)", js)
         self.assertIn("dashboardModifiedText", js)
         self.assertIn("dashboardDateFilterMatches", js)
+        self.assertIn("dashboardSortMode", js)
+        self.assertIn("dashboardSortSelect", js)
+        self.assertIn("dashboardSortValue", js)
         self.assertIn('elements.dashboardEmptyEyebrow.textContent = hasSessions ? "NO MATCHES" : "QUOTE LIST"', js)
         self.assertIn("formatDashboardSubtotal", js)
         self.assertIn("dashboard-session-subtotal", js)
         self.assertIn("dashboard-session-subtotal-cell", js)
         self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
+        self.assertIn("<dt>Created</dt>", js)
         self.assertIn("<dt>Subtotal</dt>", js)
+        self.assertIn("<dt>Short Ref</dt>", js)
         self.assertIn("dashboard-selected-created", js)
         self.assertIn("dashboard-session-total-cell", js)
         self.assertNotIn("dashboardLastExportText", js)
@@ -8172,6 +8180,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".dashboard-session-amount-stack", css)
         self.assertIn(".dashboard-selected-created", css)
         self.assertIn(".dashboard-status-control", css)
+        self.assertIn(".dashboard-sort-control", css)
         self.assertIn(".dashboard-session-status-row", css)
         self.assertIn(".dashboard-session-total-cell", css)
         self.assertIn(".dashboard-session-status-row .dashboard-status-pill {", css)
@@ -8253,6 +8262,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("dashboard-bulk-breakdown", js)
         self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
+        selected_created_css = css.split(".dashboard-selected-created {", 1)[1].split("}", 1)[0]
+        self.assertIn("font-size: 13px;", selected_created_css)
+        self.assertIn("font-weight: 850;", selected_created_css)
         self.assertIn("dashboardVisibleSessionIds", js)
         self.assertIn("scrollDashboardSessionIntoView", js)
         self.assertIn("elements.dashboardPageControls.hidden = !hasStoredSessions", js)
@@ -8260,6 +8272,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("elements.dashboardPageSizeSelect.disabled = !hasStoredSessions", js)
         self.assertIn("elements.dashboardRangeSelect.disabled = !hasStoredSessions", js)
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]
+        short_ref_body = js.split("function dashboardShortSessionReference", 1)[1].split("function dashboardSessionCanResume", 1)[0]
+        self.assertIn(".toUpperCase()", short_ref_body)
         self.assertIn("dashboardShortSessionReference", search_body)
         self.assertIn("dashboardSessionCustomerText(session)", search_body)
         self.assertIn("dashboardSessionProjectText(session)", search_body)
@@ -10276,14 +10290,30 @@ const unavailable = {};
 
 const mixed = { exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: { missing: true } } };
 assert.strictEqual(dashboardExportAvailabilityItem(mixed, "xlsx", "XLSX").statusText, "XLSX ready");
-assert.strictEqual(dashboardExportAvailabilityItem(mixed, "pdf", "PDF").statusText, "Missing PDF");
+assert.strictEqual(dashboardExportAvailabilityItem(mixed, "pdf", "PDF").statusText, "PDF needs regeneration");
 
 const stale = {
   status: { quote_generated: false, draft_modified: true },
   exports: { xlsx: { stale: true, filename: "quotation.xlsx" }, pdf: { stale: true, filename: "quotation.pdf" } },
 };
 assert.strictEqual(dashboardExportAvailabilityItem(stale, "xlsx", "XLSX").statusText, "XLSX needs regeneration");
-assert.deepStrictEqual(quoteSessionStatus(stale), { key: "draft", label: "Draft Modified", className: "is-draft-modified" });
+assert.deepStrictEqual(quoteSessionStatus(stale), { key: "draft-modified", label: "Draft Modified", className: "is-draft-modified" });
+
+const partialFresh = {
+  status: { quote_generated: false, draft_modified: true },
+  exports: { xlsx: { exists: true, url: "/quote.xlsx", stale: false }, pdf: { stale: true, filename: "quotation.pdf" } },
+};
+assert.strictEqual(quoteSessionHasAvailableExport(partialFresh), true);
+assert.strictEqual(quoteSessionHasStaleExport(partialFresh), true);
+assert.deepStrictEqual(quoteSessionStatus(partialFresh), { key: "generated", label: "Generated", className: "is-generated" });
+
+const generatedMissingPdf = {
+  status: { quote_generated: true },
+  exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: {} },
+};
+assert.deepStrictEqual(quoteSessionStatus(generatedMissingPdf), { key: "generated", label: "Generated", className: "is-generated" });
+assert.strictEqual(dashboardExportAvailabilityItem(generatedMissingPdf, "pdf", "PDF").statusText, "PDF needs regeneration");
+assert.ok(dashboardSelectedExportAction(generatedMissingPdf, "pdf", "PDF").includes('title="PDF needs regeneration"'));
 
 const xlsxAction = dashboardSelectedExportAction(mixed, "xlsx", "XLSX");
 assert.ok(xlsxAction.includes("dashboard-selected-action-kicker"));
@@ -10408,6 +10438,8 @@ const state = {
     { session_id: "quote-third" },
   ],
   dashboardStatusFilter: "all",
+  dashboardDateFilter: "all",
+  dashboardSortMode: "created",
   dashboardSearch: "",
   dashboardPageSize: 5,
   dashboardPageIndex: 0,
@@ -10420,6 +10452,9 @@ const scrollCalls = [];
 const elements = {
   quoteSessionDeleteModal: { hidden: true },
   dashboardSessionsList: {
+    contains(node) {
+      return Boolean(node && node.inList);
+    },
     querySelector(selector) {
       return {
         scrollIntoView(options) {
@@ -10440,6 +10475,7 @@ eval([
   extractFunction("safeQuoteSessionId"),
   extractFunction("dashboardTimestampMs"),
   extractFunction("dashboardDateFilterMatches"),
+  extractFunction("dashboardSortValue"),
   extractFunction("filteredDashboardSessions"),
   extractFunction("dashboardPageSizeValue"),
   extractFunction("dashboardPageCount"),
@@ -10451,6 +10487,7 @@ eval([
   extractFunction("scrollDashboardSessionIntoView"),
   extractFunction("setDashboardSelection"),
   extractFunction("handleDashboardSelectModeButton"),
+  extractFunction("handleDashboardSessionAction"),
   extractFunction("handleDashboardListArrowKey"),
 ].join("\n"));
 
@@ -10466,6 +10503,24 @@ state.quoteSessions = [
 state.dashboardDateFilter = "30d";
 assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
 state.dashboardDateFilter = "all";
+state.quoteSessions = [
+  { session_id: "quote-created-newest", created_at: "2026-06-23T12:00:00Z", updated_at: "2026-06-23T12:00:00Z" },
+  { session_id: "quote-created-oldest", created_at: "2026-06-20T12:00:00Z", updated_at: "2026-06-24T12:00:00Z" },
+  { session_id: "quote-created-middle", created_at: "2026-06-22T12:00:00Z", updated_at: "2026-06-22T12:00:00Z" },
+];
+state.dashboardSortMode = "created";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), [
+  "quote-created-newest",
+  "quote-created-middle",
+  "quote-created-oldest",
+]);
+state.dashboardSortMode = "modified";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), [
+  "quote-created-oldest",
+  "quote-created-newest",
+  "quote-created-middle",
+]);
+state.dashboardSortMode = "created";
 state.quoteSessions = [
   { session_id: "quote-first" },
   { session_id: "quote-second" },
@@ -10527,6 +10582,21 @@ assert.strictEqual(handleDashboardListArrowKey(event), true);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
 
 handleDashboardSelectModeButton();
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+state.dashboardSelectionMode = false;
+state.dashboardSelectedSessionIds = [];
+state.dashboardActiveSessionId = "quote-first";
+const activeCard = {
+  inList: true,
+  dataset: { quoteSessionId: "quote-first" },
+  closest(selector) {
+    return selector === "[data-quote-session-id]" ? this : null;
+  },
+};
+handleDashboardSessionAction({ target: activeCard });
 assert.strictEqual(state.dashboardSelectionMode, true);
 assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-first");

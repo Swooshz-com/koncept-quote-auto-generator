@@ -1214,9 +1214,9 @@ h3 {
 
 .dashboard-selected-created {
   margin: 5px 0 0;
-  color: var(--muted-light);
-  font-size: 11px;
-  font-weight: 780;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 850;
   line-height: 1.25;
 }
 
@@ -2717,7 +2717,7 @@ h3 {
 
 .dashboard-list-toolbar {
   display: grid;
-  grid-template-columns: max-content minmax(240px, 310px) minmax(118px, 138px) minmax(112px, 124px) minmax(118px, 134px) minmax(98px, 108px);
+  grid-template-columns: max-content minmax(180px, 260px) minmax(136px, 158px) minmax(118px, 138px) minmax(112px, 124px) minmax(118px, 134px) minmax(98px, 108px);
   gap: 10px;
   align-items: end;
   justify-items: start;
@@ -2740,13 +2740,18 @@ h3 {
   width: 100%;
 }
 
-.dashboard-status-control {
-  grid-column: 4;
+.dashboard-sort-control {
+  grid-column: 3;
   width: 100%;
 }
 
 .dashboard-date-control {
-  grid-column: 3;
+  grid-column: 4;
+  width: 100%;
+}
+
+.dashboard-status-control {
+  grid-column: 5;
   width: 100%;
 }
 
@@ -2766,12 +2771,12 @@ h3 {
 }
 
 .dashboard-page-controls .compact-control:first-child {
-  grid-column: 5;
+  grid-column: 6;
   width: 100%;
 }
 
 .dashboard-page-controls .compact-control:last-child {
-  grid-column: 6;
+  grid-column: 7;
   width: 100%;
 }
 
@@ -3005,12 +3010,13 @@ h3 {
   .dashboard-list-toolbar .dashboard-controls {
     display: grid;
     grid-column: 2;
-    grid-template-columns: minmax(190px, 1fr) minmax(118px, 138px) minmax(112px, 124px);
+    grid-template-columns: minmax(180px, 1fr) minmax(136px, 158px) minmax(118px, 138px) minmax(112px, 124px);
     gap: 10px;
     width: 100%;
   }
 
   .dashboard-search-control,
+  .dashboard-sort-control,
   .dashboard-date-control,
   .dashboard-status-control {
     grid-column: auto;
@@ -3065,6 +3071,7 @@ h3 {
   }
 
   .dashboard-search-control,
+  .dashboard-sort-control,
   .dashboard-date-control,
   .dashboard-status-control {
     width: 100%;
