@@ -9793,6 +9793,21 @@ function handleDashboardSessionAction(event) {
   setDashboardSelection(safeSessionId, { mode });
 }
 
+function handleDashboardOutsideSelectionClick(event) {
+  if (!state.dashboardSelectionMode || state.activeAppView !== "dashboard") return;
+  if (state.quoteSessionDeleteBusy || appIsBusy()) return;
+  const target = event.target;
+  const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+  if (path.some((node) => (
+    node?.id === "dashboardSessionsList"
+    || node?.id === "dashboardSidePanel"
+    || node?.classList?.contains?.("dashboard-list-toolbar")
+    || node?.classList?.contains?.("modal-overlay")
+  ))) return;
+  if (target?.closest?.(".dashboard-list-toolbar, #dashboardSessionsList, #dashboardSidePanel, .modal-overlay")) return;
+  setDashboardSelection("", { mode: "clear" });
+}
+
 function handleDashboardSessionKeydown(event) {
   if (!["Enter", " "].includes(event.key)) return;
   if (event.target?.closest?.("input, button, a, select, textarea")) return;
@@ -10934,6 +10949,7 @@ function wireEvents() {
   elements.dashboardEmptyNewQuoteButton?.addEventListener("click", startNewQuote);
   elements.dashboardSessionsList?.addEventListener("click", handleDashboardSessionAction);
   elements.dashboardSessionsList?.addEventListener("keydown", handleDashboardSessionKeydown);
+  document.addEventListener("click", handleDashboardOutsideSelectionClick);
   elements.dashboardSidePanel?.addEventListener("click", handleDashboardSidePanelAction);
   elements.dashboardSelectModeButton?.addEventListener("click", handleDashboardSelectModeButton);
   elements.backToDashboardButton?.addEventListener("click", returnToDashboard);

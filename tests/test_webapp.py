@@ -10488,6 +10488,7 @@ eval([
   extractFunction("setDashboardSelection"),
   extractFunction("handleDashboardSelectModeButton"),
   extractFunction("handleDashboardSessionAction"),
+  extractFunction("handleDashboardOutsideSelectionClick"),
   extractFunction("handleDashboardListArrowKey"),
 ].join("\n"));
 
@@ -10600,6 +10601,57 @@ handleDashboardSessionAction({ target: activeCard });
 assert.strictEqual(state.dashboardSelectionMode, true);
 assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+state.activeAppView = "dashboard";
+const toolbarTarget = {
+  closest(selector) {
+    return selector.includes(".dashboard-list-toolbar") ? this : null;
+  },
+};
+handleDashboardOutsideSelectionClick({ target: toolbarTarget });
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+const detachedCardClick = {
+  target: {
+    closest() {
+      return null;
+    },
+  },
+  composedPath() {
+    return [{ id: "dashboardSessionsList" }];
+  },
+};
+handleDashboardOutsideSelectionClick(detachedCardClick);
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+const modalClick = {
+  target: {
+    closest() {
+      return null;
+    },
+  },
+  composedPath() {
+    return [{ classList: { contains: (name) => name === "modal-overlay" } }];
+  },
+};
+handleDashboardOutsideSelectionClick(modalClick);
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+const outsideTarget = {
+  closest() {
+    return null;
+  },
+};
+handleDashboardOutsideSelectionClick({ target: outsideTarget });
+assert.strictEqual(state.dashboardSelectionMode, false);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+assert.strictEqual(state.dashboardActiveSessionId, "");
 
 state.dashboardActiveSessionId = "";
 state.activeAppView = "quote";
