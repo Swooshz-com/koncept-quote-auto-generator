@@ -2303,7 +2303,7 @@ h3 {
 
 .dashboard-content-grid,
 .dashboard-content-grid:has(#dashboardSelectedSessionPanel:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) clamp(440px, 34vw, 600px);
+  grid-template-columns: minmax(0, 1fr) clamp(390px, 30vw, 520px);
   align-items: stretch;
   min-height: 0;
 }

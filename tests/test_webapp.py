@@ -8262,6 +8262,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("dashboard-bulk-breakdown", js)
         self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(390px, 30vw, 520px);", css)
         selected_created_css = css.split(".dashboard-selected-created {", 1)[1].split("}", 1)[0]
         self.assertIn("font-size: 13px;", selected_created_css)
         self.assertIn("font-weight: 850;", selected_created_css)
