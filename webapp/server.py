@@ -11385,19 +11385,35 @@ QUOTE_SESSION_DRAFT_PROGRESS_LABELS = {
 def quote_session_draft_progress(draft_state: dict[str, Any]) -> dict[str, str]:
     if not isinstance(draft_state, dict) or not draft_state:
         return {}
-    active_side_panel = clean_text(draft_state.get("activeSidePanel"))
     workflow_stage = clean_text(draft_state.get("workflowStage"))
-    if active_side_panel not in QUOTE_SESSION_DRAFT_PROGRESS_LABELS:
-        active_side_panel = ""
-    if not active_side_panel:
-        if workflow_stage in {"completed", "pricing_review", "generating"} or draft_state.get("basisConfirmed"):
-            active_side_panel = "output"
-        elif draft_state.get("lineItems") or draft_state.get("quoteBasisSections") or draft_state.get("analysisFindings"):
-            active_side_panel = "basis"
-        elif draft_state.get("quoteDetails"):
-            active_side_panel = "quote_company"
-        elif draft_state.get("images"):
-            active_side_panel = "customer"
+    sequence = list(QUOTE_SESSION_DRAFT_PROGRESS_LABELS.keys())
+    active_side_panel = clean_text(draft_state.get("activeSidePanel"))
+    active_index = sequence.index(active_side_panel) if active_side_panel in sequence else 0
+    furthest_index = active_index
+    quote_basis = draft_state.get("quoteBasis") if isinstance(draft_state.get("quoteBasis"), dict) else {}
+    has_basis_text = any(clean_text(value) for value in quote_basis.values())
+    has_output = bool(
+        draft_state.get("outputRows")
+        or draft_state.get("originalOutputRows")
+        or draft_state.get("downloadFile")
+        or draft_state.get("pdfFile")
+        or draft_state.get("basisConfirmed")
+        or workflow_stage in {"completed", "pricing_review", "generating"}
+    )
+    has_basis = bool(
+        has_output
+        or draft_state.get("lineItems")
+        or draft_state.get("quoteBasisSections")
+        or draft_state.get("analysisFindings")
+        or has_basis_text
+    )
+    if has_output:
+        furthest_index = max(furthest_index, sequence.index("output"))
+    elif has_basis:
+        furthest_index = max(furthest_index, sequence.index("basis"))
+    elif draft_state.get("images"):
+        furthest_index = max(furthest_index, sequence.index("customer"))
+    active_side_panel = sequence[furthest_index]
     label = QUOTE_SESSION_DRAFT_PROGRESS_LABELS.get(active_side_panel, "")
     if not label:
         return {}
@@ -12517,7 +12533,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def send_security_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0, private")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -12691,3 +12707,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

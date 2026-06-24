@@ -159,6 +159,7 @@ const state = {
   quoteSessionId: "",
   quoteSessions: [],
   quoteSessionLoadError: "",
+  quoteSessionDashboardBusy: false,
   quoteSessionRestoreError: "",
   quoteSessionRestoreBusy: false,
   quoteSessionDraftSaveStarted: false,
@@ -314,6 +315,9 @@ const elements = {
   dashboardSidePanel: qs("#dashboardSidePanel"),
   dashboardEmptySelectionPanel: qs("#dashboardEmptySelectionPanel"),
   dashboardSelectedSessionPanel: qs("#dashboardSelectedSessionPanel"),
+  dashboardLoadingModal: qs("#dashboardLoadingModal"),
+  dashboardLoadingTitle: qs("#dashboardLoadingTitle"),
+  dashboardLoadingMessage: qs("#dashboardLoadingMessage"),
   dashboardSelectionToolbar: qs("#dashboardSelectionToolbar"),
   dashboardSelectModeButton: qs("#dashboardSelectModeButton"),
   dashboardSelectionHint: qs("#dashboardSelectionHint"),
@@ -2413,6 +2417,32 @@ function restoredWorkflowStage(saved = {}) {
   return "needs_images";
 }
 
+function furthestQuoteSessionSidePanel(saved = {}) {
+  const activePanel = SIDE_PANEL_SEQUENCE.includes(saved.activeSidePanel) ? saved.activeSidePanel : "images";
+  let furthestIndex = SIDE_PANEL_SEQUENCE.indexOf(activePanel);
+  const workflowStage = String(saved.workflowStage || "").trim();
+  const quoteBasis = saved.quoteBasis && typeof saved.quoteBasis === "object" ? saved.quoteBasis : {};
+  const hasBasisText = Object.values(quoteBasis).some((value) => splitLines(value).length > 0);
+  const hasOutput = Boolean(
+    (Array.isArray(saved.outputRows) && saved.outputRows.length)
+    || (Array.isArray(saved.originalOutputRows) && saved.originalOutputRows.length)
+    || saved.downloadFile
+    || saved.pdfFile
+    || saved.basisConfirmed
+    || ["completed", "pricing_review", "generating"].includes(workflowStage)
+  );
+  const hasBasis = Boolean(
+    hasOutput
+    || (Array.isArray(saved.lineItems) && saved.lineItems.length)
+    || (Array.isArray(saved.quoteBasisSections) && saved.quoteBasisSections.length)
+    || (Array.isArray(saved.analysisFindings) && saved.analysisFindings.length)
+    || hasBasisText
+  );
+  if (hasOutput) furthestIndex = Math.max(furthestIndex, SIDE_PANEL_SEQUENCE.indexOf("output"));
+  else if (hasBasis) furthestIndex = Math.max(furthestIndex, SIDE_PANEL_SEQUENCE.indexOf("basis"));
+  return SIDE_PANEL_SEQUENCE[Math.max(0, furthestIndex)] || "images";
+}
+
 async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   if (!saved || typeof saved !== "object" || saved.version !== QUOTE_SESSION_STATE_VERSION) {
     return false;
@@ -2485,7 +2515,7 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   } else {
     clearAiFailureBanner();
   }
-  const restoredPanel = SIDE_PANEL_SEQUENCE.includes(saved.activeSidePanel) ? saved.activeSidePanel : "images";
+  const restoredPanel = furthestQuoteSessionSidePanel(saved);
   setSidePanel(restoredPanel, { force: true });
   return true;
 }
@@ -6078,10 +6108,11 @@ function quoteSessionHasFreshOutputExports() {
 }
 
 function appIsBusy() {
-  return state.isAnalysisRunning || state.isGenerating || state.isPreparingOutput || state.quoteSessionRestoreBusy;
+  return state.isAnalysisRunning || state.isGenerating || state.isPreparingOutput || state.quoteSessionRestoreBusy || state.quoteSessionDashboardBusy;
 }
 
 function appBusyTitle() {
+  if (state.quoteSessionDashboardBusy) return "Dashboard is loading.";
   if (state.quoteSessionRestoreBusy) return "Quote session is loading.";
   if (state.isAnalysisRunning) return "Analysis is running.";
   if (state.isPreparingOutput) return "Output is being prepared.";
@@ -8724,7 +8755,7 @@ function currentQuoteSessionDraftState() {
     aiFailed: snapshot.aiFailed,
     draftSource: snapshot.draftSource,
     lastAnalysisMode: snapshot.lastAnalysisMode,
-    activeSidePanel: snapshot.activeSidePanel,
+    activeSidePanel: furthestQuoteSessionSidePanel(snapshot),
     downloadFile: snapshot.downloadFile,
     pdfFile: snapshot.pdfFile,
     outputRevision: snapshot.outputRevision,
@@ -8922,6 +8953,14 @@ async function discardCurrentQuoteDraftSession() {
   resetCurrentQuoteDraftState();
 }
 
+function setDashboardLoadingState(isLoading = false, options = {}) {
+  state.quoteSessionDashboardBusy = Boolean(isLoading);
+  if (elements.dashboardLoadingModal) elements.dashboardLoadingModal.hidden = !state.quoteSessionDashboardBusy;
+  if (elements.dashboardLoadingTitle) elements.dashboardLoadingTitle.textContent = options.title || "Opening dashboard";
+  if (elements.dashboardLoadingMessage) elements.dashboardLoadingMessage.textContent = options.message || "Saving the current quote and refreshing the session list.";
+  syncControlStates();
+}
+
 function showQuoteFlow() {
   state.activeAppView = "quote";
   elements.quoteDashboardPanel?.classList.remove("is-active");
@@ -8939,32 +8978,45 @@ function showDashboard(options = {}) {
   if (elements.newQuoteButton) elements.newQuoteButton.hidden = false;
   syncControlStates();
   if (options.load !== false) {
-    loadQuoteDashboard();
+    loadQuoteDashboard({ showLoading: options.showLoading !== false });
   }
 }
 
 async function returnToDashboard() {
   if (appIsBusy()) return;
-  clearQuoteSessionDraftSaveTimer();
-  markQuoteSessionDraftSaveStartedAfterCustomerStep();
-  if (currentQuoteSessionIsRestoredFromDashboard() && !restoredQuoteSessionHasChanged()) {
-    showDashboard();
-    return;
-  }
-  if (!quoteDraftShouldPersistToDashboard()) {
-    if (currentQuoteSessionIsRestoredFromDashboard()) {
+  let dashboardLoadStarted = false;
+  setDashboardLoadingState(true, {
+    title: "Opening dashboard",
+    message: "Saving the current quote and refreshing the session list.",
+  });
+  try {
+    clearQuoteSessionDraftSaveTimer();
+    markQuoteSessionDraftSaveStartedAfterCustomerStep();
+    if (currentQuoteSessionIsRestoredFromDashboard() && !restoredQuoteSessionHasChanged()) {
+      dashboardLoadStarted = true;
       showDashboard();
       return;
     }
-    await discardCurrentQuoteDraftSession();
+    if (!quoteDraftShouldPersistToDashboard()) {
+      if (currentQuoteSessionIsRestoredFromDashboard()) {
+        dashboardLoadStarted = true;
+        showDashboard();
+        return;
+      }
+      await discardCurrentQuoteDraftSession();
+      dashboardLoadStarted = true;
+      showDashboard();
+      return;
+    }
+    await saveCurrentQuoteSession({
+      quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length),
+      includeDraftState: true,
+    });
+    dashboardLoadStarted = true;
     showDashboard();
-    return;
+  } finally {
+    if (!dashboardLoadStarted) setDashboardLoadingState(false);
   }
-  await saveCurrentQuoteSession({
-    quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length),
-    includeDraftState: true,
-  });
-  showDashboard();
 }
 
 async function handleTopbarBrandClick() {
@@ -8977,21 +9029,32 @@ async function handleTopbarBrandClick() {
   await returnToDashboard();
 }
 
-async function loadQuoteDashboard() {
+async function loadQuoteDashboard(options = {}) {
   if (!elements.quoteDashboardPanel) return;
+  const showLoading = options.showLoading !== false;
+  if (showLoading) {
+    setDashboardLoadingState(true, {
+      title: "Loading quote sessions",
+      message: "Refreshing the dashboard list and saved exports.",
+    });
+  }
   state.quoteSessionLoadError = "";
   state.quoteSessions = [];
   state.dashboardActiveSessionId = "";
   state.dashboardSelectedSessionIds = [];
   renderQuoteDashboard();
-  const { ok, data } = await getJson("/api/quote-sessions", { logFetchFailure: false });
-  if (!ok) {
-    state.quoteSessions = [];
-    state.quoteSessionLoadError = genericFailureMessage(data);
-  } else {
-    state.quoteSessions = Array.isArray(data.quote_sessions) ? data.quote_sessions : [];
+  try {
+    const { ok, data } = await getJson("/api/quote-sessions", { logFetchFailure: false });
+    if (!ok) {
+      state.quoteSessions = [];
+      state.quoteSessionLoadError = genericFailureMessage(data);
+    } else {
+      state.quoteSessions = Array.isArray(data.quote_sessions) ? data.quote_sessions : [];
+    }
+    renderQuoteDashboard();
+  } finally {
+    if (showLoading) setDashboardLoadingState(false);
   }
-  renderQuoteDashboard();
 }
 
 function quoteSessionExport(session = {}, kind = "xlsx") {
@@ -9257,6 +9320,8 @@ function dashboardShortSessionReference(session = {}) {
   const sessionId = safeQuoteSessionId(session.session_id || "");
   return sessionId ? sessionId.slice(0, 8).toUpperCase() : "";
 }
+
+
 
 function dashboardSessionCanResume(session = {}) {
   const sessionId = safeQuoteSessionId(session.session_id || "");
@@ -9696,15 +9761,14 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <div class="dashboard-selected-status-row">
         ${dashboardSessionProgressPill(activeSession)}
         <span class="dashboard-status-pill ${escapeHtml(status.className)}">${escapeHtml(status.label)}</span>
-        ${shortReference ? `<span class="dashboard-selected-reference">Ref ${escapeHtml(shortReference)}</span>` : ""}
+        ${shortReference ? `<span class="dashboard-selected-reference" title="Ref ${escapeHtml(shortReference)}" aria-label="Ref ${escapeHtml(shortReference)}">${escapeHtml(shortReference)}</span>` : ""}
       </div>
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
+        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
         <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
-        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
-        <div><dt>Short Ref</dt><dd>${shortReference ? `Ref ${escapeHtml(shortReference)}` : "-"}</dd></div>
       </dl>
       <div class="dashboard-selected-downloads">
         <div class="dashboard-export-action-row">
