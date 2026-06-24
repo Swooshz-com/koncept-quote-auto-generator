@@ -8108,10 +8108,14 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboard-list-toolbar", html)
         self.assertIn('aria-label="Quote list controls"', html)
         self.assertIn('id="dashboardDateFilter"', html)
+        self.assertIn('id="dashboardCustomDateRange"', html)
+        self.assertIn('id="dashboardDateStartInput"', html)
+        self.assertIn('id="dashboardDateEndInput"', html)
         self.assertIn('id="dashboardSortSelect"', html)
         self.assertIn(">Date Created<", html)
         self.assertIn(">Modified Date<", html)
         self.assertIn(">Last 7 days<", html)
+        self.assertIn(">Custom range<", html)
         self.assertIn('id="dashboardPageSizeSelect"', html)
         self.assertIn('id="dashboardRangeSelect"', html)
         self.assertIn('<option value="all">All</option>', html)
@@ -8148,6 +8152,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSessionProgressPill(activeSession)", js)
         self.assertIn("dashboardModifiedText", js)
         self.assertIn("dashboardDateFilterMatches", js)
+        self.assertIn("dashboardDateInputMs", js)
+        self.assertIn("dashboardCustomDateStart", js)
         self.assertIn("dashboardSortMode", js)
         self.assertIn("dashboardSortSelect", js)
         self.assertIn("dashboardSortValue", js)
@@ -8180,6 +8186,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".dashboard-session-amount-stack", css)
         self.assertIn(".dashboard-selected-created", css)
         self.assertIn(".dashboard-status-control", css)
+        self.assertIn(".dashboard-custom-date-range", css)
         self.assertIn(".dashboard-sort-control", css)
         self.assertIn(".dashboard-session-status-row", css)
         self.assertIn(".dashboard-session-total-cell", css)
@@ -10440,6 +10447,8 @@ const state = {
   ],
   dashboardStatusFilter: "all",
   dashboardDateFilter: "all",
+  dashboardCustomDateStart: "",
+  dashboardCustomDateEnd: "",
   dashboardSortMode: "created",
   dashboardSearch: "",
   dashboardPageSize: 5,
@@ -10475,6 +10484,7 @@ function renderQuoteDashboard() { renderCount += 1; }
 eval([
   extractFunction("safeQuoteSessionId"),
   extractFunction("dashboardTimestampMs"),
+  extractFunction("dashboardDateInputMs"),
   extractFunction("dashboardDateFilterMatches"),
   extractFunction("dashboardSortValue"),
   extractFunction("filteredDashboardSessions"),
@@ -10498,13 +10508,30 @@ Date.now = () => Date.parse("2026-06-24T12:00:00Z");
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-24T01:00:00Z" }, "today"), true);
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-20T12:00:00Z" }, "7d"), true);
 assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-01T12:00:00Z" }, "7d"), false);
+state.dashboardCustomDateStart = "2026-06-20";
+state.dashboardCustomDateEnd = "2026-06-22";
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-20T01:00:00Z" }, "custom"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-22T12:00:00Z" }, "custom"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-19T12:00:00Z" }, "custom"), false);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-23T00:00:00Z" }, "custom"), false);
+state.dashboardCustomDateStart = "2026-06-22";
+state.dashboardCustomDateEnd = "2026-06-20";
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-21T12:00:00Z" }, "custom"), true);
+state.dashboardCustomDateStart = "";
+state.dashboardCustomDateEnd = "";
 state.quoteSessions = [
   { session_id: "quote-recent", updated_at: "2026-06-22T12:00:00Z" },
   { session_id: "quote-old", updated_at: "2026-05-01T12:00:00Z" },
 ];
 state.dashboardDateFilter = "30d";
 assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
+state.dashboardDateFilter = "custom";
+state.dashboardCustomDateStart = "2026-06-21";
+state.dashboardCustomDateEnd = "2026-06-23";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
 state.dashboardDateFilter = "all";
+state.dashboardCustomDateStart = "";
+state.dashboardCustomDateEnd = "";
 state.quoteSessions = [
   { session_id: "quote-created-newest", created_at: "2026-06-23T12:00:00Z", updated_at: "2026-06-23T12:00:00Z" },
   { session_id: "quote-created-oldest", created_at: "2026-06-20T12:00:00Z", updated_at: "2026-06-24T12:00:00Z" },
@@ -10602,6 +10629,13 @@ handleDashboardSessionAction({ target: activeCard });
 assert.strictEqual(state.dashboardSelectionMode, true);
 assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
 assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+handleDashboardSessionAction({ target: activeCard });
+assert.strictEqual(state.dashboardSelectionMode, false);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+assert.strictEqual(state.dashboardActiveSessionId, "");
+state.dashboardSelectionMode = true;
+state.dashboardSelectedSessionIds = ["quote-first"];
+state.dashboardActiveSessionId = "quote-first";
 
 state.activeAppView = "dashboard";
 const toolbarTarget = {

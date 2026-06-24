@@ -166,6 +166,8 @@ const state = {
   quoteSessionRestoredDraftKey: "",
   dashboardStatusFilter: "all",
   dashboardDateFilter: "all",
+  dashboardCustomDateStart: "",
+  dashboardCustomDateEnd: "",
   dashboardSortMode: "created",
   dashboardSearch: "",
   dashboardPageSize: DASHBOARD_DEFAULT_PAGE_SIZE,
@@ -291,6 +293,9 @@ const elements = {
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
   dashboardDateFilter: qs("#dashboardDateFilter"),
+  dashboardCustomDateRange: qs("#dashboardCustomDateRange"),
+  dashboardDateStartInput: qs("#dashboardDateStartInput"),
+  dashboardDateEndInput: qs("#dashboardDateEndInput"),
   dashboardSortSelect: qs("#dashboardSortSelect"),
   dashboardSearchInput: qs("#dashboardSearchInput"),
   dashboardPageControls: qs("#dashboardPageControls"),
@@ -9005,6 +9010,16 @@ function dashboardDateFilterMatches(session = {}, filter = "all") {
   if (normalizedFilter === "all") return true;
   const timestamp = dashboardTimestampMs(session.updated_at || session.created_at);
   if (!timestamp) return false;
+  if (normalizedFilter === "custom") {
+    const start = dashboardDateInputMs(state.dashboardCustomDateStart);
+    const end = dashboardDateInputMs(state.dashboardCustomDateEnd, { endOfDay: true });
+    if (!start && !end) return true;
+    const lower = start && end ? Math.min(start, end) : start;
+    const upper = start && end ? Math.max(start, end) : end;
+    if (lower && timestamp < lower) return false;
+    if (upper && timestamp > upper) return false;
+    return true;
+  }
   const now = Date.now();
   if (normalizedFilter === "today") {
     const sessionDate = new Date(timestamp);
@@ -9016,6 +9031,25 @@ function dashboardDateFilterMatches(session = {}, filter = "all") {
   const days = normalizedFilter === "7d" ? 7 : normalizedFilter === "30d" ? 30 : 0;
   if (!days) return true;
   return timestamp >= now - days * 24 * 60 * 60 * 1000;
+}
+
+function dashboardDateInputMs(value = "", options = {}) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return 0;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(
+    year,
+    month,
+    day,
+    options.endOfDay ? 23 : 0,
+    options.endOfDay ? 59 : 0,
+    options.endOfDay ? 59 : 0,
+    options.endOfDay ? 999 : 0
+  );
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return 0;
+  return date.getTime();
 }
 
 function dashboardSortValue(session = {}, mode = state.dashboardSortMode || "created") {
@@ -9429,6 +9463,7 @@ function setDashboardSelection(sessionId, options = {}) {
     }
     state.dashboardSelectedSessionIds = nextSelected;
     state.dashboardActiveSessionId = nextSelected.length === 1 ? nextSelected[0] : "";
+    state.dashboardSelectionMode = nextSelected.length > 0;
     renderQuoteDashboard();
     return;
   }
@@ -9923,9 +9958,17 @@ function handleDashboardSidePanelAction(event) {
   }
 }
 
+function syncDashboardCustomDateRangeControls() {
+  const isCustom = (state.dashboardDateFilter || "all") === "custom";
+  if (elements.dashboardCustomDateRange) elements.dashboardCustomDateRange.hidden = !isCustom;
+  if (elements.dashboardDateStartInput) elements.dashboardDateStartInput.value = state.dashboardCustomDateStart || "";
+  if (elements.dashboardDateEndInput) elements.dashboardDateEndInput.value = state.dashboardCustomDateEnd || "";
+}
+
 function renderQuoteDashboard() {
   updateDashboardSummary();
   if (elements.dashboardDateFilter) elements.dashboardDateFilter.value = state.dashboardDateFilter || "all";
+  syncDashboardCustomDateRangeControls();
   if (elements.dashboardSortSelect) elements.dashboardSortSelect.value = state.dashboardSortMode || "created";
   if (elements.dashboardStatusFilter) elements.dashboardStatusFilter.value = state.dashboardStatusFilter || "all";
   const filtered = filteredDashboardSessions();
@@ -10960,6 +11003,16 @@ function wireEvents() {
   });
   elements.dashboardDateFilter?.addEventListener("change", () => {
     state.dashboardDateFilter = elements.dashboardDateFilter.value || "all";
+    state.dashboardPageIndex = 0;
+    renderQuoteDashboard();
+  });
+  elements.dashboardDateStartInput?.addEventListener("change", () => {
+    state.dashboardCustomDateStart = elements.dashboardDateStartInput.value || "";
+    state.dashboardPageIndex = 0;
+    renderQuoteDashboard();
+  });
+  elements.dashboardDateEndInput?.addEventListener("change", () => {
+    state.dashboardCustomDateEnd = elements.dashboardDateEndInput.value || "";
     state.dashboardPageIndex = 0;
     renderQuoteDashboard();
   });

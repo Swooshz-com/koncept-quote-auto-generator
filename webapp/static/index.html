@@ -117,6 +117,7 @@
                           <option value="today">Today</option>
                           <option value="7d">Last 7 days</option>
                           <option value="30d">Last 30 days</option>
+                          <option value="custom">Custom range</option>
                         </select>
                       </label>
                       <label class="compact-control dashboard-status-control">
@@ -142,6 +143,16 @@
                       <label class="compact-control">
                         Range
                         <select id="dashboardRangeSelect" aria-label="Displayed quote session range"></select>
+                      </label>
+                    </div>
+                    <div class="dashboard-custom-date-range" id="dashboardCustomDateRange" hidden>
+                      <label class="compact-control">
+                        From
+                        <input id="dashboardDateStartInput" type="date" aria-label="Custom date range start">
+                      </label>
+                      <label class="compact-control">
+                        To
+                        <input id="dashboardDateEndInput" type="date" aria-label="Custom date range end">
                       </label>
                     </div>
                     </div>

@@ -2755,6 +2755,29 @@ h3 {
   width: 100%;
 }
 
+.dashboard-custom-date-range {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(136px, 158px));
+  gap: 10px;
+  justify-content: end;
+  width: 100%;
+}
+
+.dashboard-custom-date-range[hidden] {
+  display: none;
+}
+
+.dashboard-custom-date-range .compact-control {
+  min-width: 0;
+}
+
+.dashboard-custom-date-range input {
+  min-width: 0;
+  min-height: 38px;
+  font-size: 13px;
+}
+
 .dashboard-page-controls {
   display: contents;
   grid-column: auto;
@@ -3037,6 +3060,11 @@ h3 {
     width: 100%;
   }
 
+  .dashboard-custom-date-range {
+    grid-column: 1 / -1;
+    justify-content: start;
+  }
+
   .dashboard-session-main,
   .dashboard-session-card:not(.is-selection-mode) .dashboard-session-main {
     grid-template-columns: minmax(0, 1fr);
@@ -3080,6 +3108,10 @@ h3 {
   .dashboard-page-controls {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     width: 100%;
+  }
+
+  .dashboard-custom-date-range {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dashboard-list-toolbar .dashboard-selection-toolbar {
