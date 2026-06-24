@@ -8157,6 +8157,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardDateInputMs", js)
         self.assertIn("dashboardDateFilterSummaryText", js)
         self.assertIn("dashboardDateFilterSummary", js)
+        self.assertIn("ensureDashboardCustomDateDefaults", js)
+        self.assertIn("dashboardEarliestSessionDateInput", js)
         self.assertIn("dashboardCustomDateStart", js)
         self.assertIn("dashboardSortMode", js)
         self.assertIn("dashboardSortSelect", js)
@@ -8290,10 +8292,14 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("justify-content: flex-start;", select_mode_button_css)
         self.assertIn("white-space: nowrap;", select_mode_button_css)
         custom_date_css = css.split(".dashboard-custom-date-range {", 1)[1].split("}", 1)[0]
-        self.assertIn("grid-column: 4 / -1;", custom_date_css)
-        self.assertIn("grid-template-columns: minmax(178px, 1fr) repeat(2, minmax(136px, 158px));", custom_date_css)
+        self.assertIn("grid-column: 1 / -1;", custom_date_css)
+        self.assertIn("grid-template-columns: minmax(206px, 228px) repeat(2, minmax(136px, 158px));", custom_date_css)
+        self.assertIn("gap: 12px;", custom_date_css)
+        self.assertIn("justify-content: center;", custom_date_css)
+        self.assertIn("padding: 10px;", custom_date_css)
         date_filter_summary_css = css.split(".dashboard-date-filter-summary {", 1)[1].split("}", 1)[0]
         self.assertIn("min-height: 38px;", date_filter_summary_css)
+        self.assertIn("padding: 0 14px;", date_filter_summary_css)
         self.assertIn("white-space: nowrap;", date_filter_summary_css)
         self.assertIn("dashboardVisibleSessionIds", js)
         self.assertIn("scrollDashboardSessionIntoView", js)
@@ -10507,6 +10513,9 @@ eval([
   extractFunction("safeQuoteSessionId"),
   extractFunction("dashboardTimestampMs"),
   extractFunction("dashboardDateInputMs"),
+  extractFunction("dashboardDateInputValueFromMs"),
+  extractFunction("dashboardEarliestSessionDateInput"),
+  extractFunction("ensureDashboardCustomDateDefaults"),
   extractFunction("dashboardDateFilterMatches"),
   extractFunction("dashboardDateFilterSummaryText"),
   extractFunction("dashboardSortValue"),
@@ -10554,6 +10563,13 @@ state.dashboardDateFilter = "custom";
 state.dashboardCustomDateStart = "2026-06-21";
 state.dashboardCustomDateEnd = "2026-06-23";
 assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
+state.dashboardDateFilter = "all";
+state.dashboardCustomDateStart = "";
+state.dashboardCustomDateEnd = "";
+state.dashboardDateFilter = "custom";
+ensureDashboardCustomDateDefaults();
+assert.strictEqual(state.dashboardCustomDateStart, "2026-05-01");
+assert.strictEqual(state.dashboardCustomDateEnd, "2026-06-24");
 state.dashboardDateFilter = "all";
 state.dashboardCustomDateStart = "";
 state.dashboardCustomDateEnd = "";

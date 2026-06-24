@@ -9053,6 +9053,33 @@ function dashboardDateInputMs(value = "", options = {}) {
   return date.getTime();
 }
 
+function dashboardDateInputValueFromMs(timestamp = 0) {
+  const date = new Date(Number(timestamp) || Date.now());
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dashboardEarliestSessionDateInput(sessions = state.quoteSessions || []) {
+  const timestamps = sessions
+    .map((session) => dashboardTimestampMs(session.updated_at || session.created_at))
+    .filter(Boolean);
+  if (!timestamps.length) return dashboardDateInputValueFromMs(Date.now());
+  return dashboardDateInputValueFromMs(Math.min(...timestamps));
+}
+
+function ensureDashboardCustomDateDefaults() {
+  if ((state.dashboardDateFilter || "all") !== "custom") return;
+  if (!state.dashboardCustomDateStart) {
+    state.dashboardCustomDateStart = dashboardEarliestSessionDateInput();
+  }
+  if (!state.dashboardCustomDateEnd) {
+    state.dashboardCustomDateEnd = dashboardDateInputValueFromMs(Date.now());
+  }
+}
+
 function dashboardSortValue(session = {}, mode = state.dashboardSortMode || "created") {
   const normalizedMode = String(mode || "created");
   const primary = normalizedMode === "modified" ? session.updated_at || session.created_at : session.created_at;
@@ -9977,6 +10004,7 @@ function dashboardDateFilterSummaryText(filteredCount = 0, totalCount = 0) {
 function renderQuoteDashboard() {
   updateDashboardSummary();
   if (elements.dashboardDateFilter) elements.dashboardDateFilter.value = state.dashboardDateFilter || "all";
+  ensureDashboardCustomDateDefaults();
   syncDashboardCustomDateRangeControls();
   if (elements.dashboardSortSelect) elements.dashboardSortSelect.value = state.dashboardSortMode || "created";
   if (elements.dashboardStatusFilter) elements.dashboardStatusFilter.value = state.dashboardStatusFilter || "all";
@@ -11015,6 +11043,7 @@ function wireEvents() {
   });
   elements.dashboardDateFilter?.addEventListener("change", () => {
     state.dashboardDateFilter = elements.dashboardDateFilter.value || "all";
+    ensureDashboardCustomDateDefaults();
     state.dashboardPageIndex = 0;
     renderQuoteDashboard();
   });

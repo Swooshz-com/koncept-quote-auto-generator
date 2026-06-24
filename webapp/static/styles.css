@@ -1995,8 +1995,11 @@ h3 {
 }
 
 .dashboard-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.42fr) minmax(520px, 1fr);
+  gap: 18px;
+  align-items: center;
   padding: 0;
-  align-items: flex-start;
 }
 
 .dashboard-hero .workspace-pane-eyebrow {
@@ -2023,7 +2026,7 @@ h3 {
 }
 
 .dashboard-summary-grid {
-  max-width: min(860px, 72%);
+  max-width: none;
   grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: 12px;
 }
@@ -2314,7 +2317,7 @@ h3 {
 
 .dashboard-main-column {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
   min-width: 0;
   min-height: 0;
@@ -2327,7 +2330,7 @@ h3 {
 .dashboard-summary-grid {
   width: 100%;
   max-width: none;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
 }
 
 .dashboard-sessions-card {
@@ -2458,7 +2461,12 @@ h3 {
   }
 
   .dashboard-main-column {
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
+  }
+
+  .dashboard-hero {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
   }
 
   .dashboard-sessions-card {
@@ -2564,7 +2572,6 @@ h3 {
   .dashboard-hero,
   .dashboard-card-header {
     align-items: stretch;
-    flex-direction: column;
   }
 
   .dashboard-summary-grid {
@@ -2762,13 +2769,13 @@ h3 {
 
 .dashboard-custom-date-range {
   display: grid;
-  grid-column: 4 / -1;
-  grid-template-columns: minmax(178px, 1fr) repeat(2, minmax(136px, 158px));
-  gap: 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(206px, 228px) repeat(2, minmax(136px, 158px));
+  gap: 12px;
   align-items: end;
-  justify-content: stretch;
+  justify-content: center;
   width: 100%;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid rgba(15, 118, 110, 0.1);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.54);
@@ -2787,7 +2794,7 @@ h3 {
   align-items: center;
   min-width: 0;
   min-height: 38px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid rgba(15, 118, 110, 0.14);
   border-radius: var(--radius-sm);
   background: rgba(239, 250, 248, 0.62);
@@ -3092,8 +3099,8 @@ h3 {
 
   .dashboard-custom-date-range {
     grid-column: 1 / -1;
-    grid-template-columns: minmax(178px, 1fr) repeat(2, minmax(136px, 158px));
-    justify-content: start;
+    grid-template-columns: minmax(206px, 228px) repeat(2, minmax(136px, 158px));
+    justify-content: center;
   }
 
   .dashboard-session-main,
