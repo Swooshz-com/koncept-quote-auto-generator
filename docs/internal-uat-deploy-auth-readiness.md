@@ -26,10 +26,13 @@ The deploy/auth surface is already represented in `.env.example` and
 - `SESSION_SECRET`: required for signed session and OIDC state cookies when
   deploy auth is enabled. Never print or commit the value.
 - `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
-  `OIDC_REDIRECT_URI`, `OIDC_TOKEN_URL`, `OIDC_USERINFO_URL`, and
-  `OIDC_LOGOUT_URL`: OIDC settings used by the deploy auth scaffold.
-  `OIDC_LOGOUT_URL` is optional; the other OIDC fields plus `SESSION_SECRET`
-  are required for a complete auth boundary.
+  `OIDC_REDIRECT_URI`, `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`,
+  `OIDC_USERINFO_URL`, and `OIDC_LOGOUT_URL`: OIDC settings used by the deploy
+  auth scaffold. `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`, and
+  `OIDC_USERINFO_URL` are explicit provider endpoints; the app does not guess
+  the authorize endpoint from the issuer. `OIDC_LOGOUT_URL` is optional; the
+  other OIDC fields plus `SESSION_SECRET` are required for a complete auth
+  boundary.
 - `AUTH_ALLOWED_EMAILS`: comma-separated exact tester email allowlist.
 - `AUTH_ALLOWED_DOMAINS`: comma-separated tester email-domain allowlist.
 - `AUTH_ALLOW_ANY_AUTHENTICATED_USER`: internal UAT escape hatch only. Keep it
@@ -54,8 +57,9 @@ state cookies are emitted with `Secure`, `HttpOnly`, and `SameSite=Lax`.
   incomplete.
 - OIDC configuration completeness is checked before serving authenticated
   deploy traffic.
-- `/login` redirects to the configured OIDC issuer when the auth boundary is
-  complete.
+- `/login` redirects to `OIDC_AUTHORIZE_URL` with the configured client,
+  redirect URI, response type, scope, and signed state when the auth boundary
+  is complete.
 - `/callback` validates state, handles provider errors generically, requires an
   authorization code, exchanges it at `OIDC_TOKEN_URL`, fetches user claims from
   `OIDC_USERINFO_URL`, requires a stable `sub`, enforces the internal allowlist,
@@ -123,6 +127,8 @@ Pass means:
 - `AUTH_REQUIRED=true`.
 - `SESSION_SECRET` is present.
 - Required OIDC endpoint/client settings are present.
+- `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`, and `OIDC_USERINFO_URL` are provided
+  explicitly.
 - An internal allowlist or explicit internal escape hatch is configured.
 - `AUTH_APPROVED_TESTER_ROLE` is valid.
 - Runtime roots are set and outside the repository.
@@ -138,8 +144,8 @@ while checking env values.
 - [ ] Confirm required env names are present without printing values:
       `APP_MODE`, `AUTH_REQUIRED`, `SESSION_SECRET`, `OIDC_ISSUER_URL`,
       `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`,
-      `OIDC_TOKEN_URL`, `OIDC_USERINFO_URL`, allowlist settings, tester role,
-      and the runtime root envs being used.
+      `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`, `OIDC_USERINFO_URL`, allowlist
+      settings, tester role, and the runtime root envs being used.
 - [ ] Run `python webapp\server.py --check-deploy-uat-env`.
 - [ ] Confirm `APP_MODE=deploy`.
 - [ ] Confirm `AUTH_REQUIRED=true`.
@@ -147,7 +153,8 @@ while checking env values.
 - [ ] Confirm the app refuses unsafe or incomplete deploy-auth configuration.
 - [ ] Confirm the health endpoint responds.
 - [ ] Confirm unauthenticated users are blocked or redirected.
-- [ ] Confirm OIDC login redirects to the configured issuer.
+- [ ] Confirm OIDC login redirects to the exact configured
+      `OIDC_AUTHORIZE_URL`.
 - [ ] Confirm OIDC callback completes for an approved tester and redirects to
       `/`.
 - [ ] Confirm OIDC callback blocks a non-allowlisted tester with a generic

@@ -239,6 +239,7 @@ OIDC_ISSUER_URL_ENV_NAME = "OIDC_ISSUER_URL"
 OIDC_CLIENT_ID_ENV_NAME = "OIDC_CLIENT_ID"
 OIDC_CLIENT_SECRET_ENV_NAME = "OIDC_CLIENT_SECRET"
 OIDC_REDIRECT_URI_ENV_NAME = "OIDC_REDIRECT_URI"
+OIDC_AUTHORIZE_URL_ENV_NAME = "OIDC_AUTHORIZE_URL"
 OIDC_TOKEN_URL_ENV_NAME = "OIDC_TOKEN_URL"
 OIDC_USERINFO_URL_ENV_NAME = "OIDC_USERINFO_URL"
 OIDC_LOGOUT_URL_ENV_NAME = "OIDC_LOGOUT_URL"
@@ -1211,6 +1212,7 @@ def oidc_config() -> dict[str, str]:
         "client_id": clean_text(read_dotenv_value(OIDC_CLIENT_ID_ENV_NAME)),
         "client_secret": clean_text(read_dotenv_value(OIDC_CLIENT_SECRET_ENV_NAME)),
         "redirect_uri": clean_text(read_dotenv_value(OIDC_REDIRECT_URI_ENV_NAME)),
+        "authorize_url": clean_text(read_dotenv_value(OIDC_AUTHORIZE_URL_ENV_NAME)),
         "token_url": clean_text(read_dotenv_value(OIDC_TOKEN_URL_ENV_NAME)),
         "userinfo_url": clean_text(read_dotenv_value(OIDC_USERINFO_URL_ENV_NAME)),
         "logout_url": clean_text(read_dotenv_value(OIDC_LOGOUT_URL_ENV_NAME)),
@@ -1246,6 +1248,7 @@ def oidc_config_complete() -> bool:
         and config["client_id"]
         and config["client_secret"]
         and config["redirect_uri"]
+        and config["authorize_url"]
         and config["token_url"]
         and config["userinfo_url"]
         and auth_allowlist_configured()
@@ -1361,7 +1364,7 @@ def clear_cookie_header_value(name: str, path: str = "/") -> str:
 
 def oidc_authorize_url(state: str) -> str:
     config = oidc_config()
-    authorize_endpoint = f"{config['issuer_url'].rstrip('/')}/authorize"
+    authorize_endpoint = config["authorize_url"]
     params = {
         "client_id": config["client_id"],
         "redirect_uri": config["redirect_uri"],
@@ -1369,7 +1372,8 @@ def oidc_authorize_url(state: str) -> str:
         "scope": "openid email profile",
         "state": state,
     }
-    return f"{authorize_endpoint}?{urlencode(params)}"
+    separator = "&" if "?" in authorize_endpoint else "?"
+    return f"{authorize_endpoint}{separator}{urlencode(params)}"
 
 
 def oidc_state_from_cookie(cookie_header: str) -> str:
@@ -1475,6 +1479,7 @@ def deploy_uat_preflight_status() -> dict[str, Any]:
         OIDC_CLIENT_ID_ENV_NAME,
         OIDC_CLIENT_SECRET_ENV_NAME,
         OIDC_REDIRECT_URI_ENV_NAME,
+        OIDC_AUTHORIZE_URL_ENV_NAME,
         OIDC_TOKEN_URL_ENV_NAME,
         OIDC_USERINFO_URL_ENV_NAME,
     ):

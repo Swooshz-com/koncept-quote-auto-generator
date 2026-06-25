@@ -524,6 +524,7 @@ class WebappServerTest(unittest.TestCase):
             "OIDC_CLIENT_ID": "client-id",
             "OIDC_CLIENT_SECRET": "client-secret",
             "OIDC_REDIRECT_URI": "https://quote.example/callback",
+            "OIDC_AUTHORIZE_URL": "https://login.example/oauth2/v2/auth",
             "OIDC_TOKEN_URL": "https://issuer.example/token",
             "OIDC_USERINFO_URL": "https://issuer.example/userinfo",
             "AUTH_ALLOWED_EMAILS": "alex@example.com",
@@ -2778,6 +2779,10 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(session["user"]["account"], "account-456")
 
     def test_deploy_auth_requires_allowlist_or_explicit_internal_escape_hatch(self):
+        with mock.patch.dict(os.environ, self.deploy_auth_env(OIDC_AUTHORIZE_URL=""), clear=True):
+            self.assertFalse(webapp.oidc_config_complete())
+            self.assertTrue(webapp.deploy_requires_auth_guard())
+
         base = self.deploy_auth_env(AUTH_ALLOWED_EMAILS="", AUTH_ALLOWED_DOMAINS="")
         with mock.patch.dict(os.environ, base, clear=True):
             self.assertTrue(webapp.deploy_requires_auth_guard())
@@ -2818,7 +2823,19 @@ class WebappServerTest(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as login_redirect:
                     opener.open(f"{runner.base_url}/login", timeout=3)
                 self.assertEqual(login_redirect.exception.code, 302)
-                self.assertTrue(login_redirect.exception.headers["Location"].startswith("https://issuer.example/authorize?"))
+                login_location = login_redirect.exception.headers["Location"]
+                login_url = urllib.parse.urlparse(login_location)
+                configured_authorize_url = urllib.parse.urlparse(env["OIDC_AUTHORIZE_URL"])
+                self.assertEqual(login_location.split("?", 1)[0], env["OIDC_AUTHORIZE_URL"])
+                self.assertEqual(login_url.scheme, configured_authorize_url.scheme)
+                self.assertEqual(login_url.netloc, configured_authorize_url.netloc)
+                self.assertEqual(login_url.path, configured_authorize_url.path)
+                login_params = urllib.parse.parse_qs(login_url.query)
+                self.assertEqual(login_params["client_id"], [env["OIDC_CLIENT_ID"]])
+                self.assertEqual(login_params["redirect_uri"], [env["OIDC_REDIRECT_URI"]])
+                self.assertEqual(login_params["response_type"], ["code"])
+                self.assertEqual(login_params["scope"], ["openid email profile"])
+                self.assertTrue(login_params["state"][0])
                 self.assertIn(webapp.OIDC_STATE_COOKIE_NAME, login_redirect.exception.headers["Set-Cookie"])
 
     def test_deploy_oidc_callback_exchanges_code_fetches_userinfo_and_sets_session_cookie(self):
@@ -2959,14 +2976,14 @@ class WebappServerTest(unittest.TestCase):
             })
             with mock.patch.dict(os.environ, env, clear=True):
                 ready = webapp.deploy_uat_preflight_status()
-            with mock.patch.dict(os.environ, {**env, "OIDC_USERINFO_URL": "", "AUTH_ALLOWED_EMAILS": ""}, clear=True):
+            with mock.patch.dict(os.environ, {**env, "OIDC_AUTHORIZE_URL": "", "AUTH_ALLOWED_EMAILS": ""}, clear=True):
                 blocked = webapp.deploy_uat_preflight_status()
 
         ready_text = json.dumps(ready)
         blocked_text = json.dumps(blocked)
         self.assertEqual(ready["status"], "ready")
         self.assertEqual(blocked["status"], "blocked")
-        self.assertIn("OIDC_USERINFO_URL", blocked_text)
+        self.assertIn("OIDC_AUTHORIZE_URL", blocked_text)
         self.assertIn("AUTH_ALLOWED_EMAILS or AUTH_ALLOWED_DOMAINS", blocked_text)
         for text in (ready_text, blocked_text):
             self.assertNotIn("client-secret-sensitive", text)
