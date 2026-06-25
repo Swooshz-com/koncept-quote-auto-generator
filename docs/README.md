@@ -13,6 +13,9 @@ platform concerns belong in `Swooshz-com/swooshz-platform`.
   import/export, security, CI, and smoke-test changes.
 - `docs/internal-uat.md`: internal Koncept/Swooshz UAT checklist, smoke
   commands, known limits, bug-report format, and private-data guardrails.
+- `docs/internal-uat-deploy-auth-readiness.md`: existing gated single-instance
+  internal UAT deploy/auth readiness notes, boundaries, smoke checks, and
+  non-production limitations.
 - `docs/pricing-catalog-import.md`: current pricing-reference import behavior,
   AI normalization/enrichment contracts, save behavior, ordering, and deferred
   import items.
