@@ -26,9 +26,17 @@ The deploy/auth surface is already represented in `.env.example` and
 - `SESSION_SECRET`: required for signed session and OIDC state cookies when
   deploy auth is enabled. Never print or commit the value.
 - `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
-  `OIDC_REDIRECT_URI`, and `OIDC_LOGOUT_URL`: OIDC settings used by the
-  deploy auth scaffold. `OIDC_LOGOUT_URL` is optional; the other OIDC fields
-  plus `SESSION_SECRET` are required for a complete auth boundary.
+  `OIDC_REDIRECT_URI`, `OIDC_TOKEN_URL`, `OIDC_USERINFO_URL`, and
+  `OIDC_LOGOUT_URL`: OIDC settings used by the deploy auth scaffold.
+  `OIDC_LOGOUT_URL` is optional; the other OIDC fields plus `SESSION_SECRET`
+  are required for a complete auth boundary.
+- `AUTH_ALLOWED_EMAILS`: comma-separated exact tester email allowlist.
+- `AUTH_ALLOWED_DOMAINS`: comma-separated tester email-domain allowlist.
+- `AUTH_ALLOW_ANY_AUTHENTICATED_USER`: internal UAT escape hatch only. Keep it
+  `false` unless the UAT owner has explicitly accepted any authenticated
+  identity from the configured OIDC provider.
+- `AUTH_APPROVED_TESTER_ROLE`: shared role for approved internal testers:
+  `admin`, `management`, `operator`, or `viewer`.
 - `QUOTE_DATA_ROOT`: runtime company/profile/pricing/session data root.
 - `QUOTE_OUTPUT_ROOT`: generated quote output root.
 - `QUOTE_TMP_ROOT`: temporary job/work root.
@@ -48,9 +56,15 @@ state cookies are emitted with `Secure`, `HttpOnly`, and `SameSite=Lax`.
   deploy traffic.
 - `/login` redirects to the configured OIDC issuer when the auth boundary is
   complete.
-- The OIDC callback scaffold currently returns `501 not_implemented` until
-  token exchange and claims validation are wired. Treat this as a readiness
-  gate before any broader deploy UAT with authenticated testers.
+- `/callback` validates state, handles provider errors generically, requires an
+  authorization code, exchanges it at `OIDC_TOKEN_URL`, fetches user claims from
+  `OIDC_USERINFO_URL`, requires a stable `sub`, enforces the internal allowlist,
+  sets the signed session cookie, clears the temporary OIDC state cookie, and
+  redirects to `/`.
+- The callback uses token endpoint plus userinfo endpoint. It does not perform
+  custom JWT signature verification.
+- Provider tokens, raw provider responses, authorization codes,
+  `OIDC_CLIENT_SECRET`, and `SESSION_SECRET` must not be printed or returned.
 - In-memory jobs are acceptable for local mode and a first single-instance UAT
   deploy only. Multi-instance deployment requires durable job, upload, download,
   log, pricing-reference, and quote-session storage partitioned by authenticated
@@ -58,14 +72,14 @@ state cookies are emitted with `Secure`, `HttpOnly`, and `SameSite=Lax`.
 
 ## Recommended Internal UAT Shape
 
-Use this shape only for gated internal UAT after the auth callback readiness
-gate is satisfied:
+Use this shape only for gated internal UAT:
 
 - Single UAT host.
 - Single app instance.
 - `APP_MODE=deploy`.
 - `AUTH_REQUIRED=true`.
 - Complete OIDC configuration.
+- `AUTH_ALLOWED_EMAILS` and/or `AUTH_ALLOWED_DOMAINS` set for approved testers.
 - Persistent runtime data root outside the repository.
 - Approved tester access only.
 - No public/customer access.
@@ -89,9 +103,32 @@ The current KQAG repo is not ready for:
 - Billing, credits, checkout, orders, or ecommerce.
 - User, account, team, membership, or customer-management models.
 - Platform-owned app whitelist/account membership.
-- Full OIDC token exchange and claims validation for public use.
+- Public-use auth hardening, account lifecycle, account membership, and
+  platform-owned authorization.
 - Legal/customer-facing production launch without privacy, terms, retention,
   sub-processor, and counsel review.
+
+## Safe Deploy-Auth Preflight
+
+Run the preflight before starting a deploy-mode UAT app. It reports only
+presence/shape and does not print secret values:
+
+```powershell
+python webapp\server.py --check-deploy-uat-env
+```
+
+Pass means:
+
+- `APP_MODE=deploy`.
+- `AUTH_REQUIRED=true`.
+- `SESSION_SECRET` is present.
+- Required OIDC endpoint/client settings are present.
+- An internal allowlist or explicit internal escape hatch is configured.
+- `AUTH_APPROVED_TESTER_ROLE` is valid.
+- Runtime roots are set and outside the repository.
+
+Fail means fix the env shape before starting the UAT app. Do not paste secret
+values into bug reports; report only which check name failed.
 
 ## UAT Deploy Smoke Checklist
 
@@ -100,8 +137,10 @@ while checking env values.
 
 - [ ] Confirm required env names are present without printing values:
       `APP_MODE`, `AUTH_REQUIRED`, `SESSION_SECRET`, `OIDC_ISSUER_URL`,
-      `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, and the
-      runtime root envs being used.
+      `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`,
+      `OIDC_TOKEN_URL`, `OIDC_USERINFO_URL`, allowlist settings, tester role,
+      and the runtime root envs being used.
+- [ ] Run `python webapp\server.py --check-deploy-uat-env`.
 - [ ] Confirm `APP_MODE=deploy`.
 - [ ] Confirm `AUTH_REQUIRED=true`.
 - [ ] Confirm runtime roots are outside the repository.
@@ -109,10 +148,10 @@ while checking env values.
 - [ ] Confirm the health endpoint responds.
 - [ ] Confirm unauthenticated users are blocked or redirected.
 - [ ] Confirm OIDC login redirects to the configured issuer.
-- [ ] Confirm the OIDC callback readiness gate is satisfied before treating the
-      deploy UAT as authenticated end-to-end. In the current scaffold, a
-      `501 not_implemented` callback response means token exchange and claims
-      validation still need a separate implementation PR.
+- [ ] Confirm OIDC callback completes for an approved tester and redirects to
+      `/`.
+- [ ] Confirm OIDC callback blocks a non-allowlisted tester with a generic
+      forbidden response.
 - [ ] Confirm an authenticated approved tester can reach the dashboard.
 - [ ] Confirm New Quote works.
 - [ ] Confirm profile/pricing import works with authorised private local files.
@@ -129,6 +168,11 @@ Do not commit, paste into GitHub, print in logs, or include in screenshots:
 - `.env` secrets.
 - OIDC client secret.
 - Session secret.
+- Authorization code.
+- Access token.
+- Refresh token.
+- ID token.
+- Raw OIDC provider response.
 - Tunnel/provider tokens.
 - Real profile JSON.
 - Files containing `logo_data_url`.
