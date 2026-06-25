@@ -5,21 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Swooshz Quote Generator</title>
     <link rel="icon" href="/static/assets/swooshz-mark.png">
-    <link rel="stylesheet" href="/static/styles.css?v=54">
+    <link rel="stylesheet" href="/static/styles.css?v=66">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div class="brand-lockup">
+        <button class="brand-lockup" type="button" id="topbarBrandButton" aria-label="Open dashboard">
           <div class="brand-mark" aria-hidden="true">
             <img src="/static/assets/swooshz-mark.png" alt="">
           </div>
           <div>
             <h1>Swooshz Quote Generator</h1>
           </div>
-        </div>
+        </button>
         <div class="topbar-controls">
-          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>Dashboard</button>
+          <a class="topbar-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
+          <button class="topbar-action" type="button" id="backToDashboardButton" aria-label="Open dashboard" hidden>
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M4 5h7v7H4z"></path>
+              <path d="M13 5h7v4h-7z"></path>
+              <path d="M13 11h7v8h-7z"></path>
+              <path d="M4 14h7v5H4z"></path>
+            </svg>
+            <span>Dashboard</span>
+          </button>
           <button class="topbar-action" type="button" id="newQuoteButton" aria-label="Start a new quote">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M12 5v14"></path>
@@ -27,7 +36,17 @@
             </svg>
             <span>New Quote</span>
           </button>
-          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open settings">Settings</button>
+          <button class="topbar-action" type="button" id="settingsButton" aria-label="Open pricing reference settings">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M4 5h16"></path>
+              <path d="M4 12h16"></path>
+              <path d="M4 19h16"></path>
+              <path d="M8 3v4"></path>
+              <path d="M16 10v4"></path>
+              <path d="M11 17v4"></path>
+            </svg>
+            <span>Pricing Reference</span>
+          </button>
         </div>
       </header>
 
@@ -35,94 +54,111 @@
         <main class="panels">
           <section class="panel quote-dashboard-panel is-active" id="quoteDashboardPanel" data-panel-id="dashboard">
             <div class="quote-dashboard">
-              <section class="dashboard-hero" aria-labelledby="quoteDashboardTitle">
-                <div>
-                  <p class="workspace-pane-eyebrow">Local Quote History</p>
-                  <h2 id="quoteDashboardTitle">Past Quote Sessions</h2>
-                  <p class="workspace-pane-subtitle">Sessions saved in the active local runtime.</p>
-                </div>
-              </section>
-
-              <section class="dashboard-summary-grid" aria-label="Quote session summary">
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon blue" aria-hidden="true">Q</span>
-                  <div>
-                    <strong id="dashboardTotalSessions">0</strong>
-                    <span>Total sessions</span>
-                  </div>
-                </article>
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon green" aria-hidden="true">#</span>
-                  <div>
-                    <strong id="dashboardGeneratedSessions">0</strong>
-                    <span>Generated</span>
-                  </div>
-                </article>
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon blue" aria-hidden="true">X</span>
-                  <div>
-                    <strong id="dashboardExportedSessions">0</strong>
-                    <span>Exports ready</span>
-                  </div>
-                </article>
-                <article class="dashboard-summary-card">
-                  <span class="stat-card-icon red" aria-hidden="true">!</span>
-                  <div>
-                    <strong id="dashboardMissingSessions">0</strong>
-                    <span>Missing files</span>
-                  </div>
-                </article>
-              </section>
-
               <div class="dashboard-content-grid">
-                <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
-                  <div class="dashboard-card-header">
+                <section class="dashboard-main-column" aria-label="Local quote sessions">
+                  <section class="dashboard-hero" aria-labelledby="quoteDashboardTitle">
                     <div>
-                      <h3 id="dashboardSessionsTitle">Recent Quotes</h3>
-                      <p class="settings-note" id="dashboardSessionCount">Loading sessions...</p>
+                      <p class="workspace-pane-eyebrow">QUOTE DASHBOARD</p>
+                      <h2 id="quoteDashboardTitle">Quote List</h2>
+                      <p class="workspace-pane-subtitle" id="dashboardSessionCount" aria-live="polite">Loading sessions...</p>
+                    </div>
+                    <section class="dashboard-summary-grid" aria-label="Quote session summary">
+                      <article class="dashboard-summary-card">
+                        <span class="stat-card-icon blue" aria-hidden="true">T</span>
+                        <div>
+                          <strong id="dashboardTotalSessions">0</strong>
+                          <span>Total sessions</span>
+                        </div>
+                      </article>
+                      <article class="dashboard-summary-card">
+                        <span class="stat-card-icon green" aria-hidden="true">G</span>
+                        <div>
+                          <strong id="dashboardGeneratedSessions">0</strong>
+                          <span>Generated</span>
+                        </div>
+                      </article>
+                      <article class="dashboard-summary-card">
+                        <span class="stat-card-icon blue" aria-hidden="true">E</span>
+                        <div>
+                          <strong id="dashboardExportedSessions">0</strong>
+                          <span>Exports ready</span>
+                        </div>
+                      </article>
+                    </section>
+                  </section>
+
+                  <section class="dashboard-sessions-card" aria-labelledby="dashboardSessionsTitle">
+                  <div class="dashboard-card-header">
+                    <h3 class="sr-only" id="dashboardSessionsTitle">Quote sessions</h3>
+                    <div class="dashboard-list-toolbar" aria-label="Quote list controls">
+                    <div class="dashboard-selection-toolbar" id="dashboardSelectionToolbar" hidden>
+                      <div class="dashboard-selection-mode">
+                        <button class="secondary-button dashboard-select-mode-button" type="button" id="dashboardSelectModeButton">Select</button>
+                        <span class="dashboard-selection-hint" id="dashboardSelectionHint" hidden>Select individual sessions, or select all visible quote sessions.</span>
+                      </div>
                     </div>
                     <div class="dashboard-controls">
-                      <label class="compact-control">
-                        Status
-                        <select id="dashboardStatusFilter">
-                          <option value="all">All statuses</option>
-                          <option value="draft">Draft</option>
-                          <option value="generated">Generated</option>
-                          <option value="exported">Exported</option>
-                          <option value="missing">Missing files</option>
-                        </select>
-                      </label>
                       <label class="compact-control dashboard-search-control">
                         Search
-                        <input id="dashboardSearchInput" type="search" autocomplete="off" placeholder="Customer, project, reference">
+                        <input id="dashboardSearchInput" type="search" autocomplete="off" placeholder="Search quote sessions…">
                       </label>
+                      <label class="compact-control dashboard-sort-control">
+                        Sort by
+                        <select id="dashboardSortSelect">
+                          <option value="created">Date Created</option>
+                          <option value="modified">Modified Date</option>
+                        </select>
+                      </label>
+                      <label class="compact-control dashboard-date-control">
+                        Date range
+                        <select id="dashboardDateFilter">
+                          <option value="all">All dates</option>
+                          <option value="today">Today</option>
+                          <option value="7d">Last 7 days</option>
+                          <option value="30d">Last 30 days</option>
+                          <option value="custom">Custom range</option>
+                        </select>
+                      </label>
+                      <label class="compact-control dashboard-status-control">
+                        Status
+                        <select id="dashboardStatusFilter">
+                          <option value="all">All</option>
+                          <option value="draft">Draft</option>
+                          <option value="draft-modified">Draft Modified</option>
+                          <option value="generated">Generated</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div class="dashboard-page-controls" id="dashboardPageControls" hidden>
+                      <label class="compact-control">
+                        Show
+                        <select id="dashboardPageSizeSelect">
+                          <option value="5">5 sessions</option>
+                          <option value="10">10 sessions</option>
+                          <option value="20">20 sessions</option>
+                          <option value="0">All sessions</option>
+                        </select>
+                      </label>
+                      <label class="compact-control">
+                        Range
+                        <select id="dashboardRangeSelect" aria-label="Displayed quote session range"></select>
+                      </label>
+                    </div>
+                    <div class="dashboard-custom-date-range" id="dashboardCustomDateRange" hidden>
+                      <div class="dashboard-date-filter-summary" id="dashboardDateFilterSummary" aria-live="polite">Date filter: all sessions</div>
+                      <label class="compact-control">
+                        From
+                        <input id="dashboardDateStartInput" type="date" aria-label="Custom date range start">
+                      </label>
+                      <label class="compact-control">
+                        To
+                        <input id="dashboardDateEndInput" type="date" aria-label="Custom date range end">
+                      </label>
+                    </div>
                     </div>
                   </div>
                   <div class="dashboard-empty-state" id="dashboardEmptyState" hidden>
-                    <strong>No quote sessions yet</strong>
-                    <p>Start a new quote to create the first local session.</p>
-                  </div>
-                  <div class="dashboard-empty-state dashboard-error-state" id="dashboardErrorState" hidden>
-                    <strong>Quote sessions unavailable</strong>
-                    <p id="dashboardErrorText">Failed. Please try again. Contact support if this keeps happening.</p>
-                  </div>
-                  <div class="dashboard-selection-toolbar" id="dashboardSelectionToolbar" hidden>
-                    <div class="dashboard-selection-mode">
-                      <button class="secondary-button dashboard-select-mode-button" type="button" id="dashboardSelectModeButton">Select</button>
-                      <span class="dashboard-selection-hint" id="dashboardSelectionHint" hidden>Select individual sessions, or select all visible rows.</span>
-                    </div>
-                    <div class="dashboard-bulk-action-bar" id="dashboardBulkActionBar" hidden>
-                      <span id="dashboardBulkSelectionCount">0 selected</span>
-                      <button class="secondary-button dashboard-bulk-clear" type="button" id="dashboardBulkClearButton">Clear selection</button>
-                      <button class="secondary-button danger-button dashboard-bulk-delete" type="button" id="dashboardBulkDeleteButton">Delete selected</button>
-                    </div>
-                  </div>
-                  <div class="dashboard-session-list" id="dashboardSessionsList" aria-live="polite"></div>
-                </section>
-
-                <aside class="dashboard-side-panel" id="dashboardSidePanel" aria-live="polite">
-                  <section class="dashboard-start-card" id="dashboardEmptySelectionPanel" aria-labelledby="dashboardStartTitle">
-                    <div class="dashboard-start-icon" aria-hidden="true">
+                    <div class="dashboard-empty-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" focusable="false">
                         <path d="M7 3h7l5 5v13H7V3Z"></path>
                         <path d="M14 3v5h5"></path>
@@ -130,20 +166,38 @@
                         <path d="M10 17h4"></path>
                       </svg>
                     </div>
-                    <h3 id="dashboardStartTitle">Start a New Quote</h3>
-                    <button class="primary-button" type="button" id="dashboardSideNewQuoteButton">
+                    <span class="dashboard-empty-eyebrow" id="dashboardEmptyEyebrow">QUOTE LIST</span>
+                    <strong>No quote sessions yet</strong>
+                    <p>Start a new quote to create the first local session.</p>
+                    <button class="primary-button" type="button" id="dashboardEmptyNewQuoteButton">
                       <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                         <path d="M12 5v14"></path>
                         <path d="M5 12h14"></path>
                       </svg>
                       <span>New Quote</span>
                     </button>
-                    <button class="secondary-button" type="button" id="dashboardRefreshButton">Refresh Sessions</button>
+                  </div>
+                  <div class="dashboard-empty-state dashboard-error-state" id="dashboardErrorState" hidden>
+                    <strong>Quote sessions unavailable</strong>
+                    <p id="dashboardErrorText">Failed. Please try again. Contact support if this keeps happening.</p>
+                  </div>
+                  <div class="dashboard-session-list" id="dashboardSessionsList" aria-live="polite"></div>
+                  </section>
+                </section>
+
+                <aside class="dashboard-side-panel" id="dashboardSidePanel" aria-live="polite">
+                  <section class="dashboard-start-card dashboard-context-card" id="dashboardEmptySelectionPanel" aria-labelledby="dashboardStartTitle">
+                    <div class="dashboard-start-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M20 12a8 8 0 1 1-2.34-5.66"></path>
+                        <path d="M20 4v6h-6"></path>
+                      </svg>
+                    </div>
+                    <p class="workspace-pane-eyebrow">SELECTED SESSION</p>
+                    <h3 id="dashboardStartTitle">No session selected</h3>
+                    <p class="settings-note">Select a quote session to view downloads, delete actions, and any available draft controls.</p>
                   </section>
                   <section class="dashboard-selected-card" id="dashboardSelectedSessionPanel" aria-labelledby="dashboardSelectedSessionTitle" hidden></section>
-                  <nav class="dashboard-bottom-menu" aria-label="Dashboard links">
-                    <a class="dashboard-privacy-link" href="/privacy" target="_blank" rel="noopener">Privacy Notice</a>
-                  </nav>
                 </aside>
               </div>
             </div>
@@ -783,7 +837,18 @@
           </div>
         </section>
       </div>
-      <div class="modal-overlay profile-delete-modal" id="quoteSessionDeleteModal" role="dialog" aria-modal="true" aria-labelledby="quoteSessionDeleteTitle" hidden>
+      <div class="modal-overlay dashboard-loading-modal" id="dashboardLoadingModal" role="dialog" aria-modal="true" aria-labelledby="dashboardLoadingTitle" hidden>
+        <div class="modal-backdrop"></div>
+        <section class="modal-panel excel-generating-panel dashboard-loading-panel" aria-live="polite">
+          <span class="pricing-reference-spinner" aria-hidden="true"></span>
+          <div class="excel-generating-copy">
+            <span class="basis-chat-eyebrow">Quote dashboard</span>
+            <h3 id="dashboardLoadingTitle">Opening dashboard</h3>
+            <p id="dashboardLoadingMessage">Saving the current quote and refreshing the session list.</p>
+          </div>
+        </section>
+      </div>
+      <div class="modal-overlay profile-delete-modal" id="quoteSessionDeleteModal" role="dialog" aria-modal="true" aria-labelledby="quoteSessionDeleteTitle" aria-describedby="quoteSessionDeleteText" hidden>
         <div class="modal-backdrop" data-quote-session-delete-close></div>
         <section class="modal-panel profile-delete-panel quote-session-delete-panel">
           <header class="modal-header">
@@ -1079,6 +1144,6 @@
         </section>
       </div>
     </div>
-    <script src="/static/app.js?v=71"></script>
+    <script src="/static/app.js?v=76"></script>
   </body>
 </html>

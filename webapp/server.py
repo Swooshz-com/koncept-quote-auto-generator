@@ -222,6 +222,7 @@ QUOTE_SESSION_SCHEMA_VERSION = 1
 QUOTE_SESSION_ID_RE = re.compile(r"^quote-[A-Za-z0-9_-]{3,64}$")
 QUOTE_SESSION_DIR_NAME = "quote-sessions"
 QUOTE_SESSION_METADATA_FILENAME = "quote-session.json"
+QUOTE_SESSION_DRAFT_FILES_FILENAME = "draft-files.json"
 QUOTE_SESSION_EXPORT_DIR_NAME = "exports"
 QUOTE_SESSION_EXPORT_KINDS = {
     "xlsx": "quotation.xlsx",
@@ -10929,6 +10930,10 @@ def quote_session_metadata_path(session_id: str) -> Path:
     return quote_session_dir(session_id) / QUOTE_SESSION_METADATA_FILENAME
 
 
+def quote_session_draft_files_path(session_id: str) -> Path:
+    return quote_session_dir(session_id) / QUOTE_SESSION_DRAFT_FILES_FILENAME
+
+
 def quote_session_export_dir(session_id: str) -> Path:
     return quote_session_dir(session_id) / QUOTE_SESSION_EXPORT_DIR_NAME
 
@@ -11038,6 +11043,120 @@ def quote_session_commercials(payload: dict[str, Any], patch: dict[str, Any]) ->
     }
 
 
+QUOTE_SESSION_DRAFT_STATE_STRIP_KEYS = {
+    "data_url",
+    "logo_data_url",
+    "brief_path",
+    "output_dir",
+    "stdout",
+    "stderr",
+}
+
+
+def quote_session_draft_state_value(value: Any, depth: int = 0) -> Any:
+    if depth > 8:
+        return None
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int | float):
+        return value if math.isfinite(float(value)) else None
+    if isinstance(value, str):
+        return dashboard_safe_text(value, 5000)
+    if isinstance(value, list):
+        return [quote_session_draft_state_value(item, depth + 1) for item in value[:200]]
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for raw_key, raw_value in list(value.items())[:120]:
+            key = dashboard_safe_text(raw_key, 80)
+            if not key or key in QUOTE_SESSION_DRAFT_STATE_STRIP_KEYS:
+                continue
+            sanitized[key] = quote_session_draft_state_value(raw_value, depth + 1)
+        return sanitized
+    return dashboard_safe_text(value, 5000)
+
+
+def quote_session_draft_state(patch: dict[str, Any]) -> dict[str, Any]:
+    supplied = patch.get("draft_state") if isinstance(patch.get("draft_state"), dict) else {}
+    sanitized = quote_session_draft_state_value(supplied)
+    return sanitized if isinstance(sanitized, dict) else {}
+
+
+def quote_session_draft_file_record(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    session_file_key = dashboard_safe_text(value.get("session_file_key"), 180)
+    data_url = str(value.get("data_url") or "").strip()
+    if not session_file_key or not data_url:
+        return {}
+    mime_type = reference_file_mime_type(value)
+    if not (mime_type.startswith("image/") or mime_type == "application/pdf"):
+        return {}
+    max_bytes = MAX_PDF_BYTES if mime_type == "application/pdf" else MAX_IMAGE_BYTES
+    decode_reference_data_url_bytes({**value, "data_url": data_url}, max_bytes)
+    size = dashboard_safe_number(value.get("size"))
+    file_role = dashboard_safe_text(value.get("file_role") or value.get("role"), 80).lower()
+    record = {
+        "session_file_key": session_file_key,
+        "name": dashboard_safe_text(value.get("name"), 180) or "reference-file",
+        "type": mime_type,
+        "size": int(size or 0),
+        "data_url": data_url,
+    }
+    if file_role in {"quote_company_logo", "header_logo", "logo"}:
+        record["file_role"] = "quote_company_logo"
+    elif file_role in {"reference", "reference_file"}:
+        record["file_role"] = "reference"
+    return record
+
+
+def quote_session_draft_files(patch: dict[str, Any]) -> list[dict[str, Any]]:
+    supplied = patch.get("draft_files") if isinstance(patch.get("draft_files"), list) else []
+    records: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for value in supplied[:MAX_REFERENCE_IMAGES + 2]:
+        try:
+            record = quote_session_draft_file_record(value)
+        except ValueError:
+            continue
+        key = clean_text(record.get("session_file_key"))
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        records.append(record)
+    return records
+
+
+def write_quote_session_draft_files(session_id: str, records: list[dict[str, Any]]) -> None:
+    path = quote_session_draft_files_path(session_id)
+    if not records:
+        if path.exists():
+            path.unlink()
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(records, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def read_quote_session_draft_files(session_id: str) -> list[dict[str, Any]]:
+    safe_id = safe_quote_session_id(session_id, "")
+    if not safe_id:
+        return []
+    try:
+        data = json.loads(quote_session_draft_files_path(safe_id).read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    records: list[dict[str, Any]] = []
+    for item in data:
+        try:
+            record = quote_session_draft_file_record(item)
+        except ValueError:
+            continue
+        if record:
+            records.append(record)
+    return records
+
+
 def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, Any]:
     return {
         "schema_version": QUOTE_SESSION_SCHEMA_VERSION,
@@ -11082,6 +11201,7 @@ def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, 
                 "size_bytes": None,
             },
         },
+        "draft_state": {},
     }
 
 
@@ -11092,7 +11212,7 @@ def normalized_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any
     created_at = dashboard_safe_text(metadata.get("created_at")) or utc_timestamp()
     normalized = blank_quote_session_metadata(session_id, created_at)
     normalized["updated_at"] = dashboard_safe_text(metadata.get("updated_at")) or created_at
-    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports"):
+    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "draft_state"):
         if isinstance(metadata.get(key), dict):
             normalized[key].update(copy.deepcopy(metadata[key]))
     return normalized
@@ -11114,6 +11234,94 @@ def result_has_generated_quote(result: dict[str, Any] | None) -> bool:
     return clean_text(result.get("status")) in {"completed", "needs_confirmation", "needs_review", "degraded"}
 
 
+def quote_session_timestamp_sort_value(value: Any) -> float:
+    text = clean_text(value)
+    if not text:
+        return 0.0
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def quote_session_export_is_stale(metadata: dict[str, Any], export: dict[str, Any] | None) -> bool:
+    if not isinstance(export, dict):
+        return False
+    if not clean_text(export.get("filename")):
+        return False
+    if export.get("stale") is True:
+        return True
+    if export.get("stale") is False:
+        return False
+    updated_at = quote_session_timestamp_sort_value(metadata.get("updated_at"))
+    exported_at = quote_session_timestamp_sort_value(export.get("created_at"))
+    return bool(updated_at and exported_at and updated_at > exported_at)
+
+
+def quote_session_revision_number(value: Any, fallback: int = -1) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if not math.isfinite(number):
+        return fallback
+    return int(number)
+
+
+def quote_session_current_draft_export_kinds(patch: dict[str, Any]) -> set[str]:
+    status = patch.get("status") if isinstance(patch.get("status"), dict) else {}
+    if status.get("quote_generated") is not True:
+        return set()
+    draft_state = patch.get("draft_state") if isinstance(patch.get("draft_state"), dict) else {}
+    if not draft_state:
+        return set()
+    output_revision = quote_session_revision_number(draft_state.get("outputRevision"), -1)
+    candidates = {
+        "xlsx": ("downloadFile", "downloadFileRevision"),
+        "pdf": ("pdfFile", "pdfFileRevision"),
+    }
+    current: set[str] = set()
+    for kind, (file_key, revision_key) in candidates.items():
+        file_value = draft_state.get(file_key)
+        if not isinstance(file_value, dict):
+            continue
+        if not clean_text(file_value.get("url")):
+            continue
+        file_revision = quote_session_revision_number(
+            draft_state.get(revision_key, file_value.get("output_revision")),
+            -1,
+        )
+        if output_revision >= 0 and file_revision >= 0 and file_revision != output_revision:
+            continue
+        current.add(kind)
+    return current
+
+
+def mark_quote_session_exports_stale(metadata: dict[str, Any], preserve_kinds: set[str] | None = None) -> None:
+    exports = metadata.get("exports") if isinstance(metadata.get("exports"), dict) else {}
+    preserve_kinds = preserve_kinds or set()
+    preserved_any = False
+    stale_any = False
+    for kind in QUOTE_SESSION_EXPORT_KINDS:
+        export = exports.get(kind)
+        if not isinstance(export, dict) or not clean_text(export.get("filename")):
+            continue
+        if kind in preserve_kinds:
+            export["stale"] = False
+            metadata["status"][f"{kind}_exported"] = True
+            preserved_any = True
+            continue
+        export["stale"] = True
+        metadata["status"][f"{kind}_exported"] = False
+        stale_any = True
+    if preserved_any:
+        metadata["status"]["quote_generated"] = True
+        metadata["status"]["draft_modified"] = False
+    elif stale_any:
+        metadata["status"]["quote_generated"] = False
+        metadata["status"]["draft_modified"] = True
+
+
 def copy_quote_session_exports(session_id: str, metadata: dict[str, Any], result: dict[str, Any] | None, output_dir: Path | None) -> None:
     if not result_has_generated_quote(result) or output_dir is None:
         return
@@ -11130,6 +11338,7 @@ def copy_quote_session_exports(session_id: str, metadata: dict[str, Any], result
             "filename": filename,
             "created_at": utc_timestamp(),
             "size_bytes": stat.st_size,
+            "stale": False,
         }
         metadata["status"][f"{kind}_exported"] = True
 
@@ -11158,50 +11367,124 @@ def create_or_update_quote_session(
     status_patch = patch.get("status") if isinstance(patch.get("status"), dict) else {}
     if isinstance(status_patch.get("quote_generated"), bool):
         metadata["status"]["quote_generated"] = status_patch["quote_generated"]
+    if isinstance(patch.get("draft_state"), dict):
+        metadata["draft_state"] = quote_session_draft_state(patch)
+        write_quote_session_draft_files(resolved_session_id, quote_session_draft_files(patch))
     if result_has_generated_quote(result):
         metadata["status"]["quote_generated"] = True
     copy_quote_session_exports(resolved_session_id, metadata, result, output_dir)
+    if not result_has_generated_quote(result):
+        mark_quote_session_exports_stale(metadata, quote_session_current_draft_export_kinds(patch))
     write_quote_session_metadata(metadata)
     return public_quote_session(metadata)
 
 
-def public_quote_session(metadata: dict[str, Any]) -> dict[str, Any]:
+QUOTE_SESSION_DRAFT_PROGRESS_LABELS = {
+    "images": "Upload",
+    "customer": "Customer",
+    "quote_company": "Quote Company",
+    "basis": "Quote Basis",
+    "output": "Output",
+}
+
+
+def quote_session_draft_progress(draft_state: dict[str, Any]) -> dict[str, str]:
+    if not isinstance(draft_state, dict) or not draft_state:
+        return {}
+    workflow_stage = clean_text(draft_state.get("workflowStage"))
+    sequence = list(QUOTE_SESSION_DRAFT_PROGRESS_LABELS.keys())
+    active_side_panel = clean_text(draft_state.get("activeSidePanel"))
+    active_index = sequence.index(active_side_panel) if active_side_panel in sequence else 0
+    furthest_index = active_index
+    quote_basis = draft_state.get("quoteBasis") if isinstance(draft_state.get("quoteBasis"), dict) else {}
+    has_basis_text = any(clean_text(value) for value in quote_basis.values())
+    has_output = bool(
+        draft_state.get("outputRows")
+        or draft_state.get("originalOutputRows")
+        or draft_state.get("downloadFile")
+        or draft_state.get("pdfFile")
+        or draft_state.get("basisConfirmed")
+        or workflow_stage in {"completed", "pricing_review", "generating"}
+    )
+    has_basis = bool(
+        has_output
+        or draft_state.get("lineItems")
+        or draft_state.get("quoteBasisSections")
+        or draft_state.get("analysisFindings")
+        or has_basis_text
+    )
+    if has_output:
+        furthest_index = max(furthest_index, sequence.index("output"))
+    elif has_basis:
+        furthest_index = max(furthest_index, sequence.index("basis"))
+    elif draft_state.get("images"):
+        furthest_index = max(furthest_index, sequence.index("customer"))
+    active_side_panel = sequence[furthest_index]
+    label = QUOTE_SESSION_DRAFT_PROGRESS_LABELS.get(active_side_panel, "")
+    if not label:
+        return {}
+    return {
+        "active_side_panel": active_side_panel,
+        "workflow_stage": workflow_stage,
+        "label": label,
+    }
+
+
+def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool = False) -> dict[str, Any]:
     normalized = normalized_quote_session_metadata(metadata)
     if not normalized:
         return {}
     session_id = normalized["session_id"]
     public = copy.deepcopy(normalized)
+    draft_state = normalized.get("draft_state") if isinstance(normalized.get("draft_state"), dict) else {}
+    public["has_draft_state"] = bool(draft_state)
+    draft_progress = quote_session_draft_progress(draft_state)
+    if draft_progress:
+        public["draft_progress"] = draft_progress
+    if not include_draft_state:
+        public.pop("draft_state", None)
+        public.pop("draft_files", None)
+    else:
+        public["draft_files"] = read_quote_session_draft_files(session_id)
+    has_stale_export = False
+    has_available_export = False
     for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
         raw_export = public["exports"].get(kind) if isinstance(public["exports"].get(kind), dict) else {}
         recorded_filename = clean_text(raw_export.get("filename"))
         safe_recorded = recorded_filename if recorded_filename == filename else ""
         export_path = quote_session_export_path(session_id, kind) if safe_recorded else None
-        exists = bool(export_path and export_path.exists() and export_path.is_file())
+        file_exists = bool(export_path and export_path.exists() and export_path.is_file())
+        stale = bool(file_exists and quote_session_export_is_stale(normalized, raw_export))
+        exists = bool(file_exists and not stale)
+        has_stale_export = has_stale_export or stale
+        has_available_export = has_available_export or exists
         raw_export["filename"] = safe_recorded or None
         raw_export["exists"] = exists
-        raw_export["missing"] = bool(safe_recorded and not exists)
+        raw_export["missing"] = bool(safe_recorded and not file_exists)
+        raw_export["stale"] = stale
         raw_export["url"] = f"/api/quote-sessions/{session_id}/download/{kind}" if exists else None
-        if exists and export_path is not None:
+        if file_exists and export_path is not None:
             raw_export["size_bytes"] = export_path.stat().st_size
         public["exports"][kind] = raw_export
+    public["status"]["draft_modified"] = bool(has_stale_export and not has_available_export)
+    if has_stale_export and not has_available_export:
+        public["status"]["quote_generated"] = False
+    elif has_available_export:
+        public["status"]["quote_generated"] = True
+    else:
+        public["status"]["quote_generated"] = False
     return public
 
 
-def get_quote_session(session_id: str) -> dict[str, Any] | None:
+def get_quote_session(session_id: str, *, include_draft_state: bool = False) -> dict[str, Any] | None:
     metadata = read_quote_session_metadata(session_id)
     if not metadata:
         return None
-    return public_quote_session(metadata)
+    return public_quote_session(metadata, include_draft_state=include_draft_state)
 
 
 def iso_timestamp_sort_value(value: Any) -> float:
-    text = clean_text(value)
-    if not text:
-        return 0.0
-    try:
-        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return 0.0
+    return quote_session_timestamp_sort_value(value)
 
 
 def list_quote_sessions() -> list[dict[str, Any]]:
@@ -11704,7 +11987,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         quote_session_detail_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", path)
         if quote_session_detail_match:
-            session = get_quote_session(quote_session_detail_match.group(1))
+            session = get_quote_session(quote_session_detail_match.group(1), include_draft_state=True)
             if not session:
                 self.send_json({"error": "Not found"}, status=404)
                 return
@@ -12256,7 +12539,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def send_security_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0, private")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -12346,6 +12629,9 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if filename != expected_filename:
             self.send_json({"error": "Not found"}, status=404)
             return
+        if quote_session_export_is_stale(metadata, export if isinstance(export, dict) else None):
+            self.send_json({"error": "Not found"}, status=404)
+            return
         export_dir = quote_session_export_dir(safe_id)
         file_path = export_dir / filename
         try:
@@ -12427,3 +12713,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

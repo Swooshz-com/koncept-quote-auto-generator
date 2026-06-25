@@ -516,6 +516,7 @@ class WebappServerTest(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertIn("Swooshz Quote Generator Privacy Notice", body)
+        self.assertNotIn("Back to Quote Generator", body)
         self.assertIn('class="privacy-notice-card"', body)
         self.assertIn("<details class=\"privacy-section\"", body)
         self.assertEqual(body.count("<details class=\"privacy-section\" open>"), 8)
@@ -7393,7 +7394,9 @@ class WebappServerTest(unittest.TestCase):
     def test_http_post_requires_allowed_host_csrf_and_json_content_type(self):
         with LocalRunnerServer() as runner:
             session_response = urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3)
-            self.assertEqual(session_response.headers["Cache-Control"], "no-store")
+            cache_control = session_response.headers["Cache-Control"]
+            for directive in ("no-store", "no-cache", "must-revalidate", "max-age=0", "private"):
+                self.assertIn(directive, cache_control)
             self.assertEqual(session_response.headers["X-Content-Type-Options"], "nosniff")
             self.assertEqual(session_response.headers["X-Frame-Options"], "DENY")
             self.assertEqual(session_response.headers["Cross-Origin-Opener-Policy"], "same-origin")
@@ -7649,8 +7652,32 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                         "customer_name": "New Customer",
                         "project_name": "New Project",
                     },
+                    "draft_state": {
+                        "outputRows": [{"description": "Edited output row", "quantity": 2}],
+                        "workflowStage": "completed",
+                        "activeSidePanel": "output",
+                        "analysisFindings": [{"text": "Synthetic visible finding"}],
+                        "images": [{
+                            "name": "reference.pdf",
+                            "type": "application/pdf",
+                            "session_file_key": "reference-file-key",
+                            "data_url": "data:application/pdf;base64,UERG",
+                        }],
+                        "output_dir": str(data_root / "private-output"),
+                    },
+                    "draft_files": [{
+                        "session_file_key": "reference-file-key",
+                        "name": "reference.pdf",
+                        "type": "application/pdf",
+                        "size": 3,
+                        "data_url": "data:application/pdf;base64,UERG",
+                    }],
                 }
                 new_session = webapp.create_or_update_quote_session(new_payload)
+                new_path = webapp.quote_session_metadata_path(new_session["session_id"])
+                new_data = json.loads(new_path.read_text(encoding="utf-8"))
+                detailed_new_session = webapp.get_quote_session("quote-new", include_draft_state=True)
+                draft_files_path = data_root / "quote-sessions" / "quote-new" / "draft-files.json"
 
                 sessions = webapp.list_quote_sessions()
 
@@ -7658,6 +7685,23 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(new_session["customer_summary"]["customer_name"], "New Customer")
             self.assertEqual(new_session["customer_summary"]["project_name"], "New Project")
             self.assertEqual(new_session["status"]["quote_generated"], False)
+            self.assertEqual(new_data["draft_state"]["outputRows"][0]["description"], "Edited output row")
+            self.assertEqual(new_data["draft_state"]["analysisFindings"][0]["text"], "Synthetic visible finding")
+            self.assertNotIn("data_url", json.dumps(new_data["draft_state"]))
+            self.assertNotIn("output_dir", json.dumps(new_data["draft_state"]))
+            self.assertTrue(draft_files_path.is_file())
+            self.assertEqual(detailed_new_session["draft_files"][0]["session_file_key"], "reference-file-key")
+            self.assertEqual(detailed_new_session["draft_files"][0]["data_url"], "data:application/pdf;base64,UERG")
+            self.assertTrue(detailed_new_session["has_draft_state"])
+            self.assertTrue(sessions[0]["has_draft_state"])
+            self.assertFalse(sessions[1]["has_draft_state"])
+            self.assertIn("draft_state", detailed_new_session)
+            self.assertNotIn("draft_files", sessions[0])
+            self.assertNotIn("draft_state", sessions[0])
+            self.assertEqual(sessions[0]["draft_progress"]["active_side_panel"], "output")
+            self.assertEqual(sessions[0]["draft_progress"]["workflow_stage"], "completed")
+            self.assertEqual(sessions[0]["draft_progress"]["label"], "Output")
+            self.assertNotIn("draft_progress", sessions[1])
             self.assertTrue((data_root / "quote-sessions" / "quote-new" / "quote-session.json").is_file())
 
     def test_quote_session_exports_are_recorded_and_missing_artifacts_are_safe(self):
@@ -7702,6 +7746,126 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(refreshed["exports"]["pdf"]["missing"], True)
             self.assertNotIn(str(tmp_path), json.dumps(refreshed))
 
+    def test_quote_session_draft_update_marks_existing_exports_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_root = tmp_path / "data"
+            output_dir = tmp_path / "out" / "job-stale"
+            output_dir.mkdir(parents=True)
+            (output_dir / "quotation.xlsx").write_bytes(b"xlsx")
+            (output_dir / "quotation.pdf").write_bytes(b"pdf")
+            payload = valid_payload()
+            payload["quote_session"] = {
+                "session_id": "quote-stale",
+                "status": {"quote_generated": True},
+                "commercials": {
+                    "currency": "SGD",
+                    "tax_label": "GST",
+                    "tax_rate": 0.09,
+                    "subtotal": 100,
+                    "tax_amount": 9,
+                    "grand_total": 109,
+                },
+                "draft_state": {
+                    "version": 1,
+                    "activeSidePanel": "output",
+                    "outputRows": [{"description": "Generated row", "amount": 100}],
+                    "outputRevision": 0,
+                },
+            }
+            result = {
+                "status": "completed",
+                "files": [
+                    {"name": "quotation.xlsx", "url": "/api/jobs/job-stale/files/quotation.xlsx"},
+                    {"name": "quotation.pdf", "url": "/api/jobs/job-stale/files/quotation.pdf"},
+                ],
+            }
+            stale_payload = valid_payload()
+            stale_payload["quote_session"] = {
+                **payload["quote_session"],
+                "commercials": {
+                    "currency": "SGD",
+                    "tax_label": "GST",
+                    "tax_rate": 0.09,
+                    "subtotal": 200,
+                    "tax_amount": 18,
+                    "grand_total": 218,
+                },
+                "draft_state": {
+                    "version": 1,
+                    "activeSidePanel": "output",
+                    "outputRows": [{"description": "Modified row", "amount": 200}],
+                    "outputRevision": 1,
+                },
+            }
+            no_export_payload = valid_payload()
+            no_export_payload["quote_session"] = {
+                "session_id": "quote-no-export",
+                "status": {"quote_generated": True},
+                "draft_state": {
+                    "version": 1,
+                    "activeSidePanel": "output",
+                    "outputRows": [{"description": "Output draft only", "amount": 100}],
+                    "outputRevision": 1,
+                },
+            }
+
+            with mock.patch.object(webapp, "configured_data_root", return_value=data_root):
+                generated = webapp.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+                stale = webapp.create_or_update_quote_session(stale_payload)
+                regenerated = webapp.create_or_update_quote_session(stale_payload, result=result, output_dir=output_dir)
+                post_generate_payload = valid_payload()
+                post_generate_payload["quote_session"] = {
+                    **stale_payload["quote_session"],
+                    "status": {"quote_generated": True},
+                    "draft_state": {
+                        **stale_payload["quote_session"]["draft_state"],
+                        "downloadFile": {
+                            "name": "quotation.xlsx",
+                            "url": "/api/jobs/job-stale/files/quotation.xlsx",
+                            "output_revision": 1,
+                        },
+                        "pdfFile": {
+                            "name": "quotation.pdf",
+                            "url": "/api/jobs/job-stale/files/quotation.pdf",
+                            "output_revision": 1,
+                        },
+                        "downloadFileRevision": 1,
+                        "pdfFileRevision": 1,
+                        "outputRevision": 1,
+                    },
+                }
+                saved_after_generate = webapp.create_or_update_quote_session(post_generate_payload)
+                no_export = webapp.create_or_update_quote_session(no_export_payload)
+
+            self.assertTrue(generated["exports"]["xlsx"]["exists"])
+            self.assertEqual(generated["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-stale/download/xlsx")
+            self.assertTrue(generated["status"]["quote_generated"])
+            self.assertFalse(generated["status"].get("draft_modified", False))
+            self.assertEqual(stale["commercials"]["grand_total"], 218)
+            self.assertFalse(stale["status"]["quote_generated"])
+            self.assertTrue(stale["status"]["draft_modified"])
+            self.assertEqual(stale["exports"]["xlsx"]["filename"], "quotation.xlsx")
+            self.assertFalse(stale["exports"]["xlsx"]["exists"])
+            self.assertTrue(stale["exports"]["xlsx"]["stale"])
+            self.assertIsNone(stale["exports"]["xlsx"]["url"])
+            self.assertFalse(stale["exports"]["pdf"]["exists"])
+            self.assertTrue(stale["exports"]["pdf"]["stale"])
+            self.assertNotIn(str(tmp_path), json.dumps(stale))
+            self.assertTrue(regenerated["status"]["quote_generated"])
+            self.assertTrue(regenerated["exports"]["xlsx"]["exists"])
+            self.assertFalse(regenerated["exports"]["xlsx"]["stale"])
+            self.assertTrue(saved_after_generate["status"]["quote_generated"])
+            self.assertFalse(saved_after_generate["status"].get("draft_modified", False))
+            self.assertTrue(saved_after_generate["exports"]["xlsx"]["exists"])
+            self.assertFalse(saved_after_generate["exports"]["xlsx"]["stale"])
+            self.assertEqual(saved_after_generate["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-stale/download/xlsx")
+            self.assertTrue(saved_after_generate["exports"]["pdf"]["exists"])
+            self.assertFalse(saved_after_generate["exports"]["pdf"]["stale"])
+            self.assertFalse(no_export["status"]["quote_generated"])
+            self.assertFalse(no_export["status"].get("draft_modified", False))
+            self.assertFalse(no_export["exports"]["xlsx"]["exists"])
+
     def test_quote_session_api_empty_state_and_download_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_root = Path(tmp) / "data"
@@ -7736,10 +7900,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     (exports_dir / "quotation.xlsx").write_bytes(b"xlsx")
                     metadata_path = webapp.quote_session_metadata_path("quote-api")
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    metadata["updated_at"] = "2026-01-01T00:00:00Z"
                     metadata["status"]["xlsx_exported"] = True
                     metadata["exports"]["xlsx"] = {
                         "filename": "quotation.xlsx",
-                        "created_at": "2026-01-01T00:00:00Z",
+                        "created_at": "2026-01-02T00:00:00Z",
                         "size_bytes": 4,
                     }
                     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -7750,6 +7915,13 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     ) as response:
                         self.assertEqual(response.status, 200)
                         self.assertEqual(response.read(), b"xlsx")
+
+                    metadata["updated_at"] = "2026-01-03T00:00:00Z"
+                    metadata["exports"]["xlsx"]["created_at"] = "2026-01-02T00:00:00Z"
+                    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(f"{runner.base_url}/api/quote-sessions/quote-api/download/xlsx", timeout=3)
+                    self.assertEqual(error.exception.code, 404)
 
                     for path in (
                         "/api/quote-sessions/quote-api/download/docx",
@@ -7844,40 +8016,134 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('id="quoteDashboardPanel"', html)
         self.assertIn('id="dashboardSessionsList"', html)
         self.assertNotIn('id="dashboardNewQuoteButton"', html)
-        self.assertIn('id="dashboardSideNewQuoteButton"', html)
+        self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
+        self.assertIn('id="dashboardEmptyNewQuoteButton"', html)
+        self.assertNotIn('id="dashboardSideNewQuoteButton"', html)
+        self.assertNotIn('id="dashboardRefreshButton"', html)
+        self.assertNotIn("Refresh Sessions", html)
         self.assertIn('id="backToDashboardButton"', html)
         self.assertIn('>Dashboard<', html)
         self.assertNotIn('>Back to Dashboard<', html)
         self.assertNotIn('id="dashboardContinueQuoteButton"', html)
         self.assertNotIn("Continue Current Quote", html)
+        self.assertIn("QUOTE DASHBOARD", html)
+        self.assertIn(">Quote List</h2>", html)
+        self.assertIn('id="dashboardSessionCount"', html)
+        self.assertIn('id="dashboardEmptyEyebrow"', html)
+        self.assertNotIn("Quote sessions saved in the active local runtime.", html)
+        self.assertNotIn(">Recent Quotes</h3>", html)
+        self.assertIn('placeholder="Search quote sessions…"', html)
+        self.assertIn("No session selected", html)
+        self.assertIn("Select a quote session to view downloads, delete actions, and any available draft controls.", html)
         topbar_controls = html.split('<div class="topbar-controls">', 1)[1].split('</div>', 1)[0]
-        self.assertNotIn("Privacy", topbar_controls)
-        self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="settingsButton"'))
+        self.assertIn("Privacy Notice", topbar_controls)
+        self.assertIn('class="topbar-privacy-link"', topbar_controls)
+        self.assertIn("Pricing Reference", topbar_controls)
+        self.assertIn('aria-label="Open pricing reference settings"', topbar_controls)
+        self.assertLess(topbar_controls.index('class="topbar-privacy-link"'), topbar_controls.index('id="backToDashboardButton"'))
+        self.assertLess(topbar_controls.index('id="backToDashboardButton"'), topbar_controls.index('id="newQuoteButton"'))
         self.assertLess(topbar_controls.index('id="newQuoteButton"'), topbar_controls.index('id="settingsButton"'))
-        self.assertIn('class="dashboard-privacy-link"', html)
+        self.assertNotIn('class="dashboard-privacy-link"', html)
         self.assertIn('class="panel quote-dashboard-panel is-active"', html)
         self.assertIn('class="panel quote-shell"', html)
         self.assertIn("quote-dashboard-panel", css)
         self.assertIn("dashboard-session-list", css)
         self.assertIn("dashboard-selected-card", css)
+        self.assertIn("dashboard-context-card", css)
+        self.assertIn("dashboard-empty-eyebrow", css)
+        self.assertIn("dashboard-selected-items", css)
         self.assertNotIn("dashboard-session-table", css)
         self.assertIn("showDashboard", js)
         self.assertIn("showQuoteFlow", js)
         self.assertIn("loadQuoteDashboard", js)
+        self.assertIn("quoteDraftShouldPersistToDashboard", js)
+        self.assertIn("discardCurrentQuoteDraftSession", js)
+        self.assertIn("includeDraftState: true", js)
+        self.assertIn("payload.draft_state = currentQuoteSessionDraftState()", js)
+        self.assertIn("payload.draft_files = sessionFileRecordsFromDraft()", js)
+        self.assertIn("quoteSessionDraftSaveStarted", js)
+        self.assertIn("quoteSessionDraftStateCanSave", js)
+        self.assertIn("return Boolean(state.quoteSessionDraftSaveStarted);", js)
+        self.assertIn("quoteSessionHasFreshOutputExports", js)
+        self.assertIn("&& quoteSessionHasFreshOutputExports()", js)
+        self.assertIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", js)
+        self.assertIn("quoteSessionRestoredSessionId", js)
+        self.assertIn("rememberRestoredQuoteSessionBaseline", js)
+        self.assertIn("currentQuoteSessionIsRestoredFromDashboard", js)
+        self.assertIn("restoredQuoteSessionHasChanged", js)
+        self.assertIn("saveQuoteSessionDraftStateAfterPanelMove", js)
+        self.assertIn("saveQuoteSessionDraftState", js)
+        self.assertIn("queueQuoteSessionDraftStateSave", js)
+        self.assertIn("ensureClientQuoteSessionId", js)
+        self.assertIn("requestedSessionId = ensureClientQuoteSessionId()", js)
+        self.assertIn("currentQuoteSessionPayload({ ...options, sessionId: requestedSessionId })", js)
+        self.assertIn("activeAppView", js)
+        self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", js)
+        self.assertIn("options.includeDraftState === true && quoteSessionDraftStateCanSave()", js)
+        add_images_body = js.split("async function addImagesFromFiles", 1)[1].split("function removeImageAt", 1)[0]
+        self.assertNotIn("ensureQuoteSession", add_images_body)
+        sample_details_body = js.split("async function setSampleDetails", 1)[1].split("function buildPayload", 1)[0]
+        self.assertNotIn("ensureQuoteSession", sample_details_body)
+        next_panel_body = js.split("async function goToNextSidePanel", 1)[1].split("function handleQuoteBasisClick", 1)[0]
+        self.assertIn('nextPanel === "customer"', next_panel_body)
+        self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", next_panel_body)
+        self.assertIn("saveQuoteSessionDraftState", next_panel_body)
+        wire_events_body = js.split("function wireEvents", 1)[1].split("function renderQuoteDashboard", 1)[0]
+        self.assertIn("saveQuoteSessionDraftStateAfterPanelMove(panelName)", wire_events_body)
+        start_new_quote_body = js.split("async function startNewQuote()", 1)[1].split("function resetCurrentQuoteDraftState()", 1)[0]
+        self.assertIn("clearSessionState", start_new_quote_body)
+        self.assertIn("resetCurrentQuoteDraftState", start_new_quote_body)
+        self.assertNotIn("markQuoteSessionDraftSaveStartedAfterCustomerStep", start_new_quote_body)
+        self.assertNotIn("quoteDraftShouldPersistToDashboard()", start_new_quote_body)
+        self.assertNotIn("saveQuoteSessionDraftState", start_new_quote_body)
+        self.assertNotIn("saveCurrentQuoteSession", start_new_quote_body)
+        return_dashboard_body = js.split("async function returnToDashboard()", 1)[1].split("async function handleTopbarBrandClick", 1)[0]
+        self.assertIn("currentQuoteSessionIsRestoredFromDashboard() && !restoredQuoteSessionHasChanged()", return_dashboard_body)
+        self.assertIn("if (currentQuoteSessionIsRestoredFromDashboard())", return_dashboard_body)
+        self.assertIn("discardCurrentQuoteDraftSession", return_dashboard_body)
         self.assertIn("/api/quote-sessions", js)
 
     def test_static_dashboard_uses_selected_panel_bulk_delete_and_custom_modal(self):
         static_dir = ROOT / "webapp" / "static"
         html = (static_dir / "index.html").read_text(encoding="utf-8")
         js = (static_dir / "app.js").read_text(encoding="utf-8")
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
+        smoke_script = (ROOT / "scripts" / "playwright-smoke.mjs").read_text(encoding="utf-8")
 
         self.assertNotIn("dashboardContinueQuoteButton", html)
+        self.assertNotIn('id="dashboardTopNewQuoteButton"', html)
         self.assertIn('id="dashboardSelectedSessionPanel"', html)
+        self.assertIn('id="topbarBrandButton"', html)
         self.assertIn('id="dashboardSelectModeButton"', html)
         self.assertNotIn('id="dashboardSelectVisibleCheckbox"', html)
-        self.assertIn('id="dashboardBulkActionBar"', html)
+        self.assertNotIn('id="dashboardBulkActionBar"', html)
+        self.assertNotIn('id="dashboardBulkDeleteButton"', html)
+        self.assertNotIn('<option value="exported">', html)
+        self.assertNotIn('<option value="missing">', html)
+        self.assertNotIn(">Missing files<", html)
+        self.assertIn("dashboard-list-toolbar", html)
+        self.assertIn('aria-label="Quote list controls"', html)
+        self.assertIn('id="dashboardDateFilter"', html)
+        self.assertIn('id="dashboardCustomDateRange"', html)
+        self.assertIn('id="dashboardDateFilterSummary"', html)
+        self.assertIn('aria-live="polite"', html)
+        self.assertIn('id="dashboardDateStartInput"', html)
+        self.assertIn('id="dashboardDateEndInput"', html)
+        self.assertIn('id="dashboardSortSelect"', html)
+        self.assertIn(">Date Created<", html)
+        self.assertIn(">Modified Date<", html)
+        self.assertIn(">Last 7 days<", html)
+        self.assertIn(">Custom range<", html)
+        self.assertIn('id="dashboardPageSizeSelect"', html)
+        self.assertIn('id="dashboardRangeSelect"', html)
+        self.assertIn('<option value="all">All</option>', html)
+        self.assertNotIn("All statuses", html)
+        self.assertIn('["All", "Draft", "Draft Modified", "Generated"]', smoke_script)
+        self.assertNotIn('["All statuses", "Draft", "Generated"]', smoke_script)
+        self.assertIn("dashboard-status-control", html)
         self.assertIn('id="quoteSessionDeleteModal"', html)
         self.assertIn("Delete quote session?", html)
+        self.assertIn("Delete selected quote sessions?", js)
         self.assertIn(
             "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.",
             js,
@@ -7886,21 +8152,185 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "This removes the selected local dashboard records and any saved local exports for those quote sessions. This cannot be undone.",
             js,
         )
-        self.assertIn("dashboardSessionCanResume", js)
-        self.assertIn("Continue draft", js)
-        self.assertIn("state.quoteSessionId", js.split("function dashboardSessionCanResume", 1)[1].split("function dashboardSelectedExportAction", 1)[0])
-        self.assertIn("hasCurrentQuoteDraft", js.split("function dashboardSessionCanResume", 1)[1].split("function dashboardSelectedExportAction", 1)[0])
-        self.assertIn("QUOTE_SESSION_RESTORE_NOTE", js)
-        self.assertIn('data-dashboard-panel-action="continue-session"', js)
+        self.assertIn("dashboardSessionCanModify", js)
+        self.assertIn("dashboardSessionHasCurrentDraft", js)
+        self.assertIn("Modify quote", js)
+        self.assertIn("Clear selection", js)
+        self.assertIn("handleTopbarBrandClick", js)
+        self.assertIn("dashboard-selected-body--single", js)
+        self.assertIn("dashboard-selected-body--bulk", js)
+        self.assertIn("dashboard-session-primary-zone", js)
+        self.assertIn("dashboard-session-meta-zone", js)
+        self.assertIn("dashboard-session-result-zone", js)
+        self.assertIn("dashboardSessionProgressLabel", js)
+        self.assertIn("dashboardProgressStageClass", js)
+        self.assertIn("dashboardSessionProgressPill", js)
+        self.assertIn("Saved at ${label}", js)
+        self.assertIn("dashboardSessionProgressPill(session)", js)
+        self.assertIn("dashboardSessionProgressPill(activeSession)", js)
+        self.assertIn("dashboardModifiedText", js)
+        self.assertIn("dashboardDateFilterMatches", js)
+        self.assertIn("dashboardDateInputMs", js)
+        self.assertIn("dashboardDateFilterSummaryText", js)
+        self.assertIn("dashboardDateFilterSummary", js)
+        self.assertIn("ensureDashboardCustomDateDefaults", js)
+        self.assertIn("dashboardEarliestSessionDateInput", js)
+        self.assertIn("dashboardCustomDateStart", js)
+        self.assertIn("dashboardSortMode", js)
+        self.assertIn("dashboardSortSelect", js)
+        self.assertIn("dashboardSortValue", js)
+        self.assertIn('elements.dashboardEmptyEyebrow.textContent = hasSessions ? "NO MATCHES" : "QUOTE LIST"', js)
+        self.assertIn("formatDashboardSubtotal", js)
+        self.assertIn("dashboard-session-subtotal", js)
+        self.assertIn("dashboard-session-subtotal-cell", js)
+        self.assertNotIn("dashboard-session-amount-stack", js)
+        self.assertIn("<dt>Modified</dt>", js)
+        self.assertIn("<dt>Created</dt>", js)
+        self.assertIn("<dt>Subtotal</dt>", js)
+        self.assertIn("<dt>Short Ref</dt>", js)
+        self.assertIn("dashboard-selected-created", js)
+        self.assertIn("dashboard-session-total-cell", js)
+        self.assertNotIn("dashboardLastExportText", js)
+        self.assertNotIn("<dt>Last export</dt>", js)
+        self.assertIn("dashboard-session-status-row", js)
+        self.assertNotIn("dashboard-session-output-row", js)
+        self.assertIn(".dashboard-status-pill.is-progress", css)
+        self.assertIn(".dashboard-status-pill.is-progress-upload", css)
+        self.assertIn(".dashboard-status-pill.is-progress-quote-company", css)
+        self.assertIn(".dashboard-status-pill.is-progress-customer", css)
+        self.assertIn(".dashboard-status-pill.is-progress-quote-basis", css)
+        self.assertIn(".dashboard-status-pill.is-progress-output", css)
+        self.assertIn(".dashboard-status-pill.is-draft", css)
+        self.assertIn(".dashboard-status-pill.is-draft-modified", css)
+        self.assertIn(".dashboard-status-pill.is-generated", css)
+        self.assertIn(".dashboard-session-subtotal", css)
+        self.assertIn(".dashboard-session-subtotal-cell", css)
+        self.assertNotIn(".dashboard-session-amount-stack", css)
+        self.assertIn(".dashboard-selected-created", css)
+        self.assertIn("--dashboard-select-control-width: 154px;", css)
+        self.assertIn(
+            "grid-template-columns: minmax(118px, var(--dashboard-select-control-width)) "
+            "minmax(140px, 1.6fr) minmax(112px, 0.95fr) minmax(108px, 0.8fr) "
+            "minmax(96px, 0.72fr) minmax(104px, 0.78fr) minmax(82px, 0.56fr);",
+            css,
+        )
+        self.assertIn("grid-template-columns: var(--dashboard-select-control-width) minmax(0, 1fr);", css)
+        self.assertIn(".dashboard-selected-created span", css)
+        self.assertIn(".dashboard-status-control", css)
+        self.assertIn(".dashboard-custom-date-range", css)
+        self.assertIn(".dashboard-date-filter-summary", css)
+        self.assertIn(".dashboard-sort-control", css)
+        self.assertIn(".dashboard-session-status-row", css)
+        self.assertIn(".dashboard-session-total-cell", css)
+        self.assertIn(".dashboard-session-status-row .dashboard-status-pill {", css)
+        result_zone_css = css.split(".dashboard-session-result-zone {", 1)[1].split("}", 1)[0]
+        status_row_css = css.split(".dashboard-session-status-row {", 1)[1].split("}", 1)[0]
+        status_pill_css = css.split(".dashboard-session-status-row .dashboard-status-pill {", 1)[1].split("}", 1)[0]
+        progress_pill_css = css.split(".dashboard-status-pill.is-progress {", 1)[1].split("}", 1)[0]
+        upload_progress_css = css.split(".dashboard-status-pill.is-progress-upload {", 1)[1].split("}", 1)[0]
+        quote_company_progress_css = css.split(".dashboard-status-pill.is-progress-quote-company {", 1)[1].split("}", 1)[0]
+        customer_progress_css = css.split(".dashboard-status-pill.is-progress-customer {", 1)[1].split("}", 1)[0]
+        quote_basis_progress_css = css.split(".dashboard-status-pill.is-progress-quote-basis {", 1)[1].split("}", 1)[0]
+        output_progress_css = css.split(".dashboard-status-pill.is-progress-output {", 1)[1].split("}", 1)[0]
+        draft_pill_css = css.split(".dashboard-status-pill.is-draft {", 1)[1].split("}", 1)[0]
+        generated_pill_css = css.split(".dashboard-status-pill.is-generated {", 1)[1].split("}", 1)[0]
+        card_status_row = js.split('<div class="dashboard-session-status-row">', 1)[1].split("</div>", 1)[0]
+        selected_status_row = js.split('<div class="dashboard-selected-status-row">', 1)[1].split("</div>", 1)[0]
+        self.assertLess(card_status_row.index("dashboardSessionProgressPill(session)"), card_status_row.index("status.className"))
+        self.assertLess(selected_status_row.index("dashboardSessionProgressPill(activeSession)"), selected_status_row.index("status.className"))
+        self.assertIn("overflow: hidden;", result_zone_css)
+        self.assertIn("width: 100%;", status_row_css)
+        self.assertIn("overflow: hidden;", status_row_css)
+        self.assertIn("max-width: 100%;", status_pill_css)
+        self.assertIn("text-overflow: ellipsis;", status_pill_css)
+        self.assertIn("box-shadow:", progress_pill_css)
+        self.assertIn("var(--green-dark)", progress_pill_css)
+        self.assertIn("background: #fbfffd;", upload_progress_css)
+        self.assertIn("background: #f3fbf6;", customer_progress_css)
+        self.assertIn("background: #eaf7f0;", quote_company_progress_css)
+        self.assertIn("background: #dcefe5;", quote_basis_progress_css)
+        self.assertIn("background: #dcefe5;", output_progress_css)
+        for overly_bright_green in ("#99f6e4", "#ccfbf1", "#bbf7d0"):
+            self.assertNotIn(overly_bright_green, css)
+        self.assertNotEqual(upload_progress_css, customer_progress_css)
+        self.assertNotEqual(quote_company_progress_css, customer_progress_css)
+        self.assertNotEqual(customer_progress_css, quote_basis_progress_css)
+        self.assertNotEqual(draft_pill_css, generated_pill_css)
+        self.assertIn("dashboard-bulk-selection-summary", js)
+        self.assertIn("DASHBOARD_DEFAULT_PAGE_SIZE = 5", js)
+        self.assertIn("pagedDashboardSessions", js)
+        self.assertIn("dashboardPageRange", js)
+        self.assertIn("renderDashboardPageControls", js)
+        self.assertIn("dashboardPageSizeSelect", js)
+        self.assertIn("Grand Total", js)
+        self.assertNotIn("dashboardExportAvailabilityHtml", js)
+        self.assertNotIn(".dashboard-export-status.is-available", css)
+        self.assertNotIn(".dashboard-export-status.is-unavailable", css)
+        self.assertIn(".dashboard-selected-action.is-available", css)
+        self.assertIn(".dashboard-selected-action.is-unavailable", css)
+        self.assertIn(".dashboard-selected-action-kicker", css)
+        self.assertIn(".dashboard-selected-action.dashboard-export-missing", css)
+        unavailable_selected_css = css.split(".dashboard-selected-action.is-unavailable {", 1)[1].split("}", 1)[0]
+        self.assertIn("color: #64748b;", unavailable_selected_css)
+        self.assertNotIn("#7f1d1d", unavailable_selected_css)
+        status_body = js.split("function quoteSessionStatus", 1)[1].split("function dashboardSessionCustomerText", 1)[0]
+        self.assertNotIn("Missing files", status_body)
+        self.assertNotIn('label: "Exported"', status_body)
+        can_modify_body = js.split("function dashboardSessionCanModify", 1)[1].split("async function loadQuoteSessionDetail", 1)[0]
+        self.assertIn("safeQuoteSessionId(session.session_id", can_modify_body)
+        self.assertNotIn("session.has_draft_state === true", can_modify_body)
+        restore_body = js.split("async function modifyDashboardQuote", 1)[1].split("function dashboardExportAvailabilityItem", 1)[0]
+        self.assertIn("clearQuoteSessionDraftSaveTimer", restore_body)
+        self.assertIn("detailedSession?.draft_state", restore_body)
+        self.assertIn("hydrateDashboardDraftImagePayloads", restore_body)
+        self.assertIn("currentQuoteSessionDraftState()", restore_body)
+        self.assertIn("rememberRestoredQuoteSessionBaseline", restore_body)
+        self.assertIn("This quote session does not have saved draft data to modify.", restore_body)
+        self.assertIn("applyQuoteSessionSnapshot", js)
+        self.assertNotIn("QUOTE_SESSION_RESTORE_NOTE", js)
+        self.assertNotIn("Saved dashboard records include quote metadata and export links only.", js)
+        self.assertNotIn("Continue is available only for the current in-browser draft.", js)
+        self.assertIn('data-dashboard-panel-action="modify-session"', js)
         self.assertIn('data-dashboard-panel-action="delete-session"', js)
         self.assertIn('data-dashboard-panel-action="delete-selected"', js)
         self.assertIn("dashboardSelectionMode", js)
         self.assertIn("handleDashboardSelectModeButton", js)
-        self.assertIn("Bulk Selection", js)
-        self.assertIn("dashboard-bulk-summary-grid", js)
+        self.assertIn("Bulk selection", js)
+        self.assertIn("dashboardSelectedItemList", js)
+        self.assertNotIn("Combined Value", js)
+        self.assertNotIn("dashboard-bulk-breakdown", js)
+        self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 460px);", css)
+        selected_created_css = css.split(".dashboard-selected-created {", 1)[1].split("}", 1)[0]
+        self.assertIn("font-size: 13px;", selected_created_css)
+        self.assertIn("font-weight: 850;", selected_created_css)
+        selected_created_span_css = css.split(".dashboard-selected-created span {", 1)[1].split("}", 1)[0]
+        self.assertIn("display: block;", selected_created_span_css)
+        toolbar_select_button_css = css.split(".dashboard-list-toolbar .dashboard-selection-hint {", 1)[1]
+        select_mode_button_css = toolbar_select_button_css.split(".secondary-button.dashboard-select-mode-button {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 100%;", select_mode_button_css)
+        self.assertIn("justify-content: flex-start;", select_mode_button_css)
+        self.assertIn("white-space: nowrap;", select_mode_button_css)
+        custom_date_css = css.split(".dashboard-custom-date-range {", 1)[1].split("}", 1)[0]
+        self.assertIn("grid-column: 1 / -1;", custom_date_css)
+        self.assertIn("grid-template-columns: minmax(206px, 228px) repeat(2, minmax(136px, 158px));", custom_date_css)
+        self.assertIn("gap: 12px;", custom_date_css)
+        self.assertIn("justify-content: center;", custom_date_css)
+        self.assertIn("padding: 10px;", custom_date_css)
+        date_filter_summary_css = css.split(".dashboard-date-filter-summary {", 1)[1].split("}", 1)[0]
+        self.assertIn("min-height: 38px;", date_filter_summary_css)
+        self.assertIn("padding: 0 14px;", date_filter_summary_css)
+        self.assertIn("white-space: nowrap;", date_filter_summary_css)
         self.assertIn("dashboardVisibleSessionIds", js)
+        self.assertIn("scrollDashboardSessionIntoView", js)
+        self.assertIn("elements.dashboardPageControls.hidden = !hasStoredSessions", js)
+        self.assertIn("elements.dashboardSelectionToolbar.hidden = !hasStoredSessions", js)
+        self.assertIn("elements.dashboardPageSizeSelect.disabled = !hasStoredSessions", js)
+        self.assertIn("elements.dashboardRangeSelect.disabled = !hasStoredSessions", js)
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function filteredDashboardSessions", 1)[0]
+        short_ref_body = js.split("function dashboardShortSessionReference", 1)[1].split("function dashboardSessionCanResume", 1)[0]
+        self.assertIn(".toUpperCase()", short_ref_body)
         self.assertIn("dashboardShortSessionReference", search_body)
         self.assertIn("dashboardSessionCustomerText(session)", search_body)
         self.assertIn("dashboardSessionProjectText(session)", search_body)
@@ -8426,7 +8856,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("clearGeneratedQuoteState();", profile_change_body)
         self.assertIn("syncControlStates();", profile_change_body)
         self.assertNotIn("loadDefaultProfilePreset", profile_change_body)
-        self.assertIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
+        self.assertIn("selectPricingReferenceOptionValue(firstPricingReferenceOptionValue());", sample_loader_body)
+        self.assertIn("selectPresetValue(firstAvailablePresetValue());", sample_loader_body)
+        self.assertIn("loadSelectedPreset({ silent: true })", sample_loader_body)
+        self.assertNotIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
+        self.assertNotIn("state.profileId = data.profile_id", sample_loader_body)
+        self.assertNotIn("data.pricing_reference_id", sample_loader_body)
 
     def test_static_solution_ui_stays_on_approved_post_pr29_baseline(self):
         static_dir = ROOT / "webapp" / "static"
@@ -8694,6 +9129,8 @@ const state = {
   profiles: [{ id: "synthetic-exhibition-fixture-template", label: "Synthetic" }],
   pricingReferences: [{ id: "synthetic-exhibition-fixture-pricing", label: "Synthetic", profile_id: "synthetic-exhibition-fixture-template" }],
   images: [],
+  quoteBasisSections: [],
+  outputRows: [],
   headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
   isAnalysisRunning: false,
   isGenerating: false,
@@ -8723,19 +9160,52 @@ const elements = {
 eval([
   "normalizeTextNewlines",
   "splitLines",
+  "hasMeaningfulQuoteDetailValue",
+  "quoteDetailsWithFallbackDefaults",
   "currentPricingReference",
   "missingCustomerFields",
   "missingQuoteCompanyFields",
   "missingDetailFields",
   "customerDetailsBlockReason",
   "quoteCompanyDetailsBlockReason",
+  "referenceFileHasPayload",
+  "hasReferenceFilesForNavigation",
+  "hasReferenceFilesForAnalysis",
   "startAnalysisBlockReason",
   "sidePanelBlockReason",
   "canStartAnalysis",
 ].map(extractFunction).join("\n"));
 
+const restoredDetails = quoteDetailsWithFallbackDefaults(
+  {
+    company: { name: "Default Co", header_details: "Default header", logo_data_url: "data:image/png;base64,AAA=" },
+    quote_text: { acceptance_text: "Default acceptance", person_label: "Default person" },
+    signature: { company_signatory: "Default signer", company_title: "Default title" },
+  },
+  {
+    company: { name: "Saved Co", header_details: "" },
+    quote_text: { acceptance_text: "", stamp_label: "Saved stamp" },
+    signature: { company_title: "Saved title" },
+  }
+);
+assert.strictEqual(restoredDetails.company.name, "Saved Co");
+assert.strictEqual(restoredDetails.company.header_details, "Default header");
+assert.strictEqual(restoredDetails.quote_text.acceptance_text, "Default acceptance");
+assert.strictEqual(restoredDetails.quote_text.stamp_label, "Saved stamp");
+assert.strictEqual(restoredDetails.signature.company_signatory, "Default signer");
+assert.strictEqual(restoredDetails.signature.company_title, "Saved title");
+
 assert.strictEqual(startAnalysisBlockReason(), "Add at least one reference file before starting analysis.");
-state.images = [{}];
+state.images = [{ name: "render.jpg", type: "image/jpeg", size: 12, session_file_key: "stored-reference-key" }];
+assert.strictEqual(sidePanelBlockReason("customer"), "");
+assert.strictEqual(sidePanelBlockReason("quote_company"), "");
+assert.strictEqual(
+  startAnalysisBlockReason(),
+  "Reference files from this saved quote are unavailable in this browser. Upload the reference images again before starting analysis."
+);
+assert.strictEqual(hasReferenceFilesForNavigation(), true);
+assert.strictEqual(hasReferenceFilesForAnalysis(), false);
+state.images = [{ name: "render.jpg", type: "image/jpeg", size: 12, data_url: "data:image/jpeg;base64,ZmFrZQ==" }];
 assert.strictEqual(startAnalysisBlockReason(), "");
 elements.notesHeading.value = "";
 assert.strictEqual(startAnalysisBlockReason(), "");
@@ -9012,11 +9482,14 @@ assert.strictEqual(synced, true);
         self.assertNotIn('!== "unmatched"', summary_body)
         self.assertIn("rowNeedsManualInput", js)
         self.assertIn("Priced rows", summary_body)
-        self.assertIn("Needs manual input", summary_body)
+        self.assertNotIn("Needs manual input", summary_body)
         self.assertIn("Subtotal", summary_body)
+        self.assertIn("Total", summary_body)
         css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertNotIn("grid-template-columns: repeat(5, minmax(0, 1fr));", css)
         self.assertIn(".output-stat-card-row .stat-card-value {\n  font-size: 18px;\n  letter-spacing: 0;", css)
         self.assertIn("formatSubtotalValue", js)
+        self.assertIn("formatOutputTotalValue", js)
         self.assertIn("+ ???", js)
         self.assertNotIn('? "???"', summary_body)
         self.assertIn('data-output-edit-field="${field}"', js)
@@ -9079,6 +9552,10 @@ function selectedPricingReferenceCurrency() {
   return "SGD";
 }
 eval(extractFunction("formatSubtotalValue"));
+function collectTaxDetails() {
+  return { label: "GST", rate: 0.09 };
+}
+eval(extractFunction("formatOutputTotalValue"));
 
 const rows = [
   { status: "matched", price_mode: "Priced", description: "A", quantity: 1, pricing_keyword: "a", catalog_unit_price: 1200, amount: "1,200" },
@@ -9092,6 +9569,7 @@ assert.strictEqual(stats.pricedRows, 2);
 assert.strictEqual(stats.needsManualInput, 2);
 assert.strictEqual(stats.total, 1700);
 assert.strictEqual(formatSubtotalValue(stats), "SGD 1,700.00 + ???");
+assert.strictEqual(formatOutputTotalValue(stats), "SGD 1,853.00 + ???");
 assert.strictEqual(pricingStatusLabel("matched-from-ambiguous"), "Ambiguous match selected");
 assert.strictEqual(pricingStatusLabel("manual-display"), "Manual display price");
 
@@ -9103,6 +9581,7 @@ assert.strictEqual(effectiveOutputUnitPrice({ catalog_unit_price: "10.50", unit_
 assert.strictEqual(pendingStats.needsManualInput, 1);
 assert.strictEqual(pendingStats.totalPending, true);
 assert.strictEqual(formatSubtotalValue(pendingStats), "SGD 378.00 + ???");
+assert.strictEqual(formatOutputTotalValue(pendingStats), "SGD 412.02 + ???");
 const zeroManualRow = recalculateOutputRow({
   price_mode: "Priced",
   description: "Manual zero price",
@@ -9116,6 +9595,7 @@ assert.strictEqual(zeroManualRow.amount, 0);
 assert.strictEqual(rowNeedsManualInput(zeroManualRow), false);
 assert.deepStrictEqual(outputRowsValid([zeroManualRow]), { valid: true, errors: [] });
 assert.strictEqual(formatSubtotalValue({ total: 6480, totalPending: false }), "SGD 6,480.00");
+assert.strictEqual(formatOutputTotalValue({ total: 6480, totalPending: false }), "SGD 7,063.20");
 const multiwordUnitRow = outputRowFromPricingMatch({
   status: "matched",
   section: "Booth Structure",
@@ -9619,7 +10099,7 @@ handlePresetSelectChange();
 assert.strictEqual(state.selectedPresetValue, "company:saved-profile");
 assert.strictEqual(state.pendingProfilePack, null);
 assert.strictEqual(cleared, true);
-assert.deepStrictEqual(persisted, []);
+assert.deepStrictEqual(persisted, ["company:saved-profile"]);
 assert.strictEqual(loaded, 0);
 assert.strictEqual(statuses.at(-1), 'Selected "Saved Profile". Click Load to apply it.');
 assert.ok(buttonUpdates >= 1);
@@ -9675,7 +10155,7 @@ assert.strictEqual(elements.profileLoadModal.hidden, true);
         self.assertNotIn("PROFILE_PRESET_ACTION_DELETE", js)
         self.assertIn('id="profileNameInput"', html)
 
-    def test_static_modal_enter_key_activates_visible_primary_action(self):
+    def test_static_dashboard_delete_key_uses_active_single_selection(self):
         node = require_node(self)
 
         script = r"""
@@ -9701,71 +10181,39 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const clicks = [];
-function modal(hidden = true) { return { hidden }; }
-function button(name, options = {}) {
-  return {
-    hidden: Boolean(options.hidden),
-    disabled: Boolean(options.disabled),
-    click() { clicks.push(name); },
-    getAttribute() { return options.ariaDisabled ? "true" : "false"; },
-  };
+const state = {
+  activeAppView: "dashboard",
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "quote-active123",
+};
+const elements = {
+  quoteSessionDeleteModal: { hidden: true },
+};
+let deleteRequest = null;
+function requestQuoteSessionDelete(ids, options) {
+  deleteRequest = { ids, options };
 }
 
-const elements = {
-  profileLoadModal: modal(false),
-  confirmProfileLoadButton: button("load"),
-  profileOverwriteModal: modal(true),
-  confirmProfileOverwriteButton: button("overwrite"),
-  profileNameModal: modal(true),
-  confirmProfileNameButton: button("save"),
-  outputDeleteModal: modal(true),
-  confirmOutputDeleteButton: button("delete-output"),
-  profileDeleteModal: modal(true),
-  confirmProfileDeleteButton: button("delete-profile"),
-  cancelProfileDeleteButton: button("close-profile-delete"),
-  pricingReferenceModal: modal(true),
-  pricingReferenceDeleteConfirm: modal(true),
-  confirmPricingReferenceDeleteButton: button("delete-pricing-reference"),
-  analysisConfirmModal: modal(true),
-  analysisConfirmStartButton: button("start-analysis"),
-};
-const document = { activeElement: null };
-
 eval([
-  extractFunction("buttonCanAcceptClick"),
-  extractFunction("visiblePrimaryModalActionButton"),
-  extractFunction("handleModalEnterKey"),
+  extractFunction("safeQuoteSessionId"),
+  extractFunction("dashboardSelectedSessionIds"),
+  extractFunction("handleDashboardDeleteKey"),
 ].join("\n"));
 
 let prevented = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
+const event = {
+  key: "Delete",
+  defaultPrevented: false,
+  target: { closest() { return null; } },
+  preventDefault() { prevented = true; },
+};
+
+assert.strictEqual(handleDashboardDeleteKey(event), true);
 assert.strictEqual(prevented, true);
-assert.deepStrictEqual(clicks, ["load"]);
-
-elements.profileLoadModal.hidden = true;
-elements.profileOverwriteModal.hidden = false;
-prevented = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() { prevented = true; } }), true);
-assert.strictEqual(prevented, true);
-assert.deepStrictEqual(clicks, ["load", "overwrite"]);
-
-elements.profileOverwriteModal.hidden = true;
-elements.profileNameModal.hidden = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", defaultPrevented: true, preventDefault() { throw new Error("should not run"); } }), false);
-assert.deepStrictEqual(clicks, ["load", "overwrite"]);
-
-elements.profileNameModal.hidden = true;
-elements.profileDeleteModal.hidden = false;
-elements.confirmProfileDeleteButton.hidden = true;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete"]);
-
-elements.profileDeleteModal.hidden = true;
-elements.pricingReferenceModal.hidden = false;
-elements.pricingReferenceDeleteConfirm.hidden = false;
-assert.strictEqual(handleModalEnterKey({ key: "Enter", preventDefault() {} }), true);
-assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete", "delete-pricing-reference"]);
+assert.deepStrictEqual(deleteRequest, {
+  ids: ["quote-active123"],
+  options: { bulk: false },
+});
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -9776,6 +10224,594 @@ assert.deepStrictEqual(clicks, ["load", "overwrite", "close-profile-delete", "de
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_dashboard_enter_key_modifies_active_single_selection(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  activeAppView: "dashboard",
+  quoteSessions: [{ session_id: "quote-active123" }],
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "quote-active123",
+  quoteSessionRestoreBusy: false,
+};
+const elements = {
+  pricingReferenceTableOverlay: { hidden: true },
+  basisChatOverlay: { hidden: true },
+  profileLoadModal: { hidden: true },
+  profileOverwriteModal: { hidden: true },
+  profileNameModal: { hidden: true },
+  outputDeleteModal: { hidden: true },
+  quoteSessionDeleteModal: { hidden: true },
+  profileDeleteModal: { hidden: true },
+  pricingReferenceModal: { hidden: true },
+  analysisConfirmModal: { hidden: true },
+};
+let modifiedSessionId = "";
+function profileActionsMenuIsOpen() { return false; }
+function modifyDashboardQuote(sessionId) { modifiedSessionId = sessionId; }
+
+eval([
+  extractFunction("safeQuoteSessionId"),
+  extractFunction("dashboardSelectedSessionIds"),
+  extractFunction("dashboardSessionById"),
+  extractFunction("dashboardSessionCanModify"),
+  extractFunction("handleDashboardEnterKey"),
+].join("\n"));
+
+let prevented = false;
+const event = {
+  key: "Enter",
+  defaultPrevented: false,
+  target: { closest() { return null; } },
+  preventDefault() { prevented = true; },
+};
+
+assert.strictEqual(handleDashboardEnterKey(event), true);
+assert.strictEqual(prevented, true);
+assert.strictEqual(modifiedSessionId, "quote-active123");
+
+modifiedSessionId = "";
+state.dashboardSelectedSessionIds = ["quote-active123", "quote-other123"];
+state.dashboardActiveSessionId = "";
+assert.strictEqual(handleDashboardEnterKey(event), false);
+assert.strictEqual(modifiedSessionId, "");
+
+state.dashboardSelectedSessionIds = ["quote-active123"];
+const inputEvent = {
+  key: "Enter",
+  defaultPrevented: false,
+  target: { closest(selector) { return selector.includes("input") ? {} : null; } },
+  preventDefault() { throw new Error("input Enter should not be intercepted"); },
+};
+assert.strictEqual(handleDashboardEnterKey(inputEvent), false);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_dashboard_export_labels_keep_availability_in_title(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+function quoteSessionExport(session = {}, kind = "xlsx") {
+  return session.exports?.[kind] || {};
+}
+function visibleText(html) {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+eval([
+  extractFunction("dashboardExportAvailabilityItem"),
+  extractFunction("dashboardSelectedExportAction"),
+  extractFunction("quoteSessionHasMissingExport"),
+  extractFunction("quoteSessionHasAvailableExport"),
+  extractFunction("quoteSessionHasStaleExport"),
+  extractFunction("quoteSessionStatus"),
+].join("\n"));
+
+const unavailable = {};
+
+const mixed = { exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: { missing: true } } };
+assert.strictEqual(dashboardExportAvailabilityItem(mixed, "xlsx", "XLSX").statusText, "XLSX ready");
+assert.strictEqual(dashboardExportAvailabilityItem(mixed, "pdf", "PDF").statusText, "PDF needs regeneration");
+
+const stale = {
+  status: { quote_generated: false, draft_modified: true },
+  exports: { xlsx: { stale: true, filename: "quotation.xlsx" }, pdf: { stale: true, filename: "quotation.pdf" } },
+};
+assert.strictEqual(dashboardExportAvailabilityItem(stale, "xlsx", "XLSX").statusText, "XLSX needs regeneration");
+assert.deepStrictEqual(quoteSessionStatus(stale), { key: "draft-modified", label: "Draft Modified", className: "is-draft-modified" });
+
+const partialFresh = {
+  status: { quote_generated: false, draft_modified: true },
+  exports: { xlsx: { exists: true, url: "/quote.xlsx", stale: false }, pdf: { stale: true, filename: "quotation.pdf" } },
+};
+assert.strictEqual(quoteSessionHasAvailableExport(partialFresh), true);
+assert.strictEqual(quoteSessionHasStaleExport(partialFresh), true);
+assert.deepStrictEqual(quoteSessionStatus(partialFresh), { key: "generated", label: "Generated", className: "is-generated" });
+
+const generatedMissingPdf = {
+  status: { quote_generated: true },
+  exports: { xlsx: { exists: true, url: "/quote.xlsx" }, pdf: {} },
+};
+assert.deepStrictEqual(quoteSessionStatus(generatedMissingPdf), { key: "generated", label: "Generated", className: "is-generated" });
+assert.strictEqual(dashboardExportAvailabilityItem(generatedMissingPdf, "pdf", "PDF").statusText, "PDF needs regeneration");
+assert.ok(dashboardSelectedExportAction(generatedMissingPdf, "pdf", "PDF").includes('title="PDF needs regeneration"'));
+
+const xlsxAction = dashboardSelectedExportAction(mixed, "xlsx", "XLSX");
+assert.ok(xlsxAction.includes("dashboard-selected-action-kicker"));
+assert.strictEqual(visibleText(xlsxAction), "Download XLSX");
+assert.ok(xlsxAction.includes('title="XLSX ready"'));
+assert.ok(xlsxAction.includes('aria-label="Download XLSX"'));
+assert.ok(xlsxAction.includes("is-available"));
+
+const pdfAction = dashboardSelectedExportAction(unavailable, "pdf", "PDF");
+assert.strictEqual(visibleText(pdfAction), "PDF");
+assert.ok(pdfAction.includes('title="PDF unavailable"'));
+assert.ok(pdfAction.includes("is-unavailable"));
+assert.ok(!visibleText(pdfAction).includes("unavailable"));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_dashboard_progress_pill_uses_stage_specific_classes(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+eval([
+  extractFunction("dashboardSessionProgressLabel"),
+  extractFunction("dashboardProgressStageClass"),
+  extractFunction("dashboardSessionProgressPill"),
+].join("\n"));
+
+assert.strictEqual(dashboardProgressStageClass("Saved at Upload"), "is-progress-upload");
+assert.strictEqual(dashboardProgressStageClass("Saved at Quote Company"), "is-progress-quote-company");
+assert.strictEqual(dashboardProgressStageClass("Saved at Customer"), "is-progress-customer");
+assert.strictEqual(dashboardProgressStageClass("Saved at Quote Basis"), "is-progress-quote-basis");
+assert.strictEqual(dashboardProgressStageClass("Saved at Output"), "is-progress-output");
+assert.strictEqual(dashboardProgressStageClass("Saved at Something Else"), "is-progress-generic");
+
+const html = dashboardSessionProgressPill({ draft_progress: { label: "Quote Basis" } });
+assert.ok(html.includes("dashboard-progress-pill is-progress is-progress-quote-basis"));
+assert.ok(html.includes("Saved at Quote Basis"));
+assert.ok(html.includes('aria-label="Latest saved workflow step: Saved at Quote Basis"'));
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_dashboard_arrow_keys_move_single_selection_without_looping(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DASHBOARD_DEFAULT_PAGE_SIZE = 5;
+const DASHBOARD_PAGE_SIZE_OPTIONS = [5, 10, 25];
+const state = {
+  activeAppView: "dashboard",
+  quoteSessionLoadError: "",
+  quoteSessions: [
+    { session_id: "quote-first" },
+    { session_id: "quote-second" },
+    { session_id: "quote-third" },
+  ],
+  dashboardStatusFilter: "all",
+  dashboardDateFilter: "all",
+  dashboardCustomDateStart: "",
+  dashboardCustomDateEnd: "",
+  dashboardSortMode: "created",
+  dashboardSearch: "",
+  dashboardPageSize: 5,
+  dashboardPageIndex: 0,
+  dashboardSelectionMode: false,
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "",
+  quoteSessionRestoreError: "",
+};
+const scrollCalls = [];
+const elements = {
+  quoteSessionDeleteModal: { hidden: true },
+  dashboardSessionsList: {
+    contains(node) {
+      return Boolean(node && node.inList);
+    },
+    querySelector(selector) {
+      return {
+        scrollIntoView(options) {
+          scrollCalls.push({ selector, options });
+        },
+      };
+    },
+  },
+};
+function quoteSessionStatus() { return { key: "draft" }; }
+function dashboardSessionSearchText() { return ""; }
+function profileActionsMenuIsOpen() { return false; }
+function appIsBusy() { return false; }
+let renderCount = 0;
+function renderQuoteDashboard() { renderCount += 1; }
+
+eval([
+  extractFunction("safeQuoteSessionId"),
+  extractFunction("dashboardTimestampMs"),
+  extractFunction("dashboardDateInputMs"),
+  extractFunction("dashboardDateInputValueFromMs"),
+  extractFunction("dashboardEarliestSessionDateInput"),
+  extractFunction("ensureDashboardCustomDateDefaults"),
+  extractFunction("dashboardDateFilterMatches"),
+  extractFunction("dashboardDateFilterSummaryText"),
+  extractFunction("dashboardSortValue"),
+  extractFunction("filteredDashboardSessions"),
+  extractFunction("dashboardPageSizeValue"),
+  extractFunction("dashboardPageCount"),
+  extractFunction("clampDashboardPageIndex"),
+  extractFunction("dashboardPageRange"),
+  extractFunction("pagedDashboardSessions"),
+  extractFunction("dashboardSelectedSessionIds"),
+  extractFunction("dashboardVisibleSessionIds"),
+  extractFunction("scrollDashboardSessionIntoView"),
+  extractFunction("setDashboardSelection"),
+  extractFunction("handleDashboardSelectModeButton"),
+  extractFunction("handleDashboardSessionAction"),
+  extractFunction("handleDashboardOutsideSelectionClick"),
+  extractFunction("handleDashboardListArrowKey"),
+].join("\n"));
+
+const originalDateNow = Date.now;
+Date.now = () => Date.parse("2026-06-24T12:00:00Z");
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-24T01:00:00Z" }, "today"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-20T12:00:00Z" }, "7d"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-01T12:00:00Z" }, "7d"), false);
+state.dashboardCustomDateStart = "2026-06-20";
+state.dashboardCustomDateEnd = "2026-06-22";
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-20T01:00:00Z" }, "custom"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-22T12:00:00Z" }, "custom"), true);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-19T12:00:00Z" }, "custom"), false);
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-23T00:00:00Z" }, "custom"), false);
+assert.strictEqual(dashboardDateFilterSummaryText(2, 5), "Date filter: 2 of 5 sessions");
+state.dashboardCustomDateStart = "2026-06-22";
+state.dashboardCustomDateEnd = "2026-06-20";
+assert.strictEqual(dashboardDateFilterMatches({ updated_at: "2026-06-21T12:00:00Z" }, "custom"), true);
+state.dashboardCustomDateStart = "";
+state.dashboardCustomDateEnd = "";
+assert.strictEqual(dashboardDateFilterSummaryText(5, 5), "Date filter: all 5 sessions");
+state.quoteSessions = [
+  { session_id: "quote-recent", updated_at: "2026-06-22T12:00:00Z" },
+  { session_id: "quote-old", updated_at: "2026-05-01T12:00:00Z" },
+];
+state.dashboardDateFilter = "30d";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
+state.dashboardDateFilter = "custom";
+state.dashboardCustomDateStart = "2026-06-21";
+state.dashboardCustomDateEnd = "2026-06-23";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), ["quote-recent"]);
+state.dashboardDateFilter = "all";
+state.dashboardCustomDateStart = "";
+state.dashboardCustomDateEnd = "";
+state.dashboardDateFilter = "custom";
+ensureDashboardCustomDateDefaults();
+assert.strictEqual(state.dashboardCustomDateStart, "2026-05-01");
+assert.strictEqual(state.dashboardCustomDateEnd, "2026-06-24");
+state.dashboardDateFilter = "all";
+state.dashboardCustomDateStart = "";
+state.dashboardCustomDateEnd = "";
+state.quoteSessions = [
+  { session_id: "quote-created-newest", created_at: "2026-06-23T12:00:00Z", updated_at: "2026-06-23T12:00:00Z" },
+  { session_id: "quote-created-oldest", created_at: "2026-06-20T12:00:00Z", updated_at: "2026-06-24T12:00:00Z" },
+  { session_id: "quote-created-middle", created_at: "2026-06-22T12:00:00Z", updated_at: "2026-06-22T12:00:00Z" },
+];
+state.dashboardSortMode = "created";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), [
+  "quote-created-newest",
+  "quote-created-middle",
+  "quote-created-oldest",
+]);
+state.dashboardSortMode = "modified";
+assert.deepStrictEqual(filteredDashboardSessions().map((session) => session.session_id), [
+  "quote-created-oldest",
+  "quote-created-newest",
+  "quote-created-middle",
+]);
+state.dashboardSortMode = "created";
+state.quoteSessions = [
+  { session_id: "quote-first" },
+  { session_id: "quote-second" },
+  { session_id: "quote-third" },
+];
+Date.now = originalDateNow;
+
+function keyEvent(key) {
+  return {
+    key,
+    defaultPrevented: false,
+    target: { closest() { return null; } },
+    prevented: false,
+    preventDefault() { this.prevented = true; },
+  };
+}
+
+let event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(event.prevented, true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+assert.strictEqual(state.dashboardSelectionMode, false);
+assert.deepStrictEqual(scrollCalls[scrollCalls.length - 1], {
+  selector: '[data-quote-session-id="quote-first"]',
+  options: { block: "nearest", inline: "nearest" },
+});
+
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-second");
+assert.deepStrictEqual(scrollCalls[scrollCalls.length - 1], {
+  selector: '[data-quote-session-id="quote-second"]',
+  options: { block: "nearest", inline: "nearest" },
+});
+
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-third");
+assert.deepStrictEqual(scrollCalls[scrollCalls.length - 1], {
+  selector: '[data-quote-session-id="quote-third"]',
+  options: { block: "nearest", inline: "nearest" },
+});
+
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-third");
+
+event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-second");
+
+event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+event = keyEvent("ArrowUp");
+assert.strictEqual(handleDashboardListArrowKey(event), true);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+handleDashboardSelectModeButton();
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+state.dashboardSelectionMode = false;
+state.dashboardSelectedSessionIds = [];
+state.dashboardActiveSessionId = "quote-first";
+const activeCard = {
+  inList: true,
+  dataset: { quoteSessionId: "quote-first" },
+  closest(selector) {
+    return selector === "[data-quote-session-id]" ? this : null;
+  },
+};
+handleDashboardSessionAction({ target: activeCard });
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+handleDashboardSessionAction({ target: activeCard });
+assert.strictEqual(state.dashboardSelectionMode, false);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+assert.strictEqual(state.dashboardActiveSessionId, "");
+state.dashboardSelectionMode = true;
+state.dashboardSelectedSessionIds = ["quote-first"];
+state.dashboardActiveSessionId = "quote-first";
+
+state.activeAppView = "dashboard";
+const toolbarTarget = {
+  closest(selector) {
+    return selector.includes(".dashboard-list-toolbar") ? this : null;
+  },
+};
+handleDashboardOutsideSelectionClick({ target: toolbarTarget });
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+const detachedCardClick = {
+  target: {
+    closest() {
+      return null;
+    },
+  },
+  composedPath() {
+    return [{ id: "dashboardSessionsList" }];
+  },
+};
+handleDashboardOutsideSelectionClick(detachedCardClick);
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+const modalClick = {
+  target: {
+    closest() {
+      return null;
+    },
+  },
+  composedPath() {
+    return [{ classList: { contains: (name) => name === "modal-overlay" } }];
+  },
+};
+handleDashboardOutsideSelectionClick(modalClick);
+assert.strictEqual(state.dashboardSelectionMode, true);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, ["quote-first"]);
+assert.strictEqual(state.dashboardActiveSessionId, "quote-first");
+
+const outsideTarget = {
+  closest() {
+    return null;
+  },
+};
+handleDashboardOutsideSelectionClick({ target: outsideTarget });
+assert.strictEqual(state.dashboardSelectionMode, false);
+assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+assert.strictEqual(state.dashboardActiveSessionId, "");
+
+state.dashboardActiveSessionId = "";
+state.activeAppView = "quote";
+event = keyEvent("ArrowDown");
+assert.strictEqual(handleDashboardListArrowKey(event), false);
+assert.strictEqual(event.prevented, false);
+assert.strictEqual(state.dashboardActiveSessionId, "");
+assert.ok(renderCount >= 1);
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_modals_focus_primary_actions_without_forced_enter_override(self):
+        static_dir = ROOT / "webapp" / "static"
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("handleModalEnterKey", js)
+        self.assertNotIn("visiblePrimaryModalActionButton", js)
+        keydown_body = js.split('document.addEventListener("keydown"', 1)[1].split("elements.sampleDetailsButton", 1)[0]
+        self.assertNotIn('event.key === "Enter"', keydown_body)
+        queue_focus_body = js.split("function queueActionButtonFocus(button)", 1)[1].split("function profileActionsMenuItems", 1)[0]
+        self.assertIn("focusActionButton(button);", queue_focus_body)
+
+        quote_delete_body = js.split("function renderQuoteSessionDeleteModal()", 1)[1].split("function requestQuoteSessionDelete", 1)[0]
+        self.assertIn("queueActionButtonFocus(elements.confirmQuoteSessionDeleteButton)", quote_delete_body)
+        self.assertNotIn("queueActionButtonFocus(elements.cancelQuoteSessionDeleteButton)", quote_delete_body)
+        self.assertIn("queueActionButtonFocus(elements.confirmOutputDeleteButton)", js)
+        self.assertIn("queueActionButtonFocus(elements.confirmPricingReferenceDeleteButton)", js)
+        self.assertIn("queueActionButtonFocus(elements.confirmProfileLoadButton)", js)
+        self.assertIn("queueActionButtonFocus(elements.confirmProfileOverwriteButton)", js)
 
     def test_static_reset_quote_company_forces_default_profile_template(self):
         node = require_node(self)
@@ -9902,6 +10938,8 @@ function applyQuoteDetails(details, options) { appliedDetails = details; applied
 function applyDefaultQuoteCompanyFields() { appliedDefaults = true; }
 function renderHeaderLogoPreview() {}
 function clearGeneratedQuoteState() { clearedGeneratedState = true; }
+function quoteDraftHasAiAnalysis() { return Boolean(state.quoteBasisSections.length); }
+function quoteDraftHasOutputState() { return Boolean(state.outputRows.length); }
 function setWorkflowStage(stage) { workflowStage = stage; }
 function syncControlStates() {}
 function renderPresetStatus(message = "") { statusMessage = message; }
@@ -9938,6 +10976,21 @@ assert.strictEqual(elements.headerLogoInput.value, "");
 assert.strictEqual(clearedGeneratedState, true);
 assert.strictEqual(workflowStage, "needs_images");
 assert.strictEqual(statusMessage, 'Loaded "Default".');
+clearedGeneratedState = false;
+workflowStage = "basis_review";
+appliedDefaults = false;
+appliedDetails = null;
+elements.quoteCompanyName.value = "Analysis company";
+elements.headerDetails.value = "Analysis header";
+state.images = [{ name: "reference.pdf" }];
+state.quoteBasisSections = [{ id: "basis", lines: [{ text: "AI line" }] }];
+loadSelectedPreset({ silent: true });
+assert.strictEqual(clearedGeneratedState, false);
+assert.strictEqual(workflowStage, "basis_review");
+assert.strictEqual(appliedDetails, null);
+assert.strictEqual(appliedDefaults, false);
+assert.strictEqual(elements.quoteCompanyName.value, "Analysis company");
+assert.strictEqual(elements.headerDetails.value, "Analysis header");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -10693,6 +11746,8 @@ function basisConfirmBlockReason() { return ""; }
 function startAnalysisBlockReason() { return ""; }
 function updateDownloadButton() {}
 function activeSidePanelIndex() { return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel)); }
+function hasReferenceFilesForNavigation() { return state.images.some((image) => image?.data_url || image?.session_file_key || image?.name); }
+function hasReferenceFilesForAnalysis() { return state.images.some((image) => image?.data_url); }
 
 eval([
   "pricingReferenceSelectValue",
@@ -10753,6 +11808,413 @@ renderProfileOptions();
 assert.strictEqual(state.pricingReferenceId, "default-ref");
 assert.strictEqual(state.pricingReferenceSource, "bundled");
 assert.strictEqual(currentPricingReference().label, "Default Ref");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_quote_basis_reanalyse_explains_missing_restored_images(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "output"];
+const classList = () => ({ add() {}, remove() {}, toggle() {} });
+const control = () => ({
+  hidden: false,
+  disabled: false,
+  title: "",
+  textContent: "",
+  classList: classList(),
+  setAttribute(name, value) { this[name] = value; },
+});
+const state = {
+  activeSidePanel: "basis",
+  images: [],
+  isAnalysisRunning: false,
+  isGenerating: false,
+  isPreparingOutput: false,
+  quoteSessionRestoreBusy: false,
+  originalAnalysisSnapshot: { quote_basis_sections: [] },
+  originalOutputRows: [],
+};
+const elements = {
+  sampleDetailsButton: control(),
+  resetImagesButton: control(),
+  clearCustomerButton: control(),
+  clearQuoteCompanyButton: control(),
+  analyseAgainButton: control(),
+  resetQuoteBasisButton: control(),
+  resetOutputButton: control(),
+  sideBackButton: control(),
+  sideNextButton: control(),
+  workspacePaneFooter: { classList: classList() },
+  sideDownloadButton: control(),
+  sideViewPdfButton: control(),
+};
+const document = { querySelectorAll() { return []; } };
+function appIsBusy() { return false; }
+function appBusyTitle() { return "Busy"; }
+function currentGenerator() { return { analyzeLabel: "Start Analysis" }; }
+function sidePanelBlockReason() { return ""; }
+function basisConfirmBlockReason() { return ""; }
+function startAnalysisBlockReason() { return ""; }
+function updateDownloadButton() {}
+function activeSidePanelIndex() { return Math.max(0, SIDE_PANEL_SEQUENCE.indexOf(state.activeSidePanel)); }
+function hasReferenceFilesForNavigation() { return state.images.some((image) => image?.data_url || image?.session_file_key || image?.name); }
+function hasReferenceFilesForAnalysis() { return state.images.some((image) => image?.data_url); }
+
+eval(extractFunction("updateSidePanelNav"));
+
+updateSidePanelNav();
+assert.strictEqual(elements.analyseAgainButton.hidden, false);
+assert.strictEqual(elements.analyseAgainButton.disabled, true);
+assert.strictEqual(elements.analyseAgainButton["aria-disabled"], "true");
+assert.strictEqual(
+  elements.analyseAgainButton.title,
+  "Images from this saved quote are unavailable in this browser. Upload the reference images again before re-analysing."
+);
+
+state.images = [{ name: "render.jpg", data_url: "data:image/jpeg;base64,ZmFrZQ==" }];
+updateSidePanelNav();
+assert.strictEqual(elements.analyseAgainButton.disabled, false);
+assert.strictEqual(elements.analyseAgainButton["aria-disabled"], "false");
+assert.strictEqual(elements.analyseAgainButton.title, "Re-analyse the quote basis using the uploaded reference images.");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_restore_session_images_keeps_metadata_without_payload(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const MAX_REFERENCE_IMAGES = 8;
+let requestedKeys = [];
+function referenceFileType(entry = {}) { return entry.type || (String(entry.name || "").endsWith(".pdf") ? "application/pdf" : "image"); }
+function loadSessionFileMap(keys) {
+  requestedKeys = keys;
+  return Promise.resolve(new Map());
+}
+
+eval([
+  "referenceFileHasPayload",
+  "restoreSessionImages",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  const restored = await restoreSessionImages([{
+    name: "restored-render.jpg",
+    type: "image/jpeg",
+    size: 12000,
+    session_file_key: "missing-payload-key",
+  }]);
+
+  assert.deepStrictEqual(requestedKeys, ["missing-payload-key"]);
+  assert.strictEqual(restored.length, 1);
+  assert.strictEqual(restored[0].name, "restored-render.jpg");
+  assert.strictEqual(restored[0].session_file_key, "missing-payload-key");
+  assert.strictEqual(restored[0].data_url, undefined);
+  assert.strictEqual(restored[0].type, "image/jpeg");
+  assert.strictEqual(restored[0].size, 12000);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_restore_quote_details_logo_uses_file_store_or_profile_fallback(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+let requestedKeys = [];
+let selectedPresetResponse = null;
+let fileMap = new Map();
+function loadSessionFileMap(keys) {
+  requestedKeys = keys;
+  return Promise.resolve(fileMap);
+}
+function selectedPreset() {
+  return selectedPresetResponse;
+}
+
+eval([
+  "selectedPresetCompanyLogo",
+  "restoreQuoteDetailsLogo",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  fileMap = new Map([["logo-key", {
+    name: "stored-logo.png",
+    type: "image/png",
+    data_url: "data:image/png;base64,U1RPUkVE",
+  }]]);
+  const restored = await restoreQuoteDetailsLogo({
+    company: {
+      name: "Stored Logo Co",
+      logo_session_file_key: "logo-key",
+      logo_name: "old-logo.png",
+      logo_type: "image/jpeg",
+    },
+  });
+  assert.deepStrictEqual(requestedKeys, ["logo-key"]);
+  assert.strictEqual(restored.company.logo_data_url, "data:image/png;base64,U1RPUkVE");
+  assert.strictEqual(restored.company.logo_name, "stored-logo.png");
+  assert.strictEqual(restored.company.logo_type, "image/png");
+
+  requestedKeys = [];
+  fileMap = new Map();
+  selectedPresetResponse = {
+    details: {
+      company: {
+        logo_data_url: "data:image/png;base64,UFJPRklMRQ==",
+        logo_name: "profile-logo.png",
+        logo_type: "image/png",
+      },
+    },
+  };
+  const fallback = await restoreQuoteDetailsLogo({
+    company: {
+      name: "Profile Logo Co",
+      logo_session_file_key: "missing-logo-key",
+    },
+  });
+  assert.deepStrictEqual(requestedKeys, ["missing-logo-key"]);
+  assert.strictEqual(fallback.company.logo_data_url, "data:image/png;base64,UFJPRklMRQ==");
+  assert.strictEqual(fallback.company.logo_name, "profile-logo.png");
+  assert.strictEqual(fallback.company.logo_type, "image/png");
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_modify_dashboard_quote_reuses_current_image_payloads(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const MAX_REFERENCE_IMAGES = 8;
+const QUOTE_SESSION_STATE_VERSION = 4;
+const state = {
+  quoteSessionId: "quote-active123",
+  quoteSessionRestoreBusy: false,
+  quoteSessionLoadError: "",
+  dashboardSelectionMode: true,
+  dashboardSelectedSessionIds: ["quote-active123"],
+  dashboardActiveSessionId: "",
+  images: [{
+    name: "render.jpg",
+    type: "image/jpeg",
+    size: 12,
+    session_file_key: "browser-file-key",
+    data_url: "data:image/jpeg;base64,UkVOREVS",
+  }],
+};
+let appliedSnapshot = null;
+let shownQuoteFlow = false;
+let rememberedBaseline = "";
+let controlsSynced = 0;
+let persistedRecords = [];
+
+function appIsBusy() { return false; }
+function clearQuoteSessionDraftSaveTimer() {}
+function syncControlStates() { controlsSynced += 1; }
+function quoteDraftShouldPersistToDashboard() { return true; }
+function currentQuoteSessionDraftState() { throw new Error("Server draft state should be used."); }
+function mergeDashboardQuoteSession() {}
+function dashboardRestoreError(message) { throw new Error(message); }
+function persistSessionFiles(records) {
+  persistedRecords = records;
+  return Promise.resolve();
+}
+async function loadQuoteSessionDetail() {
+  return {
+    session_id: "quote-active123",
+    draft_files: [{
+      name: "render.jpg",
+      type: "image/jpeg",
+      size: 12,
+      session_file_key: "server-file-key",
+      data_url: "data:image/jpeg;base64,U0VSVkVS",
+    }],
+    draft_state: {
+      version: QUOTE_SESSION_STATE_VERSION,
+      activeAppView: "quote",
+      activeSidePanel: "basis",
+      quoteSessionDraftSaveStarted: true,
+      images: [{
+        name: "render.jpg",
+        type: "image/jpeg",
+        size: 12,
+        session_file_key: "server-file-key",
+      }],
+    },
+  };
+}
+async function applyQuoteSessionSnapshot(snapshot) {
+  appliedSnapshot = snapshot;
+  state.images = snapshot.images;
+  return true;
+}
+function rememberRestoredQuoteSessionBaseline(sessionId) { rememberedBaseline = sessionId; }
+function showQuoteFlow() { shownQuoteFlow = true; }
+
+eval([
+  "safeQuoteSessionId",
+  "referenceFileType",
+  "dashboardDraftImageFileFieldsMatch",
+  "dashboardDraftImagePayloadMatches",
+  "dashboardDraftLogoSessionFileKey",
+  "dashboardDraftPayloadIsReferenceFile",
+  "mergeDashboardDraftImagesWithAvailablePayloads",
+  "hydrateDashboardDraftImagePayloads",
+  "modifyDashboardQuote",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  await modifyDashboardQuote("quote-active123");
+
+  assert.ok(appliedSnapshot);
+  assert.strictEqual(appliedSnapshot.images.length, 1);
+  assert.strictEqual(persistedRecords.length, 1);
+  assert.strictEqual(appliedSnapshot.images[0].data_url, "data:image/jpeg;base64,U0VSVkVS");
+  assert.strictEqual(appliedSnapshot.images[0].session_file_key, "server-file-key");
+  assert.deepStrictEqual(state.dashboardSelectedSessionIds, []);
+  assert.strictEqual(state.dashboardSelectionMode, false);
+  assert.strictEqual(state.dashboardActiveSessionId, "quote-active123");
+  assert.strictEqual(rememberedBaseline, "quote-active123");
+  assert.strictEqual(shownQuoteFlow, true);
+  assert.ok(controlsSynced >= 2);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -11143,6 +12605,12 @@ const state = {
   pricingReferenceId: "synthetic-exhibition-fixture-pricing",
   pricingReferenceSource: "bundled",
   selectedPresetValue: "profile:synthetic-fixture-default",
+  headerLogo: {
+    name: "logo.png",
+    type: "image/png",
+    size: 512,
+    data_url: "data:image/png;base64,TE9HTw==",
+  },
   images: [{
     name: "huge-reference.pdf",
     type: "application/pdf",
@@ -11172,7 +12640,15 @@ const state = {
   activeJob: null,
 };
 function collectQuoteDetails() {
-  return { project: { title: "Persistent project" } };
+  return {
+    project: { title: "Persistent project" },
+    company: {
+      name: "Persistent Company",
+      logo_data_url: state.headerLogo.data_url,
+      logo_name: state.headerLogo.name,
+      logo_type: state.headerLogo.type,
+    },
+  };
 }
 function referenceFileType(entry = {}) {
   return entry.type || "image";
@@ -11195,8 +12671,12 @@ function persistSessionFiles(records) {
 
 eval([
   "sessionFileKeyForImage",
+  "sessionFileKeyForLogo",
   "sessionImageMetadata",
+  "quoteDetailsWithSessionLogoMetadata",
   "sessionFileRecordsFromImages",
+  "sessionFileRecordFromHeaderLogo",
+  "sessionFileRecordsFromDraft",
   "buildSessionSnapshot",
   "saveSessionState",
 ].map(extractFunction).join("\n"));
@@ -11205,13 +12685,23 @@ saveSessionState();
 
 const saved = JSON.parse(savedPayload);
 assert.strictEqual(saved.quoteDetails.project.title, "Persistent project");
+assert.strictEqual(saved.quoteDetails.company.name, "Persistent Company");
+assert.strictEqual(saved.quoteDetails.company.logo_data_url, undefined);
+assert.strictEqual(saved.quoteDetails.company.logo_name, "logo.png");
+assert.strictEqual(saved.quoteDetails.company.logo_type, "image/png");
+assert.ok(saved.quoteDetails.company.logo_session_file_key);
 assert.strictEqual(saved.images.length, 1);
 assert.strictEqual(saved.images[0].name, "huge-reference.pdf");
 assert.strictEqual(saved.images[0].data_url, undefined);
 assert.ok(saved.images[0].session_file_key);
-assert.strictEqual(persistedRecords.length, 1);
+assert.strictEqual(persistedRecords.length, 2);
 assert.strictEqual(persistedRecords[0].data_url.startsWith("data:application/pdf;base64,"), true);
+assert.strictEqual(persistedRecords[0].file_role, "reference");
+assert.strictEqual(persistedRecords[1].data_url, "data:image/png;base64,TE9HTw==");
+assert.strictEqual(persistedRecords[1].file_role, "quote_company_logo");
+assert.strictEqual(persistedRecords[1].session_file_key, saved.quoteDetails.company.logo_session_file_key);
 assert.strictEqual(state.images[0].session_file_key, saved.images[0].session_file_key);
+assert.strictEqual(state.headerLogo.session_file_key, saved.quoteDetails.company.logo_session_file_key);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -11704,6 +13194,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-modal-panel .modal-form", css)
         self.assertIn(".pricing-reference-modal-panel {\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  height: calc(100dvh - 32px);", css)
         self.assertIn("max-height: calc(100dvh - 32px);", css)
+        settings_panel_css = css.split(".pricing-reference-settings-panel {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: min(630px, calc(100vw - 32px));", settings_panel_css)
+        self.assertNotIn("width: min(720px", settings_panel_css)
         self.assertIn("grid-template-rows: minmax(0, 1fr) auto;", css)
         self.assertIn(".pricing-reference-editor-body {\n  display: grid;\n  gap: 14px;\n  align-content: start;\n  grid-auto-rows: max-content;\n  min-height: 0;", css)
         self.assertIn("scroll-padding-bottom: 28px;", css)
@@ -11786,6 +13279,9 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn("pricing-reference-table-open", js)
         self.assertIn(".pricing-reference-table-panel", css)
         self.assertIn(".pricing-reference-table-wrap", css)
+        pricing_table_wrap_css = css.split(".pricing-reference-table-wrap {", 1)[1].split("}", 1)[0]
+        self.assertIn("max-height: min(540px, calc(100vh - 310px));", pricing_table_wrap_css)
+        self.assertIn("border-bottom: 1px solid var(--line-subtle);", pricing_table_wrap_css)
         self.assertIn(".pricing-reference-full-table {\n  min-width: 1120px;", css)
         self.assertIn(".pricing-reference-col-description {\n  width: 300px;", css)
         self.assertIn(".pricing-reference-col-remarks {\n  width: 185px;", css)
@@ -11794,6 +13290,11 @@ assert.strictEqual(sanitizeRichTextHtml("<blink>Plain <em>x</em></blink>"), "Pla
         self.assertIn(".pricing-reference-row-actions", css)
         self.assertIn(".pricing-reference-row-remove", css)
         self.assertIn(".pricing-reference-table-actions", css)
+        pricing_table_actions_css = css.split(".pricing-reference-table-actions {", 1)[1].split("}", 1)[0]
+        self.assertIn("margin-top: 14px;", pricing_table_actions_css)
+        self.assertIn("padding: 18px 18px 28px;", pricing_table_actions_css)
+        self.assertNotIn("border-top:", pricing_table_actions_css)
+        self.assertIn("linear-gradient(180deg, #f8fafc 0, #ffffff 16px)", pricing_table_actions_css)
         self.assertIn(".pricing-reference-table-actions .secondary-button,\n.pricing-reference-table-actions .primary-button {\n  min-height: 48px;", css)
         self.assertIn(".pricing-reference-table-actions .primary-button {\n  min-width: 168px;", css)
         self.assertIn("pricingReferenceStatusClass", js)
@@ -13704,6 +15205,69 @@ assert.ok(!status.innerHTML.includes(">Review</button>"));
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_wait_for_ui_paint_has_timeout_fallback(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+let timeoutDelay = null;
+const window = {
+  requestAnimationFrame() {},
+  setTimeout(callback, delay) {
+    timeoutDelay = delay;
+    callback();
+    return 1;
+  },
+};
+
+eval(extractFunction("waitForUiPaint"));
+
+(async () => {
+  let resolved = false;
+  const failTimer = globalThis.setTimeout(() => {
+    console.error("waitForUiPaint did not resolve without animation frames");
+    process.exit(2);
+  }, 50);
+  await waitForUiPaint().then(() => { resolved = true; });
+  globalThis.clearTimeout(failTimer);
+  assert.strictEqual(resolved, true);
+  assert.ok(timeoutDelay > 0);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_quote_basis_high_quality_pill_follows_analysis_mode(self):
         node = require_node(self)
 
@@ -13788,6 +15352,13 @@ assert.ok(!standardHtml.includes(">High Quality<"));
         self.assertIn("basisConfirmBlockReason", js)
         self.assertIn("Resolve all review lines before confirming quotation basis.", js)
         self.assertIn('confirmBasis();', js)
+        next_body = js.split("async function goToNextSidePanel", 1)[1].split("function handleQuoteBasisClick", 1)[0]
+        blocked_basis_body = js.split("function showBlockedBasisAction", 1)[1].split("function basisTagLabel", 1)[0]
+        self.assertIn('state.activeSidePanel === "basis"', next_body)
+        self.assertIn("showBlockedBasisAction(reason);", next_body)
+        self.assertIn("revealBlockedBasisAction();", blocked_basis_body)
+        self.assertIn("function firstUnresolvedBasisLineRef", js)
+        self.assertIn("function revealBlockedBasisAction", js)
         self.assertNotIn("Next: Output", js)
 
         node = require_node(self)
@@ -14923,10 +16494,14 @@ eval([
   "rowNeedsManualInput",
   "matchSummaryStats",
   "formatSubtotalValue",
+  "formatOutputTotalValue",
 ].map(extractFunction).join("\n"));
 
 function selectedPricingReferenceCurrency() {
   return "SGD";
+}
+function collectTaxDetails() {
+  return { label: "GST", rate: 0.09 };
 }
 
 const row = outputRowFromLineItem({
@@ -14953,6 +16528,7 @@ const stats = matchSummaryStats([row]);
 assert.strictEqual(stats.needsManualInput, 1);
 assert.strictEqual(stats.pricedRows, 0);
 assert.strictEqual(formatSubtotalValue(stats), "SGD 0.00 + ???");
+assert.strictEqual(formatOutputTotalValue(stats), "SGD 0.00 + ???");
 
 const invalidOverrideRow = normalizeOutputRow({
   section: "Furniture",
@@ -14975,6 +16551,7 @@ const invalidOverrideStats = matchSummaryStats([invalidOverrideRow]);
 assert.strictEqual(invalidOverrideStats.needsManualInput, 1);
 assert.strictEqual(invalidOverrideStats.pricedRows, 0);
 assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
+assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -15005,6 +16582,13 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
             confirm_body.index("await refreshLineItemsFromServer();"),
             confirm_body.index("refreshOutputRowsFromLineItems();"),
         )
+        missing_branch = confirm_body.split("if (missing.length)", 1)[1].split("state.isPreparingOutput", 1)[0]
+        confirm_block_branch = confirm_body.split("if (confirmBlockReason)", 1)[1].split("if (state.aiFailed)", 1)[0]
+        empty_items_branch = confirm_body.split("if (!state.lineItems.length)", 1)[1].split("const missing", 1)[0]
+        self.assertIn("showBlockedBasisAction(confirmBlockReason);", confirm_block_branch)
+        self.assertIn("showBlockedBasisAction(", empty_items_branch)
+        self.assertIn("await saveQuoteSessionDraftState({ quoteGenerated: false });", missing_branch)
+        self.assertIn("showBlockedBasisAction(", missing_branch)
         self.assertIn("state.outputRows = snapshotOutputRows(state.originalOutputRows);", reset_body)
         self.assertIn("state.lineItems = outputRowsToLineItems();", reset_body)
         self.assertNotIn("refreshLineItemsFromServer", reset_body)
@@ -15222,8 +16806,8 @@ assert.strictEqual(formatSubtotalValue(invalidOverrideStats), "SGD 0.00 + ???");
 
         command = run.call_args.args[0]
         self.assertEqual(result["status"], "completed")
-        self.assertIn(str(reference_dir / "pricing-catalog.json"), command)
-        self.assertIn(str(profile_dir / "quotation-layout.xlsx"), command)
+        self.assertIn(str((reference_dir / "pricing-catalog.json").resolve()), command)
+        self.assertIn(str((profile_dir / "quotation-layout.xlsx").resolve()), command)
         self.assertNotIn(str(KONCEPT_CATALOG), command)
         self.assertNotIn(str(KONCEPT_LAYOUT), command)
     def test_exported_quote_company_profile_imports_to_default_company_store(self):
