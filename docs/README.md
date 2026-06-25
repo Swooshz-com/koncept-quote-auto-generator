@@ -11,6 +11,8 @@ platform concerns belong in `Swooshz-com/swooshz-platform`.
   docs cleanup summary.
 - `docs/testing-plan.md`: validation expectations for product, frontend,
   import/export, security, CI, and smoke-test changes.
+- `docs/internal-uat.md`: internal Koncept/Swooshz UAT checklist, smoke
+  commands, known limits, bug-report format, and private-data guardrails.
 - `docs/pricing-catalog-import.md`: current pricing-reference import behavior,
   AI normalization/enrichment contracts, save behavior, ordering, and deferred
   import items.
