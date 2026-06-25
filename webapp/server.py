@@ -11094,13 +11094,19 @@ def quote_session_draft_file_record(value: Any) -> dict[str, Any]:
     max_bytes = MAX_PDF_BYTES if mime_type == "application/pdf" else MAX_IMAGE_BYTES
     decode_reference_data_url_bytes({**value, "data_url": data_url}, max_bytes)
     size = dashboard_safe_number(value.get("size"))
-    return {
+    file_role = dashboard_safe_text(value.get("file_role") or value.get("role"), 80).lower()
+    record = {
         "session_file_key": session_file_key,
         "name": dashboard_safe_text(value.get("name"), 180) or "reference-file",
         "type": mime_type,
         "size": int(size or 0),
         "data_url": data_url,
     }
+    if file_role in {"quote_company_logo", "header_logo", "logo"}:
+        record["file_role"] = "quote_company_logo"
+    elif file_role in {"reference", "reference_file"}:
+        record["file_role"] = "reference"
+    return record
 
 
 def quote_session_draft_files(patch: dict[str, Any]) -> list[dict[str, Any]]:

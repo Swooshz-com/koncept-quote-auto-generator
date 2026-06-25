@@ -2214,6 +2214,7 @@ function sessionFileRecordsFromImages(images = state.images) {
     .slice(0, MAX_REFERENCE_IMAGES)
     .map((image, index) => ({
       ...sessionImageMetadata(image, index),
+      file_role: "reference",
       data_url: String(image.data_url || "").trim(),
     }))
     .filter((record) => record.session_file_key && record.data_url);
@@ -2228,6 +2229,7 @@ function sessionFileRecordFromHeaderLogo(logo = state.headerLogo) {
     type: String(logo.type || "image/png").trim() || "image/png",
     size: Number.isFinite(Number(logo.size)) ? Number(logo.size) : 0,
     session_file_key: sessionFileKey,
+    file_role: "quote_company_logo",
     data_url: dataUrl,
   };
 }
@@ -9339,10 +9341,7 @@ function dashboardSessionHasCurrentDraft(session = {}) {
   return Boolean(sessionId && sessionId === safeQuoteSessionId(state.quoteSessionId) && quoteDraftShouldPersistToDashboard());
 }
 
-function dashboardDraftImagePayloadMatches(candidate = {}, image = {}) {
-  const candidateKey = String(candidate?.session_file_key || "").trim();
-  const imageKey = String(image?.session_file_key || "").trim();
-  if (candidateKey && imageKey) return candidateKey === imageKey;
+function dashboardDraftImageFileFieldsMatch(candidate = {}, image = {}, options = {}) {
   const candidateName = String(candidate?.name || "").trim().toLowerCase();
   const imageName = String(image?.name || "").trim().toLowerCase();
   if (!candidateName || !imageName || candidateName !== imageName) return false;
@@ -9350,15 +9349,43 @@ function dashboardDraftImagePayloadMatches(candidate = {}, image = {}) {
   const imageType = referenceFileType(image);
   const candidateSize = Number(candidate?.size);
   const imageSize = Number(image?.size);
-  const typeMatches = !candidateType || !imageType || candidateType === imageType;
-  const sizeMatches = !Number.isFinite(candidateSize) || !Number.isFinite(imageSize) || candidateSize === imageSize;
+  const requireTypeAndSize = Boolean(options.requireTypeAndSize);
+  const typeMatches = requireTypeAndSize
+    ? Boolean(candidateType && imageType && candidateType === imageType)
+    : (!candidateType || !imageType || candidateType === imageType);
+  const sizeMatches = requireTypeAndSize
+    ? (Number.isFinite(candidateSize) && Number.isFinite(imageSize) && candidateSize === imageSize)
+    : (!Number.isFinite(candidateSize) || !Number.isFinite(imageSize) || candidateSize === imageSize);
   return typeMatches && sizeMatches;
+}
+
+function dashboardDraftImagePayloadMatches(candidate = {}, image = {}) {
+  const candidateKey = String(candidate?.session_file_key || "").trim();
+  const imageKey = String(image?.session_file_key || "").trim();
+  if (candidateKey && imageKey) {
+    return candidateKey === imageKey || dashboardDraftImageFileFieldsMatch(candidate, image, { requireTypeAndSize: true });
+  }
+  return dashboardDraftImageFileFieldsMatch(candidate, image);
+}
+
+function dashboardDraftLogoSessionFileKey(draftState = {}) {
+  const quoteDetails = draftState?.quoteDetails && typeof draftState.quoteDetails === "object" ? draftState.quoteDetails : {};
+  const company = quoteDetails.company && typeof quoteDetails.company === "object" ? quoteDetails.company : {};
+  return String(company.logo_session_file_key || "").trim();
+}
+
+function dashboardDraftPayloadIsReferenceFile(record = {}, draftState = {}) {
+  const role = String(record?.file_role || record?.role || "").trim().toLowerCase();
+  if (["quote_company_logo", "header_logo", "logo"].includes(role)) return false;
+  const recordKey = String(record?.session_file_key || "").trim();
+  const logoKey = dashboardDraftLogoSessionFileKey(draftState);
+  return !(recordKey && logoKey && recordKey === logoKey);
 }
 
 function mergeDashboardDraftImagesWithAvailablePayloads(draftState = {}, availableImages = []) {
   const draftImages = Array.isArray(draftState?.images) ? draftState.images.slice(0, MAX_REFERENCE_IMAGES) : [];
   const payloadImages = (Array.isArray(availableImages) ? availableImages : [])
-    .filter((image) => String(image?.data_url || "").trim())
+    .filter((image) => String(image?.data_url || "").trim() && dashboardDraftPayloadIsReferenceFile(image, draftState))
     .slice(0, MAX_REFERENCE_IMAGES)
     .map((image) => ({
       ...image,
@@ -9376,7 +9403,14 @@ function mergeDashboardDraftImagesWithAvailablePayloads(draftState = {}, availab
   }
   const usedPayloadIndexes = new Set();
   const mergedImages = draftImages.map((image, index) => {
-    if (String(image?.data_url || "").trim()) return image;
+    if (String(image?.data_url || "").trim()) {
+      const payloadIndex = payloadImages.findIndex((candidate, candidateIndex) => (
+        !usedPayloadIndexes.has(candidateIndex)
+        && dashboardDraftImagePayloadMatches(candidate, image)
+      ));
+      if (payloadIndex >= 0) usedPayloadIndexes.add(payloadIndex);
+      return image;
+    }
     let payloadIndex = payloadImages.findIndex((candidate, candidateIndex) => (
       !usedPayloadIndexes.has(candidateIndex)
       && dashboardDraftImagePayloadMatches(candidate, image)
@@ -9538,7 +9572,7 @@ function dashboardSessionCard(session = {}) {
         </div>
         <dl class="dashboard-session-record-zone dashboard-session-meta-zone">
           <div>
-            <dt>Short ref</dt>
+            <dt>Short Ref</dt>
             <dd>${shortReference ? `Ref ${escapeHtml(shortReference)}` : "-"}</dd>
           </div>
           <div>

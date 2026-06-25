@@ -7394,7 +7394,9 @@ class WebappServerTest(unittest.TestCase):
     def test_http_post_requires_allowed_host_csrf_and_json_content_type(self):
         with LocalRunnerServer() as runner:
             session_response = urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3)
-            self.assertEqual(session_response.headers["Cache-Control"], "no-store")
+            cache_control = session_response.headers["Cache-Control"]
+            for directive in ("no-store", "no-cache", "must-revalidate", "max-age=0", "private"):
+                self.assertIn(directive, cache_control)
             self.assertEqual(session_response.headers["X-Content-Type-Options"], "nosniff")
             self.assertEqual(session_response.headers["X-Frame-Options"], "DENY")
             self.assertEqual(session_response.headers["Cross-Origin-Opener-Policy"], "same-origin")
@@ -8206,7 +8208,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn(".dashboard-session-amount-stack", css)
         self.assertIn(".dashboard-selected-created", css)
         self.assertIn("--dashboard-select-control-width: 154px;", css)
-        self.assertIn("grid-template-columns: var(--dashboard-select-control-width) minmax(180px, 260px)", css)
+        self.assertIn(
+            "grid-template-columns: minmax(118px, var(--dashboard-select-control-width)) "
+            "minmax(140px, 1.6fr) minmax(112px, 0.95fr) minmax(108px, 0.8fr) "
+            "minmax(96px, 0.72fr) minmax(104px, 0.78fr) minmax(82px, 0.56fr);",
+            css,
+        )
         self.assertIn("grid-template-columns: var(--dashboard-select-control-width) minmax(0, 1fr);", css)
         self.assertIn(".dashboard-selected-created span", css)
         self.assertIn(".dashboard-status-control", css)
@@ -8294,7 +8301,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("dashboard-bulk-breakdown", js)
         self.assertNotIn("dashboard-bulk-value-card", js)
         self.assertIn("dashboard-selected-summary-grid", js)
-        self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(400px, 28vw, 540px);", css)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 460px);", css)
         selected_created_css = css.split(".dashboard-selected-created {", 1)[1].split("}", 1)[0]
         self.assertIn("font-size: 13px;", selected_created_css)
         self.assertIn("font-weight: 850;", selected_created_css)
@@ -12181,7 +12188,10 @@ function showQuoteFlow() { shownQuoteFlow = true; }
 eval([
   "safeQuoteSessionId",
   "referenceFileType",
+  "dashboardDraftImageFileFieldsMatch",
   "dashboardDraftImagePayloadMatches",
+  "dashboardDraftLogoSessionFileKey",
+  "dashboardDraftPayloadIsReferenceFile",
   "mergeDashboardDraftImagesWithAvailablePayloads",
   "hydrateDashboardDraftImagePayloads",
   "modifyDashboardQuote",
@@ -12686,7 +12696,9 @@ assert.strictEqual(saved.images[0].data_url, undefined);
 assert.ok(saved.images[0].session_file_key);
 assert.strictEqual(persistedRecords.length, 2);
 assert.strictEqual(persistedRecords[0].data_url.startsWith("data:application/pdf;base64,"), true);
+assert.strictEqual(persistedRecords[0].file_role, "reference");
 assert.strictEqual(persistedRecords[1].data_url, "data:image/png;base64,TE9HTw==");
+assert.strictEqual(persistedRecords[1].file_role, "quote_company_logo");
 assert.strictEqual(persistedRecords[1].session_file_key, saved.quoteDetails.company.logo_session_file_key);
 assert.strictEqual(state.images[0].session_file_key, saved.images[0].session_file_key);
 assert.strictEqual(state.headerLogo.session_file_key, saved.quoteDetails.company.logo_session_file_key);
