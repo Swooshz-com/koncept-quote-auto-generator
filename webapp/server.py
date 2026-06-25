@@ -239,7 +239,14 @@ OIDC_ISSUER_URL_ENV_NAME = "OIDC_ISSUER_URL"
 OIDC_CLIENT_ID_ENV_NAME = "OIDC_CLIENT_ID"
 OIDC_CLIENT_SECRET_ENV_NAME = "OIDC_CLIENT_SECRET"
 OIDC_REDIRECT_URI_ENV_NAME = "OIDC_REDIRECT_URI"
+OIDC_AUTHORIZE_URL_ENV_NAME = "OIDC_AUTHORIZE_URL"
+OIDC_TOKEN_URL_ENV_NAME = "OIDC_TOKEN_URL"
+OIDC_USERINFO_URL_ENV_NAME = "OIDC_USERINFO_URL"
 OIDC_LOGOUT_URL_ENV_NAME = "OIDC_LOGOUT_URL"
+AUTH_ALLOWED_EMAILS_ENV_NAME = "AUTH_ALLOWED_EMAILS"
+AUTH_ALLOWED_DOMAINS_ENV_NAME = "AUTH_ALLOWED_DOMAINS"
+AUTH_ALLOW_ANY_AUTHENTICATED_USER_ENV_NAME = "AUTH_ALLOW_ANY_AUTHENTICATED_USER"
+AUTH_APPROVED_TESTER_ROLE_ENV_NAME = "AUTH_APPROVED_TESTER_ROLE"
 QUOTE_OUTPUT_ROOT_ENV_NAME = "QUOTE_OUTPUT_ROOT"
 QUOTE_TMP_ROOT_ENV_NAME = "QUOTE_TMP_ROOT"
 QUOTE_LOG_ROOT_ENV_NAME = "QUOTE_LOG_ROOT"
@@ -249,6 +256,8 @@ LOCAL_USER_ROLE_ENV_NAME = "LOCAL_USER_ROLE"
 SESSION_COOKIE_NAME = "swooshz_quote_session"
 OIDC_STATE_COOKIE_NAME = "swooshz_quote_oidc_state"
 SESSION_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60
+OIDC_PROVIDER_TIMEOUT_SECONDS = 15
+OIDC_PROVIDER_MAX_RESPONSE_BYTES = 128 * 1024
 PROCESS_CSRF_TOKEN = secrets.token_urlsafe(32)
 SGT = dt.timezone(dt.timedelta(hours=8), "SGT")
 ALLOWED_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -416,6 +425,13 @@ class RequestBodyError(ValueError):
     def __init__(self, message: str, status: int = 400) -> None:
         super().__init__(message)
         self.status = status
+
+
+class OidcAuthError(RuntimeError):
+    def __init__(self, message: str, *, status: int = 400, reason: str = "oidc_callback_failed") -> None:
+        super().__init__(message)
+        self.status = status
+        self.reason = reason
 
 
 def request_body_limit(path: str) -> int:
@@ -1185,14 +1201,43 @@ def configured_data_root() -> Path:
     return configured_path(QUOTE_DATA_ROOT_ENV_NAME, Path("/data/swooshz/company-data"))
 
 
+def comma_separated_env_values(name: str) -> list[str]:
+    raw = read_dotenv_value(name)
+    return [clean_text(item) for item in raw.split(",") if clean_text(item)]
+
+
 def oidc_config() -> dict[str, str]:
     return {
         "issuer_url": clean_text(read_dotenv_value(OIDC_ISSUER_URL_ENV_NAME)),
         "client_id": clean_text(read_dotenv_value(OIDC_CLIENT_ID_ENV_NAME)),
         "client_secret": clean_text(read_dotenv_value(OIDC_CLIENT_SECRET_ENV_NAME)),
         "redirect_uri": clean_text(read_dotenv_value(OIDC_REDIRECT_URI_ENV_NAME)),
+        "authorize_url": clean_text(read_dotenv_value(OIDC_AUTHORIZE_URL_ENV_NAME)),
+        "token_url": clean_text(read_dotenv_value(OIDC_TOKEN_URL_ENV_NAME)),
+        "userinfo_url": clean_text(read_dotenv_value(OIDC_USERINFO_URL_ENV_NAME)),
         "logout_url": clean_text(read_dotenv_value(OIDC_LOGOUT_URL_ENV_NAME)),
     }
+
+
+def allowed_auth_emails() -> set[str]:
+    return {value.lower() for value in comma_separated_env_values(AUTH_ALLOWED_EMAILS_ENV_NAME) if "@" in value}
+
+
+def allowed_auth_domains() -> set[str]:
+    domains = set()
+    for value in comma_separated_env_values(AUTH_ALLOWED_DOMAINS_ENV_NAME):
+        domain = value.lower().removeprefix("@")
+        if re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", domain):
+            domains.add(domain)
+    return domains
+
+
+def auth_allow_any_authenticated_user() -> bool:
+    return configured_bool(AUTH_ALLOW_ANY_AUTHENTICATED_USER_ENV_NAME, False)
+
+
+def auth_allowlist_configured() -> bool:
+    return auth_allow_any_authenticated_user() or bool(allowed_auth_emails() or allowed_auth_domains())
 
 
 def oidc_config_complete() -> bool:
@@ -1203,6 +1248,10 @@ def oidc_config_complete() -> bool:
         and config["client_id"]
         and config["client_secret"]
         and config["redirect_uri"]
+        and config["authorize_url"]
+        and config["token_url"]
+        and config["userinfo_url"]
+        and auth_allowlist_configured()
     )
 
 
@@ -1214,6 +1263,24 @@ def auth_required() -> bool:
 
 def deploy_requires_auth_guard() -> bool:
     return configured_app_mode() == "deploy" and auth_required() and not oidc_config_complete()
+
+
+def email_domain(email: str) -> str:
+    normalized = clean_text(email).lower()
+    if "@" not in normalized:
+        return ""
+    return normalized.rsplit("@", 1)[-1]
+
+
+def oidc_claims_allowed(claims: dict[str, Any]) -> bool:
+    if auth_allow_any_authenticated_user():
+        return True
+    email = clean_text(claims.get("email")).lower()
+    if not email:
+        return False
+    if email in allowed_auth_emails():
+        return True
+    return email_domain(email) in allowed_auth_domains()
 
 
 def b64url_encode(raw: bytes) -> str:
@@ -1297,7 +1364,7 @@ def clear_cookie_header_value(name: str, path: str = "/") -> str:
 
 def oidc_authorize_url(state: str) -> str:
     config = oidc_config()
-    authorize_endpoint = f"{config['issuer_url'].rstrip('/')}/authorize"
+    authorize_endpoint = config["authorize_url"]
     params = {
         "client_id": config["client_id"],
         "redirect_uri": config["redirect_uri"],
@@ -1305,7 +1372,8 @@ def oidc_authorize_url(state: str) -> str:
         "scope": "openid email profile",
         "state": state,
     }
-    return f"{authorize_endpoint}?{urlencode(params)}"
+    separator = "&" if "?" in authorize_endpoint else "?"
+    return f"{authorize_endpoint}{separator}{urlencode(params)}"
 
 
 def oidc_state_from_cookie(cookie_header: str) -> str:
@@ -1328,6 +1396,108 @@ def user_from_oidc_claims(claims: dict[str, Any]) -> dict[str, str]:
             or subject
         ),
     }
+
+
+def oidc_json_request(request: urllib.request.Request) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(request, timeout=OIDC_PROVIDER_TIMEOUT_SECONDS) as response:
+            raw = response.read(OIDC_PROVIDER_MAX_RESPONSE_BYTES + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError) as exc:
+        raise OidcAuthError("OIDC provider request failed.", status=502, reason="oidc_provider_request_failed") from exc
+    if len(raw) > OIDC_PROVIDER_MAX_RESPONSE_BYTES:
+        raise OidcAuthError("OIDC provider response was too large.", status=502, reason="oidc_provider_response_too_large")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OidcAuthError("OIDC provider response was not valid JSON.", status=502, reason="oidc_provider_invalid_json") from exc
+    if not isinstance(payload, dict):
+        raise OidcAuthError("OIDC provider response was not a JSON object.", status=502, reason="oidc_provider_invalid_json")
+    return payload
+
+
+def oidc_exchange_authorization_code(code: str) -> str:
+    config = oidc_config()
+    body = urlencode({
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": config["redirect_uri"],
+        "client_id": config["client_id"],
+        "client_secret": config["client_secret"],
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        config["token_url"],
+        data=body,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+    token_response = oidc_json_request(request)
+    access_token = clean_text(token_response.get("access_token"))
+    if not access_token:
+        raise OidcAuthError("OIDC token response did not include an access token.", status=502, reason="oidc_token_missing_access_token")
+    return access_token
+
+
+def oidc_fetch_userinfo(access_token: str) -> dict[str, Any]:
+    request = urllib.request.Request(
+        oidc_config()["userinfo_url"],
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        },
+        method="GET",
+    )
+    claims = oidc_json_request(request)
+    if not clean_text(claims.get("sub")):
+        raise OidcAuthError("OIDC userinfo response did not include a stable subject.", status=403, reason="oidc_missing_subject")
+    return claims
+
+
+def path_is_outside_project(path: Path) -> bool:
+    try:
+        path.resolve().relative_to(PROJECT_ROOT.resolve())
+        return False
+    except ValueError:
+        return True
+    except OSError:
+        return False
+
+
+def deploy_uat_preflight_status() -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+
+    def add(name: str, ok: bool, message: str) -> None:
+        checks.append({"name": name, "ok": bool(ok), "message": message})
+
+    add(APP_MODE_ENV_NAME, configured_app_mode() == "deploy", "must be set to deploy")
+    add(AUTH_REQUIRED_ENV_NAME, configured_bool(AUTH_REQUIRED_ENV_NAME, False), "must be explicitly true")
+    add(SESSION_SECRET_ENV_NAME, bool(clean_text(read_dotenv_value(SESSION_SECRET_ENV_NAME))), "must be present")
+    for name in (
+        OIDC_ISSUER_URL_ENV_NAME,
+        OIDC_CLIENT_ID_ENV_NAME,
+        OIDC_CLIENT_SECRET_ENV_NAME,
+        OIDC_REDIRECT_URI_ENV_NAME,
+        OIDC_AUTHORIZE_URL_ENV_NAME,
+        OIDC_TOKEN_URL_ENV_NAME,
+        OIDC_USERINFO_URL_ENV_NAME,
+    ):
+        add(name, bool(clean_text(read_dotenv_value(name))), "must be present")
+    add(
+        f"{AUTH_ALLOWED_EMAILS_ENV_NAME} or {AUTH_ALLOWED_DOMAINS_ENV_NAME}",
+        auth_allowlist_configured(),
+        "must allow approved testers or set the internal-only escape hatch",
+    )
+    add(
+        AUTH_APPROVED_TESTER_ROLE_ENV_NAME,
+        bool(user_type_role(read_dotenv_value(AUTH_APPROVED_TESTER_ROLE_ENV_NAME))),
+        "must be admin, management, operator, or viewer",
+    )
+    for name in (QUOTE_DATA_ROOT_ENV_NAME, QUOTE_OUTPUT_ROOT_ENV_NAME, QUOTE_TMP_ROOT_ENV_NAME, QUOTE_LOG_ROOT_ENV_NAME):
+        raw = clean_text(read_dotenv_value(name))
+        add(name, bool(raw) and path_is_outside_project(Path(raw).expanduser()), "must be present and outside the repository")
+    return {"status": "ready" if all(check["ok"] for check in checks) else "blocked", "checks": checks}
 
 
 def configured_csrf_header_name() -> str:
@@ -5961,7 +6131,7 @@ def user_type_role(value: Any) -> str:
 
 def current_local_role() -> str:
     if configured_app_mode() == "deploy":
-        return "viewer"
+        return user_type_role(read_dotenv_value(AUTH_APPROVED_TESTER_ROLE_ENV_NAME)) or "viewer"
     env_user_type = user_type_role(os.environ.get(USER_TYPE_ENV_NAME))
     if env_user_type:
         return env_user_type
@@ -12439,19 +12609,47 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if params.get("error"):
             self.send_json({
                 "status": "blocked",
-                "errors": [safe_error_messages([params["error"][0]])[0]],
+                "errors": ["OIDC provider returned an error."],
             }, status=400)
             return
-        if not clean_text((params.get("code") or [""])[0]):
+        code = clean_text((params.get("code") or [""])[0])
+        if not code:
             self.send_json({"status": "blocked", "errors": ["OIDC authorization code is missing."]}, status=400)
             return
-        self.send_json({
-            "status": "not_implemented",
-            "errors": [
-                "OIDC callback scaffold is present, but token exchange and claims validation must be wired before public use.",
+        try:
+            access_token = oidc_exchange_authorization_code(code)
+            claims = oidc_fetch_userinfo(access_token)
+        except OidcAuthError as exc:
+            write_local_log("security_event", {"reason": exc.reason, "path": "/callback", "status": exc.status})
+            self.send_json({"status": "blocked", "errors": [str(exc)]}, status=exc.status)
+            return
+        if not oidc_claims_allowed(claims):
+            write_local_log(
+                "security_event",
+                {
+                    "reason": "auth_allowlist_denied",
+                    "path": "/callback",
+                    "status": 403,
+                    "user_id": privacy_safe_tracking_id(claims.get("sub"), "unknown"),
+                },
+            )
+            self.send_json({
+                "status": "blocked",
+                "errors": ["Authenticated user is not approved for this internal UAT app."],
+            }, status=403)
+            return
+        session_cookie = cookie_header_value(
+            SESSION_COOKIE_NAME,
+            signed_cookie_value({"user": user_from_oidc_claims(claims)}),
+            max_age=SESSION_COOKIE_MAX_AGE_SECONDS,
+        )
+        self.send_redirect(
+            "/",
+            extra_headers=[
+                ("Set-Cookie", session_cookie),
+                ("Set-Cookie", clear_cookie_header_value(OIDC_STATE_COOKIE_NAME)),
             ],
-            "required_claims": ["sub", "email", "name"],
-        }, status=501)
+        )
 
     def handle_logout(self) -> None:
         logout_url = oidc_config().get("logout_url") or "/"
@@ -12679,6 +12877,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serve the local Swooshz Quote Generator webapp.")
     default_host = "0.0.0.0" if configured_app_mode() == "deploy" else "127.0.0.1"
     default_port = int(os.environ.get("PORT") or 8765)
+    parser.add_argument("--check-deploy-uat-env", action="store_true", help="Check deploy UAT env shape without printing secret values.")
     parser.add_argument("--host", default=default_host)
     parser.add_argument("--port", type=int, default=default_port)
     return parser.parse_args()
@@ -12686,6 +12885,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.check_deploy_uat_env:
+        status = deploy_uat_preflight_status()
+        safe_stdout(json.dumps(status, indent=2, ensure_ascii=True) + "\n")
+        return 0 if status["status"] == "ready" else 2
     if deploy_requires_auth_guard():
         safe_stderr(
             "Refusing deploy mode without a complete auth boundary. Configure SESSION_SECRET and OIDC_* "
