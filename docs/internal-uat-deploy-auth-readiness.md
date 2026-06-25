@@ -94,6 +94,11 @@ Use this shape only for gated internal UAT:
 For quote workflow coverage that does not depend on deploy auth, keep using the
 local internal UAT checklist in `docs/internal-uat.md`.
 
+For an already-prepared Coolify host, use the KQAG-specific adapter in
+`docs/internal-uat-coolify-deploy.md`. Generic Hostinger/VPS/Coolify setup,
+SSH, firewall, DNS, TLS, and server maintenance guidance belongs to the
+toolkit/infrastructure workflow, not this repo.
+
 ## Explicitly Not Ready
 
 The current KQAG repo is not ready for:

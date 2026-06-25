@@ -16,6 +16,9 @@ platform concerns belong in `Swooshz-com/swooshz-platform`.
 - `docs/internal-uat-deploy-auth-readiness.md`: existing gated single-instance
   internal UAT deploy/auth readiness notes, boundaries, smoke checks, and
   non-production limitations.
+- `docs/internal-uat-coolify-deploy.md`: KQAG-specific adapter notes for
+  running the gated single-instance internal UAT app on an already-prepared
+  Coolify host.
 - `docs/pricing-catalog-import.md`: current pricing-reference import behavior,
   AI normalization/enrichment contracts, save behavior, ordering, and deferred
   import items.
@@ -51,8 +54,9 @@ The following topics should not be implemented in this repo as part of KQAG RC:
 - Stripe, billing, credits, subscriptions, ledgers, and entitlement
 - Supabase or other hosted database design
 - DB-backed quote history and dashboards
-- Hostinger, Coolify, Docker deployment, DNS, public hosting, or production
-  infrastructure
+- generic Hostinger, Coolify, Docker, DNS, public hosting, or production
+  infrastructure setup; KQAG only keeps app-specific internal UAT adapter
+  notes under `docs/internal-uat-coolify-deploy.md`
 - Swooshz platform shell, navigation, app registry, app whitelist, and cross-app
   architecture
 - SEOzilla integration or other platform-level app integrations
