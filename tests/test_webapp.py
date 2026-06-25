@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -2778,6 +2779,48 @@ class WebappServerTest(unittest.TestCase):
                 self.assertEqual(login_redirect.exception.code, 302)
                 self.assertTrue(login_redirect.exception.headers["Location"].startswith("https://issuer.example/authorize?"))
                 self.assertIn(webapp.OIDC_STATE_COOKIE_NAME, login_redirect.exception.headers["Set-Cookie"])
+
+    def test_deploy_oidc_callback_scaffold_stays_blocked_until_token_exchange_is_wired(self):
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        env = {
+            "APP_MODE": "deploy",
+            "AUTH_REQUIRED": "true",
+            "SESSION_SECRET": "test-session-secret-with-enough-entropy",
+            "OIDC_ISSUER_URL": "https://issuer.example",
+            "OIDC_CLIENT_ID": "client-id",
+            "OIDC_CLIENT_SECRET": "client-secret",
+            "OIDC_REDIRECT_URI": "https://quote.example/callback",
+        }
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
+        with mock.patch.dict(os.environ, env, clear=True):
+            with LocalRunnerServer() as runner:
+                with self.assertRaises(urllib.error.HTTPError) as login_redirect:
+                    opener.open(f"{runner.base_url}/login", timeout=3)
+                location = login_redirect.exception.headers["Location"]
+                state_cookie = login_redirect.exception.headers["Set-Cookie"]
+                state = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)["state"][0]
+
+                self.assertIn("Secure", state_cookie)
+                self.assertIn("HttpOnly", state_cookie)
+                self.assertIn("SameSite=Lax", state_cookie)
+
+                callback_request = urllib.request.Request(
+                    f"{runner.base_url}/callback?state={urllib.parse.quote(state)}&code=fake-code",
+                    headers={"Cookie": state_cookie.split(";", 1)[0]},
+                )
+                with self.assertRaises(urllib.error.HTTPError) as callback_error:
+                    opener.open(callback_request, timeout=3)
+                body = callback_error.exception.read().decode("utf-8")
+                payload = json.loads(body)
+
+        self.assertEqual(callback_error.exception.code, 501)
+        self.assertEqual(payload["status"], "not_implemented")
+        self.assertIn("token exchange and claims validation", " ".join(payload["errors"]))
+        self.assertNotIn(env["OIDC_CLIENT_SECRET"], body)
+        self.assertNotIn(env["SESSION_SECRET"], body)
 
     def test_platform_deploy_docs_are_not_kept_as_active_kqag_targets(self):
         self.assertFalse((ROOT / "render.yaml").exists())
