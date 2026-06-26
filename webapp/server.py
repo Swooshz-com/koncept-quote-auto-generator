@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, urlencode, unquote, urlparse
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, unquote, urlparse
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 
@@ -402,6 +402,20 @@ QUOTE_BASIS_LEGACY_LABELS = {
 ALLOWED_BASIS_TAGS = {"Include", "Confirm", "Custom", "Exclude"}
 SECRET_REDACTION = "sk-..."
 LOCAL_SECRET_REDACTION = "[local-runner-key]"
+QUERY_REDACTION = "redacted"
+SENSITIVE_LOG_QUERY_KEYS = {
+    "access_token",
+    "auth_code",
+    "client_secret",
+    "code",
+    "error_description",
+    "error_uri",
+    "id_token",
+    "refresh_token",
+    "session_state",
+    "state",
+    "token",
+}
 OPENAI_REQUEST_TIMEOUT_SECONDS = 1800
 DEEPSEEK_REQUEST_TIMEOUT_SECONDS = 1800
 DEEPSEEK_PRICING_IMPORT_TIMEOUT_SECONDS = 120
@@ -483,6 +497,34 @@ def scrub_sensitive_text(text: str) -> str:
         )
     scrubbed = re.sub(r"sk-[A-Za-z0-9_-]+", SECRET_REDACTION, scrubbed)
     return scrubbed
+
+
+def redact_request_target_for_log(target: str) -> str:
+    parsed = urlparse(str(target or ""))
+    if not parsed.query:
+        return str(target or "")
+    redact_all_callback_values = parsed.path == "/callback"
+    safe_pairs: list[tuple[str, str]] = []
+    changed = False
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if redact_all_callback_values or key.lower() in SENSITIVE_LOG_QUERY_KEYS:
+            safe_pairs.append((key, QUERY_REDACTION))
+            changed = changed or value != QUERY_REDACTION
+        else:
+            safe_pairs.append((key, value))
+    if not changed:
+        return str(target or "")
+    return parsed._replace(query=urlencode(safe_pairs)).geturl()
+
+
+def redact_request_line_for_log(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    parts = value.split(" ")
+    if len(parts) >= 3:
+        parts[1] = redact_request_target_for_log(parts[1])
+        return " ".join(parts)
+    return redact_request_target_for_log(value)
 
 
 def safe_error_messages(messages: list[Any], limit: int = 500) -> list[str]:
@@ -12939,7 +12981,8 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.send_xlsx_download(filename, body)
 
     def log_message(self, format: str, *args: Any) -> None:
-        safe_stderr("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), format % args))
+        safe_args = tuple(redact_request_line_for_log(arg) for arg in args)
+        safe_stderr("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), format % safe_args))
 
 
 def parse_args() -> argparse.Namespace:

@@ -3020,6 +3020,23 @@ class WebappServerTest(unittest.TestCase):
                         self.assertNotIn(env["SESSION_SECRET"], body)
                         self.assertNotIn("fake-code", body)
 
+    def test_deploy_oidc_callback_access_log_redacts_sensitive_query_values(self):
+        written: list[str] = []
+        fake_handler = types.SimpleNamespace(
+            address_string=lambda: "127.0.0.1",
+            log_date_time_string=lambda: "26/Jun/2026 21:30:00",
+        )
+        request_line = (
+            "GET /callback?state=state-secret&code=fake-code&error_description=private-provider-detail "
+            "HTTP/1.1"
+        )
+        with mock.patch.object(webapp, "safe_stderr", side_effect=written.append):
+            webapp.QuoteRunnerHandler.log_message(fake_handler, '"%s" %s %s', request_line, "400", "-")
+        output = "".join(written)
+        self.assertIn("/callback?state=redacted&code=redacted&error_description=redacted", output)
+        for sensitive in ("state-secret", "fake-code", "private-provider-detail"):
+            self.assertNotIn(sensitive, output)
+
     def test_deploy_logout_clears_session_and_state_cookies(self):
         env = self.deploy_auth_env(OIDC_LOGOUT_URL="https://issuer.example/logout")
         opener = self.no_redirect_opener()
