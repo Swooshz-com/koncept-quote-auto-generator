@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_pricing_catalog as pricing_catalog
+import verify_internal_uat_deploy_template as deploy_template
 from webapp import server as webapp
 
 
@@ -2809,6 +2810,9 @@ class WebappServerTest(unittest.TestCase):
         opener = self.no_redirect_opener()
         with mock.patch.dict(os.environ, env, clear=True):
             with LocalRunnerServer() as runner:
+                health = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/health", timeout=3).read().decode("utf-8"))
+                self.assertEqual(health["status"], "ok")
+
                 with self.assertRaises(urllib.error.HTTPError) as root_error:
                     opener.open(f"{runner.base_url}/", timeout=3)
                 self.assertEqual(root_error.exception.code, 302)
@@ -2888,6 +2892,77 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(session_body["permissions"]["canGenerateQuote"])
         self.assertTrue(session_body["permissions"]["canManageProfiles"])
 
+    def test_deploy_oidc_callback_accepts_approved_tester_domain(self):
+        env = self.deploy_auth_env(AUTH_ALLOWED_EMAILS="", AUTH_ALLOWED_DOMAINS="example.com")
+        opener = self.no_redirect_opener()
+        with mock.patch.dict(os.environ, env, clear=True):
+            with LocalRunnerServer() as runner:
+                state, state_cookie = self.oidc_login_state(runner, opener)
+                callback_request = urllib.request.Request(
+                    f"{runner.base_url}/callback?state={urllib.parse.quote(state)}&code=fake-code",
+                    headers={"Cookie": state_cookie.split(";", 1)[0]},
+                )
+                with mock.patch.object(
+                    webapp.urllib.request,
+                    "urlopen",
+                    side_effect=[
+                        JsonResponseMock({"access_token": "access-token-secret", "token_type": "Bearer"}),
+                        JsonResponseMock({"sub": "domain-user-123", "email": "alex@example.com", "name": "Alex Tan"}),
+                    ],
+                ):
+                    with self.assertRaises(urllib.error.HTTPError) as callback_redirect:
+                        opener.open(callback_request, timeout=3)
+                set_cookies = callback_redirect.exception.headers.get_all("Set-Cookie")
+
+        self.assertEqual(callback_redirect.exception.code, 302)
+        self.assertEqual(callback_redirect.exception.headers["Location"], "/")
+        self.assertTrue(any(cookie.startswith(f"{webapp.SESSION_COOKIE_NAME}=") for cookie in set_cookies))
+
+    def test_deploy_oidc_callback_rejects_missing_userinfo_subject_generically(self):
+        env = self.deploy_auth_env()
+        opener = self.no_redirect_opener()
+        with mock.patch.dict(os.environ, env, clear=True):
+            with LocalRunnerServer() as runner:
+                state, state_cookie = self.oidc_login_state(runner, opener)
+                callback_request = urllib.request.Request(
+                    f"{runner.base_url}/callback?state={urllib.parse.quote(state)}&code=fake-code",
+                    headers={"Cookie": state_cookie.split(";", 1)[0]},
+                )
+                with mock.patch.object(
+                    webapp.urllib.request,
+                    "urlopen",
+                    side_effect=[
+                        JsonResponseMock({"access_token": "access-token-secret", "token_type": "Bearer"}),
+                        JsonResponseMock({"email": "alex@example.com", "name": "Alex Tan"}),
+                    ],
+                ):
+                    with self.assertRaises(urllib.error.HTTPError) as callback_error:
+                        opener.open(callback_request, timeout=3)
+                body = callback_error.exception.read().decode("utf-8")
+
+        self.assertEqual(callback_error.exception.code, 403)
+        self.assertIn("stable subject", body)
+        for sensitive in ("alex@example.com", "Alex Tan", "access-token-secret", env["OIDC_CLIENT_SECRET"], "fake-code"):
+            self.assertNotIn(sensitive, body)
+
+    def test_deploy_authenticated_dashboard_access_works_with_signed_session(self):
+        env = self.deploy_auth_env()
+        opener = self.no_redirect_opener()
+        with mock.patch.dict(os.environ, env, clear=True):
+            session_cookie = webapp.cookie_header_value(
+                webapp.SESSION_COOKIE_NAME,
+                webapp.signed_cookie_value({"user": {"subject": "user-123", "email": "alex@example.com"}}),
+                max_age=webapp.SESSION_COOKIE_MAX_AGE_SECONDS,
+            ).split(";", 1)[0]
+            with LocalRunnerServer() as runner:
+                request = urllib.request.Request(f"{runner.base_url}/", headers={"Cookie": session_cookie})
+                response = opener.open(request, timeout=3)
+                body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("Quote List", body)
+        self.assertIn("topbarAuthState", body)
+
     def test_deploy_oidc_callback_denies_unapproved_tester_without_leaking_claims_or_secrets(self):
         env = self.deploy_auth_env(AUTH_ALLOWED_EMAILS="alex@example.com", AUTH_ALLOWED_DOMAINS="")
         opener = self.no_redirect_opener()
@@ -2965,6 +3040,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertTrue(any(cookie.startswith(f"{webapp.SESSION_COOKIE_NAME}=") and "Max-Age=0" in cookie for cookie in set_cookies))
         self.assertTrue(any(cookie.startswith(f"{webapp.OIDC_STATE_COOKIE_NAME}=") and "Max-Age=0" in cookie for cookie in set_cookies))
 
+        with mock.patch.dict(os.environ, self.deploy_auth_env(OIDC_LOGOUT_URL="javascript:alert(1)"), clear=True):
+            with LocalRunnerServer() as runner:
+                with self.assertRaises(urllib.error.HTTPError) as safe_logout_redirect:
+                    opener.open(f"{runner.base_url}/logout", timeout=3)
+        self.assertEqual(safe_logout_redirect.exception.headers["Location"], "/signed-out")
+
     def test_deploy_uat_preflight_reports_missing_config_without_values(self):
         env = self.deploy_auth_env(OIDC_CLIENT_SECRET="client-secret-sensitive", SESSION_SECRET="session-secret-sensitive")
         with tempfile.TemporaryDirectory() as tmp:
@@ -2988,6 +3069,46 @@ class WebappServerTest(unittest.TestCase):
         for text in (ready_text, blocked_text):
             self.assertNotIn("client-secret-sensitive", text)
             self.assertNotIn("session-secret-sensitive", text)
+
+    def test_internal_uat_coolify_env_template_is_offline_verifiable(self):
+        result = deploy_template.verify_template(ROOT / "deploy" / "internal-uat" / "coolify" / "kqag.uat.env.example")
+
+        self.assertEqual(result["status"], "ready", [deploy_template.finding_to_dict(finding) for finding in result["findings"]])
+
+    def test_internal_uat_coolify_env_template_blocks_real_values_and_bad_roots(self):
+        source = ROOT / "deploy" / "internal-uat" / "coolify" / "kqag.uat.env.example"
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_template = Path(tmp) / "kqag.uat.env.example"
+            bad_template.write_text(
+                source.read_text(encoding="utf-8")
+                .replace("AUTH_ALLOW_ANY_AUTHENTICATED_USER=false", "AUTH_ALLOW_ANY_AUTHENTICATED_USER=true")
+                .replace("QUOTE_DATA_ROOT=/var/lib/kqag/data", "QUOTE_DATA_ROOT=C:\\Users\\Private\\runtime")
+                .replace("OIDC_CLIENT_SECRET=<placeholder>", "OIDC_CLIENT_SECRET=sk-real-looking-token-123456"),
+                encoding="utf-8",
+            )
+
+            result = deploy_template.verify_template(bad_template)
+
+        finding_text = json.dumps([deploy_template.finding_to_dict(finding) for finding in result["findings"]])
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("AUTH_ALLOW_ANY_AUTHENTICATED_USER", finding_text)
+        self.assertIn("QUOTE_DATA_ROOT", finding_text)
+        self.assertIn("non-placeholder-value", finding_text)
+        self.assertIn("private-local-path", finding_text)
+        self.assertIn("real-looking-secret", finding_text)
+
+    def test_static_internal_uat_auth_state_copy_is_privacy_safe(self):
+        html_text = (ROOT / "webapp" / "static" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("topbarAuthState", html_text)
+        self.assertIn("Sign in required for internal UAT", js)
+        self.assertIn("Signed in as approved tester", js)
+        self.assertIn("topbarLogoutLink", js)
+        self.assertIn("auth-page", css)
+        self.assertNotIn("authUser.email", js)
+        self.assertNotIn("preferred_username", js)
 
     def test_platform_deploy_docs_are_not_kept_as_active_kqag_targets(self):
         self.assertFalse((ROOT / "render.yaml").exists())

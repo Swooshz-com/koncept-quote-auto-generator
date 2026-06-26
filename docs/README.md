@@ -19,6 +19,9 @@ platform concerns belong in `Swooshz-com/swooshz-platform`.
 - `docs/internal-uat-coolify-deploy.md`: KQAG-specific adapter notes for
   running the gated single-instance internal UAT app on an already-prepared
   Coolify host.
+- `docs/internal-uat-login-and-pre-vps-dry-run.md`: approved-tester login
+  expectations and local/offline deploy-auth checks to run before buying or
+  touching a VPS.
 - `docs/pricing-catalog-import.md`: current pricing-reference import behavior,
   AI normalization/enrichment contracts, save behavior, ordering, and deferred
   import items.

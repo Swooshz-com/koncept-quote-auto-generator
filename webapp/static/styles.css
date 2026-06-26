@@ -354,6 +354,81 @@ button {
   outline: none;
 }
 
+.topbar-auth-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.topbar-auth-state a {
+  color: var(--green-dark);
+  font-weight: 780;
+  text-decoration: none;
+}
+
+.topbar-auth-state a:hover,
+.topbar-auth-state a:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+body.auth-page {
+  display: grid;
+  place-items: center;
+  height: auto;
+  min-height: 100vh;
+  overflow: auto;
+  padding: 24px;
+}
+
+.auth-panel {
+  width: min(100%, 460px);
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-md);
+}
+
+.auth-panel-mark {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  margin-bottom: 18px;
+}
+
+.auth-panel h1 {
+  margin-bottom: 10px;
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.auth-panel p {
+  color: var(--ink-secondary);
+  line-height: 1.55;
+}
+
+.auth-panel-note {
+  padding-top: 12px;
+  border-top: 1px solid var(--line-subtle);
+  font-size: 14px;
+}
+
+.auth-panel-action {
+  width: fit-content;
+  margin-top: 8px;
+  text-decoration: none;
+}
+
 h1,
 h2,
 h3,
@@ -7899,6 +7974,14 @@ body.privacy-page {
     justify-content: center;
     grid-column: 1 / -1;
     min-height: 32px;
+  }
+
+  .topbar-auth-state {
+    justify-content: center;
+    grid-column: 1 / -1;
+    min-height: 34px;
+    white-space: normal;
+    text-align: center;
   }
 
   .workspace-pane-header {

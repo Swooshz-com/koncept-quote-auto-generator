@@ -65,6 +65,12 @@ Use `deploy/internal-uat/coolify/kqag.uat.env.example` as the app-specific
 placeholder checklist. Copy values into Coolify secrets/environment management;
 do not commit a populated `.env`.
 
+Before a VPS is available, verify the placeholder template locally:
+
+```powershell
+python scripts\verify_internal_uat_deploy_template.py
+```
+
 Required UAT checks before starting the app:
 
 ```powershell
@@ -73,6 +79,9 @@ python webapp\server.py --check-deploy-uat-env
 
 The preflight reports only check names/messages and must not print secret
 values.
+
+Approved internal tester login expectations and the full pre-VPS dry-run scope
+are documented in `docs/internal-uat-login-and-pre-vps-dry-run.md`.
 
 ## Persistent Runtime Storage
 
