@@ -99,6 +99,11 @@ For an already-prepared Coolify host, use the KQAG-specific adapter in
 SSH, firewall, DNS, TLS, and server maintenance guidance belongs to the
 toolkit/infrastructure workflow, not this repo.
 
+Before a VPS or live OIDC provider exists, use
+`docs/internal-uat-login-and-pre-vps-dry-run.md` for the approved-tester login
+expectations, offline Coolify env template check, mocked OIDC route coverage,
+and safe synthetic deploy preflight.
+
 ## Explicitly Not Ready
 
 The current KQAG repo is not ready for:
@@ -140,6 +145,13 @@ Pass means:
 
 Fail means fix the env shape before starting the UAT app. Do not paste secret
 values into bug reports; report only which check name failed.
+
+For the Coolify template itself, run this local offline verifier before entering
+values into a live host:
+
+```powershell
+python scripts\verify_internal_uat_deploy_template.py
+```
 
 ## UAT Deploy Smoke Checklist
 

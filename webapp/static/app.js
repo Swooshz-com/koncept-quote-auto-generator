@@ -202,6 +202,9 @@ const state = {
   isPageUnloading: false,
   csrfHeaderName: CSRF_HEADER_NAME,
   csrfToken: "",
+  authRequired: false,
+  authenticated: false,
+  authUser: null,
   pendingFeedback: "",
   activeSidePanel: "images",
   downloadFile: null,
@@ -290,6 +293,9 @@ const elements = {
   quoteDashboardPanel: qs("#quoteDashboardPanel"),
   quoteFlowPanel: qs("#panel-analysis"),
   topbarBrandButton: qs("#topbarBrandButton"),
+  topbarAuthState: qs("#topbarAuthState"),
+  topbarAuthText: qs("#topbarAuthText"),
+  topbarLogoutLink: qs("#topbarLogoutLink"),
   dashboardEmptyNewQuoteButton: qs("#dashboardEmptyNewQuoteButton"),
   backToDashboardButton: qs("#backToDashboardButton"),
   dashboardStatusFilter: qs("#dashboardStatusFilter"),
@@ -8533,10 +8539,34 @@ function applySessionData(data = {}) {
   if (!data.csrf_token) return false;
   state.csrfHeaderName = data.csrf_header || CSRF_HEADER_NAME;
   state.csrfToken = data.csrf_token;
+  state.authRequired = Boolean(data.auth_required);
+  state.authenticated = Boolean(data.authenticated);
+  state.authUser = data.user && typeof data.user === "object" ? data.user : null;
   if (data.permissions && typeof data.permissions === "object") {
     state.permissions = { ...state.permissions, ...data.permissions };
   }
+  renderAuthState();
   return true;
+}
+
+function authRoleLabel() {
+  const role = String(state.permissions?.role || "").trim().toLowerCase();
+  if (!role) return "";
+  return role.replace(/(^|_)([a-z])/g, (_match, prefix, letter) => `${prefix ? " " : ""}${letter.toUpperCase()}`);
+}
+
+function renderAuthState() {
+  if (!elements.topbarAuthState || !elements.topbarAuthText) return;
+  const showAuthState = Boolean(state.authRequired);
+  elements.topbarAuthState.hidden = !showAuthState;
+  if (!showAuthState) return;
+  if (state.authenticated) {
+    const role = authRoleLabel();
+    elements.topbarAuthText.textContent = role ? `Signed in as approved tester (${role})` : "Signed in as approved tester";
+  } else {
+    elements.topbarAuthText.textContent = "Sign in required for internal UAT";
+  }
+  if (elements.topbarLogoutLink) elements.topbarLogoutLink.hidden = !state.authenticated;
 }
 
 async function refreshSessionToken() {

@@ -22,6 +22,10 @@ Before starting deploy-mode UAT, set the env values in Coolify secrets or
 environment management and run:
 
 ```powershell
+python scripts\verify_internal_uat_deploy_template.py
+```
+
+```powershell
 python webapp\server.py --check-deploy-uat-env
 ```
 

@@ -14,6 +14,7 @@ import contextlib
 import copy
 import csv
 import datetime as dt
+import html
 import hashlib
 import hmac
 import http.client
@@ -1453,6 +1454,47 @@ def oidc_fetch_userinfo(access_token: str) -> dict[str, Any]:
     if not clean_text(claims.get("sub")):
         raise OidcAuthError("OIDC userinfo response did not include a stable subject.", status=403, reason="oidc_missing_subject")
     return claims
+
+
+def safe_logout_redirect_url(value: str) -> str:
+    candidate = clean_text(value)
+    if not candidate:
+        return "/signed-out"
+    parsed = urlparse(candidate)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return candidate
+    if candidate.startswith("/") and not candidate.startswith("//"):
+        return candidate
+    return "/signed-out"
+
+
+def auth_html_page(title: str, message: str, *, action_href: str = "/login", action_label: str = "Sign in") -> bytes:
+    safe_title = html.escape(clean_text(title) or "Internal UAT access", quote=True)
+    safe_message = html.escape(clean_text(message), quote=True)
+    safe_action_href = html.escape(safe_logout_redirect_url(action_href), quote=True)
+    safe_action_label = html.escape(clean_text(action_label) or "Continue", quote=True)
+    body = f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{safe_title}</title>
+    <link rel="icon" href="/static/assets/swooshz-mark.png">
+    <link rel="stylesheet" href="/static/styles.css?v=66">
+  </head>
+  <body class="auth-page">
+    <main class="auth-panel" aria-labelledby="authPageTitle">
+      <img src="/static/assets/swooshz-mark.png" alt="" class="auth-panel-mark">
+      <p class="workspace-pane-eyebrow">INTERNAL UAT</p>
+      <h1 id="authPageTitle">{safe_title}</h1>
+      <p>{safe_message}</p>
+      <p class="auth-panel-note">Approved internal testers only. This app does not offer public signup, password login, account management, or customer portal access.</p>
+      <a class="primary-button auth-panel-action" href="{safe_action_href}">{safe_action_label}</a>
+    </main>
+  </body>
+</html>
+"""
+    return body.encode("utf-8")
 
 
 def path_is_outside_project(path: Path) -> bool:
@@ -12122,6 +12164,14 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if path == "/logout":
             self.handle_logout()
             return
+        if path == "/signed-out":
+            self.send_auth_page(
+                "Signed out",
+                "You have been signed out of the internal UAT quote runner.",
+                action_href="/login",
+                action_label="Sign in again",
+            )
+            return
         if self.block_unauthenticated_request(path):
             return
         if path == "/":
@@ -12607,10 +12657,11 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             self.send_json({"status": "blocked", "errors": ["OIDC state did not match."]}, status=400)
             return
         if params.get("error"):
-            self.send_json({
-                "status": "blocked",
-                "errors": ["OIDC provider returned an error."],
-            }, status=400)
+            self.send_auth_page(
+                "Sign in was not completed",
+                "OIDC provider returned an error. Try signing in again, or ask the UAT owner to confirm your tester access.",
+                status=400,
+            )
             return
         code = clean_text((params.get("code") or [""])[0])
         if not code:
@@ -12621,7 +12672,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             claims = oidc_fetch_userinfo(access_token)
         except OidcAuthError as exc:
             write_local_log("security_event", {"reason": exc.reason, "path": "/callback", "status": exc.status})
-            self.send_json({"status": "blocked", "errors": [str(exc)]}, status=exc.status)
+            self.send_auth_page("Sign in was not completed", str(exc), status=exc.status)
             return
         if not oidc_claims_allowed(claims):
             write_local_log(
@@ -12633,10 +12684,11 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                     "user_id": privacy_safe_tracking_id(claims.get("sub"), "unknown"),
                 },
             )
-            self.send_json({
-                "status": "blocked",
-                "errors": ["Authenticated user is not approved for this internal UAT app."],
-            }, status=403)
+            self.send_auth_page(
+                "Approved tester access required",
+                "Authenticated user is not approved for this internal UAT app.",
+                status=403,
+            )
             return
         session_cookie = cookie_header_value(
             SESSION_COOKIE_NAME,
@@ -12652,7 +12704,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         )
 
     def handle_logout(self) -> None:
-        logout_url = oidc_config().get("logout_url") or "/"
+        logout_url = safe_logout_redirect_url(oidc_config().get("logout_url") or "")
         headers = [
             ("Set-Cookie", clear_cookie_header_value(SESSION_COOKIE_NAME)),
             ("Set-Cookie", clear_cookie_header_value(OIDC_STATE_COOKIE_NAME)),
@@ -12735,6 +12787,23 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.send_security_headers()
         self.end_headers()
+
+    def send_auth_page(
+        self,
+        title: str,
+        message: str,
+        *,
+        status: int = 200,
+        action_href: str = "/login",
+        action_label: str = "Sign in",
+    ) -> None:
+        body = auth_html_page(title, message, action_href=action_href, action_label=action_label)
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_security_headers(self) -> None:
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0, private")
