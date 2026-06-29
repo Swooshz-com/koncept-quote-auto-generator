@@ -3217,11 +3217,12 @@ class WebappServerTest(unittest.TestCase):
         self.assertNotIn("private", json.dumps(body))
         self.assertNotIn(self.synthetic_platform_launch_token(), json.dumps(body))
 
-    def test_platform_launch_rejects_missing_identity_workspace_and_expired_context(self):
+    def test_platform_launch_rejects_missing_identity_workspace_role_and_expired_context(self):
         base_payload = self.platform_consume_payload()
         cases = [
             ("missing-user", {**base_payload, "user": {"email": "operator@example.test"}}),
             ("missing-workspace", {**base_payload, "workspace": {"workspaceSlug": "synthetic"}}),
+            ("missing-role", {key: value for key, value in base_payload.items() if key != "membershipRole"}),
             ("expired", {**base_payload, "launchTokenExpiresAt": "2000-01-01T00:00:00.000Z"}),
         ]
 
@@ -3231,6 +3232,53 @@ class WebappServerTest(unittest.TestCase):
                     webapp.safe_platform_launch_context(payload)
                 self.assertEqual(error.exception.status, 403)
                 self.assertIn("not valid for KQAG", str(error.exception))
+
+    def test_platform_launch_rejects_unsupported_membership_role(self):
+        payload = self.platform_consume_payload(membershipRole="billing-admin")
+
+        with self.assertRaises(webapp.PlatformLaunchError) as error:
+            webapp.safe_platform_launch_context(payload)
+
+        self.assertEqual(error.exception.status, 403)
+        self.assertIn("not valid for KQAG", str(error.exception))
+
+    def test_platform_launch_supported_roles_map_to_permissions(self):
+        cases = [
+            ("owner", "admin", True, True),
+            ("admin", "admin", True, True),
+            ("member", "operator", False, True),
+            ("operator", "operator", False, True),
+            ("viewer", "viewer", False, False),
+        ]
+
+        for platform_role, expected_local_role, can_manage, can_generate in cases:
+            with self.subTest(platform_role=platform_role):
+                context = webapp.safe_platform_launch_context(
+                    self.platform_consume_payload(membershipRole=platform_role)
+                )
+                permissions = webapp.permissions_for_auth_session({
+                    "user": webapp.user_from_platform_launch_context(context),
+                })
+
+                self.assertEqual(context["membershipRole"], platform_role)
+                self.assertEqual(permissions["role"], expected_local_role)
+                self.assertEqual(permissions["canManageSettings"], can_manage)
+                self.assertEqual(permissions["canGenerateQuote"], can_generate)
+
+    def test_platform_session_with_unsupported_role_does_not_fallback_to_local_permissions(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local", "USER_TYPE": "ADMIN"}, clear=True):
+            permissions = webapp.permissions_for_auth_session({
+                "user": {
+                    "subject": "platform-user-123",
+                    "platform": {
+                        "membershipRole": "billing-admin",
+                    },
+                },
+            })
+
+        self.assertEqual(permissions["role"], "blocked")
+        self.assertFalse(permissions["canManageSettings"])
+        self.assertFalse(permissions["canGenerateQuote"])
 
     def test_platform_launch_access_log_redacts_launch_token_query_names(self):
         written: list[str] = []

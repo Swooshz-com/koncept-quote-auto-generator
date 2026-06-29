@@ -266,6 +266,13 @@ PLATFORM_APP_KEY = "kqag"
 PLATFORM_LAUNCH_TOKEN_HEADER = "X-App-Launch-Token"
 PLATFORM_LAUNCH_PROVIDER_TIMEOUT_SECONDS = 15
 PLATFORM_LAUNCH_PROVIDER_MAX_RESPONSE_BYTES = 64 * 1024
+PLATFORM_MEMBERSHIP_ROLE_TO_LOCAL_ROLE = {
+    "owner": "admin",
+    "admin": "admin",
+    "member": "operator",
+    "operator": "operator",
+    "viewer": "viewer",
+}
 PROCESS_CSRF_TOKEN = secrets.token_urlsafe(32)
 SGT = dt.timezone(dt.timedelta(hours=8), "SGT")
 ALLOWED_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -1638,6 +1645,7 @@ def safe_platform_launch_context(payload: dict[str, Any]) -> dict[str, Any]:
     workspace_id = clean_text(workspace.get("workspaceId"))
     app_key = clean_text(app.get("appKey"))
     expires_at = clean_text(payload.get("launchTokenExpiresAt"))
+    membership_role = clean_text(payload.get("membershipRole")).lower()
     expiry = parse_platform_expiry(expires_at)
     if expiry and expiry <= dt.datetime.now(dt.timezone.utc):
         raise PlatformLaunchError(
@@ -1650,6 +1658,12 @@ def safe_platform_launch_context(payload: dict[str, Any]) -> dict[str, Any]:
             "Platform launch context is not valid for KQAG.",
             status=403,
             reason="platform_launch_context_mismatch",
+        )
+    if membership_role not in PLATFORM_MEMBERSHIP_ROLE_TO_LOCAL_ROLE:
+        raise PlatformLaunchError(
+            "Platform launch context is not valid for KQAG.",
+            status=403,
+            reason="platform_launch_unsupported_role",
         )
     return {
         "outcome": "consumed",
@@ -1668,20 +1682,25 @@ def safe_platform_launch_context(payload: dict[str, Any]) -> dict[str, Any]:
             "appKey": app_key,
             "appName": clean_text(app.get("appName")),
         },
-        "membershipRole": clean_text(payload.get("membershipRole")),
+        "membershipRole": membership_role,
         "launchTokenExpiresAt": expires_at,
     }
 
 
 def platform_membership_role_to_local_role(value: Any) -> str:
-    normalized = clean_text(value).lower()
-    if normalized in {"owner", "admin"}:
-        return "admin"
-    if normalized in {"member", "operator"}:
-        return "operator"
-    if normalized == "viewer":
-        return "viewer"
-    return ""
+    return PLATFORM_MEMBERSHIP_ROLE_TO_LOCAL_ROLE.get(clean_text(value).lower(), "")
+
+
+def blocked_platform_permissions() -> dict[str, bool]:
+    return {
+        "role": "blocked",
+        "canManageSettings": False,
+        "canManagePricingReferences": False,
+        "canManageProfiles": False,
+        "canImportPricingReferences": False,
+        "canSelectPricingReference": False,
+        "canGenerateQuote": False,
+    }
 
 
 def user_from_platform_launch_context(context: dict[str, Any]) -> dict[str, Any]:
@@ -1703,6 +1722,7 @@ def permissions_for_auth_session(session: dict[str, Any] | None) -> dict[str, bo
         role = platform_membership_role_to_local_role(platform.get("membershipRole"))
         if role:
             return role_permissions(role)
+        return blocked_platform_permissions()
     return current_permissions()
 
 
