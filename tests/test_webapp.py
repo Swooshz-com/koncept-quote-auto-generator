@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 import urllib.error
@@ -573,6 +574,17 @@ class WebappServerTest(unittest.TestCase):
             payload[key] = value
         return payload
 
+    def platform_auth_session(self, workspace_id: str = "workspace-123"):
+        context = webapp.safe_platform_launch_context(
+            self.platform_consume_payload(
+                workspace={
+                    "workspaceId": workspace_id,
+                    "workspaceSlug": workspace_id,
+                    "workspaceName": f"Synthetic {workspace_id}",
+                }
+            )
+        )
+        return {"user": webapp.user_from_platform_launch_context(context)}
     def no_redirect_opener(self):
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -17316,6 +17328,119 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
             with self.assertRaises(ValueError):
                 store.save_pricing_reference("default", {"id": "../bad", "items": []})
 
+    def test_platform_storage_mode_defaults_to_local(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(webapp.configured_storage_mode(), "local")
+            self.assertIsInstance(webapp.app_storage_for_auth_session(None), webapp.LocalKqagStorage)
+
+    def test_database_storage_mode_requires_platform_session_and_database_url(self):
+        with mock.patch.dict(os.environ, {"KQAG_STORAGE_MODE": "database"}, clear=True):
+            with self.assertRaises(webapp.KqagStorageAccessError) as missing_session:
+                webapp.app_storage_for_auth_session(None)
+        self.assertEqual(missing_session.exception.status, 403)
+        self.assertEqual(missing_session.exception.reason, "storage_platform_session_required")
+
+        platform_session = self.platform_auth_session("workspace-a")
+        with mock.patch.dict(os.environ, {"KQAG_STORAGE_MODE": "database"}, clear=True):
+            with self.assertRaises(webapp.KqagStorageAccessError) as missing_database:
+                webapp.app_storage_for_auth_session(platform_session)
+        self.assertEqual(missing_database.exception.status, 503)
+        self.assertEqual(missing_database.exception.reason, "storage_database_not_configured")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            database_url = f"sqlite:///{(Path(tmp) / 'missing-migration.sqlite3').as_posix()}"
+            with mock.patch.dict(os.environ, {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}, clear=True):
+                with self.assertRaises(webapp.KqagStorageAccessError) as missing_migration:
+                    webapp.app_storage_for_auth_session(platform_session)
+        self.assertEqual(missing_migration.exception.status, 503)
+        self.assertEqual(missing_migration.exception.reason, "storage_database_not_migrated")
+
+    def test_database_storage_scopes_profiles_pricing_and_sessions_by_platform_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            database_url = f"sqlite:///{(Path(tmp) / 'kqag-storage.sqlite3').as_posix()}"
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-a"))
+                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-b"))
+
+                profile = webapp.normalize_profile_payload({
+                    "id": "team-profile",
+                    "label": "Team Profile",
+                    "defaults": {"company": {"name": "Workspace A Quote Co"}},
+                })
+                saved_profile = workspace_a.save_profile(profile)
+                self.assertEqual(saved_profile["id"], "team-profile")
+                self.assertEqual([item["id"] for item in workspace_a.list_company_profiles()], ["team-profile"])
+                self.assertEqual(workspace_b.list_company_profiles(), [])
+                self.assertIsNone(workspace_b.company_profile_export_payload("team-profile"))
+                exported_profile = workspace_a.company_profile_export_payload("team-profile")
+                self.assertEqual(exported_profile["profile"]["defaults"]["company"]["name"], "Workspace A Quote Co")
+
+                reference = webapp.normalize_pricing_reference_payload({
+                    "id": "team-pricing",
+                    "label": "Team Pricing",
+                    "items": [with_required_pricing_metadata({
+                        "id": "graphics-row",
+                        "section": "Graphics",
+                        "description": "Printed graphics",
+                        "unit_hint": "sqm",
+                        "internal_cost": 10,
+                        "markup_multiplier": 2,
+                    })],
+                })
+                saved_reference = workspace_a.save_pricing_reference(reference)
+                self.assertEqual(saved_reference["source"], "company")
+                self.assertEqual([item["id"] for item in workspace_a.list_pricing_references() if item.get("source") == "company"], ["team-pricing"])
+                self.assertNotIn("team-pricing", {item["id"] for item in workspace_b.list_pricing_references()})
+                self.assertEqual(workspace_a.pricing_reference_detail("team-pricing")["items"][0]["id"], "graphics-row")
+                self.assertIsNone(workspace_b.pricing_reference_detail("team-pricing"))
+
+                payload = valid_payload()
+                payload["quote_session"] = {
+                    "session_id": "quote-team-a",
+                    "customer_summary": {"customer_name": "Workspace A Customer"},
+                    "draft_state": {"workflowStage": "pricing_review"},
+                }
+                saved_session = workspace_a.create_or_update_quote_session(payload, session_id="quote-team-a")
+                self.assertEqual(saved_session["session_id"], "quote-team-a")
+                self.assertEqual([item["session_id"] for item in workspace_a.list_quote_sessions()], ["quote-team-a"])
+                self.assertEqual(workspace_b.list_quote_sessions(), [])
+                self.assertIsNone(workspace_b.get_quote_session("quote-team-a", include_draft_state=True))
+                self.assertEqual(workspace_a.get_quote_session("quote-team-a", include_draft_state=True)["draft_state"]["workflowStage"], "pricing_review")
+                self.assertFalse(workspace_b.delete_quote_session("quote-team-a"))
+                self.assertTrue(workspace_a.delete_quote_session("quote-team-a"))
+                self.assertEqual(workspace_a.list_quote_sessions(), [])
+
+    def test_database_storage_does_not_persist_raw_platform_launch_token(self):
+        raw_launch_token = self.synthetic_platform_launch_token()
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "kqag-storage.sqlite3"
+            database_url = f"sqlite:///{db_path.as_posix()}"
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-token-check"))
+                storage.save_profile(webapp.normalize_profile_payload({"id": "safe-profile", "label": "Safe Profile"}))
+                storage.create_or_update_quote_session({
+                    "quote_session": {
+                        "session_id": "quote-token-safe",
+                        "draft_state": {"launchToken": raw_launch_token, "safeNote": "retained"},
+                    }
+                })
+
+            connection = sqlite3.connect(db_path)
+            try:
+                rows = connection.execute(
+                    "select payload_json from kqag_profiles union all "
+                    "select metadata_json from kqag_quote_sessions union all "
+                    "select draft_files_json from kqag_quote_sessions"
+                ).fetchall()
+            finally:
+                connection.close()
+        serialized = json.dumps(rows)
+        self.assertNotIn(raw_launch_token, serialized)
+        self.assertNotIn("launchToken", serialized)
     def test_runtime_workspace_metadata_is_generic_and_has_no_repo_defaults(self):
         with (
             mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),

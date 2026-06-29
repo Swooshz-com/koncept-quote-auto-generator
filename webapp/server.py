@@ -28,6 +28,7 @@ import posixpath
 import re
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -254,6 +255,8 @@ QUOTE_OUTPUT_ROOT_ENV_NAME = "QUOTE_OUTPUT_ROOT"
 QUOTE_TMP_ROOT_ENV_NAME = "QUOTE_TMP_ROOT"
 QUOTE_LOG_ROOT_ENV_NAME = "QUOTE_LOG_ROOT"
 QUOTE_DATA_ROOT_ENV_NAME = "QUOTE_DATA_ROOT"
+KQAG_STORAGE_MODE_ENV_NAME = "KQAG_STORAGE_MODE"
+KQAG_DATABASE_URL_ENV_NAME = "KQAG_DATABASE_URL"
 USER_TYPE_ENV_NAME = "USER_TYPE"
 LOCAL_USER_ROLE_ENV_NAME = "LOCAL_USER_ROLE"
 SESSION_COOKIE_NAME = "swooshz_quote_session"
@@ -470,6 +473,12 @@ class OidcAuthError(RuntimeError):
 
 class PlatformLaunchError(RuntimeError):
     def __init__(self, message: str, *, status: int = 400, reason: str = "platform_launch_failed") -> None:
+        super().__init__(message)
+        self.status = status
+        self.reason = reason
+
+class KqagStorageAccessError(RuntimeError):
+    def __init__(self, message: str, *, status: int = 503, reason: str = "storage_unavailable") -> None:
         super().__init__(message)
         self.status = status
         self.reason = reason
@@ -1268,6 +1277,14 @@ def configured_log_root() -> Path:
 
 def configured_data_root() -> Path:
     return configured_path(QUOTE_DATA_ROOT_ENV_NAME, Path("/data/swooshz/company-data"))
+
+def configured_storage_mode() -> str:
+    mode = clean_text(read_dotenv_value(KQAG_STORAGE_MODE_ENV_NAME)).lower()
+    return "database" if mode == "database" else "local"
+
+
+def configured_database_url() -> str:
+    return clean_text(read_dotenv_value(KQAG_DATABASE_URL_ENV_NAME))
 
 
 def comma_separated_env_values(name: str) -> list[str]:
@@ -6586,6 +6603,445 @@ class CompanyConfigStore:
         return deleted
 
 
+KQAG_STORAGE_MIGRATION_PATH = PROJECT_ROOT / "migrations" / "001_platform_scoped_storage.sql"
+KQAG_STORAGE_SQL = """
+create table if not exists kqag_profiles (
+  workspace_id text not null,
+  profile_id text not null,
+  payload_json text not null,
+  created_at text not null,
+  updated_at text not null,
+  primary key (workspace_id, profile_id)
+);
+create table if not exists kqag_pricing_references (
+  workspace_id text not null,
+  reference_id text not null,
+  payload_json text not null,
+  created_at text not null,
+  updated_at text not null,
+  primary key (workspace_id, reference_id)
+);
+create table if not exists kqag_quote_sessions (
+  workspace_id text not null,
+  session_id text not null,
+  metadata_json text not null,
+  draft_files_json text not null default '[]',
+  created_at text not null,
+  updated_at text not null,
+  primary key (workspace_id, session_id)
+);
+"""
+
+
+def sqlite_database_path_from_url(database_url: str) -> str:
+    parsed = urlparse(clean_text(database_url))
+    if parsed.scheme != "sqlite" or parsed.netloc not in {"", "localhost"} or parsed.query or parsed.fragment:
+        raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_url_unsupported")
+    if parsed.path in {"", "/"}:
+        raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
+    if parsed.path == "/:memory:":
+        return ":memory:"
+    path = unquote(parsed.path)
+    if re.fullmatch(r"/[A-Za-z]:/.*", path):
+        path = path[1:]
+    return path
+
+
+@contextlib.contextmanager
+def sqlite_storage_connection(database_url: str):
+    path = sqlite_database_path_from_url(database_url)
+    if path != ":memory:":
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def kqag_storage_migration_sql() -> str:
+    try:
+        sql = KQAG_STORAGE_MIGRATION_PATH.read_text(encoding="utf-8")
+    except OSError:
+        sql = KQAG_STORAGE_SQL
+    return sql
+
+
+def apply_kqag_storage_migrations(database_url: str | None = None) -> None:
+    url = clean_text(database_url) or configured_database_url()
+    if not url:
+        raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
+    with sqlite_storage_connection(url) as connection:
+        connection.executescript(kqag_storage_migration_sql())
+        connection.commit()
+
+
+def platform_context_from_auth_session(session: dict[str, Any] | None) -> dict[str, Any] | None:
+    user = session.get("user") if isinstance(session, dict) else None
+    platform = user.get("platform") if isinstance(user, dict) and isinstance(user.get("platform"), dict) else None
+    return platform if platform else None
+
+
+def platform_workspace_id_from_auth_session(session: dict[str, Any] | None) -> str:
+    platform = platform_context_from_auth_session(session)
+    workspace = platform.get("workspace") if isinstance(platform, dict) and isinstance(platform.get("workspace"), dict) else {}
+    return clean_text(workspace.get("workspaceId"))
+
+
+def storage_access_error_payload(exc: KqagStorageAccessError) -> dict[str, Any]:
+    error_reference = new_error_reference()
+    write_local_log("server_error", {"error_reference": error_reference, "reason": exc.reason, "status": exc.status, "errors": safe_error_messages([str(exc)])})
+    return {"status": "blocked" if exc.status < 500 else "failed", "errors": ["KQAG storage is not available for this workspace."], "error_reference": error_reference}
+
+
+class LocalKqagStorage:
+    storage_backend = "local-runtime-json"
+
+    def workspace(self) -> dict[str, Any]:
+        return default_runtime_workspace()
+
+    def company_id(self) -> str:
+        return self.workspace()["company"]["id"]
+
+    def list_profiles(self) -> list[dict[str, Any]]:
+        return list_profiles()
+
+    def list_company_profiles(self) -> list[dict[str, Any]]:
+        return company_config_store().list_profiles(self.company_id())
+
+    def save_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        return company_config_store().save_profile(self.company_id(), profile)
+
+    def delete_profile(self, profile_id: str) -> bool:
+        return company_config_store().delete_profile(self.company_id(), profile_id)
+
+    def company_profile_export_payload(self, profile_id: str) -> dict[str, Any] | None:
+        return company_profile_export_payload(profile_id, self.company_id())
+
+    def list_pricing_references(self) -> list[dict[str, Any]]:
+        return list_pricing_references(self.company_id())
+
+    def save_pricing_reference(self, reference: dict[str, Any]) -> dict[str, Any]:
+        return save_pricing_reference_pack(reference)
+
+    def delete_pricing_reference(self, reference_id: str, source: str = "local") -> bool:
+        return delete_pricing_reference_pack(reference_id, source=source)
+
+    def pricing_reference_detail(self, reference_id: str, source: str = "") -> dict[str, Any] | None:
+        return pricing_reference_pack_detail(reference_id, source=source)
+
+    def pricing_reference_export_xlsx(self, reference_id: str, source: str = "") -> tuple[str, bytes] | None:
+        return pricing_reference_export_xlsx(reference_id, source=source)
+
+    def create_or_update_quote_session(self, payload: dict[str, Any], result: dict[str, Any] | None = None, output_dir: Path | None = None, session_id: str | None = None) -> dict[str, Any]:
+        return create_or_update_quote_session(payload, result=result, output_dir=output_dir, session_id=session_id)
+
+    def list_quote_sessions(self) -> list[dict[str, Any]]:
+        return list_quote_sessions()
+
+    def get_quote_session(self, session_id: str, *, include_draft_state: bool = False) -> dict[str, Any] | None:
+        return get_quote_session(session_id, include_draft_state=include_draft_state)
+
+    def delete_quote_session(self, session_id: str) -> bool:
+        return delete_quote_session(session_id)
+
+    def quote_session_export_file_path(self, session_id: str, kind: str) -> Path | None:
+        safe_id = safe_quote_session_id(session_id, "")
+        expected_filename = QUOTE_SESSION_EXPORT_KINDS.get(clean_text(kind).lower())
+        if not safe_id or not expected_filename:
+            return None
+        metadata = read_quote_session_metadata(safe_id)
+        export = metadata.get("exports", {}).get(clean_text(kind).lower()) if metadata else None
+        filename = clean_text(export.get("filename")) if isinstance(export, dict) else ""
+        if filename != expected_filename or quote_session_export_is_stale(metadata, export if isinstance(export, dict) else None):
+            return None
+        path = quote_session_export_dir(safe_id) / filename
+        return path if path.exists() and path.is_file() else None
+
+
+class DatabaseKqagStorage:
+    storage_backend = "database"
+
+    def __init__(self, database_url: str, workspace_id: str) -> None:
+        self.database_url = database_url
+        self.workspace_id = clean_text(workspace_id)
+        if not self.workspace_id:
+            raise KqagStorageAccessError("Platform workspace context is required for database storage.", status=403, reason="storage_platform_session_required")
+
+    def connection(self):
+        return sqlite_storage_connection(self.database_url)
+
+    def ensure_ready(self) -> None:
+        required = {"kqag_profiles", "kqag_pricing_references", "kqag_quote_sessions"}
+        with self.connection() as connection:
+            rows = connection.execute(
+                "select name from sqlite_master where type = 'table' and name in (?, ?, ?)",
+                tuple(sorted(required)),
+            ).fetchall()
+        present = {clean_text(row["name"]) for row in rows}
+        if present != required:
+            raise KqagStorageAccessError(
+                "KQAG database storage migration has not been applied.",
+                status=503,
+                reason="storage_database_not_migrated",
+            )
+
+    def workspace(self) -> dict[str, Any]:
+        runtime = default_runtime_workspace()
+        runtime["workspace"].update({"id": self.workspace_id, "slug": self.workspace_id, "display_name": self.workspace_id, "storage_backend": self.storage_backend})
+        runtime["company"].update({"id": self.workspace_id, "slug": self.workspace_id, "display_name": self.workspace_id})
+        runtime["profile_presets"]["storage_path_template"] = "kqag_profiles[platform_workspace_id]"
+        runtime["pricing_references"]["storage_path_template"] = "kqag_pricing_references[platform_workspace_id]"
+        return runtime
+
+    def _read_payloads(self, table: str, id_column: str) -> list[dict[str, Any]]:
+        with self.connection() as connection:
+            rows = connection.execute(f"select payload_json from {table} where workspace_id = ? order by {id_column} collate nocase", (self.workspace_id,)).fetchall()
+        payloads: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict):
+                payloads.append(payload)
+        return payloads
+
+    def _read_payload(self, table: str, id_column: str, item_id: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(f"select payload_json from {table} where workspace_id = ? and {id_column} = ?", (self.workspace_id, item_id)).fetchone()
+        if not row:
+            return None
+        try:
+            payload = json.loads(row["payload_json"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _upsert_payload(self, table: str, id_column: str, item_id: str, payload: dict[str, Any]) -> None:
+        now = utc_timestamp()
+        payload_json = json.dumps(payload, ensure_ascii=True, sort_keys=True)
+        with self.connection() as connection:
+            connection.execute(
+                f"insert into {table} (workspace_id, {id_column}, payload_json, created_at, updated_at) values (?, ?, ?, ?, ?) "
+                f"on conflict(workspace_id, {id_column}) do update set payload_json = excluded.payload_json, updated_at = excluded.updated_at",
+                (self.workspace_id, item_id, payload_json, now, now),
+            )
+            connection.commit()
+
+    def _delete_payload(self, table: str, id_column: str, item_id: str) -> bool:
+        with self.connection() as connection:
+            cursor = connection.execute(f"delete from {table} where workspace_id = ? and {id_column} = ?", (self.workspace_id, item_id))
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def list_profiles(self) -> list[dict[str, Any]]:
+        profiles = [profile_public_summary(load_profile_pack(DEFAULT_PROFILE_ID))]
+        seen_ids = {safe_resource_id(profiles[0].get("id"), "")} if profiles else set()
+        for profile in self.list_company_profiles():
+            pack_config = company_profile_pack_config(profile)
+            summary = ProfilePack(safe_resource_id(profile.get("id"), ""), PROJECT_ROOT, pack_config, source="company").public_summary()
+            if summary["id"] not in seen_ids:
+                profiles.append(summary)
+                seen_ids.add(summary["id"])
+        return profiles
+
+    def list_company_profiles(self) -> list[dict[str, Any]]:
+        return self._read_payloads("kqag_profiles", "profile_id")
+
+    def save_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        profile_id = safe_resource_id(profile.get("id") or profile.get("label"), "")
+        if not profile_id:
+            raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        stored = {key: copy.deepcopy(value) for key, value in profile.items() if key not in {"_pack_assets", "pack", "profile_pack"}}
+        stored["id"] = profile_id
+        self._upsert_payload("kqag_profiles", "profile_id", profile_id, stored)
+        return stored
+
+    def delete_profile(self, profile_id: str) -> bool:
+        safe_id = safe_resource_id(profile_id, "")
+        if not safe_id:
+            raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        return self._delete_payload("kqag_profiles", "profile_id", safe_id)
+
+    def company_profile_export_payload(self, profile_id: str) -> dict[str, Any] | None:
+        safe_id = safe_resource_id(profile_id, "")
+        if not safe_id:
+            return None
+        profile = self._read_payload("kqag_profiles", "profile_id", safe_id)
+        if profile is None:
+            return None
+        return {"schema": COMPANY_PROFILE_EXPORT_SCHEMA, "exported_at": utc_timestamp(), "profile": {"id": safe_id, "label": clean_text(profile.get("label")) or safe_id, "description": clean_text(profile.get("description")), "defaults": copy.deepcopy(profile.get("defaults")) if isinstance(profile.get("defaults"), dict) else {}}}
+
+    def list_pricing_references(self) -> list[dict[str, Any]]:
+        company_references = [public_company_pricing_reference(reference) for reference in self._read_payloads("kqag_pricing_references", "reference_id")]
+        references_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for reference in company_references + list_local_pricing_references() + list_bundled_pricing_references():
+            key = (clean_text(reference.get("source")) or "bundled", safe_resource_id(reference.get("id"), ""))
+            if key[1]:
+                references_by_key[key] = reference
+        return sorted(references_by_key.values(), key=lambda item: (clean_text(item.get("label") or item.get("id")).casefold(), clean_text(item.get("source")).casefold(), clean_text(item.get("id")).casefold()))
+
+    def save_pricing_reference(self, reference: dict[str, Any]) -> dict[str, Any]:
+        reference_id = safe_resource_id(reference.get("id") or reference.get("label"), "")
+        if not reference_id:
+            raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+        stored = copy.deepcopy(reference)
+        stored["id"] = reference_id
+        self._upsert_payload("kqag_pricing_references", "reference_id", reference_id, stored)
+        return public_company_pricing_reference(stored)
+
+    def delete_pricing_reference(self, reference_id: str, source: str = "company") -> bool:
+        safe_id = safe_resource_id(reference_id, "")
+        if not safe_id:
+            raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+        if clean_text(source or "company").lower() not in {"company", ""}:
+            raise ValueError("Only workspace pricing references can be deleted in database storage mode.")
+        return self._delete_payload("kqag_pricing_references", "reference_id", safe_id)
+
+    def pricing_reference_detail(self, reference_id: str, source: str = "") -> dict[str, Any] | None:
+        safe_id = safe_resource_id(reference_id, "")
+        if not safe_id:
+            raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
+        requested_source = clean_text(source).lower()
+        if requested_source in {"", "company"}:
+            reference = self._read_payload("kqag_pricing_references", "reference_id", safe_id)
+            if reference is not None:
+                detail = public_company_pricing_reference(reference)
+                items = [dict(item) for item in (reference.get("items") if isinstance(reference.get("items"), list) else []) if isinstance(item, dict)]
+                ensure_pricing_reference_order_fields(items)
+                detail.update({"schema_version": int(parse_pricing_number(reference.get("schema_version")) or 1), "items": sorted_pricing_reference_items(items), "item_count": len(items)})
+                return detail
+            if requested_source == "company":
+                return None
+        return pricing_reference_pack_detail(safe_id, source=requested_source)
+
+    def pricing_reference_export_xlsx(self, reference_id: str, source: str = "") -> tuple[str, bytes] | None:
+        detail = self.pricing_reference_detail(reference_id, source=source)
+        if not detail:
+            return None
+        safe_id = safe_resource_id(reference_id, "")
+        filename_base = safe_segment(clean_text(detail.get("label")) or safe_id, safe_id)
+        pack = PricingReferencePack(safe_id, PROJECT_ROOT, pricing_reference_pack_config(detail), source=clean_text(detail.get("source")) or "company")
+        return f"{filename_base}-pricing-reference.xlsx", generated_pricing_reference_export_xlsx_bytes(detail, pack)
+
+    def _public_quote_session(self, metadata: dict[str, Any], *, include_draft_state: bool = False, draft_files: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        public = public_quote_session(metadata, include_draft_state=False)
+        if not public:
+            return {}
+        if include_draft_state:
+            public["draft_state"] = copy.deepcopy(metadata.get("draft_state")) if isinstance(metadata.get("draft_state"), dict) else {}
+            public["draft_files"] = copy.deepcopy(draft_files or [])
+        for kind in QUOTE_SESSION_EXPORT_KINDS:
+            export = public.get("exports", {}).get(kind) if isinstance(public.get("exports"), dict) else None
+            if isinstance(export, dict):
+                export["exists"] = False
+                export["url"] = None
+                export["missing"] = bool(clean_text(export.get("filename")))
+        return public
+
+    def _read_quote_session_metadata(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        safe_id = safe_quote_session_id(session_id, "")
+        if not safe_id:
+            return {}, []
+        with self.connection() as connection:
+            row = connection.execute("select metadata_json, draft_files_json from kqag_quote_sessions where workspace_id = ? and session_id = ?", (self.workspace_id, safe_id)).fetchone()
+        if not row:
+            return {}, []
+        try:
+            metadata = json.loads(row["metadata_json"])
+            draft_files = json.loads(row["draft_files_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            return {}, []
+        metadata = metadata if isinstance(metadata, dict) else {}
+        draft_files = draft_files if isinstance(draft_files, list) else []
+        if safe_quote_session_id(metadata.get("session_id"), "") != safe_id:
+            return {}, []
+        return metadata, [item for item in draft_files if isinstance(item, dict)]
+
+    def create_or_update_quote_session(self, payload: dict[str, Any], result: dict[str, Any] | None = None, output_dir: Path | None = None, session_id: str | None = None) -> dict[str, Any]:
+        _ = output_dir
+        patch = quote_session_patch_payload(payload)
+        resolved_session_id = safe_quote_session_id(session_id or patch.get("session_id") or payload.get("session_id"), "") or new_quote_session_id()
+        existing, _draft_files = self._read_quote_session_metadata(resolved_session_id)
+        now = utc_timestamp()
+        metadata = normalized_quote_session_metadata(existing) if existing else blank_quote_session_metadata(resolved_session_id, now)
+        metadata["updated_at"] = now
+        metadata["customer_summary"] = quote_session_customer_summary(payload, patch)
+        metadata["quote_company_profile"] = quote_session_profile_summary(payload, patch)
+        metadata["pricing_reference"] = quote_session_pricing_reference_summary(payload, patch)
+        metadata["commercials"] = quote_session_commercials(payload, patch)
+        status_patch = patch.get("status") if isinstance(patch.get("status"), dict) else {}
+        if isinstance(status_patch.get("quote_generated"), bool):
+            metadata["status"]["quote_generated"] = status_patch["quote_generated"]
+        if isinstance(patch.get("draft_state"), dict):
+            metadata["draft_state"] = quote_session_draft_state(patch)
+        if result_has_generated_quote(result):
+            metadata["status"]["quote_generated"] = True
+        if not result_has_generated_quote(result):
+            mark_quote_session_exports_stale(metadata, quote_session_current_draft_export_kinds(patch))
+        normalized = normalized_quote_session_metadata(metadata)
+        if not normalized:
+            raise ValueError("Quote session metadata is not valid.")
+        draft_files = quote_session_draft_files(patch) if isinstance(patch.get("draft_files"), list) else []
+        with self.connection() as connection:
+            connection.execute(
+                "insert into kqag_quote_sessions (workspace_id, session_id, metadata_json, draft_files_json, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(workspace_id, session_id) do update set metadata_json = excluded.metadata_json, draft_files_json = excluded.draft_files_json, updated_at = excluded.updated_at",
+                (self.workspace_id, normalized["session_id"], json.dumps(normalized, ensure_ascii=True, sort_keys=True), json.dumps(draft_files, ensure_ascii=True, sort_keys=True), normalized.get("created_at") or now, normalized.get("updated_at") or now),
+            )
+            connection.commit()
+        return self._public_quote_session(normalized)
+
+    def list_quote_sessions(self) -> list[dict[str, Any]]:
+        with self.connection() as connection:
+            rows = connection.execute("select metadata_json from kqag_quote_sessions where workspace_id = ?", (self.workspace_id,)).fetchall()
+        sessions: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                metadata = json.loads(row["metadata_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(metadata, dict):
+                session = self._public_quote_session(metadata)
+                if session:
+                    sessions.append(session)
+        return sorted(sessions, key=lambda item: (iso_timestamp_sort_value(item.get("updated_at")), clean_text(item.get("session_id")).casefold()), reverse=True)
+
+    def get_quote_session(self, session_id: str, *, include_draft_state: bool = False) -> dict[str, Any] | None:
+        metadata, draft_files = self._read_quote_session_metadata(session_id)
+        if not metadata:
+            return None
+        session = self._public_quote_session(metadata, include_draft_state=include_draft_state, draft_files=draft_files)
+        return session or None
+
+    def delete_quote_session(self, session_id: str) -> bool:
+        safe_id = safe_quote_session_id(session_id, "")
+        if not safe_id:
+            return False
+        with self.connection() as connection:
+            cursor = connection.execute("delete from kqag_quote_sessions where workspace_id = ? and session_id = ?", (self.workspace_id, safe_id))
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def quote_session_export_file_path(self, session_id: str, kind: str) -> Path | None:
+        _ = session_id, kind
+        return None
+
+
+def app_storage_for_auth_session(session: dict[str, Any] | None) -> LocalKqagStorage | DatabaseKqagStorage:
+    if configured_storage_mode() != "database":
+        return LocalKqagStorage()
+    workspace_id = platform_workspace_id_from_auth_session(session)
+    if not workspace_id:
+        raise KqagStorageAccessError("Platform workspace context is required for database storage.", status=403, reason="storage_platform_session_required")
+    database_url = configured_database_url()
+    if not database_url:
+        raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
+    storage = DatabaseKqagStorage(database_url, workspace_id)
+    storage.ensure_ready()
+    return storage
+
 def company_config_store() -> CompanyConfigStore:
     return CompanyConfigStore()
 
@@ -11554,7 +12010,13 @@ def quote_session_draft_state_value(value: Any, depth: int = 0) -> Any:
         sanitized: dict[str, Any] = {}
         for raw_key, raw_value in list(value.items())[:120]:
             key = dashboard_safe_text(raw_key, 80)
-            if not key or key in QUOTE_SESSION_DRAFT_STATE_STRIP_KEYS:
+            key_kind = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
+            if (
+                not key
+                or key in QUOTE_SESSION_DRAFT_STATE_STRIP_KEYS
+                or any(part in key_kind for part in ("token", "secret", "cookie", "nonce"))
+                or key_kind in {"authorization", "auth_code", "state"}
+            ):
                 continue
             sanitized[key] = quote_session_draft_state_value(raw_value, depth + 1)
         return sanitized
@@ -12309,6 +12771,7 @@ def run_quote_job(
     tmp_root: Path | None = None,
     job_id: str | None = None,
     pdf_mode: str = "none",
+    auth_session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = payload_with_workspace_quote_profile_defaults(payload)
     errors = validate_generation_payload(payload)
@@ -12405,7 +12868,7 @@ def run_quote_job(
         result["error_reference"] = error_reference
     if isinstance(payload.get("quote_session"), dict):
         try:
-            result["quote_session"] = create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+            result["quote_session"] = app_storage_for_auth_session(auth_session).create_or_update_quote_session(payload, result=result, output_dir=output_dir)
         except Exception as exc:  # pragma: no cover - defensive dashboard metadata boundary
             write_local_log(
                 "quote_session_update_failed",
@@ -12473,25 +12936,37 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             })
             return
         if path == "/api/quote-sessions":
-            self.send_json({"quote_sessions": list_quote_sessions()})
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            self.send_json({"quote_sessions": storage.list_quote_sessions()})
             return
         quote_session_download_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)/download/([A-Za-z0-9_-]+)", path)
         if quote_session_download_match:
-            self.send_quote_session_download(quote_session_download_match.group(1), quote_session_download_match.group(2))
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            self.send_quote_session_download(quote_session_download_match.group(1), quote_session_download_match.group(2), storage)
             return
         quote_session_detail_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", path)
         if quote_session_detail_match:
-            session = get_quote_session(quote_session_detail_match.group(1), include_draft_state=True)
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            session = storage.get_quote_session(quote_session_detail_match.group(1), include_draft_state=True)
             if not session:
                 self.send_json({"error": "Not found"}, status=404)
                 return
             self.send_json({"quote_session": session})
             return
         if path == "/api/profiles":
-            workspace = default_runtime_workspace()
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            workspace = storage.workspace()
             self.send_json({
-                "profiles": list_profiles(),
-                "pricing_references": list_pricing_references(),
+                "profiles": storage.list_profiles(),
+                "pricing_references": storage.list_pricing_references(),
                 "default_profile_id": workspace_profile_pack_id(workspace),
                 "default_pricing_reference_id": workspace_pricing_reference_id(workspace),
                 "company_id": workspace["company"]["id"],
@@ -12503,14 +12978,17 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            workspace = default_runtime_workspace()
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            workspace = storage.workspace()
             self.send_json({
                 "status": "ok",
                 "company_id": workspace["company"]["id"],
                 "workspace": workspace,
                 "permissions": self.current_permissions(),
-                "pricing_references": list_pricing_references(),
-                "profiles": list_profiles(),
+                "pricing_references": storage.list_pricing_references(),
+                "profiles": storage.list_profiles(),
             })
             return
         if path == "/api/settings/pricing-references":
@@ -12518,7 +12996,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            self.send_json({"pricing_references": list_pricing_references()})
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            self.send_json({"pricing_references": storage.list_pricing_references()})
             return
         pricing_reference_export_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)/export\.xlsx", path)
         if pricing_reference_export_match:
@@ -12529,7 +13010,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             try:
                 query = parse_qs(parsed.query)
                 source = clean_text((query.get("source") or [""])[0])
-                export = pricing_reference_export_xlsx(pricing_reference_export_match.group(1), source=source)
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                export = storage.pricing_reference_export_xlsx(pricing_reference_export_match.group(1), source=source)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -12548,7 +13032,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             try:
                 query = parse_qs(parsed.query)
                 source = clean_text((query.get("source") or [""])[0])
-                detail = pricing_reference_pack_detail(pricing_reference_detail_match.group(1), source=source)
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                detail = storage.pricing_reference_detail(pricing_reference_detail_match.group(1), source=source)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -12563,10 +13050,13 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            workspace = default_runtime_workspace()
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            workspace = storage.workspace()
             profile_id = profile_export_match.group(1)
             try:
-                payload = company_profile_export_payload(profile_id, workspace["company"]["id"])
+                payload = storage.company_profile_export_payload(profile_id)
             except Exception as exc:  # pragma: no cover - defensive HTTP boundary
                 error_reference = new_error_reference()
                 write_local_log("profile_export_failed", {
@@ -12593,12 +13083,15 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             if not allowed:
                 self.send_json(error, status=403)
                 return
-            workspace = default_runtime_workspace()
+            storage = self.current_app_storage()
+            if storage is None:
+                return
+            workspace = storage.workspace()
             self.send_json({
                 "company_id": workspace["company"]["id"],
                 "workspace": workspace,
-                "profiles": list_profiles(),
-                "company_profiles": company_config_store().list_profiles(workspace["company"]["id"]),
+                "profiles": storage.list_profiles(),
+                "company_profiles": storage.list_company_profiles(),
             })
             return
         if path == "/api/samples":
@@ -12667,7 +13160,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             try:
                 reference_id = safe_resource_id(payload.get("id") or payload.get("label"), "")
                 source = clean_text(payload.get("source"))
-                existing = pricing_reference_pack_detail(reference_id, source=source) if reference_id else None
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                existing = storage.pricing_reference_detail(reference_id, source=source) if reference_id else None
                 if existing and pricing_reference_payload_matches_existing_pack(payload, existing):
                     self.send_json({
                         "status": "unchanged",
@@ -12684,7 +13180,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 reference = normalize_pricing_reference_payload(payload)
                 with ai_log_tracking_scope(request_ai_tracking):
                     reference, metadata_enrichment_status = pricing_reference_with_ai_metadata_before_save(reference)
-                saved = save_pricing_reference_pack(reference)
+                saved = storage.save_pricing_reference(reference)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -12702,8 +13198,11 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 return
             try:
                 profile = normalize_profile_payload(payload)
-                workspace = default_runtime_workspace()
-                saved = company_config_store().save_profile(workspace["company"]["id"], profile)
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                workspace = storage.workspace()
+                saved = storage.save_profile(profile)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -12739,7 +13238,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             try:
-                session = create_or_update_quote_session(payload)
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                session = storage.create_or_update_quote_session(payload)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -12777,7 +13279,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/generate":
             try:
-                result = run_quote_job(payload)
+                result = run_quote_job(payload, auth_session=self.current_auth_session())
             except Exception as exc:  # pragma: no cover - defensive HTTP boundary
                 error_reference = new_error_reference()
                 result = failed_result_payload(error_reference)
@@ -12815,7 +13317,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             try:
-                deleted = delete_quote_session(quote_session_match.group(1))
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                deleted = storage.delete_quote_session(quote_session_match.group(1))
             except Exception as exc:  # pragma: no cover - defensive HTTP boundary
                 error_reference = new_error_reference()
                 write_local_log("server_error", {
@@ -12837,14 +13342,17 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             try:
                 query = parse_qs(parsed.query)
                 source = clean_text((query.get("source") or ["local"])[0]) or "local"
-                deleted = delete_pricing_reference_pack(pricing_match.group(1), source=source)
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                deleted = storage.delete_pricing_reference(pricing_match.group(1), source=source)
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
             self.send_json(
                 {
                     "status": "deleted" if deleted else "not_found",
-                    "pricing_references": list_pricing_references(),
+                    "pricing_references": storage.list_pricing_references(),
                     "default_pricing_reference_id": workspace_pricing_reference_id(),
                 },
                 status=200 if deleted else 404,
@@ -12857,7 +13365,10 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 self.send_json(error, status=403)
                 return
             try:
-                deleted = company_config_store().delete_profile(default_runtime_workspace()["company"]["id"], profile_match.group(1))
+                storage = self.current_app_storage()
+                if storage is None:
+                    return
+                deleted = storage.delete_profile(profile_match.group(1))
             except ValueError as exc:
                 self.send_json({"status": "blocked", "errors": safe_error_messages([str(exc)])}, status=400)
                 return
@@ -12875,6 +13386,13 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
 
     def current_permissions(self) -> dict[str, bool]:
         return permissions_for_auth_session(self.current_auth_session())
+
+    def current_app_storage(self) -> LocalKqagStorage | DatabaseKqagStorage | None:
+        try:
+            return app_storage_for_auth_session(self.current_auth_session())
+        except KqagStorageAccessError as exc:
+            self.send_json(storage_access_error_payload(exc), status=exc.status)
+            return None
 
     def require_permission(self, permission: str) -> tuple[bool, dict[str, Any]]:
         permissions = self.current_permissions()
@@ -13240,36 +13758,20 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_quote_session_download(self, session_id: str, kind: str) -> None:
+    def send_quote_session_download(self, session_id: str, kind: str, storage: LocalKqagStorage | DatabaseKqagStorage) -> None:
         safe_id = safe_quote_session_id(session_id, "")
         normalized_kind = clean_text(kind).lower()
         expected_filename = QUOTE_SESSION_EXPORT_KINDS.get(normalized_kind)
         if not safe_id or not expected_filename:
             self.send_json({"error": "Not found"}, status=404)
             return
-        metadata = read_quote_session_metadata(safe_id)
-        export = metadata.get("exports", {}).get(normalized_kind) if metadata else None
-        filename = clean_text(export.get("filename")) if isinstance(export, dict) else ""
-        if filename != expected_filename:
+        file_path = storage.quote_session_export_file_path(safe_id, normalized_kind)
+        if file_path is None:
             self.send_json({"error": "Not found"}, status=404)
             return
-        if quote_session_export_is_stale(metadata, export if isinstance(export, dict) else None):
-            self.send_json({"error": "Not found"}, status=404)
-            return
-        export_dir = quote_session_export_dir(safe_id)
-        file_path = export_dir / filename
-        try:
-            resolved = file_path.resolve()
-            resolved.relative_to(export_dir.resolve())
-        except ValueError:
-            self.send_json({"error": "Not found"}, status=404)
-            return
-        if not resolved.exists() or not resolved.is_file():
-            self.send_json({"error": "Not found"}, status=404)
-            return
-        content_type = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
-        body = resolved.read_bytes()
-        safe_filename = safe_segment(filename, expected_filename)
+        content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        body = file_path.read_bytes()
+        safe_filename = safe_segment(file_path.name, expected_filename)
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
@@ -13344,4 +13846,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
