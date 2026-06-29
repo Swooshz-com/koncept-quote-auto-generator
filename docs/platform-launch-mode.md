@@ -72,6 +72,12 @@ values.
 
 ## Deferred Work
 
-This adapter does not add cloud or database-backed KQAG storage. Platform-scoped
-storage for profiles, pricing references, and past sessions belongs in the next
-PR after the launch context boundary has been proven.
+This adapter does not add production deployment, object storage, billing,
+public signup, member management, or KQAG-owned accounts. Platform-scoped
+database storage for app data and generated artifacts is available behind its
+own explicit storage flags; multi-instance durable jobs and object storage are
+future work.
+
+For the operator smoke that ties launch consume, Platform workspace context,
+database quote-session rows, generated XLSX artifacts, and dashboard download
+together, see `docs/platform-uat-smoke-runbook.md`.
