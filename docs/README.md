@@ -22,6 +22,9 @@ platform concerns belong in `Swooshz-com/swooshz-platform`.
 - `docs/internal-uat-login-and-pre-vps-dry-run.md`: approved-tester login
   expectations and local/offline deploy-auth checks to run before buying or
   touching a VPS.
+- `docs/platform-launch-mode.md`: first KQAG-side Swooshz Platform launch
+  consume adapter boundary, env flags, safe consume shape, and cloud-storage
+  deferral.
 - `docs/pricing-catalog-import.md`: current pricing-reference import behavior,
   AI normalization/enrichment contracts, save behavior, ordering, and deferred
   import items.
