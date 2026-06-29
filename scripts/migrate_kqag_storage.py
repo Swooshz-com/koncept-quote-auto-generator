@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the reviewed KQAG platform-scoped storage migration."""
+"""Apply the reviewed KQAG platform-scoped storage migrations."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def main() -> int:
         print("KQAG_DATABASE_URL is required for the storage migration.", file=sys.stderr)
         return 2
     webapp.apply_kqag_storage_migrations(database_url)
-    print("KQAG storage migration applied.")
+    print("KQAG storage migrations applied.")
     return 0
 
 

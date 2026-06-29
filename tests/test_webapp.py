@@ -17441,6 +17441,238 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
         serialized = json.dumps(rows)
         self.assertNotIn(raw_launch_token, serialized)
         self.assertNotIn("launchToken", serialized)
+
+    def test_artifact_storage_mode_defaults_to_local_and_database_app_data_can_leave_artifacts_local(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(webapp.configured_artifact_storage_mode(), "local")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            database_url = f"sqlite:///{(tmp_path / 'kqag-storage.sqlite3').as_posix()}"
+            output_dir = tmp_path / "out" / "job-local-artifacts"
+            output_dir.mkdir(parents=True)
+            (output_dir / "quotation.xlsx").write_bytes(b"xlsx-local-compatible")
+            payload = valid_payload()
+            payload["quote_session"] = {"session_id": "quote-local-artifacts"}
+            result = {"status": "completed", "files": [{"name": "quotation.xlsx", "url": "/api/jobs/job-local-artifacts/files/quotation.xlsx"}]}
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-local-artifacts"))
+                session = storage.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+
+        self.assertEqual(session["session_id"], "quote-local-artifacts")
+        self.assertFalse(session["exports"]["xlsx"]["exists"])
+        self.assertIsNone(session["exports"]["xlsx"]["url"])
+
+    def test_database_artifact_storage_requires_platform_context_and_migration(self):
+        with mock.patch.dict(os.environ, {"KQAG_ARTIFACT_STORAGE_MODE": "database"}, clear=True):
+            with self.assertRaises(webapp.KqagStorageAccessError) as missing_session:
+                webapp.artifact_storage_for_auth_session(None)
+        self.assertEqual(missing_session.exception.status, 403)
+        self.assertEqual(missing_session.exception.reason, "storage_platform_session_required")
+
+        platform_session = self.platform_auth_session("workspace-artifact-required")
+        with mock.patch.dict(os.environ, {"KQAG_ARTIFACT_STORAGE_MODE": "database"}, clear=True):
+            with self.assertRaises(webapp.KqagStorageAccessError) as missing_database:
+                webapp.artifact_storage_for_auth_session(platform_session)
+        self.assertEqual(missing_database.exception.status, 503)
+        self.assertEqual(missing_database.exception.reason, "storage_database_not_configured")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            database_url = f"sqlite:///{(Path(tmp) / 'missing-artifact-migration.sqlite3').as_posix()}"
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_ARTIFACT_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                with webapp.sqlite_storage_connection(database_url) as connection:
+                    connection.executescript(webapp.KQAG_STORAGE_SQL)
+                    connection.commit()
+                with self.assertRaises(webapp.KqagStorageAccessError) as missing_migration:
+                    webapp.app_storage_for_auth_session(platform_session)
+        self.assertEqual(missing_migration.exception.status, 503)
+        self.assertEqual(missing_migration.exception.reason, "storage_artifact_database_not_migrated")
+
+    def test_database_artifact_storage_saves_workspace_scoped_generated_exports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "kqag-storage.sqlite3"
+            database_url = f"sqlite:///{db_path.as_posix()}"
+            output_dir = tmp_path / "out" / "job-artifact"
+            output_dir.mkdir(parents=True)
+            xlsx_bytes = b"xlsx-db-artifact"
+            (output_dir / "quotation.xlsx").write_bytes(xlsx_bytes)
+            payload = valid_payload()
+            payload["quote_session"] = {"session_id": "quote-artifact"}
+            result = {"status": "completed", "files": [{"name": "quotation.xlsx", "url": "/api/jobs/job-artifact/files/quotation.xlsx"}]}
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_ARTIFACT_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-artifact-a"))
+                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-artifact-b"))
+                session = workspace_a.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+                artifact = workspace_a.quote_session_export_artifact("quote-artifact", "xlsx")
+                blocked_artifact = workspace_b.quote_session_export_artifact("quote-artifact", "xlsx")
+
+        self.assertTrue(session["exports"]["xlsx"]["exists"])
+        self.assertEqual(session["exports"]["xlsx"]["size_bytes"], len(xlsx_bytes))
+        self.assertEqual(session["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-artifact/download/xlsx")
+        self.assertFalse(session["exports"]["pdf"]["exists"])
+        self.assertFalse(session["exports"]["pdf"].get("stale", False))
+        self.assertEqual(artifact["filename"], "quotation.xlsx")
+        self.assertEqual(artifact["content"], xlsx_bytes)
+        self.assertIsNone(blocked_artifact)
+
+    def test_database_artifact_storage_downloads_generated_xlsx_through_http_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            database_url = f"sqlite:///{(tmp_path / 'kqag-storage.sqlite3').as_posix()}"
+            output_dir = tmp_path / "out" / "job-http-artifact"
+            output_dir.mkdir(parents=True)
+            xlsx_bytes = b"xlsx-http-artifact"
+            (output_dir / "quotation.xlsx").write_bytes(xlsx_bytes)
+            payload = valid_payload()
+            payload["quote_session"] = {"session_id": "quote-http-artifact"}
+            result = {"status": "completed", "files": [{"name": "quotation.xlsx", "url": "/api/jobs/job-http-artifact/files/quotation.xlsx"}]}
+            env = {**self.deploy_auth_env(), "KQAG_STORAGE_MODE": "database", "KQAG_ARTIFACT_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-http-artifact"))
+                storage.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+                cookie = webapp.signed_cookie_value(self.platform_auth_session("workspace-http-artifact"))
+                session_cookie = f"{webapp.SESSION_COOKIE_NAME}={cookie}"
+                with LocalRunnerServer() as runner:
+                    parsed = urllib.parse.urlparse(runner.base_url)
+                    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+                    try:
+                        connection.request(
+                            "GET",
+                            "/api/quote-sessions/quote-http-artifact/download/xlsx",
+                            headers={"Cookie": session_cookie},
+                        )
+                        response = connection.getresponse()
+                        downloaded = response.read()
+                        status = response.status
+                    finally:
+                        connection.close()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded, xlsx_bytes)
+
+    def test_database_artifact_storage_saves_profile_and_pricing_assets_by_workspace(self):
+        layout_bytes = (KONCEPT_PROFILE / "quotation-layout.xlsx").read_bytes()
+        layout_data_url = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + base64.b64encode(layout_bytes).decode("ascii")
+        visual_data_url = "data:image/png;base64," + base64.b64encode(b"synthetic-visual").decode("ascii")
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "kqag-storage.sqlite3"
+            database_url = f"sqlite:///{db_path.as_posix()}"
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_ARTIFACT_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-asset-a"))
+                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-asset-b"))
+                profile = webapp.normalize_profile_payload({
+                    "id": "profile-assets",
+                    "label": "Profile Assets",
+                    "pack": {"quotation_layout": {"filename": "quotation-layout.xlsx", "data_url": layout_data_url}},
+                })
+                reference = webapp.normalize_pricing_reference_payload({
+                    "id": "pricing-assets",
+                    "label": "Pricing Assets",
+                    "items": [with_required_pricing_metadata({
+                        "id": "visual-row",
+                        "section": "Graphics",
+                        "description": "Printed graphics",
+                        "unit_hint": "sqm",
+                        "internal_cost": 10,
+                        "markup_multiplier": 2,
+                        "visual_references": [{"source": "xl/media/image4.png", "anchor_row": 4, "data_url": visual_data_url}],
+                    })],
+                })
+                workspace_a.save_profile(profile)
+                workspace_a.save_pricing_reference(reference)
+                self.assertEqual(workspace_b.list_company_profiles(), [])
+                self.assertIsNone(workspace_b.pricing_reference_detail("pricing-assets", source="company"))
+
+            connection = sqlite3.connect(db_path)
+            try:
+                rows_a = connection.execute(
+                    "select owner_type, owner_id, artifact_kind, filename, size_bytes from kqag_file_artifacts where workspace_id = ? order by owner_type, artifact_kind",
+                    ("workspace-asset-a",),
+                ).fetchall()
+                rows_b = connection.execute(
+                    "select owner_type from kqag_file_artifacts where workspace_id = ?",
+                    ("workspace-asset-b",),
+                ).fetchall()
+                stored_reference = connection.execute(
+                    "select payload_json from kqag_pricing_references where workspace_id = ? and reference_id = ?",
+                    ("workspace-asset-a", "pricing-assets"),
+                ).fetchone()[0]
+            finally:
+                connection.close()
+        self.assertEqual(
+            [(row[0], row[1], row[2], row[3]) for row in rows_a],
+            [
+                ("pricing_reference", "pricing-assets", "visual_1_1", "image4.png"),
+                ("profile", "profile-assets", "quotation_layout", "quotation-layout.xlsx"),
+            ],
+        )
+        self.assertGreater(rows_a[0][4], 0)
+        self.assertGreater(rows_a[1][4], 0)
+        self.assertEqual(rows_b, [])
+        self.assertNotIn("data:image", stored_reference)
+        self.assertIn("artifact://pricing-reference/pricing-assets/visual_1_1/image4.png", stored_reference)
+
+    def test_database_artifact_storage_does_not_persist_raw_platform_launch_token(self):
+        raw_launch_token = self.synthetic_platform_launch_token()
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "kqag-storage.sqlite3"
+            database_url = f"sqlite:///{db_path.as_posix()}"
+            output_dir = Path(tmp) / "out" / "job-token-artifact"
+            output_dir.mkdir(parents=True)
+            (output_dir / "quotation.xlsx").write_bytes(b"xlsx-safe-content")
+            payload = valid_payload()
+            payload["quote_session"] = {
+                "session_id": "quote-token-artifact",
+                "draft_state": {"launchToken": raw_launch_token, "output_dir": "<private-output-root>", "safeNote": "retained"},
+            }
+            result = {"status": "completed", "files": [{"name": "quotation.xlsx", "url": "/api/jobs/job-token-artifact/files/quotation.xlsx"}]}
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_ARTIFACT_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-token-artifact"))
+                storage.create_or_update_quote_session(payload, result=result, output_dir=output_dir)
+
+            connection = sqlite3.connect(db_path)
+            try:
+                rows = connection.execute(
+                    "select metadata_json from kqag_quote_sessions union all "
+                    "select filename || ':' || content_type from kqag_quote_artifacts"
+                ).fetchall()
+            finally:
+                connection.close()
+        serialized = json.dumps(rows)
+        self.assertNotIn(raw_launch_token, serialized)
+        self.assertNotIn("launchToken", serialized)
+        self.assertNotIn("<private-output-root>", serialized)
+
+    def test_async_generate_jobs_preserve_safe_platform_context_for_storage(self):
+        raw_launch_token = self.synthetic_platform_launch_token()
+        platform_session = self.platform_auth_session("workspace-async-artifacts")
+        platform_session["user"]["platform"]["launchToken"] = raw_launch_token
+        payload = valid_payload()
+
+        with mock.patch.object(webapp, "run_quote_job", return_value={"status": "completed", "errors": []}) as run:
+            with mock.patch.object(webapp, "set_job_state"):
+                webapp.finish_generate_job("job-platform-context", payload, auth_session=platform_session)
+        forwarded_session = run.call_args.kwargs["auth_session"]
+        self.assertEqual(webapp.platform_workspace_id_from_auth_session(forwarded_session), "workspace-async-artifacts")
+        self.assertNotIn(raw_launch_token, json.dumps(forwarded_session))
+
+        with mock.patch.object(webapp.threading, "Thread") as thread_class:
+            webapp.create_job("generate", payload, auth_session=platform_session)
+        thread_args = thread_class.call_args.kwargs["args"]
+        queued_session = thread_args[4]
+        self.assertEqual(webapp.platform_workspace_id_from_auth_session(queued_session), "workspace-async-artifacts")
+        self.assertNotIn(raw_launch_token, json.dumps(queued_session))
     def test_runtime_workspace_metadata_is_generic_and_has_no_repo_defaults(self):
         with (
             mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
