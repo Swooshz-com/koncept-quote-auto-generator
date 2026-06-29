@@ -244,6 +244,8 @@ OIDC_AUTHORIZE_URL_ENV_NAME = "OIDC_AUTHORIZE_URL"
 OIDC_TOKEN_URL_ENV_NAME = "OIDC_TOKEN_URL"
 OIDC_USERINFO_URL_ENV_NAME = "OIDC_USERINFO_URL"
 OIDC_LOGOUT_URL_ENV_NAME = "OIDC_LOGOUT_URL"
+PLATFORM_LAUNCH_MODE_ENV_NAME = "KQAG_PLATFORM_LAUNCH_MODE"
+PLATFORM_BASE_URL_ENV_NAME = "KQAG_PLATFORM_BASE_URL"
 AUTH_ALLOWED_EMAILS_ENV_NAME = "AUTH_ALLOWED_EMAILS"
 AUTH_ALLOWED_DOMAINS_ENV_NAME = "AUTH_ALLOWED_DOMAINS"
 AUTH_ALLOW_ANY_AUTHENTICATED_USER_ENV_NAME = "AUTH_ALLOW_ANY_AUTHENTICATED_USER"
@@ -259,11 +261,17 @@ OIDC_STATE_COOKIE_NAME = "swooshz_quote_oidc_state"
 SESSION_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60
 OIDC_PROVIDER_TIMEOUT_SECONDS = 15
 OIDC_PROVIDER_MAX_RESPONSE_BYTES = 128 * 1024
+PLATFORM_LAUNCH_ENDPOINT = "/api/platform/launch"
+PLATFORM_APP_KEY = "kqag"
+PLATFORM_LAUNCH_TOKEN_HEADER = "X-App-Launch-Token"
+PLATFORM_LAUNCH_PROVIDER_TIMEOUT_SECONDS = 15
+PLATFORM_LAUNCH_PROVIDER_MAX_RESPONSE_BYTES = 64 * 1024
 PROCESS_CSRF_TOKEN = secrets.token_urlsafe(32)
 SGT = dt.timezone(dt.timedelta(hours=8), "SGT")
 ALLOWED_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RATE_LIMIT_WINDOW_SECONDS = 60
 POST_RATE_LIMITS = {
+    PLATFORM_LAUNCH_ENDPOINT: 20,
     "/api/jobs": 30,
     "/api/draft": 15,
     "/api/generate": 15,
@@ -405,12 +413,16 @@ LOCAL_SECRET_REDACTION = "[local-runner-key]"
 QUERY_REDACTION = "redacted"
 SENSITIVE_LOG_QUERY_KEYS = {
     "access_token",
+    "app_launch_token",
+    "applaunchtoken",
     "auth_code",
     "client_secret",
     "code",
     "error_description",
     "error_uri",
     "id_token",
+    "launch_token",
+    "launchtoken",
     "refresh_token",
     "session_state",
     "state",
@@ -444,6 +456,13 @@ class RequestBodyError(ValueError):
 
 class OidcAuthError(RuntimeError):
     def __init__(self, message: str, *, status: int = 400, reason: str = "oidc_callback_failed") -> None:
+        super().__init__(message)
+        self.status = status
+        self.reason = reason
+
+
+class PlatformLaunchError(RuntimeError):
+    def __init__(self, message: str, *, status: int = 400, reason: str = "platform_launch_failed") -> None:
         super().__init__(message)
         self.status = status
         self.reason = reason
@@ -1262,6 +1281,34 @@ def oidc_config() -> dict[str, str]:
     }
 
 
+def configured_platform_launch_mode() -> str:
+    mode = clean_text(read_dotenv_value(PLATFORM_LAUNCH_MODE_ENV_NAME)).lower()
+    return "platform" if mode == "platform" else "disabled"
+
+
+def platform_launch_mode_enabled() -> bool:
+    return configured_platform_launch_mode() == "platform"
+
+
+def configured_platform_base_url() -> str:
+    base_url = clean_text(read_dotenv_value(PLATFORM_BASE_URL_ENV_NAME)).rstrip("/")
+    if not base_url:
+        return ""
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+        return ""
+    return base_url
+
+
+def platform_launch_consume_url() -> str:
+    base_url = configured_platform_base_url()
+    return f"{base_url}/api/platform/apps/launch/consume?{urlencode({'appKey': PLATFORM_APP_KEY})}" if base_url else ""
+
+
+def platform_launch_config_complete() -> bool:
+    return bool(platform_launch_mode_enabled() and session_secret() and configured_platform_base_url())
+
+
 def allowed_auth_emails() -> set[str]:
     return {value.lower() for value in comma_separated_env_values(AUTH_ALLOWED_EMAILS_ENV_NAME) if "@" in value}
 
@@ -1305,7 +1352,9 @@ def auth_required() -> bool:
 
 
 def deploy_requires_auth_guard() -> bool:
-    return configured_app_mode() == "deploy" and auth_required() and not oidc_config_complete()
+    return configured_app_mode() == "deploy" and auth_required() and not (
+        oidc_config_complete() or platform_launch_config_complete()
+    )
 
 
 def email_domain(email: str) -> str:
@@ -1498,6 +1547,165 @@ def oidc_fetch_userinfo(access_token: str) -> dict[str, Any]:
     return claims
 
 
+def platform_launch_json_request(request: urllib.request.Request) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(request, timeout=PLATFORM_LAUNCH_PROVIDER_TIMEOUT_SECONDS) as response:
+            raw = response.read(PLATFORM_LAUNCH_PROVIDER_MAX_RESPONSE_BYTES + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError) as exc:
+        raise PlatformLaunchError(
+            "Platform launch could not be verified.",
+            status=502,
+            reason="platform_launch_consume_failed",
+        ) from exc
+    if len(raw) > PLATFORM_LAUNCH_PROVIDER_MAX_RESPONSE_BYTES:
+        raise PlatformLaunchError(
+            "Platform launch could not be verified.",
+            status=502,
+            reason="platform_launch_response_too_large",
+        )
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PlatformLaunchError(
+            "Platform launch could not be verified.",
+            status=502,
+            reason="platform_launch_invalid_json",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise PlatformLaunchError(
+            "Platform launch could not be verified.",
+            status=502,
+            reason="platform_launch_invalid_json",
+        )
+    return payload
+
+
+def consume_platform_launch_token(raw_launch_token: str) -> dict[str, Any]:
+    token = clean_text(raw_launch_token)
+    if not token:
+        raise PlatformLaunchError(
+            "Platform launch token is required.",
+            status=400,
+            reason="platform_launch_missing_token",
+        )
+    url = platform_launch_consume_url()
+    if not url:
+        raise PlatformLaunchError(
+            "Platform launch is not configured.",
+            status=503,
+            reason="platform_launch_not_configured",
+        )
+    request = urllib.request.Request(
+        url,
+        data=b"",
+        headers={
+            "Accept": "application/json",
+            PLATFORM_LAUNCH_TOKEN_HEADER: token,
+        },
+        method="POST",
+    )
+    return safe_platform_launch_context(platform_launch_json_request(request))
+
+
+def parse_platform_expiry(value: Any) -> dt.datetime | None:
+    raw = clean_text(value)
+    if not raw:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PlatformLaunchError(
+            "Platform launch context is not valid for KQAG.",
+            status=403,
+            reason="platform_launch_invalid_expiry",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def safe_platform_launch_context(payload: dict[str, Any]) -> dict[str, Any]:
+    if clean_text(payload.get("outcome")) != "consumed":
+        raise PlatformLaunchError(
+            "Platform launch could not be verified.",
+            status=502,
+            reason="platform_launch_not_consumed",
+        )
+    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    workspace = payload.get("workspace") if isinstance(payload.get("workspace"), dict) else {}
+    app = payload.get("app") if isinstance(payload.get("app"), dict) else {}
+    user_id = clean_text(user.get("userId"))
+    workspace_id = clean_text(workspace.get("workspaceId"))
+    app_key = clean_text(app.get("appKey"))
+    expires_at = clean_text(payload.get("launchTokenExpiresAt"))
+    expiry = parse_platform_expiry(expires_at)
+    if expiry and expiry <= dt.datetime.now(dt.timezone.utc):
+        raise PlatformLaunchError(
+            "Platform launch context is not valid for KQAG.",
+            status=403,
+            reason="platform_launch_expired",
+        )
+    if not user_id or not workspace_id or app_key != PLATFORM_APP_KEY:
+        raise PlatformLaunchError(
+            "Platform launch context is not valid for KQAG.",
+            status=403,
+            reason="platform_launch_context_mismatch",
+        )
+    return {
+        "outcome": "consumed",
+        "user": {
+            "userId": user_id,
+            "email": clean_text(user.get("email")),
+            "displayName": clean_text(user.get("displayName")),
+            "status": clean_text(user.get("status")),
+        },
+        "workspace": {
+            "workspaceId": workspace_id,
+            "workspaceSlug": clean_text(workspace.get("workspaceSlug")),
+            "workspaceName": clean_text(workspace.get("workspaceName")),
+        },
+        "app": {
+            "appKey": app_key,
+            "appName": clean_text(app.get("appName")),
+        },
+        "membershipRole": clean_text(payload.get("membershipRole")),
+        "launchTokenExpiresAt": expires_at,
+    }
+
+
+def platform_membership_role_to_local_role(value: Any) -> str:
+    normalized = clean_text(value).lower()
+    if normalized in {"owner", "admin"}:
+        return "admin"
+    if normalized in {"member", "operator"}:
+        return "operator"
+    if normalized == "viewer":
+        return "viewer"
+    return ""
+
+
+def user_from_platform_launch_context(context: dict[str, Any]) -> dict[str, Any]:
+    user = context["user"]
+    workspace = context["workspace"]
+    return {
+        "subject": user["userId"],
+        "email": user["email"],
+        "name": user["displayName"],
+        "account": workspace["workspaceId"],
+        "platform": context,
+    }
+
+
+def permissions_for_auth_session(session: dict[str, Any] | None) -> dict[str, bool]:
+    user = session.get("user") if isinstance(session, dict) else None
+    platform = user.get("platform") if isinstance(user, dict) and isinstance(user.get("platform"), dict) else None
+    if platform:
+        role = platform_membership_role_to_local_role(platform.get("membershipRole"))
+        if role:
+            return role_permissions(role)
+    return current_permissions()
+
+
 def safe_logout_redirect_url(value: str) -> str:
     candidate = clean_text(value)
     if not candidate:
@@ -1558,26 +1766,30 @@ def deploy_uat_preflight_status() -> dict[str, Any]:
     add(APP_MODE_ENV_NAME, configured_app_mode() == "deploy", "must be set to deploy")
     add(AUTH_REQUIRED_ENV_NAME, configured_bool(AUTH_REQUIRED_ENV_NAME, False), "must be explicitly true")
     add(SESSION_SECRET_ENV_NAME, bool(clean_text(read_dotenv_value(SESSION_SECRET_ENV_NAME))), "must be present")
-    for name in (
-        OIDC_ISSUER_URL_ENV_NAME,
-        OIDC_CLIENT_ID_ENV_NAME,
-        OIDC_CLIENT_SECRET_ENV_NAME,
-        OIDC_REDIRECT_URI_ENV_NAME,
-        OIDC_AUTHORIZE_URL_ENV_NAME,
-        OIDC_TOKEN_URL_ENV_NAME,
-        OIDC_USERINFO_URL_ENV_NAME,
-    ):
-        add(name, bool(clean_text(read_dotenv_value(name))), "must be present")
-    add(
-        f"{AUTH_ALLOWED_EMAILS_ENV_NAME} or {AUTH_ALLOWED_DOMAINS_ENV_NAME}",
-        auth_allowlist_configured(),
-        "must allow approved testers or set the internal-only escape hatch",
-    )
-    add(
-        AUTH_APPROVED_TESTER_ROLE_ENV_NAME,
-        bool(user_type_role(read_dotenv_value(AUTH_APPROVED_TESTER_ROLE_ENV_NAME))),
-        "must be admin, management, operator, or viewer",
-    )
+    if platform_launch_mode_enabled():
+        add(PLATFORM_LAUNCH_MODE_ENV_NAME, configured_platform_launch_mode() == "platform", "must be set to platform")
+        add(PLATFORM_BASE_URL_ENV_NAME, bool(configured_platform_base_url()), "must be an http(s) platform base URL")
+    else:
+        for name in (
+            OIDC_ISSUER_URL_ENV_NAME,
+            OIDC_CLIENT_ID_ENV_NAME,
+            OIDC_CLIENT_SECRET_ENV_NAME,
+            OIDC_REDIRECT_URI_ENV_NAME,
+            OIDC_AUTHORIZE_URL_ENV_NAME,
+            OIDC_TOKEN_URL_ENV_NAME,
+            OIDC_USERINFO_URL_ENV_NAME,
+        ):
+            add(name, bool(clean_text(read_dotenv_value(name))), "must be present")
+        add(
+            f"{AUTH_ALLOWED_EMAILS_ENV_NAME} or {AUTH_ALLOWED_DOMAINS_ENV_NAME}",
+            auth_allowlist_configured(),
+            "must allow approved testers or set the internal-only escape hatch",
+        )
+        add(
+            AUTH_APPROVED_TESTER_ROLE_ENV_NAME,
+            bool(user_type_role(read_dotenv_value(AUTH_APPROVED_TESTER_ROLE_ENV_NAME))),
+            "must be admin, management, operator, or viewer",
+        )
     for name in (QUOTE_DATA_ROOT_ENV_NAME, QUOTE_OUTPUT_ROOT_ENV_NAME, QUOTE_TMP_ROOT_ENV_NAME, QUOTE_LOG_ROOT_ENV_NAME):
         raw = clean_text(read_dotenv_value(name))
         add(name, bool(raw) and path_is_outside_project(Path(raw).expanduser()), "must be present and outside the repository")
@@ -12236,7 +12448,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 "csrf_token": configured_csrf_token(),
                 "auth_required": auth_required(),
                 "authenticated": bool(session),
-                "permissions": current_permissions(),
+                "permissions": self.current_permissions(),
                 "user": session.get("user") if session else None,
             })
             return
@@ -12267,7 +12479,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             })
             return
         if path == "/api/settings":
-            allowed, error = require_permission("canManageSettings")
+            allowed, error = self.require_permission("canManageSettings")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12276,13 +12488,13 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "company_id": workspace["company"]["id"],
                 "workspace": workspace,
-                "permissions": current_permissions(),
+                "permissions": self.current_permissions(),
                 "pricing_references": list_pricing_references(),
                 "profiles": list_profiles(),
             })
             return
         if path == "/api/settings/pricing-references":
-            allowed, error = require_permission("canManagePricingReferences")
+            allowed, error = self.require_permission("canManagePricingReferences")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12290,7 +12502,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         pricing_reference_export_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)/export\.xlsx", path)
         if pricing_reference_export_match:
-            allowed, error = require_permission("canManagePricingReferences")
+            allowed, error = self.require_permission("canManagePricingReferences")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12309,7 +12521,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         pricing_reference_detail_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", path)
         if pricing_reference_detail_match:
-            allowed, error = require_permission("canManagePricingReferences")
+            allowed, error = self.require_permission("canManagePricingReferences")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12327,7 +12539,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         profile_export_match = re.fullmatch(r"/api/settings/profiles/([A-Za-z0-9_-]+)/export\.json", path)
         if profile_export_match:
-            allowed, error = require_permission("canManageProfiles")
+            allowed, error = self.require_permission("canManageProfiles")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12357,7 +12569,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             self.send_json_download(f"{export_profile_id}.quote-company-profile.json", payload)
             return
         if path == "/api/settings/profiles":
-            allowed, error = require_permission("canManageProfiles")
+            allowed, error = self.require_permission("canManageProfiles")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12400,6 +12612,9 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if self.block_untrusted_host():
             return
         parsed = urlparse(self.path)
+        if parsed.path == PLATFORM_LAUNCH_ENDPOINT:
+            self.handle_platform_launch()
+            return
         if self.block_unauthenticated_request(parsed.path):
             return
         if self.block_unsafe_post(parsed.path):
@@ -12416,7 +12631,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/settings/pricing-references/import-preview":
-            allowed, error = require_permission("canImportPricingReferences")
+            allowed, error = self.require_permission("canImportPricingReferences")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12425,7 +12640,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/settings/pricing-references":
-            allowed, error = require_permission("canManagePricingReferences")
+            allowed, error = self.require_permission("canManagePricingReferences")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12461,7 +12676,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/settings/profiles":
-            allowed, error = require_permission("canManageProfiles")
+            allowed, error = self.require_permission("canManageProfiles")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12491,7 +12706,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/line-items/normalize":
-            allowed, error = require_permission("canGenerateQuote")
+            allowed, error = self.require_permission("canGenerateQuote")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12499,7 +12714,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/quote-sessions":
-            allowed, error = require_permission("canGenerateQuote")
+            allowed, error = self.require_permission("canGenerateQuote")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12575,7 +12790,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         quote_session_match = re.fullmatch(r"/api/quote-sessions/([A-Za-z0-9_-]+)", parsed.path)
         if quote_session_match:
-            allowed, error = require_permission("canGenerateQuote")
+            allowed, error = self.require_permission("canGenerateQuote")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12595,7 +12810,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         pricing_match = re.fullmatch(r"/api/settings/pricing-references/([A-Za-z0-9_-]+)", parsed.path)
         if pricing_match:
-            allowed, error = require_permission("canManagePricingReferences")
+            allowed, error = self.require_permission("canManagePricingReferences")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12617,7 +12832,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             return
         profile_match = re.fullmatch(r"/api/settings/profiles/([A-Za-z0-9_-]+)", parsed.path)
         if profile_match:
-            allowed, error = require_permission("canManageProfiles")
+            allowed, error = self.require_permission("canManageProfiles")
             if not allowed:
                 self.send_json(error, status=403)
                 return
@@ -12638,8 +12853,71 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
     def current_auth_session(self) -> dict[str, Any] | None:
         return session_from_cookie_header(self.headers.get("Cookie", ""))
 
+    def current_permissions(self) -> dict[str, bool]:
+        return permissions_for_auth_session(self.current_auth_session())
+
+    def require_permission(self, permission: str) -> tuple[bool, dict[str, Any]]:
+        permissions = self.current_permissions()
+        if permissions.get(permission):
+            return True, permissions
+        return False, {
+            "status": "blocked",
+            "errors": ["You do not have permission to perform this action."],
+            "permissions": permissions,
+        }
+
     def current_ai_log_tracking(self) -> dict[str, Any]:
         return ai_log_tracking_metadata(self.current_auth_session())
+
+    def block_platform_launch_rate_limit(self) -> bool:
+        client_id = self.client_address[0] if self.client_address else "unknown"
+        if is_rate_limited(client_id, PLATFORM_LAUNCH_ENDPOINT):
+            write_local_log("abuse_signal", {"reason": "rate_limit", "path": PLATFORM_LAUNCH_ENDPOINT, "status": 429})
+            self.send_json({"status": "blocked", "errors": ["Too many platform launch requests. Wait a moment and retry."]}, status=429)
+            return True
+        return False
+
+    def handle_platform_launch(self) -> None:
+        if not platform_launch_mode_enabled():
+            self.send_json({"error": "Not found"}, status=404)
+            return
+        if self.block_platform_launch_rate_limit():
+            return
+        raw_launch_token = clean_text(self.headers.get(PLATFORM_LAUNCH_TOKEN_HEADER, ""))
+        try:
+            context = consume_platform_launch_token(raw_launch_token)
+        except PlatformLaunchError as exc:
+            write_local_log(
+                "security_event",
+                {"reason": exc.reason, "path": PLATFORM_LAUNCH_ENDPOINT, "status": exc.status},
+            )
+            self.send_json({"status": "blocked", "errors": [str(exc)]}, status=exc.status)
+            return
+        session_cookie_value = signed_cookie_value({"user": user_from_platform_launch_context(context)})
+        if not session_cookie_value:
+            write_local_log(
+                "security_event",
+                {"reason": "platform_launch_session_secret_missing", "path": PLATFORM_LAUNCH_ENDPOINT, "status": 503},
+            )
+            self.send_json({"status": "blocked", "errors": ["Platform launch is not configured."]}, status=503)
+            return
+        session_cookie = cookie_header_value(
+            SESSION_COOKIE_NAME,
+            session_cookie_value,
+            max_age=SESSION_COOKIE_MAX_AGE_SECONDS,
+        )
+        self.send_json(
+            {
+                "status": "platform_session_created",
+                "redirect_url": "/",
+                "user": context["user"],
+                "workspace": context["workspace"],
+                "app": context["app"],
+                "membershipRole": context["membershipRole"],
+                "launchTokenExpiresAt": context["launchTokenExpiresAt"],
+            },
+            extra_headers=[("Set-Cookie", session_cookie)],
+        )
 
     def block_unauthenticated_request(self, path: str) -> bool:
         if not auth_required():
@@ -12667,6 +12945,15 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
     def handle_login(self) -> None:
         if not auth_required():
             self.send_redirect("/")
+            return
+        if platform_launch_mode_enabled():
+            self.send_auth_page(
+                "Platform launch required",
+                "Open this quote runner from an approved Swooshz Platform workspace.",
+                action_href="/signed-out",
+                action_label="Back",
+                status=401,
+            )
             return
         if not oidc_config_complete():
             self.send_json({
@@ -12800,12 +13087,20 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             raise RequestBodyError("Request body must be a JSON object.")
         return payload
 
-    def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
+    def send_json(
+        self,
+        payload: dict[str, Any],
+        status: int = 200,
+        *,
+        extra_headers: list[tuple[str, str]] | None = None,
+    ) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_security_headers()
+        for name, value in extra_headers or []:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -13003,8 +13298,9 @@ def main() -> int:
         return 0 if status["status"] == "ready" else 2
     if deploy_requires_auth_guard():
         safe_stderr(
-            "Refusing deploy mode without a complete auth boundary. Configure SESSION_SECRET and OIDC_* "
-            "settings, or run APP_MODE=local for localhost-only use.\n"
+            "Refusing deploy mode without a complete auth boundary. Configure SESSION_SECRET with OIDC_* "
+            "settings or KQAG_PLATFORM_LAUNCH_MODE=platform with KQAG_PLATFORM_BASE_URL, or run APP_MODE=local "
+            "for localhost-only use.\n"
         )
         return 2
     if not is_safe_bind_host(args.host):

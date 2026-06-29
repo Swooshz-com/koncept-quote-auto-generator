@@ -534,6 +534,45 @@ class WebappServerTest(unittest.TestCase):
         env.update(overrides)
         return env
 
+    def platform_launch_env(self, **overrides):
+        env = {
+            "APP_MODE": "deploy",
+            "AUTH_REQUIRED": "true",
+            "SESSION_SECRET": "test-session-secret-with-enough-entropy",
+            "KQAG_PLATFORM_LAUNCH_MODE": "platform",
+            "KQAG_PLATFORM_BASE_URL": "https://platform.example.test",
+        }
+        env.update(overrides)
+        return env
+
+    def synthetic_platform_launch_token(self):
+        return "-".join(("synthetic", "launch", "token", "reference"))
+
+    def platform_consume_payload(self, **overrides):
+        payload = {
+            "outcome": "consumed",
+            "user": {
+                "userId": "platform-user-123",
+                "email": "operator@example.test",
+                "displayName": "Synthetic Operator",
+                "status": "active",
+            },
+            "workspace": {
+                "workspaceId": "workspace-123",
+                "workspaceSlug": "synthetic-workspace",
+                "workspaceName": "Synthetic Workspace",
+            },
+            "app": {
+                "appKey": "kqag",
+                "appName": "KQAG / SAQG",
+            },
+            "membershipRole": "owner",
+            "launchTokenExpiresAt": "2999-01-01T00:00:00.000Z",
+        }
+        for key, value in overrides.items():
+            payload[key] = value
+        return payload
+
     def no_redirect_opener(self):
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -3036,6 +3075,200 @@ class WebappServerTest(unittest.TestCase):
         self.assertIn("/callback?state=redacted&code=redacted&error_description=redacted", output)
         for sensitive in ("state-secret", "fake-code", "private-provider-detail"):
             self.assertNotIn(sensitive, output)
+
+    def test_platform_launch_mode_consumes_header_token_and_sets_safe_session(self):
+        env = self.platform_launch_env()
+        raw_launch_token = self.synthetic_platform_launch_token()
+        captured_requests: list[urllib.request.Request] = []
+
+        def fake_urlopen(request, timeout=0):
+            captured_requests.append(request)
+            return JsonResponseMock(self.platform_consume_payload())
+
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=fake_urlopen):
+                with LocalRunnerServer() as runner:
+                    request = urllib.request.Request(
+                        f"{runner.base_url}/api/platform/launch",
+                        data=b"",
+                        headers={"X-App-Launch-Token": raw_launch_token},
+                        method="POST",
+                    )
+                    response = opener.open(request, timeout=3)
+                    body = json.loads(response.read().decode("utf-8"))
+
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(body["status"], "platform_session_created")
+                    self.assertEqual(body["redirect_url"], "/")
+                    session_cookie = response.headers["Set-Cookie"]
+
+                    session_request = urllib.request.Request(
+                        f"{runner.base_url}/api/session",
+                        headers={"Cookie": session_cookie},
+                    )
+                    session_body = json.loads(opener.open(session_request, timeout=3).read().decode("utf-8"))
+
+        self.assertEqual(len(captured_requests), 1)
+        consume_request = captured_requests[0]
+        self.assertEqual(
+            consume_request.full_url,
+            "https://platform.example.test/api/platform/apps/launch/consume?appKey=kqag",
+        )
+        self.assertEqual(consume_request.get_method(), "POST")
+        self.assertEqual(consume_request.get_header("X-app-launch-token"), raw_launch_token)
+        self.assertNotIn(raw_launch_token, consume_request.full_url)
+        self.assertNotIn(raw_launch_token, json.dumps(body, sort_keys=True))
+        self.assertNotIn(raw_launch_token, json.dumps(session_body, sort_keys=True))
+        self.assertTrue(session_body["authenticated"])
+        self.assertEqual(session_body["user"]["subject"], "platform-user-123")
+        self.assertEqual(session_body["user"]["account"], "workspace-123")
+        self.assertEqual(session_body["user"]["platform"]["app"]["appKey"], "kqag")
+        self.assertEqual(session_body["permissions"]["role"], "admin")
+
+    def test_platform_launch_mode_satisfies_deploy_guard_without_oidc(self):
+        runtime_root = Path(tempfile.gettempdir()) / "kqag-platform-launch-test"
+        env = self.platform_launch_env(
+            QUOTE_DATA_ROOT=str(runtime_root / "data"),
+            QUOTE_OUTPUT_ROOT=str(runtime_root / "output"),
+            QUOTE_TMP_ROOT=str(runtime_root / "tmp"),
+            QUOTE_LOG_ROOT=str(runtime_root / "logs"),
+        )
+        with mock.patch.dict(os.environ, env, clear=True):
+            status = webapp.deploy_uat_preflight_status()
+
+            self.assertFalse(webapp.deploy_requires_auth_guard())
+        self.assertEqual(status["status"], "ready")
+        check_names = {check["name"] for check in status["checks"]}
+        self.assertIn("KQAG_PLATFORM_LAUNCH_MODE", check_names)
+        self.assertIn("KQAG_PLATFORM_BASE_URL", check_names)
+        self.assertNotIn("OIDC_CLIENT_SECRET", check_names)
+
+    def test_platform_launch_rejects_missing_token_without_platform_call(self):
+        env = self.platform_launch_env()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(webapp.urllib.request, "urlopen") as urlopen:
+                with LocalRunnerServer() as runner:
+                    request = urllib.request.Request(f"{runner.base_url}/api/platform/launch", data=b"", method="POST")
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        opener.open(request, timeout=3)
+                    body = json.loads(error.exception.read().decode("utf-8"))
+
+        self.assertEqual(error.exception.code, 400)
+        self.assertEqual(body["status"], "blocked")
+        self.assertIn("Platform launch token is required.", body["errors"])
+        urlopen.assert_not_called()
+
+    def test_platform_launch_rejects_wrong_app_key(self):
+        env = self.platform_launch_env()
+
+        def fake_urlopen(request, timeout=0):
+            return JsonResponseMock(self.platform_consume_payload(app={"appKey": "other", "appName": "Other"}))
+
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=fake_urlopen):
+                with LocalRunnerServer() as runner:
+                    request = urllib.request.Request(
+                        f"{runner.base_url}/api/platform/launch",
+                        data=b"",
+                        headers={"X-App-Launch-Token": self.synthetic_platform_launch_token()},
+                        method="POST",
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        opener.open(request, timeout=3)
+                    body = json.loads(error.exception.read().decode("utf-8"))
+
+        self.assertEqual(error.exception.code, 403)
+        self.assertEqual(body["status"], "blocked")
+        self.assertIn("Platform launch context is not valid for KQAG.", body["errors"])
+        self.assertNotIn(self.synthetic_platform_launch_token(), json.dumps(body))
+
+    def test_platform_launch_rejects_failed_consume_safely(self):
+        env = self.platform_launch_env()
+
+        def fake_urlopen(request, timeout=0):
+            raise urllib.error.HTTPError(
+                request.full_url,
+                401,
+                "Unauthorized",
+                {},
+                io.BytesIO(b'{"outcome":"invalid","detail":"private"}'),
+            )
+
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=fake_urlopen):
+                with LocalRunnerServer() as runner:
+                    request = urllib.request.Request(
+                        f"{runner.base_url}/api/platform/launch",
+                        data=b"",
+                        headers={"X-App-Launch-Token": self.synthetic_platform_launch_token()},
+                        method="POST",
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        opener.open(request, timeout=3)
+                    body = json.loads(error.exception.read().decode("utf-8"))
+
+        self.assertEqual(error.exception.code, 502)
+        self.assertEqual(body["status"], "blocked")
+        self.assertIn("Platform launch could not be verified.", body["errors"])
+        self.assertNotIn("private", json.dumps(body))
+        self.assertNotIn(self.synthetic_platform_launch_token(), json.dumps(body))
+
+    def test_platform_launch_rejects_missing_identity_workspace_and_expired_context(self):
+        base_payload = self.platform_consume_payload()
+        cases = [
+            ("missing-user", {**base_payload, "user": {"email": "operator@example.test"}}),
+            ("missing-workspace", {**base_payload, "workspace": {"workspaceSlug": "synthetic"}}),
+            ("expired", {**base_payload, "launchTokenExpiresAt": "2000-01-01T00:00:00.000Z"}),
+        ]
+
+        for label, payload in cases:
+            with self.subTest(label=label):
+                with self.assertRaises(webapp.PlatformLaunchError) as error:
+                    webapp.safe_platform_launch_context(payload)
+                self.assertEqual(error.exception.status, 403)
+                self.assertIn("not valid for KQAG", str(error.exception))
+
+    def test_platform_launch_access_log_redacts_launch_token_query_names(self):
+        written: list[str] = []
+        fake_handler = types.SimpleNamespace(
+            address_string=lambda: "127.0.0.1",
+            log_date_time_string=lambda: "26/Jun/2026 21:30:00",
+        )
+        request_line = (
+            "POST /api/platform/launch?launchToken=raw-launch-token-secret&app_launch_token=other-secret "
+            "HTTP/1.1"
+        )
+        with mock.patch.object(webapp, "safe_stderr", side_effect=written.append):
+            webapp.QuoteRunnerHandler.log_message(fake_handler, '"%s" %s %s', request_line, "400", "-")
+        output = "".join(written)
+        self.assertIn("/api/platform/launch?launchToken=redacted&app_launch_token=redacted", output)
+        self.assertNotIn("raw-launch-token-secret", output)
+        self.assertNotIn("other-secret", output)
+
+    def test_platform_launch_mode_disabled_keeps_local_session_behavior(self):
+        with mock.patch.dict(os.environ, {"APP_MODE": "local"}, clear=True):
+            self.assertFalse(webapp.auth_required())
+            with LocalRunnerServer() as runner:
+                session_body = json.loads(urllib.request.urlopen(f"{runner.base_url}/api/session", timeout=3).read().decode("utf-8"))
+                request = urllib.request.Request(
+                    f"{runner.base_url}/api/platform/launch",
+                    data=b"",
+                    headers={"X-App-Launch-Token": self.synthetic_platform_launch_token()},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(request, timeout=3)
+                body = json.loads(error.exception.read().decode("utf-8"))
+
+        self.assertFalse(session_body["auth_required"])
+        self.assertFalse(session_body["authenticated"])
+        self.assertEqual(session_body["permissions"]["role"], "admin")
+        self.assertEqual(error.exception.code, 404)
+        self.assertEqual(body["error"], "Not found")
 
     def test_deploy_logout_clears_session_and_state_cookies(self):
         env = self.deploy_auth_env(OIDC_LOGOUT_URL="https://issuer.example/logout")
