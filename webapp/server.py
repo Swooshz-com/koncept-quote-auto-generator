@@ -230,6 +230,11 @@ QUOTE_SESSION_EXPORT_KINDS = {
     "xlsx": "quotation.xlsx",
     "pdf": "quotation.pdf",
 }
+QUOTE_SESSION_EXPORT_CONTENT_TYPES = {
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "pdf": "application/pdf",
+}
+MAX_QUOTE_ARTIFACT_BYTES = 24 * 1024 * 1024
 DEFAULT_CSRF_HEADER_NAME = "X-Swooshz-CSRF"
 CSRF_HEADER_NAME_ENV_NAME = "LOCAL_RUNNER_CSRF_HEADER_NAME"
 CSRF_TOKEN_ENV_NAME = "LOCAL_RUNNER_CSRF_TOKEN"
@@ -256,6 +261,7 @@ QUOTE_TMP_ROOT_ENV_NAME = "QUOTE_TMP_ROOT"
 QUOTE_LOG_ROOT_ENV_NAME = "QUOTE_LOG_ROOT"
 QUOTE_DATA_ROOT_ENV_NAME = "QUOTE_DATA_ROOT"
 KQAG_STORAGE_MODE_ENV_NAME = "KQAG_STORAGE_MODE"
+KQAG_ARTIFACT_STORAGE_MODE_ENV_NAME = "KQAG_ARTIFACT_STORAGE_MODE"
 KQAG_DATABASE_URL_ENV_NAME = "KQAG_DATABASE_URL"
 USER_TYPE_ENV_NAME = "USER_TYPE"
 LOCAL_USER_ROLE_ENV_NAME = "LOCAL_USER_ROLE"
@@ -1280,6 +1286,11 @@ def configured_data_root() -> Path:
 
 def configured_storage_mode() -> str:
     mode = clean_text(read_dotenv_value(KQAG_STORAGE_MODE_ENV_NAME)).lower()
+    return "database" if mode == "database" else "local"
+
+
+def configured_artifact_storage_mode() -> str:
+    mode = clean_text(read_dotenv_value(KQAG_ARTIFACT_STORAGE_MODE_ENV_NAME)).lower()
     return "database" if mode == "database" else "local"
 
 
@@ -6603,7 +6614,10 @@ class CompanyConfigStore:
         return deleted
 
 
-KQAG_STORAGE_MIGRATION_PATH = PROJECT_ROOT / "migrations" / "001_platform_scoped_storage.sql"
+KQAG_STORAGE_MIGRATION_PATHS = [
+    PROJECT_ROOT / "migrations" / "001_platform_scoped_storage.sql",
+    PROJECT_ROOT / "migrations" / "002_platform_scoped_artifacts.sql",
+]
 KQAG_STORAGE_SQL = """
 create table if not exists kqag_profiles (
   workspace_id text not null,
@@ -6631,7 +6645,33 @@ create table if not exists kqag_quote_sessions (
   primary key (workspace_id, session_id)
 );
 """
-
+KQAG_ARTIFACT_STORAGE_SQL = """
+create table if not exists kqag_quote_artifacts (
+  workspace_id text not null,
+  session_id text not null,
+  artifact_kind text not null,
+  filename text not null,
+  content_type text not null,
+  size_bytes integer not null,
+  content_blob blob not null,
+  created_at text not null,
+  updated_at text not null,
+  primary key (workspace_id, session_id, artifact_kind)
+);
+create table if not exists kqag_file_artifacts (
+  workspace_id text not null,
+  owner_type text not null,
+  owner_id text not null,
+  artifact_kind text not null,
+  filename text not null,
+  content_type text not null,
+  size_bytes integer not null,
+  content_blob blob not null,
+  created_at text not null,
+  updated_at text not null,
+  primary key (workspace_id, owner_type, owner_id, artifact_kind)
+);
+"""
 
 def sqlite_database_path_from_url(database_url: str) -> str:
     parsed = urlparse(clean_text(database_url))
@@ -6661,12 +6701,15 @@ def sqlite_storage_connection(database_url: str):
 
 
 def kqag_storage_migration_sql() -> str:
-    try:
-        sql = KQAG_STORAGE_MIGRATION_PATH.read_text(encoding="utf-8")
-    except OSError:
-        sql = KQAG_STORAGE_SQL
-    return sql
-
+    sql_parts: list[str] = []
+    for path in KQAG_STORAGE_MIGRATION_PATHS:
+        try:
+            sql_parts.append(path.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+    if sql_parts:
+        return "\n".join(sql_parts)
+    return KQAG_STORAGE_SQL + "\n" + KQAG_ARTIFACT_STORAGE_SQL
 
 def apply_kqag_storage_migrations(database_url: str | None = None) -> None:
     url = clean_text(database_url) or configured_database_url()
@@ -6687,6 +6730,17 @@ def platform_workspace_id_from_auth_session(session: dict[str, Any] | None) -> s
     platform = platform_context_from_auth_session(session)
     workspace = platform.get("workspace") if isinstance(platform, dict) and isinstance(platform.get("workspace"), dict) else {}
     return clean_text(workspace.get("workspaceId"))
+
+
+def safe_auth_session_for_async(session: dict[str, Any] | None) -> dict[str, Any] | None:
+    platform = platform_context_from_auth_session(session)
+    if not platform:
+        return None
+    try:
+        context = safe_platform_launch_context(platform)
+    except PlatformLaunchError:
+        return None
+    return {"user": user_from_platform_launch_context(context)}
 
 
 def storage_access_error_payload(exc: KqagStorageAccessError) -> dict[str, Any]:
@@ -6746,6 +6800,10 @@ class LocalKqagStorage:
     def delete_quote_session(self, session_id: str) -> bool:
         return delete_quote_session(session_id)
 
+    def quote_session_export_artifact(self, session_id: str, kind: str) -> dict[str, Any] | None:
+        _ = session_id, kind
+        return None
+
     def quote_session_export_file_path(self, session_id: str, kind: str) -> Path | None:
         safe_id = safe_quote_session_id(session_id, "")
         expected_filename = QUOTE_SESSION_EXPORT_KINDS.get(clean_text(kind).lower())
@@ -6774,18 +6832,25 @@ class DatabaseKqagStorage:
 
     def ensure_ready(self) -> None:
         required = {"kqag_profiles", "kqag_pricing_references", "kqag_quote_sessions"}
+        self._ensure_tables(required, reason="storage_database_not_migrated")
+
+    def ensure_artifact_ready(self) -> None:
+        required = {"kqag_quote_artifacts", "kqag_file_artifacts"}
+        self._ensure_tables(required, reason="storage_artifact_database_not_migrated")
+
+    def _ensure_tables(self, required: set[str], *, reason: str) -> None:
+        placeholders = ", ".join("?" for _ in required)
         with self.connection() as connection:
             rows = connection.execute(
-                "select name from sqlite_master where type = 'table' and name in (?, ?, ?)",
+                f"select name from sqlite_master where type = 'table' and name in ({placeholders})",
                 tuple(sorted(required)),
             ).fetchall()
         present = {clean_text(row["name"]) for row in rows}
         if present != required:
-            raise KqagStorageAccessError(
-                "KQAG database storage migration has not been applied.",
-                status=503,
-                reason="storage_database_not_migrated",
-            )
+            message = "KQAG database storage migration has not been applied."
+            if reason == "storage_artifact_database_not_migrated":
+                message = "KQAG artifact storage migration has not been applied."
+            raise KqagStorageAccessError(message, status=503, reason=reason)
 
     def workspace(self) -> dict[str, Any]:
         runtime = default_runtime_workspace()
@@ -6854,6 +6919,8 @@ class DatabaseKqagStorage:
         profile_id = safe_resource_id(profile.get("id") or profile.get("label"), "")
         if not profile_id:
             raise ValueError("Profile id is required and may only contain letters, numbers, dashes, or underscores.")
+        if configured_artifact_storage_mode() == "database":
+            self._store_profile_pack_artifacts(profile_id, profile)
         stored = {key: copy.deepcopy(value) for key, value in profile.items() if key not in {"_pack_assets", "pack", "profile_pack"}}
         stored["id"] = profile_id
         self._upsert_payload("kqag_profiles", "profile_id", profile_id, stored)
@@ -6889,6 +6956,8 @@ class DatabaseKqagStorage:
             raise ValueError("Pricing reference id is required and may only contain letters, numbers, dashes, or underscores.")
         stored = copy.deepcopy(reference)
         stored["id"] = reference_id
+        if configured_artifact_storage_mode() == "database":
+            stored = self._store_pricing_visual_artifacts(reference_id, stored)
         self._upsert_payload("kqag_pricing_references", "reference_id", reference_id, stored)
         return public_company_pricing_reference(stored)
 
@@ -6926,6 +6995,139 @@ class DatabaseKqagStorage:
         pack = PricingReferencePack(safe_id, PROJECT_ROOT, pricing_reference_pack_config(detail), source=clean_text(detail.get("source")) or "company")
         return f"{filename_base}-pricing-reference.xlsx", generated_pricing_reference_export_xlsx_bytes(detail, pack)
 
+    def _upsert_file_artifact(self, owner_type: str, owner_id: str, artifact_kind: str, filename: str, content_type: str, content: bytes) -> None:
+        safe_owner_type = safe_resource_id(owner_type, "")
+        safe_owner_id = safe_resource_id(owner_id, "")
+        safe_kind = safe_resource_id(artifact_kind, "")
+        safe_filename = safe_segment(filename, safe_kind or "artifact")
+        if not safe_owner_type or not safe_owner_id or not safe_kind or not content:
+            return
+        if len(content) > MAX_QUOTE_ARTIFACT_BYTES:
+            raise ValueError("Artifact is larger than the database artifact limit.")
+        now = utc_timestamp()
+        with self.connection() as connection:
+            connection.execute(
+                "insert into kqag_file_artifacts (workspace_id, owner_type, owner_id, artifact_kind, filename, content_type, size_bytes, content_blob, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "on conflict(workspace_id, owner_type, owner_id, artifact_kind) do update set filename = excluded.filename, content_type = excluded.content_type, size_bytes = excluded.size_bytes, content_blob = excluded.content_blob, updated_at = excluded.updated_at",
+                (self.workspace_id, safe_owner_type, safe_owner_id, safe_kind, safe_filename, clean_text(content_type) or "application/octet-stream", len(content), sqlite3.Binary(content), now, now),
+            )
+            connection.commit()
+
+    def _store_profile_pack_artifacts(self, profile_id: str, profile: dict[str, Any]) -> None:
+        pack_assets = profile.get("_pack_assets") if isinstance(profile.get("_pack_assets"), dict) else {}
+        layout = pack_assets.get("quotation_layout") if isinstance(pack_assets.get("quotation_layout"), dict) else {}
+        layout_bytes = layout.get("bytes") if isinstance(layout.get("bytes"), bytes) else b""
+        if layout_bytes:
+            self._upsert_file_artifact(
+                "profile",
+                profile_id,
+                "quotation_layout",
+                safe_profile_pack_filename(layout.get("filename"), "quotation-layout.xlsx", {".xlsx"}),
+                QUOTE_SESSION_EXPORT_CONTENT_TYPES["xlsx"],
+                layout_bytes,
+            )
+
+    def _store_pricing_visual_artifacts(self, reference_id: str, reference: dict[str, Any]) -> dict[str, Any]:
+        stored = copy.deepcopy(reference)
+        items = stored.get("items") if isinstance(stored.get("items"), list) else []
+        used_names: set[str] = set()
+        for item_index, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                continue
+            next_refs: list[dict[str, Any]] = []
+            for ref_index, ref in enumerate(sanitize_visual_references(item.get("visual_references")), start=1):
+                next_ref = {key: value for key, value in ref.items() if key != "data_url"}
+                data_url = clean_text(ref.get("data_url"))
+                if data_url:
+                    inline = data_url_inline_image(data_url)
+                    if not inline:
+                        continue
+                    try:
+                        image_bytes = base64.b64decode(inline["data"], validate=True)
+                    except (binascii.Error, KeyError):
+                        continue
+                    if not image_bytes or len(image_bytes) > MAX_PRICING_REFERENCE_VISUAL_BYTES:
+                        continue
+                    fallback = f"{safe_section_id(item.get('id'), f'item-{item_index}')}-{ref_index}"
+                    filename = unique_visual_asset_filename(ref.get("source"), fallback, inline.get("mime_type", "image/png"), used_names)
+                    artifact_kind = f"visual_{item_index}_{ref_index}"
+                    self._upsert_file_artifact("pricing_reference", reference_id, artifact_kind, filename, inline.get("mime_type", "image/png"), image_bytes)
+                    next_ref["path"] = f"artifact://pricing-reference/{reference_id}/{artifact_kind}/{filename}"
+                if next_ref.get("path") or next_ref.get("source"):
+                    next_refs.append(next_ref)
+            if next_refs:
+                item["visual_references"] = next_refs
+            else:
+                item.pop("visual_references", None)
+        stored["items"] = items
+        return stored
+
+    def _quote_artifact_metadata(self, session_id: str, kind: str) -> dict[str, Any] | None:
+        safe_id = safe_quote_session_id(session_id, "")
+        safe_kind = clean_text(kind).lower()
+        expected_filename = QUOTE_SESSION_EXPORT_KINDS.get(safe_kind)
+        if not safe_id or not expected_filename:
+            return None
+        with self.connection() as connection:
+            row = connection.execute(
+                "select filename, content_type, size_bytes, created_at, updated_at from kqag_quote_artifacts where workspace_id = ? and session_id = ? and artifact_kind = ?",
+                (self.workspace_id, safe_id, safe_kind),
+            ).fetchone()
+        if not row or clean_text(row["filename"]) != expected_filename:
+            return None
+        return {"filename": row["filename"], "content_type": row["content_type"], "size_bytes": int(row["size_bytes"] or 0), "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+    def _store_quote_export_artifacts(self, session_id: str, metadata: dict[str, Any], result: dict[str, Any] | None, output_dir: Path | None) -> None:
+        if not result_has_generated_quote(result) or output_dir is None:
+            return
+        for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
+            source = output_dir / filename
+            if not source.exists() or not source.is_file() or source.name != filename:
+                continue
+            size = source.stat().st_size
+            if size <= 0 or size > MAX_QUOTE_ARTIFACT_BYTES:
+                continue
+            content = source.read_bytes()
+            if len(content) != size:
+                continue
+            now = utc_timestamp()
+            content_type = QUOTE_SESSION_EXPORT_CONTENT_TYPES.get(kind, mimetypes.guess_type(filename)[0] or "application/octet-stream")
+            with self.connection() as connection:
+                connection.execute(
+                    "insert into kqag_quote_artifacts (workspace_id, session_id, artifact_kind, filename, content_type, size_bytes, content_blob, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "on conflict(workspace_id, session_id, artifact_kind) do update set filename = excluded.filename, content_type = excluded.content_type, size_bytes = excluded.size_bytes, content_blob = excluded.content_blob, updated_at = excluded.updated_at",
+                    (self.workspace_id, session_id, kind, filename, content_type, size, sqlite3.Binary(content), now, now),
+                )
+                connection.commit()
+            metadata["exports"][kind] = {"filename": filename, "created_at": now, "size_bytes": size, "stale": False}
+            metadata["status"][f"{kind}_exported"] = True
+
+    def quote_session_export_artifact(self, session_id: str, kind: str) -> dict[str, Any] | None:
+        if configured_artifact_storage_mode() != "database":
+            return None
+        safe_id = safe_quote_session_id(session_id, "")
+        safe_kind = clean_text(kind).lower()
+        expected_filename = QUOTE_SESSION_EXPORT_KINDS.get(safe_kind)
+        if not safe_id or not expected_filename:
+            return None
+        metadata, _draft_files = self._read_quote_session_metadata(safe_id)
+        export = metadata.get("exports", {}).get(safe_kind) if metadata else None
+        if not isinstance(export, dict) or clean_text(export.get("filename")) != expected_filename:
+            return None
+        if quote_session_export_is_stale(metadata, export):
+            return None
+        with self.connection() as connection:
+            row = connection.execute(
+                "select filename, content_type, size_bytes, content_blob from kqag_quote_artifacts where workspace_id = ? and session_id = ? and artifact_kind = ?",
+                (self.workspace_id, safe_id, safe_kind),
+            ).fetchone()
+        if not row or clean_text(row["filename"]) != expected_filename:
+            return None
+        content = bytes(row["content_blob"] or b"")
+        if not content or len(content) != int(row["size_bytes"] or 0):
+            return None
+        return {"filename": row["filename"], "content_type": row["content_type"], "size_bytes": int(row["size_bytes"] or 0), "content": content}
+
     def _public_quote_session(self, metadata: dict[str, Any], *, include_draft_state: bool = False, draft_files: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         public = public_quote_session(metadata, include_draft_state=False)
         if not public:
@@ -6933,12 +7135,35 @@ class DatabaseKqagStorage:
         if include_draft_state:
             public["draft_state"] = copy.deepcopy(metadata.get("draft_state")) if isinstance(metadata.get("draft_state"), dict) else {}
             public["draft_files"] = copy.deepcopy(draft_files or [])
-        for kind in QUOTE_SESSION_EXPORT_KINDS:
+        has_stale_export = False
+        has_available_export = False
+        for kind, filename in QUOTE_SESSION_EXPORT_KINDS.items():
             export = public.get("exports", {}).get(kind) if isinstance(public.get("exports"), dict) else None
-            if isinstance(export, dict):
-                export["exists"] = False
-                export["url"] = None
-                export["missing"] = bool(clean_text(export.get("filename")))
+            if not isinstance(export, dict):
+                continue
+            recorded_filename = clean_text(export.get("filename"))
+            safe_recorded = recorded_filename if recorded_filename == filename else ""
+            artifact = self._quote_artifact_metadata(public["session_id"], kind) if configured_artifact_storage_mode() == "database" and safe_recorded else None
+            artifact_exists = bool(artifact)
+            stale = bool(artifact_exists and quote_session_export_is_stale(metadata, export))
+            exists = bool(artifact_exists and not stale)
+            has_stale_export = has_stale_export or stale
+            has_available_export = has_available_export or exists
+            export["filename"] = safe_recorded or None
+            export["exists"] = exists
+            export["missing"] = bool(safe_recorded and not artifact_exists)
+            export["stale"] = stale
+            export["url"] = f"/api/quote-sessions/{public['session_id']}/download/{kind}" if exists else None
+            if artifact:
+                export["size_bytes"] = artifact["size_bytes"]
+            public["exports"][kind] = export
+        public["status"]["draft_modified"] = bool(has_stale_export and not has_available_export)
+        if has_stale_export and not has_available_export:
+            public["status"]["quote_generated"] = False
+        elif has_available_export:
+            public["status"]["quote_generated"] = True
+        else:
+            public["status"]["quote_generated"] = False
         return public
 
     def _read_quote_session_metadata(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -6961,7 +7186,6 @@ class DatabaseKqagStorage:
         return metadata, [item for item in draft_files if isinstance(item, dict)]
 
     def create_or_update_quote_session(self, payload: dict[str, Any], result: dict[str, Any] | None = None, output_dir: Path | None = None, session_id: str | None = None) -> dict[str, Any]:
-        _ = output_dir
         patch = quote_session_patch_payload(payload)
         resolved_session_id = safe_quote_session_id(session_id or patch.get("session_id") or payload.get("session_id"), "") or new_quote_session_id()
         existing, _draft_files = self._read_quote_session_metadata(resolved_session_id)
@@ -6979,6 +7203,8 @@ class DatabaseKqagStorage:
             metadata["draft_state"] = quote_session_draft_state(patch)
         if result_has_generated_quote(result):
             metadata["status"]["quote_generated"] = True
+            if configured_artifact_storage_mode() == "database":
+                self._store_quote_export_artifacts(resolved_session_id, metadata, result, output_dir)
         if not result_has_generated_quote(result):
             mark_quote_session_exports_stale(metadata, quote_session_current_draft_export_kinds(patch))
         normalized = normalized_quote_session_metadata(metadata)
@@ -7029,6 +7255,20 @@ class DatabaseKqagStorage:
         return None
 
 
+def artifact_storage_for_auth_session(session: dict[str, Any] | None) -> DatabaseKqagStorage | None:
+    if configured_artifact_storage_mode() != "database":
+        return None
+    workspace_id = platform_workspace_id_from_auth_session(session)
+    if not workspace_id:
+        raise KqagStorageAccessError("Platform workspace context is required for database storage.", status=403, reason="storage_platform_session_required")
+    database_url = configured_database_url()
+    if not database_url:
+        raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
+    storage = DatabaseKqagStorage(database_url, workspace_id)
+    storage.ensure_artifact_ready()
+    return storage
+
+
 def app_storage_for_auth_session(session: dict[str, Any] | None) -> LocalKqagStorage | DatabaseKqagStorage:
     if configured_storage_mode() != "database":
         return LocalKqagStorage()
@@ -7040,6 +7280,8 @@ def app_storage_for_auth_session(session: dict[str, Any] | None) -> LocalKqagSto
         raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
     storage = DatabaseKqagStorage(database_url, workspace_id)
     storage.ensure_ready()
+    if configured_artifact_storage_mode() == "database":
+        storage.ensure_artifact_ready()
     return storage
 
 def company_config_store() -> CompanyConfigStore:
@@ -12640,10 +12882,10 @@ def finish_draft_job(job_id: str, payload: dict[str, Any]) -> None:
         set_job_state(job_id, status="failed", result=result, errors=result["errors"], error_reference=error_reference)
 
 
-def finish_generate_job(job_id: str, payload: dict[str, Any]) -> None:
+def finish_generate_job(job_id: str, payload: dict[str, Any], auth_session: dict[str, Any] | None = None) -> None:
     try:
         pdf_mode = "workbook" if payload_requests_pdf_view(payload) else "none"
-        result = run_quote_job(payload, job_id=job_id, pdf_mode=pdf_mode)
+        result = run_quote_job(payload, job_id=job_id, pdf_mode=pdf_mode, auth_session=safe_auth_session_for_async(auth_session))
         status_map = {"needs_confirmation": "needs_review"}
         status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
         set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
@@ -12661,9 +12903,9 @@ def payload_requests_pdf_view(payload: dict[str, Any]) -> bool:
     return clean_text(value).lower() in {"1", "true", "yes", "workbook"}
 
 
-def finish_generate_pdf_job(job_id: str, payload: dict[str, Any]) -> None:
+def finish_generate_pdf_job(job_id: str, payload: dict[str, Any], auth_session: dict[str, Any] | None = None) -> None:
     try:
-        result = run_quote_job(payload, job_id=job_id, pdf_mode="workbook")
+        result = run_quote_job(payload, job_id=job_id, pdf_mode="workbook", auth_session=safe_auth_session_for_async(auth_session))
         status_map = {"needs_confirmation": "needs_review"}
         status = status_map.get(clean_text(result.get("status")), clean_text(result.get("status")) or "failed")
         set_job_state(job_id, status=status, result=result, errors=result.get("errors") or [])
@@ -12695,9 +12937,13 @@ def run_job_worker(
     job_id: str,
     payload: dict[str, Any],
     ai_tracking_context: dict[str, Any] | None = None,
+    auth_session: dict[str, Any] | None = None,
 ) -> None:
     with ai_log_tracking_scope(ai_tracking_context):
-        worker(job_id, payload)
+        if worker in {finish_generate_job, finish_generate_pdf_job}:
+            worker(job_id, payload, auth_session=auth_session)
+        else:
+            worker(job_id, payload)
 
 
 def create_job(
@@ -12705,6 +12951,7 @@ def create_job(
     payload: dict[str, Any],
     *,
     ai_tracking_context: dict[str, Any] | None = None,
+    auth_session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_type = clean_text(job_type).lower()
     if normalized_type not in {"draft", "generate", "generate_pdf", "basis_chat"}:
@@ -12750,7 +12997,7 @@ def create_job(
     }[normalized_type]
     thread = threading.Thread(
         target=run_job_worker,
-        args=(worker, job_id, payload, ai_tracking_context),
+        args=(worker, job_id, payload, ai_tracking_context, safe_auth_session_for_async(auth_session)),
         daemon=True,
     )
     set_job_state(job_id, status="running")
@@ -13217,7 +13464,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/jobs":
             job_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else payload
             job_type = clean_text(payload.get("type") or payload.get("job_type"))
-            result = create_job(job_type, job_payload, ai_tracking_context=request_ai_tracking)
+            result = create_job(job_type, job_payload, ai_tracking_context=request_ai_tracking, auth_session=self.current_auth_session())
             if result.get("status") == "blocked":
                 self.send_json(result, status=400)
                 return
@@ -13765,13 +14012,22 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
         if not safe_id or not expected_filename:
             self.send_json({"error": "Not found"}, status=404)
             return
-        file_path = storage.quote_session_export_file_path(safe_id, normalized_kind)
-        if file_path is None:
+        artifact = storage.quote_session_export_artifact(safe_id, normalized_kind)
+        if artifact is not None:
+            content_type = clean_text(artifact.get("content_type")) or QUOTE_SESSION_EXPORT_CONTENT_TYPES.get(normalized_kind, "application/octet-stream")
+            body = bytes(artifact.get("content") or b"")
+            safe_filename = safe_segment(artifact.get("filename"), expected_filename)
+        else:
+            file_path = storage.quote_session_export_file_path(safe_id, normalized_kind)
+            if file_path is None:
+                self.send_json({"error": "Not found"}, status=404)
+                return
+            content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+            body = file_path.read_bytes()
+            safe_filename = safe_segment(file_path.name, expected_filename)
+        if not body:
             self.send_json({"error": "Not found"}, status=404)
             return
-        content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
-        body = file_path.read_bytes()
-        safe_filename = safe_segment(file_path.name, expected_filename)
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
