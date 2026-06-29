@@ -17,7 +17,8 @@ issues, logs, screenshots, or PR text.
 In scope:
 
 - Platform Google OIDC sign-in and Platform session creation.
-- Platform KQAG app access and launch intent creation.
+- Platform KQAG app access and browser launch handoff.
+- Platform server-side handoff to KQAG using `X-App-Launch-Token`.
 - KQAG launch consume through `POST /api/platform/launch`.
 - Raw launch token forwarded from KQAG to Platform only in the
   `X-App-Launch-Token` header.
@@ -91,39 +92,28 @@ python -m webapp.server
 
 1. In the Platform repo, complete the reviewed local pre-smoke commands and
    migrations against a disposable local database.
-2. Start Platform with `npm run platform:start`.
-3. Open `<platform-base-url>/` in the browser.
-4. Complete Google sign-in.
-5. Confirm the callback lands on `/app`.
-6. Seed the logged-in provider-backed user for KQAG access using the Platform
+2. Configure Platform for same-host local KQAG handoff:
+
+```powershell
+$env:PLATFORM_KQAG_LAUNCH_MODE="server_handoff"
+$env:PLATFORM_KQAG_APP_BASE_URL="<kqag-local-base-url>"
+```
+
+3. Start Platform with `npm run platform:start`.
+4. Open `<platform-base-url>/` in the browser.
+5. Complete Google sign-in.
+6. Confirm the callback lands on `/app`.
+7. Seed the logged-in provider-backed user for KQAG access using the Platform
    seed command with the email used for sign-in. Do not paste the real email
    into chat or PR text.
-7. Refresh `/app` and confirm session context, workspace, and KQAG app access
+8. Refresh `/app` and confirm session context, workspace, and KQAG app access
    appear.
-8. Create a KQAG launch intent in the Platform shell.
-9. Keep the raw launch token in the temporary handoff area only long enough to
-   submit the KQAG launch request. Do not put it in a URL or browser storage.
-10. In a local terminal, submit the token to KQAG as a header-only POST. This
-    creates a KQAG session in the PowerShell web session, not in the browser:
-
-```powershell
-$launchToken = "<one-time-platform-launch-token>"
-$launchResponse = Invoke-WebRequest `
-  -Method Post `
-  -Uri "<kqag-base-url>/api/platform/launch" `
-  -Headers @{ "X-App-Launch-Token" = $launchToken } `
-  -SessionVariable kqagSession
-Remove-Variable launchToken
-```
-
-11. Confirm the terminal-scoped KQAG session context loads:
-
-```powershell
-Invoke-WebRequest `
-  -Method Get `
-  -Uri "<kqag-base-url>/api/session" `
-  -WebSession $kqagSession
-```
+9. Click the KQAG launch button in the Platform shell.
+10. Confirm the browser reaches `<kqag-local-base-url>/` without a launch token
+    in the URL.
+11. Confirm the browser-scoped KQAG session context loads by checking the
+    browser request to `<kqag-base-url>/api/session`. Do not copy the real
+    session cookie into chat, PR text, screenshots, or docs.
 
 12. For generated quote storage, session listing, and XLSX download coverage
     without private files or live services, run the automated local smoke test
@@ -133,30 +123,29 @@ Invoke-WebRequest `
     domain, private local path, or generated customer quote appears in logs,
     browser storage, screenshots, docs, or PR text.
 
-## Browser Launch Limitation
+## Browser Launch Shape
 
-The current Platform internal shell intentionally displays the one-time launch
-handoff payload and does not call KQAG. KQAG intentionally accepts the raw
-launch token only in the `X-App-Launch-Token` header. A direct cross-origin
-browser navigation cannot attach that header, and putting the token in a query
-string or browser storage is forbidden.
+The Platform internal shell now uses the browser-safe handoff route:
+`POST /api/platform/apps/launch/open?workspaceId=<platform-workspace-id>&appKey=kqag`.
+The browser calls Platform only. Platform creates the one-time launch token
+server-side, sends it to KQAG only in the `X-App-Launch-Token` header on
+`POST <kqag-local-base-url>/api/platform/launch`, relays KQAG's session cookie
+for the same browser cookie host, and returns only the safe KQAG launch URL to
+the browser.
 
-The terminal handoff above intentionally does not claim a normal browser has a
-KQAG session cookie. The current strongest safe local coverage is the automated
-KQAG smoke test, plus the manual Platform Google OIDC and launch-intent check.
-A fully clickable browser launch should be added later through a reviewed
-same-origin/reverse-proxy or similarly safe handoff design that preserves the
-header-only consume rule and does not expose the raw token in URLs, storage,
-logs, or screenshots.
+For local UAT, Platform and KQAG must be visited through the same browser cookie
+host, for example `127.0.0.1` on different ports. Mixing `localhost` and
+`127.0.0.1` is intentionally rejected by Platform. Cross-host or production
+routing remains out of scope for this runbook.
 
 ## Pass Criteria
 
 - Platform session context loads after Google sign-in.
 - Platform workspace appears.
 - KQAG app access appears.
-- Platform launch intent can be created.
+- Platform KQAG launch button reaches KQAG through the server-side handoff.
 - KQAG launch consume succeeds.
-- KQAG terminal-scoped session context loads with Platform workspace context.
+- KQAG browser-scoped session context loads with Platform workspace context.
 - Automated local smoke proves a generated quote session is stored under the
   Platform workspace ID.
 - Automated local smoke proves a generated XLSX artifact downloads from the
