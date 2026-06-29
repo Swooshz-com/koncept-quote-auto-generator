@@ -3138,6 +3138,128 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(session_body["user"]["platform"]["app"]["appKey"], "kqag")
         self.assertEqual(session_body["permissions"]["role"], "admin")
 
+    def test_platform_uat_smoke_launch_generate_list_and_download_database_artifact(self):
+        raw_launch_token = self.synthetic_platform_launch_token()
+        captured_requests: list[urllib.request.Request] = []
+        xlsx_bytes = xlsx_with_rows([["Platform UAT smoke"], ["workspace-scoped artifact"]])
+
+        def fake_urlopen(request, timeout=0):
+            captured_requests.append(request)
+            return JsonResponseMock(self.platform_consume_payload())
+
+        def fake_generator_run(command, **kwargs):
+            output_dir = Path(command[command.index("--out") + 1])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "quotation.xlsx").write_bytes(xlsx_bytes)
+            return webapp.subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout="Wrote quotation.xlsx\n",
+                stderr="",
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "kqag-platform-uat.sqlite3"
+            database_url = f"sqlite:///{db_path.as_posix()}"
+            env = self.platform_launch_env(
+                KQAG_STORAGE_MODE="database",
+                KQAG_ARTIFACT_STORAGE_MODE="database",
+                KQAG_DATABASE_URL=database_url,
+                QUOTE_DATA_ROOT=str(tmp_path / "data"),
+                QUOTE_OUTPUT_ROOT=str(tmp_path / "output"),
+                QUOTE_TMP_ROOT=str(tmp_path / "tmp"),
+                QUOTE_LOG_ROOT=str(tmp_path / "logs"),
+            )
+            payload = valid_payload()
+            payload["quote_session"] = {"session_id": "quote-platform-uat-smoke"}
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                with LocalRunnerServer() as runner:
+                    with mock.patch.object(webapp.urllib.request, "urlopen", side_effect=fake_urlopen):
+                        launch_request = urllib.request.Request(
+                            f"{runner.base_url}/api/platform/launch",
+                            data=b"",
+                            headers={"X-App-Launch-Token": raw_launch_token},
+                            method="POST",
+                        )
+                        launch_response = opener.open(launch_request, timeout=3)
+                        launch_body = json.loads(launch_response.read().decode("utf-8"))
+                        session_cookie = launch_response.headers["Set-Cookie"].split(";", 1)[0]
+
+                    with mock.patch.object(webapp.subprocess, "run", side_effect=fake_generator_run):
+                        session_request = urllib.request.Request(
+                            f"{runner.base_url}/api/session",
+                            headers={"Cookie": session_cookie},
+                        )
+                        session_body = json.loads(opener.open(session_request, timeout=3).read().decode("utf-8"))
+                        generate_request = urllib.request.Request(
+                            f"{runner.base_url}/api/generate",
+                            data=json.dumps(payload).encode("utf-8"),
+                            headers={
+                                "Content-Type": "application/json",
+                                "Cookie": session_cookie,
+                                session_body["csrf_header"]: session_body["csrf_token"],
+                            },
+                            method="POST",
+                        )
+                        generate_response = opener.open(generate_request, timeout=5)
+                        generate_body = json.loads(generate_response.read().decode("utf-8"))
+
+                    sessions_request = urllib.request.Request(
+                        f"{runner.base_url}/api/quote-sessions",
+                        headers={"Cookie": session_cookie},
+                    )
+                    sessions_body = json.loads(opener.open(sessions_request, timeout=3).read().decode("utf-8"))
+
+                    download_request = urllib.request.Request(
+                        f"{runner.base_url}/api/quote-sessions/quote-platform-uat-smoke/download/xlsx",
+                        headers={"Cookie": session_cookie},
+                    )
+                    download_response = opener.open(download_request, timeout=3)
+                    downloaded = download_response.read()
+
+            connection = sqlite3.connect(db_path)
+            try:
+                stored_sessions = connection.execute(
+                    "select workspace_id, session_id, metadata_json from kqag_quote_sessions"
+                ).fetchall()
+                stored_artifacts = connection.execute(
+                    "select workspace_id, session_id, artifact_kind, filename, size_bytes, content_blob from kqag_quote_artifacts"
+                ).fetchall()
+            finally:
+                connection.close()
+
+        self.assertEqual(len(captured_requests), 1)
+        consume_request = captured_requests[0]
+        self.assertEqual(consume_request.get_header("X-app-launch-token"), raw_launch_token)
+        self.assertNotIn(raw_launch_token, consume_request.full_url)
+        self.assertEqual(launch_body["status"], "platform_session_created")
+        self.assertEqual(generate_response.status, 200)
+        self.assertEqual(generate_body["status"], "completed")
+        self.assertEqual(generate_body["quote_session"]["session_id"], "quote-platform-uat-smoke")
+        self.assertEqual(generate_body["quote_session"]["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-platform-uat-smoke/download/xlsx")
+        self.assertEqual([item["session_id"] for item in sessions_body["quote_sessions"]], ["quote-platform-uat-smoke"])
+        self.assertEqual(download_response.status, 200)
+        self.assertEqual(downloaded, xlsx_bytes)
+        self.assertEqual(len(stored_sessions), 1)
+        self.assertEqual(stored_sessions[0][0], "workspace-123")
+        self.assertEqual(stored_sessions[0][1], "quote-platform-uat-smoke")
+        self.assertEqual(len(stored_artifacts), 1)
+        self.assertEqual(stored_artifacts[0][:5], ("workspace-123", "quote-platform-uat-smoke", "xlsx", "quotation.xlsx", len(xlsx_bytes)))
+        self.assertEqual(stored_artifacts[0][5], xlsx_bytes)
+        serialized = json.dumps({
+            "launch": launch_body,
+            "session": session_body,
+            "generate": generate_body,
+            "sessions": sessions_body,
+            "db": [stored_sessions, [row[:5] for row in stored_artifacts]],
+        }, sort_keys=True)
+        self.assertNotIn(raw_launch_token, serialized)
+        self.assertNotIn('"launchToken":', serialized)
+
     def test_platform_launch_mode_satisfies_deploy_guard_without_oidc(self):
         runtime_root = Path(tempfile.gettempdir()) / "kqag-platform-launch-test"
         env = self.platform_launch_env(
