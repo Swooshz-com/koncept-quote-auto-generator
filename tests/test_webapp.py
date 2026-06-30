@@ -8943,6 +8943,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Modify quote", js)
         self.assertIn("Duplicate Quote", js)
         self.assertIn('data-dashboard-panel-action="duplicate-session"', js)
+        self.assertIn('secondary-button sample-button dashboard-selected-action dashboard-duplicate-action', js)
+        dashboard_single_actions = js.split('dashboard-selected-actions dashboard-selected-actions--single', 1)[1].split('data-dashboard-panel-action="delete-session"', 1)[0]
+        self.assertLess(dashboard_single_actions.index('data-dashboard-panel-action="duplicate-session"'), dashboard_single_actions.index('data-dashboard-panel-action="modify-session"'))
         self.assertIn("async function duplicateDashboardQuote", js)
         self.assertIn("Clear selection", js)
         self.assertIn("handleTopbarBrandClick", js)
