@@ -12260,6 +12260,15 @@ def dashboard_safe_number(value: Any) -> float | None:
     return round(number, 2)
 
 
+def dashboard_safe_exchange_rate(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    number = parse_float_or_none(value)
+    if number is None or not math.isfinite(number) or number <= 0:
+        return None
+    return round(number, 4)
+
+
 def quote_session_patch_payload(payload: dict[str, Any]) -> dict[str, Any]:
     patch = payload.get("quote_session") if isinstance(payload.get("quote_session"), dict) else None
     return patch if patch is not None else payload
@@ -12326,10 +12335,14 @@ def quote_session_commercials(payload: dict[str, Any], patch: dict[str, Any]) ->
     subtotal = dashboard_safe_number(supplied.get("subtotal"))
     tax_amount = dashboard_safe_number(supplied.get("tax_amount"))
     grand_total = dashboard_safe_number(supplied.get("grand_total"))
+    exchange_rate = dashboard_safe_exchange_rate(
+        supplied.get("exchange_rate") if supplied.get("exchange_rate") not in (None, "") else payload.get("quote_exchange_rate")
+    )
     return {
         "currency": normalize_currency_label(supplied.get("currency") or quote_currency_from_payload(payload)),
         "tax_label": normalize_tax_label(supplied.get("tax_label") or tax.get("label")),
         "tax_rate": normalize_tax_rate(supplied.get("tax_rate") if supplied.get("tax_rate") not in (None, "") else tax.get("rate")),
+        "exchange_rate": exchange_rate if exchange_rate is not None else 1,
         "subtotal": subtotal,
         "tax_amount": tax_amount,
         "grand_total": grand_total,

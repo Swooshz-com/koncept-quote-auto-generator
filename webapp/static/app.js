@@ -370,6 +370,7 @@ const elements = {
   outputStatusPill: qs("#outputStatusPill"),
   outputSourceLabel: qs("#outputSourceLabel"),
   outputTotalLines: qs("#outputTotalLines"),
+  outputQuoteExchangeRate: qs("#outputQuoteExchangeRate"),
   messageList: qs("#messageList"),
   matchSummary: qs("#matchSummary"),
   pricingMatchesBody: qs("#pricingMatchesBody"),
@@ -1684,15 +1685,41 @@ function collectQuoteCurrency() {
 
 function collectQuoteExchangeRate() {
   const value = Number(String(elements.quoteExchangeRate?.value || "").trim());
+  if (collectQuoteCurrency() === selectedPricingReferenceCurrency()) return 1;
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function syncQuoteExchangeRateField() {
-  const selectedCurrency = selectedPricingReferenceCurrency();
-  const quoteCurrency = collectQuoteCurrency();
-  const showExchangeRate = Boolean(selectedCurrency && quoteCurrency && selectedCurrency !== quoteCurrency);
-  if (elements.quoteExchangeRateField) elements.quoteExchangeRateField.hidden = !showExchangeRate;
-  if (!showExchangeRate && elements.quoteExchangeRate) elements.quoteExchangeRate.value = "";
+  if (elements.quoteExchangeRateField) elements.quoteExchangeRateField.hidden = false;
+  if (elements.quoteExchangeRate && collectQuoteCurrency() === selectedPricingReferenceCurrency()) {
+    elements.quoteExchangeRate.value = "1";
+  }
+}
+
+function quoteCommercialTaxText(tax = collectTaxDetails()) {
+  return `${tax.label || DEFAULT_TAX_LABEL} ${taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE)}%`;
+}
+
+function quoteExchangeRateText(value = collectQuoteExchangeRate()) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  return number.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function syncQuoteCommercialContextPills() {
+  if (typeof document === "undefined") return;
+  const currency = collectQuoteCurrency();
+  const taxText = quoteCommercialTaxText();
+  const exchangeRateText = quoteExchangeRateText();
+  document.querySelectorAll("[data-pricing-reference-currency]").forEach((element) => {
+    element.textContent = currency;
+  });
+  document.querySelectorAll("[data-pricing-reference-tax]").forEach((element) => {
+    element.textContent = taxText;
+  });
+  document.querySelectorAll("[data-quote-exchange-rate]").forEach((element) => {
+    element.textContent = exchangeRateText;
+  });
 }
 
 function applyPricingReferenceCommercialDefaults() {
@@ -6984,7 +7011,10 @@ function updateOutputHeader(rows = state.outputRows) {
   if (elements.outputSourceLabel) {
     elements.outputSourceLabel.textContent = outputPricingSourceLabel();
   }
-  syncPricingReferenceContextPills();
+  syncQuoteCommercialContextPills();
+  if (elements.outputQuoteExchangeRate) {
+    elements.outputQuoteExchangeRate.textContent = quoteExchangeRateText();
+  }
   if (elements.outputTotalLines) {
     elements.outputTotalLines.innerHTML = `<strong>${safeRows.length}</strong> approved line${safeRows.length === 1 ? "" : "s"}`;
   }
@@ -8292,6 +8322,7 @@ function missingCustomerFields() {
   if (!elements.clientTitle.value.trim()) missing.push("Attention title");
   if (!hasLines(elements.clientAddress.value)) missing.push("Client address");
   if (!elements.projectTitle.value.trim()) missing.push("Quotation Title");
+  if (!elements.showName.value.trim()) missing.push("Show name");
   if (!elements.quoteDate.value.trim()) missing.push("Quote date");
   if (!elements.projectNumber.value.trim()) missing.push("Project number");
   return missing;
@@ -8761,6 +8792,7 @@ function dashboardCommercialsFromState() {
     currency: collectQuoteCurrency(),
     tax_label: tax.label || DEFAULT_TAX_LABEL,
     tax_rate: Number.isFinite(taxRate) ? taxRate : DEFAULT_TAX_RATE,
+    exchange_rate: collectQuoteExchangeRate(),
     subtotal,
     tax_amount: taxAmount,
     grand_total: subtotal === null || taxAmount === null ? null : subtotal + taxAmount,
@@ -9227,6 +9259,8 @@ function dashboardSessionSearchText(session = {}) {
     shortReference ? `ref ${shortReference}` : "",
     dashboardSessionCustomerText(session),
     dashboardSessionProjectText(session),
+    dashboardSessionShowNameText(session),
+    dashboardSessionProjectNumberText(session),
   ].map((value) => String(value || "").toLowerCase()).join(" ");
 }
 
@@ -9409,11 +9443,14 @@ function dashboardModifiedText(session = {}) {
 
 function dashboardTaxText(session = {}) {
   const commercials = session.commercials || {};
-  const currency = dashboardSessionCurrency(session);
   const label = String(commercials.tax_label || DEFAULT_TAX_LABEL).trim() || DEFAULT_TAX_LABEL;
+  return label;
+}
+
+function dashboardTaxRateText(session = {}) {
+  const commercials = session.commercials || {};
   const rate = Number(commercials.tax_rate ?? DEFAULT_TAX_RATE);
-  const rateText = Number.isFinite(rate) ? `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "";
-  return `${currency} / ${label}${rateText ? ` ${rateText}` : ""}`;
+  return Number.isFinite(rate) ? `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "-";
 }
 
 const QUOTE_SESSION_DELETE_SINGLE_MESSAGE = "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.";
@@ -9720,8 +9757,8 @@ function dashboardSessionCard(session = {}) {
           <div class="dashboard-session-title-group">
             <strong>${escapeHtml(customer)}</strong>
             <span>${escapeHtml(project)}</span>
-            ${showName ? `<span class="dashboard-session-show-name">Show name: ${escapeHtml(showName)}</span>` : ""}
-            ${projectNumber ? `<span class="dashboard-session-project-number">Project no: ${escapeHtml(projectNumber)}</span>` : ""}
+            <span class="dashboard-session-show-name">Show name: ${showName ? escapeHtml(showName) : "-"}</span>
+            <span class="dashboard-session-project-number">Project number: ${projectNumber ? escapeHtml(projectNumber) : "-"}</span>
           </div>
         </div>
         <dl class="dashboard-session-record-zone dashboard-session-meta-zone">
@@ -9924,8 +9961,10 @@ function renderDashboardBulkPanel(selectedIds = []) {
 
 function renderDashboardSinglePanel(activeSession = {}) {
   const status = quoteSessionStatus(activeSession);
-  const customer = activeSession.customer_summary?.customer_name || "Untitled customer";
-  const project = activeSession.customer_summary?.project_name || "Untitled quote";
+  const customer = dashboardSessionCustomerText(activeSession);
+  const project = dashboardSessionProjectText(activeSession);
+  const showName = dashboardSessionShowNameText(activeSession);
+  const projectNumber = dashboardSessionProjectNumberText(activeSession);
   const profile = activeSession.quote_company_profile?.display_name || "Quote Company";
   const pricing = activeSession.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
@@ -9954,7 +9993,12 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
-        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+        <div><dt>Currency</dt><dd>${escapeHtml(dashboardSessionCurrency(activeSession))}</dd></div>
+        <div><dt>Exchange Rate</dt><dd>${escapeHtml(quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1))}</dd></div>
+        <div><dt>Tax</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+        <div><dt>Rate</dt><dd>${escapeHtml(dashboardTaxRateText(activeSession))}</dd></div>
+        <div><dt>Show Name</dt><dd>${showName ? escapeHtml(showName) : "-"}</dd></div>
+        <div><dt>Project Number</dt><dd>${projectNumber ? escapeHtml(projectNumber) : "-"}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
         <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
       </dl>
@@ -11625,8 +11669,8 @@ function wireEvents() {
     elements.quoteTaxRate,
     elements.quoteExchangeRate,
   ].filter(Boolean).forEach((input) => {
-    input.addEventListener("input", () => { syncQuoteExchangeRateField(); syncControlStates(); });
-    input.addEventListener("change", () => { syncQuoteExchangeRateField(); syncControlStates(); });
+    input.addEventListener("input", () => { syncQuoteExchangeRateField(); updateOutputHeader(); syncControlStates(); });
+    input.addEventListener("change", () => { syncQuoteExchangeRateField(); updateOutputHeader(); syncControlStates(); });
   });
   elements.basisChatForm.addEventListener("submit", handleBasisChatSubmit);
   elements.basisChatApplyButton.addEventListener("click", applyBasisChatProposal);

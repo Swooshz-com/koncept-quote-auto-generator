@@ -314,42 +314,44 @@
                         Quote Pricing Reference
                         <select id="profileSelect"></select>
                       </label>
-                      <span class="pricing-reference-pill-row" aria-label="Selected pricing reference currency and tax">
-                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceCurrency" data-pricing-reference-currency>SGD</span>
-                        <span class="tax-badge pricing-reference-pill" id="selectedPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
-                      </span>
-                      <div class="form-grid compact tax-settings-grid quote-commercial-fields">
-                        <label class="field-control currency-field">
-                          <span>Currency</span>
-                          <select id="quoteCurrency">
-                            <option value=""></option>
-                            <option value="SGD">SGD</option>
-                            <option value="AUD">AUD</option>
-                            <option value="CNY">CNY</option>
-                            <option value="EUR">EUR</option>
-                            <option value="GBP">GBP</option>
-                            <option value="IDR">IDR</option>
-                            <option value="MYR">MYR</option>
-                            <option value="THB">THB</option>
-                            <option value="USD">USD</option>
-                          </select>
-                        </label>
-                        <label class="field-control">
-                          <span>GST/VAT</span>
-                          <select id="quoteTaxLabel">
-                            <option value=""></option>
-                            <option value="GST">GST</option>
-                            <option value="VAT">VAT</option>
-                          </select>
-                        </label>
-                        <label class="field-control">
-                          <span>Rate (%)</span>
-                          <input id="quoteTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal">
-                        </label>
-                        <label class="field-control quote-exchange-rate-field" id="quoteExchangeRateField" hidden>
-                          <span>Exchange rate</span>
-                          <input id="quoteExchangeRate" type="number" min="0" step="0.0001" inputmode="decimal" placeholder="1.0000">
-                        </label>
+                    </div>
+                    <div class="quote-commercial-card pricing-reference-card">
+                      <div class="quote-commercial-fields">
+                        <div class="quote-commercial-row">
+                          <label class="field-control currency-field">
+                            <span>Currency</span>
+                            <select id="quoteCurrency">
+                              <option value=""></option>
+                              <option value="SGD">SGD</option>
+                              <option value="AUD">AUD</option>
+                              <option value="CNY">CNY</option>
+                              <option value="EUR">EUR</option>
+                              <option value="GBP">GBP</option>
+                              <option value="IDR">IDR</option>
+                              <option value="MYR">MYR</option>
+                              <option value="THB">THB</option>
+                              <option value="USD">USD</option>
+                            </select>
+                          </label>
+                          <label class="field-control quote-exchange-rate-field" id="quoteExchangeRateField">
+                            <span>Exchange rate</span>
+                            <input id="quoteExchangeRate" type="number" min="0" step="0.0001" inputmode="decimal" placeholder="1.0000" value="1">
+                          </label>
+                        </div>
+                        <div class="quote-commercial-row">
+                          <label class="field-control">
+                            <span>Tax</span>
+                            <select id="quoteTaxLabel">
+                              <option value=""></option>
+                              <option value="GST">GST</option>
+                              <option value="VAT">VAT</option>
+                            </select>
+                          </label>
+                          <label class="field-control">
+                            <span>Rate (%)</span>
+                            <input id="quoteTaxRate" type="number" min="0" max="100" step="0.01" inputmode="decimal">
+                          </label>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -754,9 +756,9 @@
                       <p>Review quotation rows, resolve pricing, and download Excel.</p>
                     </div>
                     <div class="quote-basis-source output-source">
-                      <span class="pricing-reference-source-line" aria-label="Selected pricing reference context">
+                      <span class="pricing-reference-source-line" aria-label="Quote pricing reference and commercial context">
                         <strong class="pricing-reference-source-name" id="outputSourceLabel">Pricing reference</strong>
-                        <span class="pricing-reference-context-pills" aria-label="Selected pricing reference currency and tax">
+                        <span class="pricing-reference-context-pills" aria-label="Quote currency, tax, and exchange rate">
                           <span class="pricing-reference-divider" aria-hidden="true"></span>
                           <span class="pricing-reference-meta-item">
                             <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -773,6 +775,11 @@
                               <path d="M7.5 7.5h.01"></path>
                             </svg>
                             <span id="outputPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
+                          </span>
+                          <span class="pricing-reference-divider" aria-hidden="true"></span>
+                          <span class="pricing-reference-meta-item">
+                            <span class="pricing-reference-meta-icon pricing-reference-rate-icon" aria-hidden="true">x</span>
+                            <span id="outputQuoteExchangeRate" data-quote-exchange-rate>1</span>
                           </span>
                         </span>
                         <span class="pricing-reference-divider" aria-hidden="true"></span>

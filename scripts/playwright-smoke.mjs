@@ -652,6 +652,9 @@ async function main() {
       throw new Error(`Next: Customer should reset the page scroll to the top, found scrollY=${postNextScrollY}.`);
     }
     await page.setViewportSize({ width: 1365, height: 768 });
+    if (!(await page.locator("#showName").inputValue()).trim()) {
+      await page.locator("#showName").fill("Synthetic Expo");
+    }
     await page.waitForFunction(() => {
       try {
         const saved = JSON.parse(window.localStorage.getItem("swooshz_quote_session_v1") || "{}");
@@ -760,14 +763,31 @@ async function main() {
     if (!pricingSummary.includes("Managed in Settings")) {
       throw new Error(`Unexpected pricing reference summary: ${pricingSummary}`);
     }
-    const pricingTaxText = await page.locator("#selectedPricingReferenceTax").innerText();
-    if (!/GST|VAT/i.test(pricingTaxText)) {
-      throw new Error(`Unexpected pricing reference tax badge: ${pricingTaxText}`);
+    const quoteCurrencyValue = await page.locator("#quoteCurrency").inputValue();
+    const quoteTaxValue = await page.locator("#quoteTaxLabel").inputValue();
+    const quoteRateValue = await page.locator("#quoteTaxRate").inputValue();
+    const quoteExchangeRateValue = await page.locator("#quoteExchangeRate").inputValue();
+    if (!quoteCurrencyValue) {
+      throw new Error("Quote currency field did not have a selected value.");
     }
-    const pricingCurrencyBox = await page.locator("#selectedPricingReferenceCurrency").boundingBox();
-    const pricingTaxBox = await page.locator("#selectedPricingReferenceTax").boundingBox();
-    if (!pricingCurrencyBox || !pricingTaxBox || pricingCurrencyBox.width < 70 || pricingTaxBox.width < 70) {
-      throw new Error(`Pricing reference pills are unexpectedly narrow: ${JSON.stringify({ pricingCurrencyBox, pricingTaxBox })}`);
+    if (!/GST|VAT/i.test(quoteTaxValue)) {
+      throw new Error(`Unexpected quote tax value: ${quoteTaxValue}`);
+    }
+    if (!quoteRateValue) {
+      throw new Error("Quote tax rate field did not have a value.");
+    }
+    if (quoteExchangeRateValue !== "1") {
+      throw new Error(`Expected same-currency exchange rate to default to 1, found ${quoteExchangeRateValue}.`);
+    }
+    const currencyBox = await page.locator("#quoteCurrency").boundingBox();
+    const exchangeRateBox = await page.locator("#quoteExchangeRate").boundingBox();
+    const taxBox = await page.locator("#quoteTaxLabel").boundingBox();
+    const taxRateBox = await page.locator("#quoteTaxRate").boundingBox();
+    if (!currencyBox || !exchangeRateBox || !taxBox || !taxRateBox) {
+      throw new Error("Quote commercial fields were not measurable.");
+    }
+    if (Math.abs(currencyBox.y - exchangeRateBox.y) > 8 || Math.abs(taxBox.y - taxRateBox.y) > 8 || taxBox.y <= currencyBox.y) {
+      throw new Error(`Quote commercial fields are not in the expected 2x2 order: ${JSON.stringify({ currencyBox, exchangeRateBox, taxBox, taxRateBox })}`);
     }
     const selectedPricingValue = await page.locator("#profileSelect").inputValue();
     if (!selectedPricingValue) {

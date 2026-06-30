@@ -8510,6 +8510,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     "grand_total": 109,
                 },
             }
+            payload["quote_exchange_rate"] = 1.3499
             result = {
                 "status": "completed",
                 "files": [
@@ -8527,6 +8528,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(session["exports"]["xlsx"]["filename"], "quotation.xlsx")
             self.assertEqual(session["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-export/download/xlsx")
             self.assertEqual(session["commercials"]["grand_total"], 109)
+            self.assertEqual(session["commercials"]["exchange_rate"], 1.3499)
             self.assertEqual(refreshed["exports"]["xlsx"]["exists"], True)
             self.assertEqual(refreshed["exports"]["pdf"]["exists"], False)
             self.assertEqual(refreshed["exports"]["pdf"]["missing"], True)
@@ -8975,6 +8977,24 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("formatDashboardSubtotal", js)
         self.assertIn("dashboard-session-subtotal", js)
         self.assertIn("dashboard-session-subtotal-cell", js)
+        self.assertIn("dashboardSessionShowNameText(session)", js)
+        self.assertIn("dashboardSessionProjectNumberText(session)", js)
+        search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function dashboardDateFilterMatches", 1)[0]
+        self.assertIn("dashboardSessionShowNameText(session)", search_body)
+        self.assertIn("dashboardSessionProjectNumberText(session)", search_body)
+        self.assertIn("<dt>Show Name</dt>", js)
+        self.assertIn("<dt>Project Number</dt>", js)
+        self.assertIn("<dt>Currency</dt>", js)
+        self.assertIn("<dt>Tax</dt>", js)
+        self.assertIn("<dt>Exchange Rate</dt>", js)
+        self.assertIn("<dt>Rate</dt>", js)
+        self.assertIn("dashboardTaxRateText", js)
+        self.assertIn("commercials?.exchange_rate", js)
+        self.assertIn("Show name: ${showName ? escapeHtml(showName) : \"-\"}", js)
+        self.assertIn("Project number: ${projectNumber ? escapeHtml(projectNumber) : \"-\"}", js)
+        self.assertIn(".dashboard-selected-action-row .dashboard-selected-action", css)
+        selected_action_height_css = css.split(".dashboard-selected-action-row .dashboard-selected-action {", 1)[1].split("}", 1)[0]
+        self.assertIn("min-height: 57px;", selected_action_height_css)
         self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
         self.assertIn("<dt>Created</dt>", js)
@@ -9259,6 +9279,20 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Repo catalog", html)
         self.assertIn('class="pricing-reference-copy"', html)
         self.assertIn('class="pricing-reference-control-group pricing-reference-card"', html)
+        self.assertIn('class="quote-commercial-card pricing-reference-card"', html)
+        self.assertLess(html.index('class="pricing-reference-control-group pricing-reference-card"'), html.index('class="quote-commercial-card pricing-reference-card"'))
+        self.assertLess(html.index('<span>Currency</span>'), html.index('id="quoteExchangeRate"'))
+        self.assertLess(html.index('<span>Tax</span>'), html.index('id="quoteTaxRate"'))
+        self.assertIn('id="quoteExchangeRateField"', html)
+        self.assertNotIn('id="quoteExchangeRateField" hidden', html)
+        quote_commercial_fields_css = css.split(".quote-commercial-fields {", 1)[1].split("}", 1)[0]
+        self.assertIn("display: grid;", quote_commercial_fields_css)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", quote_commercial_fields_css)
+        self.assertIn(".quote-commercial-row {\n  display: contents;", css)
+        customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('class="section-band first-band quote-form-section"', 1)[0]
+        self.assertNotIn("pricing-reference-pill-row", customer_panel)
+        self.assertNotIn("GST/VAT", customer_panel)
+        self.assertNotIn("Quote Commercials", customer_panel)
         self.assertIn('class="pricing-reference-source-badge">Repo catalog</span>', html)
         self.assertIn('id="selectedPricingReferenceSummary">Managed in Settings.</p>', html)
         self.assertIn('? "Managed in Settings."', js)
@@ -9941,6 +9975,7 @@ const elements = {
   clientTitle: field("Senior Event Producer"),
   clientAddress: field("10 Sample Street\nSingapore 000010"),
   projectTitle: field("RE: Brazil Experience Pavilion - 6m x 6m Draft"),
+  showName: field("Brazil Experience Expo"),
   quoteDate: field("2026-06-08"),
   projectNumber: field("KI-001"),
   headerDetails: field("Koncept Image Pte Limited\n61 Kaki Bukit Ave 1"),
@@ -10022,6 +10057,16 @@ assert.strictEqual(
 );
 assert.ok(syncCalls > 0, "missing detail checks should sync rich-text sources first");
 elements.clientAddress.value = "10 Sample Street\nSingapore 000010";
+elements.showName.value = "";
+assert.strictEqual(
+  sidePanelBlockReason("quote_company"),
+  "Complete Customer details before opening Quote Company: Show name."
+);
+assert.strictEqual(
+  startAnalysisBlockReason(),
+  "Complete Customer details before starting analysis: Show name."
+);
+elements.showName.value = "Brazil Experience Expo";
 elements.notesHeading.value = "Notes";
 elements.acceptanceText.value = "Accepted by customer";
 assert.strictEqual(startAnalysisBlockReason(), "");
@@ -14585,10 +14630,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertNotIn("analyseHighQualityButton", js)
         self.assertIn('id="pricingReferenceCurrency"', html)
         self.assertIn('id="pricingReferenceCurrencyCustom"', html)
-        self.assertIn('id="selectedPricingReferenceCurrency"', html)
+        self.assertNotIn('id="selectedPricingReferenceCurrency"', html)
         self.assertIn('data-pricing-reference-currency', html)
         self.assertIn('data-pricing-reference-tax', html)
-        self.assertIn("pricing-reference-pill-row", html)
+        self.assertNotIn("pricing-reference-pill-row", html)
         self.assertIn("SGD - Singapore Dollar", html)
         self.assertLess(html.index("SGD - Singapore Dollar"), html.index("AUD - Australian Dollar"))
         self.assertLess(html.index("AUD - Australian Dollar"), html.index("CNY - Chinese Yuan"))
@@ -17157,6 +17202,8 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn('id="outputSourceLabel"', html)
         self.assertIn('id="outputPricingReferenceCurrency"', html)
         self.assertIn('id="outputPricingReferenceTax"', html)
+        self.assertIn('id="outputQuoteExchangeRate"', html)
+        self.assertIn('data-quote-exchange-rate', html)
         self.assertIn('id="outputTotalLines"', html)
         self.assertIn('id="outputSourceLabel">Pricing reference</strong>', html)
         self.assertIn('<span class="pricing-reference-line-count" id="outputTotalLines"><strong>0</strong> approved lines</span>', html)
@@ -17165,6 +17212,9 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn("function outputHeaderStatus", js)
         self.assertIn("function pricingReferenceContextPillsHtml", js)
         self.assertIn("function syncPricingReferenceContextPills", js)
+        self.assertIn("function syncQuoteCommercialContextPills", js)
+        self.assertIn("function quoteExchangeRateText", js)
+        self.assertIn("syncQuoteCommercialContextPills();", js)
         self.assertIn('return reference.label || "Pricing reference";', js)
         self.assertIn("pricing-reference-source-line", html)
         self.assertIn("pricing-reference-source-name", html)
