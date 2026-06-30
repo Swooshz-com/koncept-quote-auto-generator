@@ -3195,9 +3195,9 @@ class WebappServerTest(unittest.TestCase):
                             headers={"Cookie": session_cookie},
                         )
                         session_body = json.loads(opener.open(session_request, timeout=3).read().decode("utf-8"))
-                        generate_request = urllib.request.Request(
-                            f"{runner.base_url}/api/generate",
-                            data=json.dumps(payload).encode("utf-8"),
+                        start_job_request = urllib.request.Request(
+                            f"{runner.base_url}/api/jobs",
+                            data=json.dumps({"type": "generate", "payload": payload}).encode("utf-8"),
                             headers={
                                 "Content-Type": "application/json",
                                 "Cookie": session_cookie,
@@ -3205,8 +3205,23 @@ class WebappServerTest(unittest.TestCase):
                             },
                             method="POST",
                         )
-                        generate_response = opener.open(generate_request, timeout=5)
-                        generate_body = json.loads(generate_response.read().decode("utf-8"))
+                        generate_response = opener.open(start_job_request, timeout=5)
+                        started_job = json.loads(generate_response.read().decode("utf-8"))
+                        job_id = started_job["job_id"]
+                        deadline = time.time() + 3
+                        generate_body = {}
+                        while time.time() < deadline:
+                            job_request = urllib.request.Request(
+                                f"{runner.base_url}/api/jobs/{job_id}",
+                                headers={"Cookie": session_cookie},
+                            )
+                            job_body = json.loads(opener.open(job_request, timeout=3).read().decode("utf-8"))
+                            if job_body["status"] in {"completed", "failed", "blocked", "needs_review"}:
+                                generate_body = job_body.get("result") or job_body
+                                break
+                            time.sleep(0.02)
+                        if not generate_body:
+                            self.fail(f"Timed out waiting for async generate job {job_id}")
 
                     sessions_request = urllib.request.Request(
                         f"{runner.base_url}/api/quote-sessions",
@@ -3237,7 +3252,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(consume_request.get_header("X-app-launch-token"), raw_launch_token)
         self.assertNotIn(raw_launch_token, consume_request.full_url)
         self.assertEqual(launch_body["status"], "platform_session_created")
-        self.assertEqual(generate_response.status, 200)
+        self.assertEqual(generate_response.status, 202)
         self.assertEqual(generate_body["status"], "completed")
         self.assertEqual(generate_body["quote_session"]["session_id"], "quote-platform-uat-smoke")
         self.assertEqual(generate_body["quote_session"]["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-platform-uat-smoke/download/xlsx")
@@ -17795,6 +17810,54 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
         queued_session = thread_args[4]
         self.assertEqual(webapp.platform_workspace_id_from_auth_session(queued_session), "workspace-async-artifacts")
         self.assertNotIn(raw_launch_token, json.dumps(queued_session))
+
+    def test_async_generate_job_persists_database_artifact_after_platform_launch_token_expiry(self):
+        xlsx_bytes = b"xlsx-async-platform-artifact"
+
+        def fake_generator_run(command, **kwargs):
+            output_dir = Path(command[command.index("--out") + 1])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "quotation.xlsx").write_bytes(xlsx_bytes)
+            return webapp.subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout="Wrote quotation.xlsx\n",
+                stderr="",
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            database_url = f"sqlite:///{(tmp_path / 'kqag-storage.sqlite3').as_posix()}"
+            platform_session = self.platform_auth_session("workspace-async-expired-artifact")
+            platform_session["user"]["platform"]["launchTokenExpiresAt"] = "2000-01-01T00:00:00.000Z"
+            payload = valid_payload()
+            payload["quote_session"] = {"session_id": "quote-async-expired-artifact"}
+            env = {
+                "KQAG_STORAGE_MODE": "database",
+                "KQAG_ARTIFACT_STORAGE_MODE": "database",
+                "KQAG_DATABASE_URL": database_url,
+                "QUOTE_DATA_ROOT": str(tmp_path / "data"),
+                "QUOTE_OUTPUT_ROOT": str(tmp_path / "output"),
+                "QUOTE_TMP_ROOT": str(tmp_path / "tmp"),
+                "QUOTE_LOG_ROOT": str(tmp_path / "logs"),
+            }
+
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                with mock.patch.object(webapp.subprocess, "run", side_effect=fake_generator_run):
+                    created = webapp.create_job("generate", payload, auth_session=platform_session)
+                    job = wait_for_job(created["job_id"], timeout=3.0)
+
+                storage = webapp.app_storage_for_auth_session(platform_session)
+                sessions = storage.list_quote_sessions()
+                artifact = storage.quote_session_export_artifact("quote-async-expired-artifact", "xlsx")
+
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["result"]["quote_session"]["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-async-expired-artifact/download/xlsx")
+        self.assertEqual([item["session_id"] for item in sessions], ["quote-async-expired-artifact"])
+        self.assertEqual(sessions[0]["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-async-expired-artifact/download/xlsx")
+        self.assertEqual(artifact["filename"], "quotation.xlsx")
+        self.assertEqual(artifact["content"], xlsx_bytes)
     def test_runtime_workspace_metadata_is_generic_and_has_no_repo_defaults(self):
         with (
             mock.patch.object(webapp, "DEFAULT_PROFILE_ID", ""),
