@@ -9967,8 +9967,10 @@ function renderDashboardSinglePanel(activeSession = {}) {
       </div>
     </div>
     <div class="dashboard-selected-actions dashboard-selected-actions--single">
+      <div class="dashboard-selected-action-row">
       <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
       <button class="secondary-button dashboard-selected-action dashboard-duplicate-action" type="button" data-dashboard-panel-action="duplicate-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(canModify ? "Create a duplicated quote draft." : modifyTitle)}">Duplicate Quote</button>
+      </div>
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-session" data-quote-session-id="${escapeHtml(safeSessionId)}">Delete session</button>
       <button class="secondary-button dashboard-selected-action dashboard-clear-selection-action" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
     </div>
