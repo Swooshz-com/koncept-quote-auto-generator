@@ -10002,10 +10002,8 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
-        <div><dt>Currency</dt><dd>${escapeHtml(dashboardSessionCurrency(activeSession))}</dd></div>
-        <div><dt>Exchange Rate</dt><dd>${escapeHtml(quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1))}</dd></div>
-        <div><dt>Tax</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
-        <div><dt>Rate</dt><dd>${escapeHtml(dashboardTaxRateText(activeSession))}</dd></div>
+        <div><dt>Currency / FX</dt><dd>${escapeHtml(`${dashboardSessionCurrency(activeSession)} / FX ${quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1)}`)}</dd></div>
+        <div><dt>Tax / Rate</dt><dd>${escapeHtml(`${dashboardTaxText(activeSession)} / ${dashboardTaxRateText(activeSession)}`)}</dd></div>
         <div><dt>Show Name</dt><dd>${showName ? escapeHtml(showName) : "-"}</dd></div>
         <div><dt>Project Number</dt><dd>${projectNumber ? escapeHtml(projectNumber) : "-"}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
