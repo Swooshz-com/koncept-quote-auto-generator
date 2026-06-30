@@ -8494,6 +8494,31 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertNotIn("draft_progress", sessions[1])
             self.assertTrue((data_root / "quote-sessions" / "quote-new" / "quote-session.json").is_file())
 
+    def test_quote_session_summary_falls_back_to_saved_draft_details(self):
+        metadata = webapp.blank_quote_session_metadata("quote-legacy", "2026-06-30T00:00:00Z")
+        metadata["customer_summary"] = {
+            "customer_name": "Legacy Customer",
+            "project_name": "Legacy Project",
+        }
+        metadata["draft_state"] = {
+            "quoteDetails": {
+                "project_number": "KI-LEGACY-001",
+                "quote_date": "2026-06-30",
+                "client": {"name": "Draft Customer"},
+                "project": {
+                    "title": "Draft Project",
+                    "show_name": "Draft Show",
+                },
+            }
+        }
+
+        session = webapp.public_quote_session(metadata)
+
+        self.assertEqual(session["customer_summary"]["customer_name"], "Legacy Customer")
+        self.assertEqual(session["customer_summary"]["project_name"], "Legacy Project")
+        self.assertEqual(session["customer_summary"]["show_name"], "Draft Show")
+        self.assertEqual(session["customer_summary"]["project_number"], "KI-LEGACY-001")
+
     def test_quote_session_exports_are_recorded_and_missing_artifacts_are_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

@@ -12478,6 +12478,8 @@ def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, 
         "customer_summary": {
             "customer_name": "",
             "project_name": "",
+            "show_name": "",
+            "project_number": "",
             "event_or_project_date": "",
         },
         "quote_company_profile": {
@@ -12530,7 +12532,26 @@ def normalized_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any
     for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "owner", "draft_state"):
         if isinstance(metadata.get(key), dict):
             normalized[key].update(copy.deepcopy(metadata[key]))
+    quote_session_apply_draft_summary_fallbacks(normalized)
     return normalized
+
+
+def quote_session_apply_draft_summary_fallbacks(metadata: dict[str, Any]) -> None:
+    summary = metadata.get("customer_summary") if isinstance(metadata.get("customer_summary"), dict) else {}
+    draft_state = metadata.get("draft_state") if isinstance(metadata.get("draft_state"), dict) else {}
+    quote_details = draft_state.get("quoteDetails") if isinstance(draft_state.get("quoteDetails"), dict) else {}
+    client = quote_details.get("client") if isinstance(quote_details.get("client"), dict) else {}
+    project = quote_details.get("project") if isinstance(quote_details.get("project"), dict) else {}
+    fallbacks = {
+        "customer_name": client.get("name"),
+        "project_name": project.get("title"),
+        "show_name": project.get("show_name") or quote_details.get("show_name"),
+        "project_number": quote_details.get("project_number") or project.get("project_number"),
+        "event_or_project_date": project.get("event_or_project_date") or quote_details.get("quote_date"),
+    }
+    for key, value in fallbacks.items():
+        if not dashboard_safe_text(summary.get(key)):
+            summary[key] = dashboard_safe_text(value)
 
 
 def write_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
