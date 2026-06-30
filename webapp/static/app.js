@@ -1587,7 +1587,7 @@ function pricingReferenceContextPillsHtml() {
           <path d="M16 13h.01"></path>
           <path d="M7 7l9-3"></path>
         </svg>
-        <span data-pricing-reference-currency>${escapeHtml(selectedPricingReferenceCurrency())}</span>
+        <span data-reference-basis-currency>${escapeHtml(selectedPricingReferenceCurrency())}</span>
       </span>
       <span class="pricing-reference-divider" aria-hidden="true"></span>
       <span class="pricing-reference-meta-item">
@@ -1595,7 +1595,36 @@ function pricingReferenceContextPillsHtml() {
           <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"></path>
           <path d="M7.5 7.5h.01"></path>
         </svg>
-        <span data-pricing-reference-tax>${escapeHtml(selectedPricingReferenceTaxText())}</span>
+        <span data-reference-basis-tax>${escapeHtml(selectedPricingReferenceTaxText())}</span>
+      </span>
+    </span>
+  `;
+}
+
+function quoteCommercialContextPillsHtml() {
+  return `
+    <span class="pricing-reference-context-pills" aria-label="Quote currency, tax, and exchange rate">
+      <span class="pricing-reference-divider" aria-hidden="true"></span>
+      <span class="pricing-reference-meta-item">
+        <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="M4 7h15a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a3 3 0 0 1 3-3h11"></path>
+          <path d="M16 13h.01"></path>
+          <path d="M7 7l9-3"></path>
+        </svg>
+        <span data-quote-currency>${escapeHtml(collectQuoteCurrency())}</span>
+      </span>
+      <span class="pricing-reference-divider" aria-hidden="true"></span>
+      <span class="pricing-reference-meta-item">
+        <svg class="pricing-reference-meta-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"></path>
+          <path d="M7.5 7.5h.01"></path>
+        </svg>
+        <span data-quote-tax>${escapeHtml(quoteCommercialTaxText())}</span>
+      </span>
+      <span class="pricing-reference-divider" aria-hidden="true"></span>
+      <span class="pricing-reference-meta-item">
+        <span class="pricing-reference-meta-icon pricing-reference-rate-icon" aria-hidden="true">FX</span>
+        <span data-quote-exchange-rate>${escapeHtml(quoteExchangeRateText())}</span>
       </span>
     </span>
   `;
@@ -1603,10 +1632,10 @@ function pricingReferenceContextPillsHtml() {
 
 function syncPricingReferenceContextPills(currency = selectedPricingReferenceCurrency(), taxText = selectedPricingReferenceTaxText()) {
   if (typeof document === "undefined") return;
-  document.querySelectorAll("[data-pricing-reference-currency]").forEach((element) => {
+  document.querySelectorAll("[data-reference-basis-currency]").forEach((element) => {
     element.textContent = currency;
   });
-  document.querySelectorAll("[data-pricing-reference-tax]").forEach((element) => {
+  document.querySelectorAll("[data-reference-basis-tax]").forEach((element) => {
     element.textContent = taxText;
   });
 }
@@ -1706,15 +1735,20 @@ function quoteExchangeRateText(value = collectQuoteExchangeRate()) {
   return number.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
+function quoteFxMultiplier(value = collectQuoteExchangeRate()) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 1;
+}
+
 function syncQuoteCommercialContextPills() {
   if (typeof document === "undefined") return;
   const currency = collectQuoteCurrency();
   const taxText = quoteCommercialTaxText();
   const exchangeRateText = quoteExchangeRateText();
-  document.querySelectorAll("[data-pricing-reference-currency]").forEach((element) => {
+  document.querySelectorAll("[data-quote-currency]").forEach((element) => {
     element.textContent = currency;
   });
-  document.querySelectorAll("[data-pricing-reference-tax]").forEach((element) => {
+  document.querySelectorAll("[data-quote-tax]").forEach((element) => {
     element.textContent = taxText;
   });
   document.querySelectorAll("[data-quote-exchange-rate]").forEach((element) => {
@@ -2096,6 +2130,8 @@ function collectQuoteDetails() {
       logo_name: state.headerLogo ? state.headerLogo.name : "",
       logo_type: state.headerLogo ? state.headerLogo.type : "",
     },
+    currency: collectQuoteCurrency(),
+    exchange_rate: collectQuoteExchangeRate(),
     tax: collectTaxDetails(),
     quote_text: {
       terms_heading: elements.termsHeading.value.trim(),
@@ -2160,6 +2196,14 @@ function applyQuoteDetails(details = {}, options = {}) {
     setInputValue(elements.taxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
     if (elements.quoteTaxRate && (!partial || !elements.quoteTaxRate.value)) setInputValue(elements.quoteTaxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
   }
+  if (!partial || hasOwnValue(details, "currency")) {
+    setInputValue(elements.quoteCurrency, normalizeCurrencyLabel(details.currency || selectedPricingReferenceCurrency()));
+  }
+  if (!partial || hasOwnValue(details, "exchange_rate")) {
+    setInputValue(elements.quoteExchangeRate, quoteExchangeRateText(details.exchange_rate ?? 1));
+  }
+  syncQuoteExchangeRateField();
+  syncQuoteCommercialContextPills();
   if (shouldApply(quoteText, "terms_heading", partial)) setInputValue(elements.termsHeading, quoteText.terms_heading);
   if (shouldApply(quoteText, "payment_terms", partial)) setInputValue(elements.paymentTerms, linesValue(quoteText.payment_terms));
   if (shouldApply(quoteText, "notes_heading", partial)) setInputValue(elements.notesHeading, quoteText.notes_heading);
@@ -2493,18 +2537,29 @@ async function restoreQuoteDetailsLogo(details = {}) {
   };
 }
 
+function quoteOutputProgressForNavigation() {
+  return Boolean(
+    state.outputRows.length
+    || state.originalOutputRows.length
+    || state.downloadFile
+    || state.pdfFile
+  );
+}
+
 function restoredWorkflowStage(saved = {}) {
   const hasRestoredProgress = Boolean(
-    state.images.length
-    || state.lineItems.length
+    state.lineItems.length
     || state.outputRows.length
     || state.quoteBasisSections.length
     || Object.values(state.quoteBasis || {}).some((value) => splitLines(value).length > 0)
   );
   const savedStage = String(saved.workflowStage || "").trim();
+  if (quoteOutputProgressForNavigation() || state.basisConfirmed) {
+    return ["generating", "pricing_review", "completed"].includes(savedStage) ? savedStage : "pricing_review";
+  }
   if (savedStage && (state.images.length || hasRestoredProgress)) return savedStage;
-  if (state.images.length) return "ready_to_analyze";
   if (hasRestoredProgress) return "basis_review";
+  if (state.images.length) return "ready_to_analyze";
   return "needs_images";
 }
 
@@ -6359,6 +6414,13 @@ function formatAmount(value) {
   return numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function quoteAmountValue(value, multiplier = quoteFxMultiplier()) {
+  const numeric = numberOrNull(value);
+  if (numeric === null) return null;
+  const fx = quoteFxMultiplier(multiplier);
+  return Math.round(numeric * fx * 100) / 100;
+}
+
 function recalculateOutputRow(row = {}) {
   const quantity = numberOrNull(row.quantity);
   const priceMode = row.price_mode === "Included" ? "Included" : "Priced";
@@ -6733,13 +6795,13 @@ function outputCellDisplayValue(row = {}, field = "") {
   if (field === "unit_price_override") {
     if (row.price_mode === "Included") return "Included";
     if (unitPriceEditKind(row.unit_price_override) === "invalid") return "???";
-    if (numberOrNull(row.unit_price_override) !== null) return formatAmount(row.unit_price_override);
-    if (numberOrNull(row.catalog_unit_price) !== null) return formatAmount(row.catalog_unit_price);
+    if (numberOrNull(row.unit_price_override) !== null) return formatAmount(quoteAmountValue(row.unit_price_override));
+    if (numberOrNull(row.catalog_unit_price) !== null) return formatAmount(quoteAmountValue(row.catalog_unit_price));
     return "???";
   }
   if (field === "amount") {
     if (row.price_mode === "Included") return "0.00";
-    return formatAmount(row.amount) || "???";
+    return formatAmount(quoteAmountValue(row.amount)) || "???";
   }
   return String(row[field] ?? "").trim() || "???";
 }
@@ -6965,7 +7027,7 @@ function matchSummaryStats(rows = []) {
   const pricedRows = safeRows.filter((row) => row.price_mode === "Included" || !rowNeedsManualInput(row)).length;
   const totalPending = needsManualInput > 0;
   const total = safeRows.reduce((sum, row) => {
-    const amount = Number(String(row.amount || "").replaceAll(",", ""));
+    const amount = quoteAmountValue(row.amount);
     return Number.isFinite(amount) ? sum + amount : sum;
   }, 0);
   return { sections, pricedRows, needsManualInput, total, totalPending };
@@ -7279,6 +7341,7 @@ function unresolvedConfirmLines(sections = state.quoteBasisSections) {
 }
 
 function basisConfirmBlockReason(sections = state.quoteBasisSections) {
+  if (quoteOutputProgressForNavigation()) return "";
   if ((state.blockingClarificationQuestions || []).some((question) => question.status !== "answered" && !String(question.answer || "").trim())) {
     return "Answer all clarification questions before confirming quotation basis.";
   }
@@ -7577,7 +7640,7 @@ function renderQuoteBasisMessage(basis = state.quoteBasis, source = "") {
         <div class="quote-basis-source">
           <span class="pricing-reference-source-line" aria-label="Selected pricing reference context">
             <strong class="pricing-reference-source-name">${aiFailed ? "Local fallback only" : escapeHtml(outputPricingSourceLabel())}</strong>
-            ${aiFailed ? "" : pricingReferenceContextPillsHtml()}
+            ${aiFailed ? "" : quoteCommercialContextPillsHtml()}
             <span class="pricing-reference-divider" aria-hidden="true"></span>
             <span class="pricing-reference-line-count"><strong>${reviewLineCount}</strong> review line${reviewLineCount === 1 ? "" : "s"}</span>
           </span>
@@ -8381,11 +8444,11 @@ function hasSubmittedQuoteBasis() {
   if (state.aiFailed) return false;
   const hasClarificationQuestions = (state.blockingClarificationQuestions || []).length > 0;
   return ["basis_review", "generating", "pricing_review", "completed"].includes(state.workflowStage)
-    && (hasClarificationQuestions || state.lineItems.length > 0 || state.quoteBasisSections.some((section) => (section.lines || []).length > 0) || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0));
+    && (quoteOutputProgressForNavigation() || hasClarificationQuestions || state.lineItems.length > 0 || state.quoteBasisSections.some((section) => (section.lines || []).length > 0) || Object.values(state.quoteBasis).some((value) => splitLines(value).length > 0));
 }
 
 function hasCompletedQuoteBasis() {
-  return state.basisConfirmed || ["pricing_review", "completed"].includes(state.workflowStage);
+  return state.basisConfirmed || quoteOutputProgressForNavigation() || ["pricing_review", "completed"].includes(state.workflowStage);
 }
 
 function applyDraftBasis(basis = {}) {
@@ -9037,8 +9100,23 @@ function queueQuoteSessionDraftStateSave(options = {}) {
   }, delay);
 }
 
-function handleQuoteDetailFieldChange() {
+function quoteCommercialFieldChanged(target = null) {
+  return [
+    elements.taxLabel,
+    elements.taxRate,
+    elements.quoteCurrency,
+    elements.quoteTaxLabel,
+    elements.quoteTaxRate,
+    elements.quoteExchangeRate,
+  ].filter(Boolean).includes(target);
+}
+
+function handleQuoteDetailFieldChange(event = {}) {
+  const commercialChanged = quoteCommercialFieldChanged(event.target);
   syncQuoteExchangeRateField();
+  if (commercialChanged && (state.outputRows.length || state.downloadFile || state.pdfFile)) {
+    markOutputRowsDirty();
+  }
   updateOutputHeader();
   syncControlStates();
   if (quoteSessionDraftStateCanSave()) {
@@ -9597,6 +9675,28 @@ function hydrateDashboardDraftImagePayloads(draftState = {}, sessionId = "") {
   return mergeDashboardDraftImagesWithAvailablePayloads(draftState, state.images);
 }
 
+function mergeDashboardDraftSummaryDetails(draftState = {}, session = {}) {
+  const summary = session?.customer_summary && typeof session.customer_summary === "object"
+    ? session.customer_summary
+    : {};
+  const showName = String(summary.show_name || "").trim();
+  const projectNumber = String(summary.project_number || "").trim();
+  if (!showName && !projectNumber) return draftState;
+
+  const quoteDetails = draftState?.quoteDetails && typeof draftState.quoteDetails === "object"
+    ? draftState.quoteDetails
+    : {};
+  const project = quoteDetails.project && typeof quoteDetails.project === "object" ? quoteDetails.project : {};
+  const nextProject = { ...project };
+  if (showName && !String(nextProject.show_name || "").trim()) nextProject.show_name = showName;
+
+  const nextQuoteDetails = { ...quoteDetails, project: nextProject };
+  if (projectNumber && !String(nextQuoteDetails.project_number || "").trim()) {
+    nextQuoteDetails.project_number = projectNumber;
+  }
+  return { ...draftState, quoteDetails: nextQuoteDetails };
+}
+
 function dashboardSessionCanModify(session = {}) {
   return Boolean(safeQuoteSessionId(session.session_id || ""));
 }
@@ -9643,6 +9743,7 @@ async function modifyDashboardQuote(sessionId) {
       await persistSessionFiles(draftFiles).catch(() => {});
       draftState = mergeDashboardDraftImagesWithAvailablePayloads(draftState, draftFiles);
     }
+    draftState = mergeDashboardDraftSummaryDetails(draftState, detailedSession || {});
     draftState = hydrateDashboardDraftImagePayloads(draftState, safeSessionId);
     const restored = await applyQuoteSessionSnapshot(
       { ...draftState, quoteSessionId: safeSessionId },
@@ -9688,6 +9789,7 @@ async function duplicateDashboardQuote(sessionId) {
       await persistSessionFiles(draftFiles).catch(() => {});
       draftState = mergeDashboardDraftImagesWithAvailablePayloads(draftState, draftFiles);
     }
+    draftState = mergeDashboardDraftSummaryDetails(draftState, detailedSession || {});
     draftState = hydrateDashboardDraftImagePayloads(draftState, sourceSessionId);
     const duplicatedSessionId = newClientQuoteSessionId();
     const restored = await applyQuoteSessionSnapshot(
@@ -10003,11 +10105,11 @@ function renderDashboardSinglePanel(activeSession = {}) {
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
         <div><dt>Currency / FX</dt><dd>${escapeHtml(`${dashboardSessionCurrency(activeSession)} / FX ${quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1)}`)}</dd></div>
+        <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
         <div><dt>Tax / Rate</dt><dd>${escapeHtml(`${dashboardTaxText(activeSession)} / ${dashboardTaxRateText(activeSession)}`)}</dd></div>
         <div><dt>Show Name</dt><dd>${showName ? escapeHtml(showName) : "-"}</dd></div>
         <div><dt>Project Number</dt><dd>${projectNumber ? escapeHtml(projectNumber) : "-"}</dd></div>
-        <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
-        <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
+        <div class="dashboard-selected-company-card"><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
       </dl>
       <div class="dashboard-selected-downloads">
         <div class="dashboard-export-action-row">

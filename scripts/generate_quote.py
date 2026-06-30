@@ -935,6 +935,32 @@ def quote_total_including_tax_label(brief: dict[str, Any]) -> str:
     return f"Total including {label}"
 
 
+def quote_exchange_rate(brief: dict[str, Any]) -> float:
+    rate = as_float(brief.get("exchange_rate"), 1.0)
+    return rate if rate > 0 else 1.0
+
+
+def quote_amount_number(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    cleaned = str(value).replace(",", "").strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def quote_amount(value: Any, exchange_rate: float = 1.0) -> float | None:
+    amount = quote_amount_number(value)
+    if amount is None:
+        return None
+    return round(amount * exchange_rate, 2)
+
+
 def quote_subtotal(entries: list[dict[str, Any]]) -> float:
     total = 0.0
     for entry in entries:
@@ -2122,22 +2148,22 @@ def customer_quote_description(description: str) -> str:
     return reference or text
 
 
-def amount_value(line: QuoteLine) -> str | float | None:
+def amount_value(line: QuoteLine, exchange_rate: float = 1.0) -> str | float | None:
     if line.price_mode == "Included":
         return 0.0
     if line.display_price:
-        return line.display_price
-    return line.amount
+        display_amount = quote_amount(line.display_price, exchange_rate)
+        return display_amount if display_amount is not None else line.display_price
+    return quote_amount(line.amount, exchange_rate)
 
 
-def line_amount_value(line: QuoteLine) -> float | None:
+def line_amount_value(line: QuoteLine, exchange_rate: float = 1.0) -> float | None:
     if line.price_mode == "Included":
         return 0.0
     if line.amount is not None:
-        return line.amount
+        return quote_amount(line.amount, exchange_rate)
     if line.display_price:
-        parsed = as_float(line.display_price, 0.0)
-        return parsed
+        return quote_amount(line.display_price, exchange_rate)
     return None
 
 
@@ -2349,6 +2375,7 @@ def grouped_section_names(brief: dict[str, Any], lines: list[QuoteLine]) -> set[
 def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     grouped_sections = grouped_section_names(brief or {}, lines)
+    exchange_rate = quote_exchange_rate(brief or {})
     current_section = None
     section_number = 0
     detail_number = 0
@@ -2369,9 +2396,9 @@ def render_quote_entries(lines: list[QuoteLine], brief: dict[str, Any] | None = 
             }
             entries.append(active_section_entry)
         detail_number += 1
-        detail_amount = amount_value(line)
+        detail_amount = amount_value(line, exchange_rate)
         if active_section_entry and active_section_entry.get("section_grouped"):
-            active_section_entry["amount"] = round(float(active_section_entry["amount"] or 0.0) + float(line_amount_value(line) or 0.0), 2)
+            active_section_entry["amount"] = round(float(active_section_entry["amount"] or 0.0) + float(line_amount_value(line, exchange_rate) or 0.0), 2)
             detail_amount = None
         entries.append({
             "kind": "item",

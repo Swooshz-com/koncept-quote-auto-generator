@@ -5254,6 +5254,7 @@ class WebappServerTest(unittest.TestCase):
         self.assertEqual(sample["profile_id"], "synthetic-exhibition-fixture-template")
         self.assertEqual(sample["pricing_reference_id"], "synthetic-exhibition-fixture-pricing")
         self.assertEqual(sample["details"]["project"]["title"], "RE: Kent Group Exhibition Booth")
+        self.assertEqual(sample["details"]["project"]["show_name"], "SAMPLE")
         self.assertNotIn("booth_width", sample["details"]["project"])
         self.assertNotIn("booth_depth", sample["details"]["project"])
         self.assertNotIn("quote_date", sample["details"])
@@ -8892,6 +8893,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("saveQuoteSessionDraftState", js)
         self.assertIn("queueQuoteSessionDraftStateSave", js)
         self.assertIn("handleQuoteDetailFieldChange", js)
+        self.assertIn("quoteCommercialFieldChanged", js)
         self.assertIn("ensureClientQuoteSessionId", js)
         self.assertIn("requestedSessionId = ensureClientQuoteSessionId()", js)
         self.assertIn("currentQuoteSessionPayload({ ...options, sessionId: requestedSessionId })", js)
@@ -8899,6 +8901,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", js)
         self.assertIn("options.includeDraftState === true && quoteSessionDraftStateCanSave()", js)
         quote_detail_change_body = js.split("function handleQuoteDetailFieldChange", 1)[1].split("async function startQuoteSessionDraftSaveAfterCustomerStep", 1)[0]
+        self.assertIn("quoteCommercialFieldChanged(event.target)", quote_detail_change_body)
+        self.assertIn("markOutputRowsDirty();", quote_detail_change_body)
         self.assertIn("queueQuoteSessionDraftStateSave", quote_detail_change_body)
         self.assertIn("quoteSessionDraftStateCanSave()", quote_detail_change_body)
         add_images_body = js.split("async function addImagesFromFiles", 1)[1].split("function removeImageAt", 1)[0]
@@ -9015,11 +9019,16 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function dashboardDateFilterMatches", 1)[0]
         self.assertIn("dashboardSessionShowNameText(session)", search_body)
         self.assertIn("dashboardSessionProjectNumberText(session)", search_body)
-        self.assertIn("<dt>Show Name</dt>", js)
-        self.assertIn("<dt>Project Number</dt>", js)
         self.assertIn("<dt>Currency / FX</dt>", js)
         self.assertIn("<dt>Tax / Rate</dt>", js)
         self.assertIn("FX ${quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1)}", js)
+        selected_grid = js.split('<dl class="dashboard-selected-summary-grid">', 1)[1].split("</dl>", 1)[0]
+        self.assertLess(selected_grid.index("<dt>Subtotal</dt>"), selected_grid.index("<dt>Currency / FX</dt>"))
+        self.assertLess(selected_grid.index("<dt>Currency / FX</dt>"), selected_grid.index("<dt>Pricing Reference</dt>"))
+        self.assertLess(selected_grid.index("<dt>Pricing Reference</dt>"), selected_grid.index("<dt>Tax / Rate</dt>"))
+        self.assertLess(selected_grid.index("<dt>Tax / Rate</dt>"), selected_grid.index("<dt>Show Name</dt>"))
+        self.assertLess(selected_grid.index("<dt>Show Name</dt>"), selected_grid.index("<dt>Project Number</dt>"))
+        self.assertLess(selected_grid.index("<dt>Project Number</dt>"), selected_grid.index("<dt>Quote Company</dt>"))
         self.assertNotIn("<dt>Exchange Rate</dt>", js)
         self.assertNotIn("<dt>Rate</dt>", js)
         self.assertIn("dashboardTaxRateText", js)
@@ -9030,7 +9039,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('input.addEventListener("change", handleQuoteDetailFieldChange);', js)
         self.assertIn(".dashboard-selected-action-row .dashboard-selected-action", css)
         selected_action_height_css = css.split(".dashboard-selected-action-row .dashboard-selected-action {", 1)[1].split("}", 1)[0]
-        self.assertIn("min-height: 86px;", selected_action_height_css)
+        self.assertIn("min-height: 45px;", selected_action_height_css)
+        selected_quote_action_css = css.split(".dashboard-selected-action-row .dashboard-duplicate-action,\n.dashboard-selected-action-row .dashboard-modify-action {", 1)[1].split("}", 1)[0]
+        self.assertIn("height: 45px;", selected_quote_action_css)
+        self.assertIn(".dashboard-selected-summary-grid .dashboard-selected-company-card", css)
         self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
         self.assertIn("<dt>Created</dt>", js)
@@ -9321,6 +9333,21 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertLess(html.index('<span>Tax</span>'), html.index('id="quoteTaxRate"'))
         self.assertIn('id="quoteExchangeRateField"', html)
         self.assertNotIn('id="quoteExchangeRateField" hidden', html)
+        self.assertIn('class="pricing-reference-baseline"', html)
+        self.assertIn("Reference basis", html)
+        self.assertIn("Ref currency", html)
+        self.assertIn("Ref tax", html)
+        self.assertIn("data-reference-basis-currency", html)
+        self.assertIn("data-reference-basis-tax", html)
+        self.assertIn(".pricing-reference-baseline-chip", css)
+        collect_quote_details_body = js.split("function collectQuoteDetails", 1)[1].split("function collectQuoteCompanyProfileDetails", 1)[0]
+        self.assertIn("currency: collectQuoteCurrency()", collect_quote_details_body)
+        self.assertIn("exchange_rate: collectQuoteExchangeRate()", collect_quote_details_body)
+        apply_quote_details_body = js.split("function applyQuoteDetails", 1)[1].split("function applyDefaultQuoteCompanyFields", 1)[0]
+        self.assertIn('hasOwnValue(details, "currency")', apply_quote_details_body)
+        self.assertIn("setInputValue(elements.quoteCurrency", apply_quote_details_body)
+        self.assertIn('hasOwnValue(details, "exchange_rate")', apply_quote_details_body)
+        self.assertIn("setInputValue(elements.quoteExchangeRate", apply_quote_details_body)
         quote_commercial_fields_css = css.split(".quote-commercial-fields {", 1)[1].split("}", 1)[0]
         self.assertIn("display: grid;", quote_commercial_fields_css)
         self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", quote_commercial_fields_css)
@@ -9999,8 +10026,17 @@ const state = {
   profiles: [{ id: "synthetic-exhibition-fixture-template", label: "Synthetic" }],
   pricingReferences: [{ id: "synthetic-exhibition-fixture-pricing", label: "Synthetic", profile_id: "synthetic-exhibition-fixture-template" }],
   images: [],
+  lineItems: [],
+  quoteBasis: {},
   quoteBasisSections: [],
   outputRows: [],
+  originalOutputRows: [],
+  downloadFile: null,
+  pdfFile: null,
+  workflowStage: "needs_images",
+  basisConfirmed: false,
+  aiFailed: false,
+  blockingClarificationQuestions: [],
   headerLogo: { data_url: "data:image/jpeg;base64,ZmFrZQ==" },
   isAnalysisRunning: false,
   isGenerating: false,
@@ -10043,6 +10079,10 @@ eval([
   "hasReferenceFilesForNavigation",
   "hasReferenceFilesForAnalysis",
   "startAnalysisBlockReason",
+  "quoteOutputProgressForNavigation",
+  "basisConfirmBlockReason",
+  "hasSubmittedQuoteBasis",
+  "hasCompletedQuoteBasis",
   "sidePanelBlockReason",
   "canStartAnalysis",
 ].map(extractFunction).join("\n"));
@@ -10108,6 +10148,84 @@ elements.acceptanceText.value = "Accepted by customer";
 assert.strictEqual(startAnalysisBlockReason(), "");
 assert.strictEqual(sidePanelBlockReason("quote_company"), "");
 assert.strictEqual(canStartAnalysis(), true);
+state.workflowStage = "pricing_review";
+state.outputRows = [{ description: "Restored output row", quantity: 1 }];
+state.quoteBasisSections = [];
+assert.strictEqual(hasSubmittedQuoteBasis(), true);
+assert.strictEqual(hasCompletedQuoteBasis(), true);
+assert.strictEqual(basisConfirmBlockReason(), "");
+assert.strictEqual(sidePanelBlockReason("basis"), "");
+assert.strictEqual(sidePanelBlockReason("output"), "");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_restored_output_keeps_basis_and_output_navigation_unlocked(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const state = {
+  images: [{ name: "render.jpg", type: "image/jpeg", size: 12, data_url: "data:image/jpeg;base64,ZmFrZQ==" }],
+  lineItems: [],
+  outputRows: [{ description: "Restored output row", quantity: 1 }],
+  originalOutputRows: [],
+  quoteBasisSections: [],
+  quoteBasis: {},
+  downloadFile: null,
+  pdfFile: null,
+  basisConfirmed: false,
+  workflowStage: "needs_images",
+  aiFailed: false,
+  blockingClarificationQuestions: [],
+};
+
+eval([
+  "splitLines",
+  "quoteOutputProgressForNavigation",
+  "restoredWorkflowStage",
+  "hasSubmittedQuoteBasis",
+  "hasCompletedQuoteBasis",
+].map(extractFunction).join("\n"));
+
+state.workflowStage = restoredWorkflowStage({ workflowStage: "ready_to_analyze" });
+assert.strictEqual(state.workflowStage, "pricing_review");
+assert.strictEqual(hasSubmittedQuoteBasis(), true);
+assert.strictEqual(hasCompletedQuoteBasis(), true);
+assert.strictEqual(restoredWorkflowStage({ workflowStage: "completed" }), "completed");
+
+state.outputRows = [];
+state.workflowStage = restoredWorkflowStage({});
+assert.strictEqual(state.workflowStage, "ready_to_analyze");
+assert.strictEqual(hasSubmittedQuoteBasis(), false);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -10371,12 +10489,16 @@ assert.strictEqual(synced, true);
         self.assertIn(".output-stat-card-row .stat-card-value {\n  font-size: 18px;\n  letter-spacing: 0;", css)
         self.assertIn("formatSubtotalValue", js)
         self.assertIn("formatOutputTotalValue", js)
+        self.assertIn("quoteFxMultiplier", js)
+        self.assertIn("quoteAmountValue", js)
         self.assertIn("+ ???", js)
         self.assertNotIn('? "???"', summary_body)
         self.assertIn('data-output-edit-field="${field}"', js)
         self.assertIn('renderOutputEditCell(row, index, "unit_price_override")', table_body)
         self.assertIn("catalog_unit_price", js)
         self.assertIn("effectiveOutputUnitPrice", js)
+        self.assertIn("quoteAmountValue(row.amount)", js)
+        self.assertIn("quoteAmountValue(row.catalog_unit_price)", js)
         self.assertIn("Unit price must be a number or Included.", js)
         self.assertNotIn('renderOutputEditCell(row, index, "price_mode")', table_body)
         self.assertNotIn("pricingStatusLabel(row.status)", table_body)
@@ -10429,12 +10551,19 @@ eval(extractFunction("outputQuantityPartsFromPricingMatch"));
 eval(extractFunction("outputRowFromPricingMatch"));
 eval(extractFunction("rowNeedsManualInput"));
 eval(extractFunction("matchSummaryStats"));
+let quoteCurrency = "SGD";
+let fxRate = 1;
 function selectedPricingReferenceCurrency() {
   return "SGD";
 }
 function collectQuoteCurrency() {
-  return selectedPricingReferenceCurrency();
+  return quoteCurrency;
 }
+function collectQuoteExchangeRate() {
+  return fxRate;
+}
+eval(extractFunction("quoteFxMultiplier"));
+eval(extractFunction("quoteAmountValue"));
 eval(extractFunction("formatSubtotalValue"));
 function collectTaxDetails() {
   return { label: "GST", rate: 0.09 };
@@ -10480,6 +10609,14 @@ assert.strictEqual(rowNeedsManualInput(zeroManualRow), false);
 assert.deepStrictEqual(outputRowsValid([zeroManualRow]), { valid: true, errors: [] });
 assert.strictEqual(formatSubtotalValue({ total: 6480, totalPending: false }), "SGD 6,480.00");
 assert.strictEqual(formatOutputTotalValue({ total: 6480, totalPending: false }), "SGD 7,063.20");
+quoteCurrency = "AUD";
+fxRate = 2;
+const fxStats = matchSummaryStats([{ price_mode: "Priced", description: "FX row", quantity: 1, pricing_keyword: "fx", catalog_unit_price: 100, amount: 100 }]);
+assert.strictEqual(fxStats.total, 200);
+assert.strictEqual(formatSubtotalValue(fxStats), "AUD 200.00");
+assert.strictEqual(formatOutputTotalValue(fxStats), "AUD 218.00");
+quoteCurrency = "SGD";
+fxRate = 1;
 const multiwordUnitRow = outputRowFromPricingMatch({
   status: "matched",
   section: "Booth Structure",
@@ -13081,6 +13218,7 @@ eval([
   "dashboardDraftPayloadIsReferenceFile",
   "mergeDashboardDraftImagesWithAvailablePayloads",
   "hydrateDashboardDraftImagePayloads",
+  "mergeDashboardDraftSummaryDetails",
   "modifyDashboardQuote",
 ].map(extractFunction).join("\n"));
 
@@ -13098,6 +13236,121 @@ eval([
   assert.strictEqual(rememberedBaseline, "quote-active123");
   assert.strictEqual(shownQuoteFlow, true);
   assert.ok(controlsSynced >= 2);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_modify_dashboard_quote_merges_summary_details_into_legacy_draft(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const functionMarker = `function ${name}(`;
+  const asyncFunctionMarker = `async function ${name}(`;
+  const functionStart = source.indexOf(functionMarker);
+  const asyncFunctionStart = source.indexOf(asyncFunctionMarker);
+  const start = asyncFunctionStart >= 0 ? asyncFunctionStart : functionStart;
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const MAX_REFERENCE_IMAGES = 8;
+const QUOTE_SESSION_STATE_VERSION = 4;
+const state = {
+  quoteSessionId: "",
+  quoteSessionRestoreBusy: false,
+  quoteSessionLoadError: "",
+  dashboardSelectionMode: false,
+  dashboardSelectedSessionIds: [],
+  dashboardActiveSessionId: "",
+  images: [],
+};
+let appliedSnapshot = null;
+
+function appIsBusy() { return false; }
+function clearQuoteSessionDraftSaveTimer() {}
+function syncControlStates() {}
+function quoteDraftShouldPersistToDashboard() { return false; }
+function currentQuoteSessionDraftState() { throw new Error("Server draft state should be used."); }
+function mergeDashboardQuoteSession() {}
+function dashboardRestoreError(message) { throw new Error(message); }
+function persistSessionFiles() { return Promise.resolve(); }
+async function loadQuoteSessionDetail() {
+  return {
+    session_id: "quote-legacy-output",
+    customer_summary: {
+      customer_name: "Kent Group",
+      project_name: "RE: Kent Group Exhibition Booth",
+      show_name: "SAMPLE",
+      project_number: "KI-SAMPLE-001",
+    },
+    draft_state: {
+      version: QUOTE_SESSION_STATE_VERSION,
+      activeAppView: "quote",
+      activeSidePanel: "output",
+      quoteSessionDraftSaveStarted: true,
+      quoteDetails: {
+        client: { name: "Kent Group" },
+        project: { title: "RE: Kent Group Exhibition Booth" },
+      },
+      images: [{ name: "render.jpg", type: "image/jpeg", size: 12, data_url: "data:image/jpeg;base64,UkVOREVS" }],
+      quoteBasisSections: [{ id: "surfaces", title: "Surfaces", lines: [] }],
+      outputRows: [{ description: "Output row", quantity: 1 }],
+    },
+  };
+}
+async function applyQuoteSessionSnapshot(snapshot) {
+  appliedSnapshot = snapshot;
+  return true;
+}
+function rememberRestoredQuoteSessionBaseline() {}
+function showQuoteFlow() {}
+
+eval([
+  "safeQuoteSessionId",
+  "referenceFileType",
+  "dashboardDraftImageFileFieldsMatch",
+  "dashboardDraftImagePayloadMatches",
+  "dashboardDraftLogoSessionFileKey",
+  "dashboardDraftPayloadIsReferenceFile",
+  "mergeDashboardDraftImagesWithAvailablePayloads",
+  "hydrateDashboardDraftImagePayloads",
+  "mergeDashboardDraftSummaryDetails",
+  "modifyDashboardQuote",
+].map(extractFunction).join("\n"));
+
+(async () => {
+  await modifyDashboardQuote("quote-legacy-output");
+
+  assert.ok(appliedSnapshot);
+  assert.strictEqual(appliedSnapshot.quoteDetails.project.show_name, "SAMPLE");
+  assert.strictEqual(appliedSnapshot.quoteDetails.project_number, "KI-SAMPLE-001");
 })().catch((error) => {
   console.error(error);
   process.exit(1);
@@ -14667,8 +14920,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn('id="pricingReferenceCurrency"', html)
         self.assertIn('id="pricingReferenceCurrencyCustom"', html)
         self.assertNotIn('id="selectedPricingReferenceCurrency"', html)
-        self.assertIn('data-pricing-reference-currency', html)
-        self.assertIn('data-pricing-reference-tax', html)
+        self.assertIn('data-reference-basis-currency', html)
+        self.assertIn('data-reference-basis-tax', html)
+        self.assertIn('data-quote-currency', html)
+        self.assertIn('data-quote-tax', html)
         self.assertNotIn("pricing-reference-pill-row", html)
         self.assertIn("SGD - Singapore Dollar", html)
         self.assertLess(html.index("SGD - Singapore Dollar"), html.index("AUD - Australian Dollar"))
@@ -14691,7 +14946,7 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertIn(".analysis-mode-actions {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto auto;", css)
         self.assertIn(".analysis-mode-actions .sample-button {\n  justify-self: start;", css)
         self.assertIn("width: min(680px, calc(100vw - 48px));", css)
-        self.assertIn(".pricing-reference-pill {\n  width: 76px;", css)
+        self.assertIn(".pricing-reference-baseline-chip", css)
         self.assertIn(".side-workspace,\n  .workspace-pane-scroll {\n    overflow: visible;\n  }", css)
         self.assertIn(".workspace-pane-scroll {\n    overscroll-behavior: auto;\n  }", css)
         self.assertIn(".currency-control-row {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));", css)
@@ -14744,6 +14999,8 @@ eval([
   "unitPriceEditKind",
   "effectiveOutputUnitPrice",
   "formatAmount",
+  "quoteFxMultiplier",
+  "quoteAmountValue",
   "recalculateOutputRow",
   "outputCellDisplayValue",
   "outputEditorHtml",
@@ -14981,6 +15238,86 @@ assert.strictEqual(state.outputRows.length, 1);
 assert.strictEqual(state.downloadFile, null);
 assert.strictEqual(downloadFileIsFresh(), false);
 assert.strictEqual(elements.sideDownloadButton.href, "#");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_quote_commercial_change_marks_generated_downloads_stale(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const quoteCurrency = {};
+const projectTitle = {};
+const elements = {
+  taxLabel: {},
+  taxRate: {},
+  quoteCurrency,
+  quoteTaxLabel: {},
+  quoteTaxRate: {},
+  quoteExchangeRate: {},
+};
+const state = {
+  outputRows: [{ description: "Generated row", amount: 100 }],
+  outputRevision: 0,
+  downloadFile: { url: "/api/jobs/old/files/quotation.xlsx", name: "quotation.xlsx" },
+  pdfFile: null,
+};
+let saved = false;
+function setDownloadFiles(files = []) {
+  assert.deepStrictEqual(files, []);
+  state.downloadFile = null;
+  state.pdfFile = null;
+}
+function syncQuoteExchangeRateField() {}
+function updateOutputHeader() {}
+function syncControlStates() {}
+function quoteSessionDraftStateCanSave() { return false; }
+function queueQuoteSessionDraftStateSave() { saved = true; }
+
+eval([
+  "revisionNumber",
+  "markOutputRowsDirty",
+  "quoteCommercialFieldChanged",
+  "handleQuoteDetailFieldChange",
+].map(extractFunction).join("\n"));
+
+handleQuoteDetailFieldChange({ target: projectTitle });
+assert.strictEqual(state.outputRevision, 0);
+assert.ok(state.downloadFile);
+
+handleQuoteDetailFieldChange({ target: quoteCurrency });
+assert.strictEqual(state.outputRevision, 1);
+assert.strictEqual(state.downloadFile, null);
+assert.strictEqual(saved, false);
 """
         completed = subprocess.run(
             [node, "-e", script],
@@ -16196,7 +16533,7 @@ const state = {
 };
 function escapeHtml(value = "") { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char])); }
 function outputPricingSourceLabel() { return "Pricing reference"; }
-function pricingReferenceContextPillsHtml() { return '<span class="pricing-reference-pill-row pricing-reference-context-pills"><span>SGD</span><span>GST 9%</span></span>'; }
+function quoteCommercialContextPillsHtml() { return '<span class="pricing-reference-pill-row pricing-reference-context-pills"><span>MYR</span><span>VAT 20%</span><span>FX 3</span></span>'; }
 function basisSections() { return state.quoteBasisSections; }
 function renderAnalysisFindings() { return ""; }
 function basisTotalLineCount(sections = []) { return sections.reduce((total, section) => total + (section.lines || []).length, 0); }
@@ -16281,6 +16618,10 @@ const state = {
   pricingReferences: [
     { id: "default-ref", items: [{ section: "Floor Coverings", description: "Raised platform flooring" }] },
   ],
+  outputRows: [],
+  originalOutputRows: [],
+  downloadFile: null,
+  pdfFile: null,
   quoteBasisSections: [
     {
       id: "platform",
@@ -16316,7 +16657,7 @@ function escapeHtml(value = "") {
   }[char]));
 }
 function outputPricingSourceLabel() { return "Pricing reference"; }
-function pricingReferenceContextPillsHtml() { return '<span class="pricing-reference-pill-row pricing-reference-context-pills"><span>SGD</span><span>GST 9%</span></span>'; }
+function quoteCommercialContextPillsHtml() { return '<span class="pricing-reference-pill-row pricing-reference-context-pills"><span>MYR</span><span>VAT 20%</span><span>FX 3</span></span>'; }
 function renderAnalysisFindings() { return ""; }
 function setDownloadFiles() { state.downloadFile = null; }
 function markOutputRowsDirty() { state.downloadFile = null; }
@@ -16359,6 +16700,7 @@ eval([
   "isInformationalDimensionText",
   "basisLineIsInformationalDimension",
   "unresolvedConfirmLines",
+  "quoteOutputProgressForNavigation",
   "basisConfirmBlockReason",
   "outputComparableText",
   "basisTagLabel",
@@ -17240,6 +17582,7 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn('id="outputPricingReferenceTax"', html)
         self.assertIn('id="outputQuoteExchangeRate"', html)
         self.assertIn('data-quote-exchange-rate', html)
+        self.assertIn('<span class="pricing-reference-meta-icon pricing-reference-rate-icon" aria-hidden="true">FX</span>', html)
         self.assertIn('id="outputTotalLines"', html)
         self.assertIn('id="outputSourceLabel">Pricing reference</strong>', html)
         self.assertIn('<span class="pricing-reference-line-count" id="outputTotalLines"><strong>0</strong> approved lines</span>', html)
@@ -17247,10 +17590,16 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn("function updateOutputHeader", js)
         self.assertIn("function outputHeaderStatus", js)
         self.assertIn("function pricingReferenceContextPillsHtml", js)
+        self.assertIn("function quoteCommercialContextPillsHtml", js)
         self.assertIn("function syncPricingReferenceContextPills", js)
         self.assertIn("function syncQuoteCommercialContextPills", js)
         self.assertIn("function quoteExchangeRateText", js)
         self.assertIn("syncQuoteCommercialContextPills();", js)
+        quote_commercial_pills = js.split("function quoteCommercialContextPillsHtml", 1)[1].split("function syncPricingReferenceContextPills", 1)[0]
+        self.assertIn("data-quote-currency", quote_commercial_pills)
+        self.assertIn("data-quote-tax", quote_commercial_pills)
+        self.assertIn("data-quote-exchange-rate", quote_commercial_pills)
+        self.assertIn(">FX</span>", quote_commercial_pills)
         self.assertIn('return reference.label || "Pricing reference";', js)
         self.assertIn("pricing-reference-source-line", html)
         self.assertIn("pricing-reference-source-name", html)
@@ -17259,7 +17608,9 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn("pricing-reference-meta-icon", html)
         self.assertIn("pricing-reference-line-count", html)
         self.assertIn("pricing-reference-context-pills", html)
-        self.assertIn("pricingReferenceContextPillsHtml()", js)
+        quote_basis_header = js.split('class="pricing-reference-source-line" aria-label="Selected pricing reference context"', 1)[1].split('<span class="pricing-reference-line-count"', 1)[0]
+        self.assertIn("quoteCommercialContextPillsHtml()", quote_basis_header)
+        self.assertNotIn("pricingReferenceContextPillsHtml()", quote_basis_header)
         self.assertIn("elements.outputTotalLines.innerHTML", js)
         self.assertNotIn(".output-page-header {", css)
         self.assertIn(".output-status-pill.is-ok", css)
@@ -17385,6 +17736,8 @@ eval([
   "unitPriceEditKind",
   "effectiveOutputUnitPrice",
   "formatAmount",
+  "quoteFxMultiplier",
+  "quoteAmountValue",
   "recalculateOutputRow",
   "normalizeOutputRow",
   "bracketedCatalogReferenceParts",
@@ -17403,6 +17756,9 @@ function selectedPricingReferenceCurrency() {
 }
 function collectQuoteCurrency() {
   return selectedPricingReferenceCurrency();
+}
+function collectQuoteExchangeRate() {
+  return 1;
 }
 function collectTaxDetails() {
   return { label: "GST", rate: 0.09 };
@@ -19455,12 +19811,22 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
         with mock.patch.dict(os.environ, {"APP_MODE": "deploy", "USER_TYPE": "admin"}, clear=True):
             self.assertFalse(webapp.current_permissions()["canManagePricingReferences"])
 
-    def test_pricing_reference_tax_overrides_quote_company_tax_in_brief(self):
+    def test_quote_commercial_fields_override_pricing_reference_defaults_in_brief(self):
         payload = valid_payload()
         payload["tax"] = {"label": "GST", "rate": 0.09}
-        payload["pricing_reference"] = {"id": "company-vat", "source": "company", "tax": {"label": "VAT", "rate": 0.2}}
+        payload["quote_tax"] = {"label": "VAT", "rate": 0.2}
+        payload["quote_currency"] = "MYR"
+        payload["quote_exchange_rate"] = 3
+        payload["pricing_reference"] = {
+            "id": "company-defaults",
+            "source": "company",
+            "currency": "SGD",
+            "tax": {"label": "GST", "rate": 0.09},
+        }
         brief = webapp.payload_to_brief(payload)
         self.assertEqual(brief["tax"], {"label": "VAT", "rate": 0.2})
+        self.assertEqual(brief["currency"], "MYR")
+        self.assertEqual(brief["exchange_rate"], 3)
 
     def test_payload_to_brief_uses_reviewed_rows_and_pricing_reference_currency(self):
         payload = valid_payload()
