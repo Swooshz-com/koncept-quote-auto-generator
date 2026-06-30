@@ -9037,6 +9037,15 @@ function queueQuoteSessionDraftStateSave(options = {}) {
   }, delay);
 }
 
+function handleQuoteDetailFieldChange() {
+  syncQuoteExchangeRateField();
+  updateOutputHeader();
+  syncControlStates();
+  if (quoteSessionDraftStateCanSave()) {
+    queueQuoteSessionDraftStateSave({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
+  }
+}
+
 async function startQuoteSessionDraftSaveAfterCustomerStep() {
   if (!markQuoteSessionDraftSaveStartedAfterCustomerStep()) return;
   await saveQuoteSessionDraftState({ quoteGenerated: false });
@@ -9755,9 +9764,9 @@ function dashboardSessionCard(session = {}) {
             </svg>
           </span>
           <div class="dashboard-session-title-group">
-            <span class="dashboard-session-project-title">${escapeHtml(project)}</span>
-            <span class="dashboard-session-show-name">Show name: ${showName ? escapeHtml(showName) : "-"}</span>
             <strong>${escapeHtml(customer)}</strong>
+            <span>${escapeHtml(project)}</span>
+            <span class="dashboard-session-show-name">Show name: ${showName ? escapeHtml(showName) : "-"}</span>
             <span class="dashboard-session-project-number">Project number: ${projectNumber ? escapeHtml(projectNumber) : "-"}</span>
           </div>
         </div>
@@ -11669,8 +11678,8 @@ function wireEvents() {
     elements.quoteTaxRate,
     elements.quoteExchangeRate,
   ].filter(Boolean).forEach((input) => {
-    input.addEventListener("input", () => { syncQuoteExchangeRateField(); updateOutputHeader(); syncControlStates(); });
-    input.addEventListener("change", () => { syncQuoteExchangeRateField(); updateOutputHeader(); syncControlStates(); });
+    input.addEventListener("input", handleQuoteDetailFieldChange);
+    input.addEventListener("change", handleQuoteDetailFieldChange);
   });
   elements.basisChatForm.addEventListener("submit", handleBasisChatSubmit);
   elements.basisChatApplyButton.addEventListener("click", applyBasisChatProposal);

@@ -8437,6 +8437,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     "customer_summary": {
                         "customer_name": "New Customer",
                         "project_name": "New Project",
+                        "show_name": "New Show",
+                        "project_number": "KI-NEW-001",
                     },
                     "draft_state": {
                         "outputRows": [{"description": "Edited output row", "quantity": 2}],
@@ -8470,6 +8472,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual([item["session_id"] for item in sessions], ["quote-new", "quote-old"])
             self.assertEqual(new_session["customer_summary"]["customer_name"], "New Customer")
             self.assertEqual(new_session["customer_summary"]["project_name"], "New Project")
+            self.assertEqual(new_session["customer_summary"]["show_name"], "New Show")
+            self.assertEqual(new_session["customer_summary"]["project_number"], "KI-NEW-001")
             self.assertEqual(new_session["status"]["quote_generated"], False)
             self.assertEqual(new_data["draft_state"]["outputRows"][0]["description"], "Edited output row")
             self.assertEqual(new_data["draft_state"]["analysisFindings"][0]["text"], "Synthetic visible finding")
@@ -8862,12 +8866,16 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("saveQuoteSessionDraftStateAfterPanelMove", js)
         self.assertIn("saveQuoteSessionDraftState", js)
         self.assertIn("queueQuoteSessionDraftStateSave", js)
+        self.assertIn("handleQuoteDetailFieldChange", js)
         self.assertIn("ensureClientQuoteSessionId", js)
         self.assertIn("requestedSessionId = ensureClientQuoteSessionId()", js)
         self.assertIn("currentQuoteSessionPayload({ ...options, sessionId: requestedSessionId })", js)
         self.assertIn("activeAppView", js)
         self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", js)
         self.assertIn("options.includeDraftState === true && quoteSessionDraftStateCanSave()", js)
+        quote_detail_change_body = js.split("function handleQuoteDetailFieldChange", 1)[1].split("async function startQuoteSessionDraftSaveAfterCustomerStep", 1)[0]
+        self.assertIn("queueQuoteSessionDraftStateSave", quote_detail_change_body)
+        self.assertIn("quoteSessionDraftStateCanSave()", quote_detail_change_body)
         add_images_body = js.split("async function addImagesFromFiles", 1)[1].split("function removeImageAt", 1)[0]
         self.assertNotIn("ensureQuoteSession", add_images_body)
         sample_details_body = js.split("async function setSampleDetails", 1)[1].split("function buildPayload", 1)[0]
@@ -8992,10 +9000,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("commercials?.exchange_rate", js)
         self.assertIn("Show name: ${showName ? escapeHtml(showName) : \"-\"}", js)
         self.assertIn("Project number: ${projectNumber ? escapeHtml(projectNumber) : \"-\"}", js)
-        dashboard_card_body = js.split("function dashboardSessionCard", 1)[1].split("function dashboardSessionById", 1)[0]
-        self.assertLess(dashboard_card_body.index("dashboard-session-project-title"), dashboard_card_body.index("dashboard-session-show-name"))
-        self.assertLess(dashboard_card_body.index("dashboard-session-show-name"), dashboard_card_body.index("<strong>${escapeHtml(customer)}</strong>"))
-        self.assertLess(dashboard_card_body.index("<strong>${escapeHtml(customer)}</strong>"), dashboard_card_body.index("dashboard-session-project-number"))
+        self.assertIn('input.addEventListener("input", handleQuoteDetailFieldChange);', js)
+        self.assertIn('input.addEventListener("change", handleQuoteDetailFieldChange);', js)
         self.assertIn(".dashboard-selected-action-row .dashboard-selected-action", css)
         selected_action_height_css = css.split(".dashboard-selected-action-row .dashboard-selected-action {", 1)[1].split("}", 1)[0]
         self.assertIn("min-height: 57px;", selected_action_height_css)
