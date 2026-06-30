@@ -6738,6 +6738,13 @@ def platform_workspace_id_from_auth_session(session: dict[str, Any] | None) -> s
     return clean_text(workspace.get("workspaceId"))
 
 
+def platform_user_id_from_auth_session(session: dict[str, Any] | None) -> str:
+    user = session.get("user") if isinstance(session, dict) and isinstance(session.get("user"), dict) else {}
+    platform = platform_context_from_auth_session(session)
+    platform_user = platform.get("user") if isinstance(platform, dict) and isinstance(platform.get("user"), dict) else {}
+    return privacy_safe_tracking_id(platform_user.get("userId") or user.get("subject"), "")
+
+
 def safe_auth_session_for_async(session: dict[str, Any] | None) -> dict[str, Any] | None:
     platform = platform_context_from_auth_session(session)
     if not platform:
@@ -6869,10 +6876,11 @@ class LocalKqagStorage:
 class DatabaseKqagStorage:
     storage_backend = "database"
 
-    def __init__(self, database_url: str, workspace_id: str, role: str = "viewer") -> None:
+    def __init__(self, database_url: str, workspace_id: str, role: str = "viewer", user_id: str = "") -> None:
         self.database_url = database_url
         self.workspace_id = clean_text(workspace_id)
         self.role = role_permissions(role).get("role", "viewer")
+        self.user_id = privacy_safe_tracking_id(user_id, "")
         if not self.workspace_id:
             raise KqagStorageAccessError("Platform workspace context is required for database storage.", status=403, reason="storage_platform_session_required")
 
@@ -7215,7 +7223,7 @@ class DatabaseKqagStorage:
             public["status"]["quote_generated"] = False
         return public
 
-    def can_view_all_quote_sessions(self) -> bool:
+    def can_view_other_user_quote_sessions(self) -> bool:
         return self.role == "admin"
 
     def _quote_session_visible_to_admin(self, metadata: dict[str, Any]) -> bool:
@@ -7226,41 +7234,63 @@ class DatabaseKqagStorage:
             return True
         progress = quote_session_draft_progress(metadata.get("draft_state") if isinstance(metadata.get("draft_state"), dict) else {})
         return progress.get("active_side_panel") in {"basis", "output"}
-    def _read_quote_session_metadata(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+
+    def _quote_session_owner_id(self, metadata: dict[str, Any]) -> str:
+        owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else {}
+        return clean_text(owner.get("user_id"))
+
+    def _quote_session_visible_to_current_user(self, metadata: dict[str, Any]) -> bool:
+        owner_id = self._quote_session_owner_id(metadata)
+        if not owner_id:
+            return True
+        if self.user_id and owner_id == self.user_id:
+            return True
+        return self.can_view_other_user_quote_sessions() and self._quote_session_visible_to_admin(metadata)
+
+    def _quote_session_editable_by_current_user(self, metadata: dict[str, Any]) -> bool:
+        owner_id = self._quote_session_owner_id(metadata)
+        return bool(not owner_id or (self.user_id and owner_id == self.user_id))
+
+    def _read_quote_session_metadata_for_workspace(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         safe_id = safe_quote_session_id(session_id, "")
         if not safe_id:
             return {}, []
         with self.connection() as connection:
-            rows = connection.execute(
-                "select workspace_id, metadata_json, draft_files_json from kqag_quote_sessions where session_id = ? order by updated_at desc",
-                (safe_id,),
-            ).fetchall()
-        if not rows:
+            row = connection.execute(
+                "select metadata_json, draft_files_json from kqag_quote_sessions where workspace_id = ? and session_id = ?",
+                (self.workspace_id, safe_id),
+            ).fetchone()
+        if not row:
             return {}, []
-        for row in rows:
-            if clean_text(row["workspace_id"]) != self.workspace_id and not self.can_view_all_quote_sessions():
-                continue
-            try:
-                metadata = json.loads(row["metadata_json"])
-                draft_files = json.loads(row["draft_files_json"] or "[]")
-            except (TypeError, json.JSONDecodeError):
-                continue
-            metadata = metadata if isinstance(metadata, dict) else {}
-            draft_files = draft_files if isinstance(draft_files, list) else []
-            if safe_quote_session_id(metadata.get("session_id"), "") != safe_id:
-                continue
-            if clean_text(row["workspace_id"]) != self.workspace_id and not self._quote_session_visible_to_admin(metadata):
-                continue
-            return metadata, [item for item in draft_files if isinstance(item, dict)]
-        return {}, []
+        try:
+            metadata = json.loads(row["metadata_json"])
+            draft_files = json.loads(row["draft_files_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            return {}, []
+        metadata = metadata if isinstance(metadata, dict) else {}
+        draft_files = draft_files if isinstance(draft_files, list) else []
+        if safe_quote_session_id(metadata.get("session_id"), "") != safe_id:
+            return {}, []
+        return metadata, [item for item in draft_files if isinstance(item, dict)]
+
+    def _read_quote_session_metadata(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        metadata, draft_files = self._read_quote_session_metadata_for_workspace(session_id)
+        if not metadata or not self._quote_session_visible_to_current_user(metadata):
+            return {}, []
+        return metadata, draft_files
 
     def create_or_update_quote_session(self, payload: dict[str, Any], result: dict[str, Any] | None = None, output_dir: Path | None = None, session_id: str | None = None) -> dict[str, Any]:
         patch = quote_session_patch_payload(payload)
         resolved_session_id = safe_quote_session_id(session_id or patch.get("session_id") or payload.get("session_id"), "") or new_quote_session_id()
-        existing, _draft_files = self._read_quote_session_metadata(resolved_session_id)
+        existing, _draft_files = self._read_quote_session_metadata_for_workspace(resolved_session_id)
+        if existing and not self._quote_session_editable_by_current_user(existing):
+            resolved_session_id = new_quote_session_id()
+            existing = {}
         now = utc_timestamp()
         metadata = normalized_quote_session_metadata(existing) if existing else blank_quote_session_metadata(resolved_session_id, now)
         metadata["updated_at"] = now
+        if self.user_id and not self._quote_session_owner_id(metadata):
+            metadata["owner"] = {"user_id": self.user_id}
         metadata["customer_summary"] = quote_session_customer_summary(payload, patch)
         metadata["quote_company_profile"] = quote_session_profile_summary(payload, patch)
         metadata["pricing_reference"] = quote_session_pricing_reference_summary(payload, patch)
@@ -7290,7 +7320,7 @@ class DatabaseKqagStorage:
 
     def list_quote_sessions(self) -> list[dict[str, Any]]:
         with self.connection() as connection:
-            rows = connection.execute("select workspace_id, metadata_json from kqag_quote_sessions").fetchall()
+            rows = connection.execute("select metadata_json from kqag_quote_sessions where workspace_id = ?", (self.workspace_id,)).fetchall()
         sessions: list[dict[str, Any]] = []
         for row in rows:
             try:
@@ -7299,8 +7329,7 @@ class DatabaseKqagStorage:
                 continue
             if not isinstance(metadata, dict):
                 continue
-            row_workspace_id = clean_text(row["workspace_id"])
-            if row_workspace_id != self.workspace_id and not (self.can_view_all_quote_sessions() and self._quote_session_visible_to_admin(metadata)):
+            if not self._quote_session_visible_to_current_user(metadata):
                 continue
             session = self._public_quote_session(metadata)
             if session:
@@ -7317,6 +7346,9 @@ class DatabaseKqagStorage:
     def delete_quote_session(self, session_id: str) -> bool:
         safe_id = safe_quote_session_id(session_id, "")
         if not safe_id:
+            return False
+        metadata, _draft_files = self._read_quote_session_metadata_for_workspace(safe_id)
+        if not metadata or not self._quote_session_editable_by_current_user(metadata):
             return False
         with self.connection() as connection:
             cursor = connection.execute("delete from kqag_quote_sessions where workspace_id = ? and session_id = ?", (self.workspace_id, safe_id))
@@ -7337,7 +7369,7 @@ def artifact_storage_for_auth_session(session: dict[str, Any] | None) -> Databas
     database_url = configured_database_url()
     if not database_url:
         raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
-    storage = DatabaseKqagStorage(database_url, workspace_id, permissions_for_auth_session(session).get("role", "viewer"))
+    storage = DatabaseKqagStorage(database_url, workspace_id, permissions_for_auth_session(session).get("role", "viewer"), platform_user_id_from_auth_session(session))
     storage.ensure_artifact_ready()
     return storage
 
@@ -7351,7 +7383,7 @@ def app_storage_for_auth_session(session: dict[str, Any] | None) -> LocalKqagSto
     database_url = configured_database_url()
     if not database_url:
         raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
-    storage = DatabaseKqagStorage(database_url, workspace_id, permissions_for_auth_session(session).get("role", "viewer"))
+    storage = DatabaseKqagStorage(database_url, workspace_id, permissions_for_auth_session(session).get("role", "viewer"), platform_user_id_from_auth_session(session))
     storage.ensure_ready()
     if configured_artifact_storage_mode() == "database":
         storage.ensure_artifact_ready()
@@ -12468,6 +12500,9 @@ def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, 
                 "size_bytes": None,
             },
         },
+        "owner": {
+            "user_id": "",
+        },
         "draft_state": {},
     }
 
@@ -12479,7 +12514,7 @@ def normalized_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any
     created_at = dashboard_safe_text(metadata.get("created_at")) or utc_timestamp()
     normalized = blank_quote_session_metadata(session_id, created_at)
     normalized["updated_at"] = dashboard_safe_text(metadata.get("updated_at")) or created_at
-    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "draft_state"):
+    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "owner", "draft_state"):
         if isinstance(metadata.get(key), dict):
             normalized[key].update(copy.deepcopy(metadata[key]))
     return normalized
@@ -12703,6 +12738,7 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         return {}
     session_id = normalized["session_id"]
     public = copy.deepcopy(normalized)
+    public.pop("owner", None)
     draft_state = normalized.get("draft_state") if isinstance(normalized.get("draft_state"), dict) else {}
     public["has_draft_state"] = bool(draft_state)
     draft_progress = quote_session_draft_progress(draft_state)

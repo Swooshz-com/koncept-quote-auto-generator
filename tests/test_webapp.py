@@ -574,9 +574,15 @@ class WebappServerTest(unittest.TestCase):
             payload[key] = value
         return payload
 
-    def platform_auth_session(self, workspace_id: str = "workspace-123", membership_role: str = "owner"):
+    def platform_auth_session(self, workspace_id: str = "workspace-123", membership_role: str = "owner", user_id: str = "platform-user-123"):
         context = webapp.safe_platform_launch_context(
             self.platform_consume_payload(
+                user={
+                    "userId": user_id,
+                    "email": f"{user_id}@example.test",
+                    "displayName": f"Synthetic {user_id}",
+                    "status": "active",
+                },
                 workspace={
                     "workspaceId": workspace_id,
                     "workspaceSlug": workspace_id,
@@ -17580,19 +17586,21 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
                 self.assertTrue(workspace_a.delete_quote_session("quote-team-a"))
                 self.assertEqual(workspace_a.list_quote_sessions(), [])
 
-    def test_database_storage_admin_lists_other_workspace_sessions_from_quote_basis_onward(self):
+    def test_database_storage_filters_quote_sessions_by_owner_role_and_workspace(self):
         with tempfile.TemporaryDirectory() as tmp:
             database_url = f"sqlite:///{(Path(tmp) / 'kqag-storage.sqlite3').as_posix()}"
             env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
             with mock.patch.dict(os.environ, env, clear=True):
                 webapp.apply_kqag_storage_migrations(database_url)
-                owner_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-owner", membership_role="operator"))
-                viewer_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-viewer", membership_role="viewer"))
-                admin_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-admin", membership_role="admin"))
+                owner_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="operator", user_id="owner-user"))
+                operator_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="operator", user_id="operator-user"))
+                viewer_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="viewer", user_id="viewer-user"))
+                admin_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="admin", user_id="admin-user"))
+                other_workspace_admin = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-other", membership_role="admin", user_id="admin-user"))
 
                 early_payload = valid_payload()
                 early_payload["quote_session"] = {
-                    "session_id": "quote-owner-customer",
+                    "session_id": "quote-owner-early",
                     "customer_summary": {"customer_name": "Early Customer"},
                     "draft_state": {"activeSidePanel": "customer"},
                 }
@@ -17609,13 +17617,55 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
                 }
                 owner_storage.create_or_update_quote_session(basis_payload)
 
+                output_payload = valid_payload()
+                output_payload["quote_session"] = {
+                    "session_id": "quote-owner-output",
+                    "customer_summary": {"customer_name": "Output Customer"},
+                    "draft_state": {"activeSidePanel": "output", "outputRows": [{"description": "Graphics"}]},
+                }
+                owner_storage.create_or_update_quote_session(output_payload)
+
+                generated_payload = valid_payload()
+                generated_payload["quote_session"] = {
+                    "session_id": "quote-owner-generated",
+                    "customer_summary": {"customer_name": "Generated Customer"},
+                    "status": {"quote_generated": True},
+                    "draft_state": {"activeSidePanel": "customer"},
+                }
+                owner_storage.create_or_update_quote_session(generated_payload)
+
+                self.assertEqual(
+                    {item["session_id"] for item in owner_storage.list_quote_sessions()},
+                    {"quote-owner-early", "quote-owner-basis", "quote-owner-output", "quote-owner-generated"},
+                )
+                self.assertIsNotNone(owner_storage.get_quote_session("quote-owner-early", include_draft_state=True))
+
+                self.assertEqual(operator_storage.list_quote_sessions(), [])
                 self.assertEqual(viewer_storage.list_quote_sessions(), [])
-                admin_session_ids = [item["session_id"] for item in admin_storage.list_quote_sessions()]
-                self.assertIn("quote-owner-basis", admin_session_ids)
-                self.assertNotIn("quote-owner-customer", admin_session_ids)
+                self.assertIsNone(operator_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+                self.assertIsNone(viewer_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+
+                admin_session_ids = {item["session_id"] for item in admin_storage.list_quote_sessions()}
+                self.assertEqual(admin_session_ids, {"quote-owner-basis", "quote-owner-output", "quote-owner-generated"})
                 self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
-                self.assertIsNone(admin_storage.get_quote_session("quote-owner-customer", include_draft_state=True))
+                self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-output", include_draft_state=True))
+                self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-generated", include_draft_state=True))
+                self.assertIsNone(admin_storage.get_quote_session("quote-owner-early", include_draft_state=True))
+                self.assertNotIn("owner", admin_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+
+                with owner_storage.connection() as connection:
+                    metadata_row = connection.execute(
+                        "select metadata_json from kqag_quote_sessions where workspace_id = ? and session_id = ?",
+                        ("workspace-team", "quote-owner-basis"),
+                    ).fetchone()
+                stored_metadata = json.loads(metadata_row["metadata_json"])
+                self.assertEqual(stored_metadata["owner"]["user_id"], "owner-user")
+
+                self.assertEqual(other_workspace_admin.list_quote_sessions(), [])
+                self.assertIsNone(other_workspace_admin.get_quote_session("quote-owner-basis", include_draft_state=True))
                 self.assertFalse(admin_storage.delete_quote_session("quote-owner-basis"))
+                self.assertFalse(operator_storage.delete_quote_session("quote-owner-basis"))
+                self.assertTrue(owner_storage.delete_quote_session("quote-owner-basis"))
 
     def test_database_storage_does_not_persist_raw_platform_launch_token(self):
         raw_launch_token = self.synthetic_platform_launch_token()
