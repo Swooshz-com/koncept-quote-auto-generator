@@ -8992,6 +8992,10 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("commercials?.exchange_rate", js)
         self.assertIn("Show name: ${showName ? escapeHtml(showName) : \"-\"}", js)
         self.assertIn("Project number: ${projectNumber ? escapeHtml(projectNumber) : \"-\"}", js)
+        dashboard_card_body = js.split("function dashboardSessionCard", 1)[1].split("function dashboardSessionById", 1)[0]
+        self.assertLess(dashboard_card_body.index("dashboard-session-project-title"), dashboard_card_body.index("dashboard-session-show-name"))
+        self.assertLess(dashboard_card_body.index("dashboard-session-show-name"), dashboard_card_body.index("<strong>${escapeHtml(customer)}</strong>"))
+        self.assertLess(dashboard_card_body.index("<strong>${escapeHtml(customer)}</strong>"), dashboard_card_body.index("dashboard-session-project-number"))
         self.assertIn(".dashboard-selected-action-row .dashboard-selected-action", css)
         selected_action_height_css = css.split(".dashboard-selected-action-row .dashboard-selected-action {", 1)[1].split("}", 1)[0]
         self.assertIn("min-height: 57px;", selected_action_height_css)

@@ -9755,9 +9755,9 @@ function dashboardSessionCard(session = {}) {
             </svg>
           </span>
           <div class="dashboard-session-title-group">
-            <strong>${escapeHtml(customer)}</strong>
-            <span>${escapeHtml(project)}</span>
+            <span class="dashboard-session-project-title">${escapeHtml(project)}</span>
             <span class="dashboard-session-show-name">Show name: ${showName ? escapeHtml(showName) : "-"}</span>
+            <strong>${escapeHtml(customer)}</strong>
             <span class="dashboard-session-project-number">Project number: ${projectNumber ? escapeHtml(projectNumber) : "-"}</span>
           </div>
         </div>
