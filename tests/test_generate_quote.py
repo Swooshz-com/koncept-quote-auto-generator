@@ -1414,19 +1414,25 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(calc_pr.attrib.get("fullCalcOnLoad"), "1")
         self.assertEqual(calc_pr.attrib.get("forceFullCalc"), "1")
 
-    def test_layout_totals_can_display_vat_from_quote_tax_config(self):
-        tmp, path = generate_layout_workbook({"tax": {"label": "VAT", "rate": 0.2}})
+    def test_layout_totals_can_display_quote_currency_vat_and_fx_from_quote_config(self):
+        tmp, path = generate_layout_workbook({"currency": "MYR", "exchange_rate": 2, "tax": {"label": "VAT", "rate": 0.2}})
         self.addCleanup(tmp.cleanup)
 
         with zipfile.ZipFile(path) as zf:
             sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
 
+        self.assertEqual(cell_value(sheet, "E21"), "MYR")
+        self.assertAlmostEqual(float(cell_value(sheet, "E24")), 4800.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E27")), 4800.0)
+        self.assertEqual(cell_value(sheet, "F27"), "MYR")
+        self.assertEqual(cell_value(sheet, "F28"), "MYR")
+        self.assertEqual(cell_value(sheet, "F29"), "MYR")
         self.assertEqual(find_cell_ref(sheet, "GST 9%"), "")
         self.assertEqual(find_cell_ref(sheet, "VAT 20%"), "D28")
         self.assertEqual(find_cell_ref(sheet, "Total including VAT"), "D29")
         self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.200000,2)", "SUM(E27:E28)"])
-        self.assertAlmostEqual(float(cell_value(sheet, "E28")), 480.0)
-        self.assertAlmostEqual(float(cell_value(sheet, "E29")), 2880.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E28")), 960.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E29")), 5760.0)
 
     def test_layout_tax_rounds_to_cents_not_whole_dollars(self):
         brief = {

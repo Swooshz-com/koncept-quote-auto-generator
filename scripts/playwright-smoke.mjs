@@ -130,8 +130,11 @@ async function dashboardPanelActionMetrics(page, label) {
       actionWidth: actionRect ? Math.round(actionRect.width) : null,
       actionTop: actionRect ? Math.round(actionRect.y - panelRect.y) : null,
       modifyTop: modifyRect ? Math.round(modifyRect.y - panelRect.y) : null,
+      modifyHeight: modifyRect ? Math.round(modifyRect.height) : null,
       deleteTop: deleteRect ? Math.round(deleteRect.y - panelRect.y) : null,
+      deleteHeight: deleteRect ? Math.round(deleteRect.height) : null,
       clearTop: clearRect ? Math.round(clearRect.y - panelRect.y) : null,
+      clearHeight: clearRect ? Math.round(clearRect.height) : null,
     };
   });
   if (!panelBox || !actionBox || !firstActionBox) {
@@ -145,8 +148,14 @@ async function dashboardPanelActionMetrics(page, label) {
     throw new Error(`Dashboard ${label} delete/clear spacing is unexpected: ${deleteClearGap}px.`);
   }
   const modifyDeleteGap = actionPositions.modifyTop === null ? null : actionPositions.deleteTop - actionPositions.modifyTop;
-  if (modifyDeleteGap !== null && Math.abs(modifyDeleteGap - deleteClearGap) > 4) {
-    throw new Error(`Dashboard ${label} modify/delete spacing differs from delete/clear spacing: ${modifyDeleteGap}px vs ${deleteClearGap}px.`);
+  const deleteClearActualGap = actionPositions.deleteHeight === null
+    ? null
+    : actionPositions.clearTop - (actionPositions.deleteTop + actionPositions.deleteHeight);
+  const modifyDeleteActualGap = actionPositions.modifyHeight === null
+    ? null
+    : actionPositions.deleteTop - (actionPositions.modifyTop + actionPositions.modifyHeight);
+  if (modifyDeleteActualGap !== null && deleteClearActualGap !== null && Math.abs(modifyDeleteActualGap - deleteClearActualGap) > 4) {
+    throw new Error(`Dashboard ${label} modify/delete gap differs from delete/clear gap: ${modifyDeleteActualGap}px vs ${deleteClearActualGap}px.`);
   }
   const bottomGap = Math.round((panelBox.y + panelBox.height) - (actionBox.y + actionBox.height));
   if (bottomGap < 8 || bottomGap > 36) {
@@ -158,6 +167,8 @@ async function dashboardPanelActionMetrics(page, label) {
     firstActionTop: Math.round(firstActionBox.y),
     deleteClearGap,
     modifyDeleteGap,
+    deleteClearActualGap,
+    modifyDeleteActualGap,
     ...actionPositions,
   };
 }

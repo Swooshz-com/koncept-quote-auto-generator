@@ -314,6 +314,19 @@
                         Quote Pricing Reference
                         <select id="profileSelect"></select>
                       </label>
+                      <div class="pricing-reference-baseline" aria-label="Pricing reference baseline">
+                        <span class="pricing-reference-baseline-title">Reference basis</span>
+                        <div class="pricing-reference-baseline-chips">
+                          <span class="pricing-reference-baseline-chip">
+                            <span>Ref currency</span>
+                            <strong data-reference-basis-currency>SGD</strong>
+                          </span>
+                          <span class="pricing-reference-baseline-chip">
+                            <span>Ref tax</span>
+                            <strong data-reference-basis-tax>GST 9%</strong>
+                          </span>
+                        </div>
+                      </div>
                     </div>
                     <div class="quote-commercial-card pricing-reference-card">
                       <div class="quote-commercial-fields">
@@ -766,7 +779,7 @@
                               <path d="M16 13h.01"></path>
                               <path d="M7 7l9-3"></path>
                             </svg>
-                            <span id="outputPricingReferenceCurrency" data-pricing-reference-currency>SGD</span>
+                            <span id="outputPricingReferenceCurrency" data-quote-currency>SGD</span>
                           </span>
                           <span class="pricing-reference-divider" aria-hidden="true"></span>
                           <span class="pricing-reference-meta-item">
@@ -774,11 +787,11 @@
                               <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"></path>
                               <path d="M7.5 7.5h.01"></path>
                             </svg>
-                            <span id="outputPricingReferenceTax" data-pricing-reference-tax>GST 9%</span>
+                            <span id="outputPricingReferenceTax" data-quote-tax>GST 9%</span>
                           </span>
                           <span class="pricing-reference-divider" aria-hidden="true"></span>
                           <span class="pricing-reference-meta-item">
-                            <span class="pricing-reference-meta-icon pricing-reference-rate-icon" aria-hidden="true">x</span>
+                            <span class="pricing-reference-meta-icon pricing-reference-rate-icon" aria-hidden="true">FX</span>
                             <span id="outputQuoteExchangeRate" data-quote-exchange-rate>1</span>
                           </span>
                         </span>
