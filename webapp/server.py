@@ -6737,7 +6737,7 @@ def safe_auth_session_for_async(session: dict[str, Any] | None) -> dict[str, Any
     if not platform:
         return None
     try:
-        context = safe_platform_launch_context(platform)
+        context = safe_platform_session_context(platform)
     except PlatformLaunchError:
         return None
     return {"user": user_from_platform_launch_context(context)}
@@ -6747,6 +6747,48 @@ def storage_access_error_payload(exc: KqagStorageAccessError) -> dict[str, Any]:
     error_reference = new_error_reference()
     write_local_log("server_error", {"error_reference": error_reference, "reason": exc.reason, "status": exc.status, "errors": safe_error_messages([str(exc)])})
     return {"status": "blocked" if exc.status < 500 else "failed", "errors": ["KQAG storage is not available for this workspace."], "error_reference": error_reference}
+
+
+def safe_platform_session_context(platform: dict[str, Any]) -> dict[str, Any]:
+    user = platform.get("user") if isinstance(platform.get("user"), dict) else {}
+    workspace = platform.get("workspace") if isinstance(platform.get("workspace"), dict) else {}
+    app = platform.get("app") if isinstance(platform.get("app"), dict) else {}
+    user_id = clean_text(user.get("userId"))
+    workspace_id = clean_text(workspace.get("workspaceId"))
+    app_key = clean_text(app.get("appKey"))
+    membership_role = clean_text(platform.get("membershipRole")).lower()
+    if clean_text(platform.get("outcome")) != "consumed" or not user_id or not workspace_id or app_key != PLATFORM_APP_KEY:
+        raise PlatformLaunchError(
+            "Platform session context is not valid for KQAG.",
+            status=403,
+            reason="platform_session_context_mismatch",
+        )
+    if membership_role not in PLATFORM_MEMBERSHIP_ROLE_TO_LOCAL_ROLE:
+        raise PlatformLaunchError(
+            "Platform session context is not valid for KQAG.",
+            status=403,
+            reason="platform_session_unsupported_role",
+        )
+    return {
+        "outcome": "consumed",
+        "user": {
+            "userId": user_id,
+            "email": clean_text(user.get("email")),
+            "displayName": clean_text(user.get("displayName")),
+            "status": clean_text(user.get("status")),
+        },
+        "workspace": {
+            "workspaceId": workspace_id,
+            "workspaceSlug": clean_text(workspace.get("workspaceSlug")),
+            "workspaceName": clean_text(workspace.get("workspaceName")),
+        },
+        "app": {
+            "appKey": app_key,
+            "appName": clean_text(app.get("appName")),
+        },
+        "membershipRole": membership_role,
+        "launchTokenExpiresAt": clean_text(platform.get("launchTokenExpiresAt")),
+    }
 
 
 class LocalKqagStorage:
