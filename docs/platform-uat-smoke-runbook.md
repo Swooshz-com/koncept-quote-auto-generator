@@ -61,6 +61,37 @@ python -m unittest tests.test_webapp.WebappServerTest.test_platform_uat_smoke_la
 
 KQAG Platform launch mode is explicit and disabled by default:
 
+For Windows local UAT, the recommended Windows local path is the helper script
+`scripts/local-uat-kqag-start.ps1`. It detects `py -3`, then `python`, then
+`python3`; creates a disposable runtime root under
+`$env:TEMP\kqag-platform-uat`; applies KQAG storage migrations unless
+`-SkipMigrations` is passed; and starts KQAG in Platform launch mode without
+printing session secrets or database URLs.
+
+```powershell
+.\scripts\local-uat-kqag-start.ps1 -PlatformBaseUrl "http://127.0.0.1:4317"
+```
+
+Optional overrides:
+
+```powershell
+.\scripts\local-uat-kqag-start.ps1 `
+  -PlatformBaseUrl "http://127.0.0.1:4317" `
+  -KqagDatabaseUrl "<disposable-sqlite-url>" `
+  -UatRoot "<disposable-uat-root>" `
+  -KqagPort 8765 `
+  -SkipMigrations
+```
+
+After the helper starts, copy only the printed `PLATFORM_KQAG_APP_BASE_URL`
+line into the Platform shell. Keep Platform and KQAG on the same browser cookie
+host, such as `127.0.0.1`.
+
+### Manual fallback
+
+If you need to run the commands manually, set the same local process
+environment:
+
 ```powershell
 $env:APP_MODE="deploy"
 $env:AUTH_REQUIRED="true"
