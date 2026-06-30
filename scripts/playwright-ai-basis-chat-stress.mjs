@@ -385,6 +385,11 @@ async function main() {
     await page.locator("#sampleDetailsButton:not([disabled])").waitFor({ timeout: 15000 });
     await page.locator("#sampleDetailsButton").click();
     await page.locator("#fileList .file-item").first().waitFor({ timeout: 15000 });
+    await page.locator("#sideNextButton", { hasText: "Next: Customer" }).click();
+    await page.locator("#customerDetailsPanel").waitFor({ state: "visible", timeout: 15000 });
+    if (!(await page.locator("#showName").inputValue()).trim()) {
+      await page.locator("#showName").fill("Synthetic Expo");
+    }
 
     await page.locator('[data-side-panel="quote_company"]:not([disabled])').waitFor({ timeout: 15000 });
     await page.locator('[data-side-panel="quote_company"]').click();

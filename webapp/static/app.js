@@ -338,6 +338,7 @@ const elements = {
   clientTitle: qs("#clientTitle"),
   clientAddress: qs("#clientAddress"),
   projectTitle: qs("#projectTitle"),
+  showName: qs("#showName"),
   quoteDate: qs("#quoteDate"),
   quoteDateFormatButtons: Array.from(document.querySelectorAll("[data-date-format-command]")),
   projectNumber: qs("#projectNumber"),
@@ -358,12 +359,18 @@ const elements = {
   dateLabel: qs("#dateLabel"),
   taxLabel: qs("#taxLabel"),
   taxRate: qs("#taxRate"),
+  quoteCurrency: qs("#quoteCurrency"),
+  quoteTaxLabel: qs("#quoteTaxLabel"),
+  quoteTaxRate: qs("#quoteTaxRate"),
+  quoteExchangeRate: qs("#quoteExchangeRate"),
+  quoteExchangeRateField: qs("#quoteExchangeRateField"),
   aiFailureBanner: qs("#aiFailureBanner"),
   basisReviewSurface: qs("#basisReviewSurface"),
   resultStatus: qs("#resultStatus"),
   outputStatusPill: qs("#outputStatusPill"),
   outputSourceLabel: qs("#outputSourceLabel"),
   outputTotalLines: qs("#outputTotalLines"),
+  outputQuoteExchangeRate: qs("#outputQuoteExchangeRate"),
   messageList: qs("#messageList"),
   matchSummary: qs("#matchSummary"),
   pricingMatchesBody: qs("#pricingMatchesBody"),
@@ -1661,7 +1668,73 @@ function syncPricingReferenceCurrencyCustomInput() {
 }
 
 function collectTaxDetails() {
-  return selectedPricingReferenceTax();
+  const referenceTax = selectedPricingReferenceTax();
+  const label = elements.quoteTaxLabel?.value || elements.taxLabel?.value || referenceTax.label;
+  const rateSource = elements.quoteTaxRate?.value || elements.taxRate?.value;
+  return {
+    label: normalizeTaxLabel(label),
+    rate: rateSource === undefined || String(rateSource || "").trim() === ""
+      ? referenceTax.rate
+      : taxRateFromPercentInput(rateSource, referenceTax.rate),
+  };
+}
+
+function collectQuoteCurrency() {
+  return normalizeCurrencyLabel(elements.quoteCurrency?.value || selectedPricingReferenceCurrency());
+}
+
+function collectQuoteExchangeRate() {
+  const value = Number(String(elements.quoteExchangeRate?.value || "").trim());
+  if (collectQuoteCurrency() === selectedPricingReferenceCurrency()) return 1;
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function syncQuoteExchangeRateField() {
+  if (elements.quoteExchangeRateField) elements.quoteExchangeRateField.hidden = false;
+  if (elements.quoteExchangeRate && collectQuoteCurrency() === selectedPricingReferenceCurrency()) {
+    elements.quoteExchangeRate.value = "1";
+  }
+}
+
+function quoteCommercialTaxText(tax = collectTaxDetails()) {
+  return `${tax.label || DEFAULT_TAX_LABEL} ${taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE)}%`;
+}
+
+function quoteExchangeRateText(value = collectQuoteExchangeRate()) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  return number.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function syncQuoteCommercialContextPills() {
+  if (typeof document === "undefined") return;
+  const currency = collectQuoteCurrency();
+  const taxText = quoteCommercialTaxText();
+  const exchangeRateText = quoteExchangeRateText();
+  document.querySelectorAll("[data-pricing-reference-currency]").forEach((element) => {
+    element.textContent = currency;
+  });
+  document.querySelectorAll("[data-pricing-reference-tax]").forEach((element) => {
+    element.textContent = taxText;
+  });
+  document.querySelectorAll("[data-quote-exchange-rate]").forEach((element) => {
+    element.textContent = exchangeRateText;
+  });
+}
+
+function applyPricingReferenceCommercialDefaults() {
+  const tax = selectedPricingReferenceTax();
+  const currency = selectedPricingReferenceCurrency();
+  if (elements.quoteCurrency && !String(elements.quoteCurrency.value || "").trim()) {
+    elements.quoteCurrency.value = currency;
+  }
+  if (elements.quoteTaxLabel && !String(elements.quoteTaxLabel.value || "").trim()) {
+    elements.quoteTaxLabel.value = tax.label;
+  }
+  if (elements.quoteTaxRate && !String(elements.quoteTaxRate.value || "").trim()) {
+    elements.quoteTaxRate.value = taxRatePercentText(tax.rate);
+  }
+  syncQuoteExchangeRateField();
 }
 
 function renderSelectedPricingReferenceSummary() {
@@ -1679,6 +1752,7 @@ function renderSelectedPricingReferenceSummary() {
   if (elements.selectedPricingReferenceCurrency) elements.selectedPricingReferenceCurrency.textContent = currency;
   if (elements.selectedPricingReferenceTax) elements.selectedPricingReferenceTax.textContent = taxText;
   syncPricingReferenceContextPills(currency, taxText);
+  applyPricingReferenceCommercialDefaults();
   if (elements.taxLabel) elements.taxLabel.value = tax.label;
   if (elements.taxRate) elements.taxRate.value = taxRatePercentText(tax.rate);
   updatePricingReferenceDeleteButton();
@@ -2013,6 +2087,7 @@ function collectQuoteDetails() {
     },
     project: {
       title: elements.projectTitle.value.trim(),
+      show_name: elements.showName?.value.trim() || "",
     },
     company: {
       name: elements.quoteCompanyName.value.trim(),
@@ -2069,6 +2144,7 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(client, "title", partial)) setInputValue(elements.clientTitle, client.title);
   if (shouldApply(client, "address", partial)) setInputValue(elements.clientAddress, client.address);
   if (shouldApply(project, "title", partial)) setInputValue(elements.projectTitle, project.title);
+  if (shouldApply(project, "show_name", partial)) setInputValue(elements.showName, project.show_name);
   if (!partial || shouldApply(project, "booth_width", true) || shouldApply(project, "booth_depth", true)) {
     state.boothDimensions = normalizeBoothDimensions(project);
   }
@@ -2078,9 +2154,11 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(company, "header_details", partial)) setInputValue(elements.headerDetails, company.header_details);
   if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_label")) {
     if (elements.taxLabel) elements.taxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
+    if (elements.quoteTaxLabel && (!partial || !elements.quoteTaxLabel.value)) elements.quoteTaxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
   }
   if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_rate")) {
     setInputValue(elements.taxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
+    if (elements.quoteTaxRate && (!partial || !elements.quoteTaxRate.value)) setInputValue(elements.quoteTaxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
   }
   if (shouldApply(quoteText, "terms_heading", partial)) setInputValue(elements.termsHeading, quoteText.terms_heading);
   if (shouldApply(quoteText, "payment_terms", partial)) setInputValue(elements.paymentTerms, linesValue(quoteText.payment_terms));
@@ -2115,6 +2193,11 @@ function applyQuoteDetails(details = {}, options = {}) {
 function applyDefaultQuoteCompanyFields() {
   if (elements.taxLabel) elements.taxLabel.value = DEFAULT_TAX_LABEL;
   setInputValue(elements.taxRate, taxRatePercentText(DEFAULT_TAX_RATE));
+  setInputValue(elements.quoteTaxLabel, "");
+  setInputValue(elements.quoteTaxRate, "");
+  setInputValue(elements.quoteCurrency, "");
+  setInputValue(elements.quoteExchangeRate, "");
+  applyPricingReferenceCommercialDefaults();
   setInputValue(elements.termsHeading, DEFAULT_TERMS_HEADING);
   setInputValue(elements.notesHeading, DEFAULT_NOTES_HEADING);
   setInputValue(elements.acceptanceText, DEFAULT_ACCEPTANCE_TEXT);
@@ -3356,6 +3439,7 @@ function clearCustomerDetails() {
   setInputValue(elements.clientTitle, "");
   setInputValue(elements.clientAddress, "");
   setInputValue(elements.projectTitle, "");
+  setInputValue(elements.showName, "");
   state.boothDimensions = { ...DEFAULT_BOOTH_DIMENSIONS };
   setInputValue(elements.quoteDate, todayDateInputValue());
   applyQuoteDateFormatFromHtml("");
@@ -5969,6 +6053,7 @@ function buildPayload(options = {}) {
   const includeDraftContext = options.includeDraftContext !== false;
   const project = {
     title: elements.projectTitle.value.trim(),
+    show_name: elements.showName?.value.trim() || "",
   };
   if (includeBoothDimensions) {
     project.booth_width = state.boothDimensions.booth_width;
@@ -6009,7 +6094,10 @@ function buildPayload(options = {}) {
       logo_name: state.headerLogo ? state.headerLogo.name : "",
       logo_type: state.headerLogo ? state.headerLogo.type : "",
     },
-    tax: collectTaxDetails(),
+    tax: selectedPricingReferenceTax(),
+    quote_tax: collectTaxDetails(),
+    quote_currency: collectQuoteCurrency(),
+    quote_exchange_rate: collectQuoteExchangeRate(),
     user_feedback: state.pendingFeedback,
     quote_basis: includeDraftContext ? { ...state.quoteBasis, ...quoteBasisFromSections(state.quoteBasisSections) } : {},
     quote_basis_sections: includeDraftContext ? cloneQuoteBasisSections(state.quoteBasisSections) : [],
@@ -6885,7 +6973,7 @@ function matchSummaryStats(rows = []) {
 
 function formatSubtotalValue(stats = {}) {
   const total = Number(stats.total || 0);
-  const totalText = `${selectedPricingReferenceCurrency()} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const totalText = `${collectQuoteCurrency()} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return stats.totalPending ? `${totalText} + ???` : totalText;
 }
 
@@ -6894,7 +6982,7 @@ function formatOutputTotalValue(stats = {}) {
   const tax = collectTaxDetails();
   const taxRate = Number(tax.rate ?? DEFAULT_TAX_RATE);
   const grandTotal = Number.isFinite(taxRate) ? subtotal + (subtotal * taxRate) : subtotal;
-  const totalText = `${selectedPricingReferenceCurrency()} ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const totalText = `${collectQuoteCurrency()} ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return stats.totalPending ? `${totalText} + ???` : totalText;
 }
 
@@ -6923,7 +7011,10 @@ function updateOutputHeader(rows = state.outputRows) {
   if (elements.outputSourceLabel) {
     elements.outputSourceLabel.textContent = outputPricingSourceLabel();
   }
-  syncPricingReferenceContextPills();
+  syncQuoteCommercialContextPills();
+  if (elements.outputQuoteExchangeRate) {
+    elements.outputQuoteExchangeRate.textContent = quoteExchangeRateText();
+  }
   if (elements.outputTotalLines) {
     elements.outputTotalLines.innerHTML = `<strong>${safeRows.length}</strong> approved line${safeRows.length === 1 ? "" : "s"}`;
   }
@@ -7352,12 +7443,12 @@ function basisLineTextHtml(line = {}) {
 
 function basisPossibleMatchesHtml(section, line, index) {
   const matches = normalizePossiblePricingMatches(line.possible_pricing_matches || []);
-  if (!matches.length || !basisLineAcceptsAsAiProposal(line)) return "";
+  if (!matches.length || normalizeBasisTag(line.tag) === "Exclude" || !basisLineAcceptsAsAiProposal(line)) return "";
   return `
     <span class="basis-line-possible-matches" aria-label="Possible pricing reference matches">
       ${matches.map((match, matchIndex) => `
         <button class="basis-line-possible-match" type="button" data-basis-section="${escapeHtml(section.id)}" data-basis-line-index="${index}" data-basis-possible-match-index="${matchIndex}" title="Use this pricing reference match">
-          Possible match: ${escapeHtml(match.description)}
+          <strong>Possible match:</strong> ${escapeHtml(match.description)}
         </button>
       `).join("")}
     </span>
@@ -8231,6 +8322,7 @@ function missingCustomerFields() {
   if (!elements.clientTitle.value.trim()) missing.push("Attention title");
   if (!hasLines(elements.clientAddress.value)) missing.push("Client address");
   if (!elements.projectTitle.value.trim()) missing.push("Quotation Title");
+  if (!elements.showName.value.trim()) missing.push("Show name");
   if (!elements.quoteDate.value.trim()) missing.push("Quote date");
   if (!elements.projectNumber.value.trim()) missing.push("Project number");
   return missing;
@@ -8697,9 +8789,10 @@ function dashboardCommercialsFromState() {
   const taxRate = Number(tax.rate ?? DEFAULT_TAX_RATE);
   const taxAmount = subtotal === null || !Number.isFinite(taxRate) ? null : subtotal * taxRate;
   return {
-    currency: selectedPricingReferenceCurrency(),
+    currency: collectQuoteCurrency(),
     tax_label: tax.label || DEFAULT_TAX_LABEL,
     tax_rate: Number.isFinite(taxRate) ? taxRate : DEFAULT_TAX_RATE,
+    exchange_rate: collectQuoteExchangeRate(),
     subtotal,
     tax_amount: taxAmount,
     grand_total: subtotal === null || taxAmount === null ? null : subtotal + taxAmount,
@@ -8852,6 +8945,8 @@ function currentQuoteSessionPayload(options = {}) {
     customer_summary: {
       customer_name: details.client?.name || "",
       project_name: details.project?.title || "",
+      show_name: details.project?.show_name || "",
+      project_number: details.project_number || "",
       event_or_project_date: details.quote_date || "",
     },
     quote_company_profile: {
@@ -8940,6 +9035,15 @@ function queueQuoteSessionDraftStateSave(options = {}) {
     quoteSessionDraftSaveTimer = null;
     saveQuoteSessionDraftState(options).catch(() => {});
   }, delay);
+}
+
+function handleQuoteDetailFieldChange() {
+  syncQuoteExchangeRateField();
+  updateOutputHeader();
+  syncControlStates();
+  if (quoteSessionDraftStateCanSave()) {
+    queueQuoteSessionDraftStateSave({ quoteGenerated: Boolean(state.basisConfirmed || state.outputRows.length) });
+  }
 }
 
 async function startQuoteSessionDraftSaveAfterCustomerStep() {
@@ -9149,6 +9253,14 @@ function dashboardSessionProjectText(session = {}) {
   return String(session.customer_summary?.project_name || "").trim() || "Untitled quote";
 }
 
+function dashboardSessionShowNameText(session = {}) {
+  return String(session.customer_summary?.show_name || "").trim();
+}
+
+function dashboardSessionProjectNumberText(session = {}) {
+  return String(session.customer_summary?.project_number || "").trim();
+}
+
 function dashboardSessionSearchText(session = {}) {
   const shortReference = dashboardShortSessionReference(session);
   return [
@@ -9156,6 +9268,8 @@ function dashboardSessionSearchText(session = {}) {
     shortReference ? `ref ${shortReference}` : "",
     dashboardSessionCustomerText(session),
     dashboardSessionProjectText(session),
+    dashboardSessionShowNameText(session),
+    dashboardSessionProjectNumberText(session),
   ].map((value) => String(value || "").toLowerCase()).join(" ");
 }
 
@@ -9338,11 +9452,14 @@ function dashboardModifiedText(session = {}) {
 
 function dashboardTaxText(session = {}) {
   const commercials = session.commercials || {};
-  const currency = dashboardSessionCurrency(session);
   const label = String(commercials.tax_label || DEFAULT_TAX_LABEL).trim() || DEFAULT_TAX_LABEL;
+  return label;
+}
+
+function dashboardTaxRateText(session = {}) {
+  const commercials = session.commercials || {};
   const rate = Number(commercials.tax_rate ?? DEFAULT_TAX_RATE);
-  const rateText = Number.isFinite(rate) ? `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "";
-  return `${currency} / ${label}${rateText ? ` ${rateText}` : ""}`;
+  return Number.isFinite(rate) ? `${(rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "-";
 }
 
 const QUOTE_SESSION_DELETE_SINGLE_MESSAGE = "This removes the local dashboard record and any saved local exports for this quote session. This cannot be undone.";
@@ -9547,6 +9664,55 @@ async function modifyDashboardQuote(sessionId) {
   }
 }
 
+async function duplicateDashboardQuote(sessionId) {
+  const sourceSessionId = safeQuoteSessionId(sessionId || "");
+  if (!sourceSessionId || appIsBusy() || state.quoteSessionRestoreBusy) return;
+  clearQuoteSessionDraftSaveTimer();
+  state.quoteSessionRestoreBusy = true;
+  syncControlStates();
+  try {
+    const detailedSession = await loadQuoteSessionDetail(sourceSessionId);
+    let draftState = detailedSession?.draft_state && typeof detailedSession.draft_state === "object"
+      ? detailedSession.draft_state
+      : {};
+    if (!Object.keys(draftState).length && sourceSessionId === safeQuoteSessionId(state.quoteSessionId) && quoteDraftShouldPersistToDashboard()) {
+      draftState = currentQuoteSessionDraftState();
+    }
+    if (!Object.keys(draftState).length) {
+      mergeDashboardQuoteSession({ ...(detailedSession || {}), session_id: sourceSessionId, has_draft_state: false });
+      dashboardRestoreError("This quote session does not have saved draft data to duplicate.");
+      return;
+    }
+    const draftFiles = Array.isArray(detailedSession?.draft_files) ? detailedSession.draft_files : [];
+    if (draftFiles.length) {
+      await persistSessionFiles(draftFiles).catch(() => {});
+      draftState = mergeDashboardDraftImagesWithAvailablePayloads(draftState, draftFiles);
+    }
+    draftState = hydrateDashboardDraftImagePayloads(draftState, sourceSessionId);
+    const duplicatedSessionId = newClientQuoteSessionId();
+    const restored = await applyQuoteSessionSnapshot(
+      { ...draftState, quoteSessionId: duplicatedSessionId, quoteSessionDraftSaveStarted: true },
+      { sessionId: duplicatedSessionId, forceQuoteView: false }
+    );
+    if (!restored) {
+      dashboardRestoreError("This quote session was saved with an incompatible draft format.");
+      return;
+    }
+    state.quoteSessionDraftSaveStarted = true;
+    state.quoteSessionRestoredSessionId = "";
+    state.quoteSessionRestoredDraftKey = "";
+    const duplicatedSession = await saveCurrentQuoteSession({ sessionId: duplicatedSessionId, includeDraftState: true });
+    state.dashboardSelectionMode = false;
+    state.dashboardSelectedSessionIds = [];
+    state.dashboardActiveSessionId = safeQuoteSessionId(duplicatedSession?.session_id || duplicatedSessionId);
+    state.activeAppView = "dashboard";
+    renderQuoteDashboard();
+    scrollDashboardSessionIntoView(state.dashboardActiveSessionId);
+  } finally {
+    state.quoteSessionRestoreBusy = false;
+    syncControlStates();
+  }
+}
 function dashboardExportAvailabilityItem(session = {}, kind = "xlsx", label = "XLSX") {
   const exportInfo = quoteSessionExport(session, kind);
   const generatedStatus = quoteSessionStatus(session).key === "generated";
@@ -9568,6 +9734,8 @@ function dashboardSessionCard(session = {}) {
   const status = quoteSessionStatus(session);
   const customer = dashboardSessionCustomerText(session);
   const project = dashboardSessionProjectText(session);
+  const showName = dashboardSessionShowNameText(session);
+  const projectNumber = dashboardSessionProjectNumberText(session);
   const profile = session.quote_company_profile?.display_name || "Quote Company";
   const safeSessionId = safeQuoteSessionId(session.session_id || "");
   const shortReference = dashboardShortSessionReference(session);
@@ -9598,6 +9766,8 @@ function dashboardSessionCard(session = {}) {
           <div class="dashboard-session-title-group">
             <strong>${escapeHtml(customer)}</strong>
             <span>${escapeHtml(project)}</span>
+            <span class="dashboard-session-show-name">Show name: ${showName ? escapeHtml(showName) : "-"}</span>
+            <span class="dashboard-session-project-number">Project number: ${projectNumber ? escapeHtml(projectNumber) : "-"}</span>
           </div>
         </div>
         <dl class="dashboard-session-record-zone dashboard-session-meta-zone">
@@ -9800,8 +9970,10 @@ function renderDashboardBulkPanel(selectedIds = []) {
 
 function renderDashboardSinglePanel(activeSession = {}) {
   const status = quoteSessionStatus(activeSession);
-  const customer = activeSession.customer_summary?.customer_name || "Untitled customer";
-  const project = activeSession.customer_summary?.project_name || "Untitled quote";
+  const customer = dashboardSessionCustomerText(activeSession);
+  const project = dashboardSessionProjectText(activeSession);
+  const showName = dashboardSessionShowNameText(activeSession);
+  const projectNumber = dashboardSessionProjectNumberText(activeSession);
   const profile = activeSession.quote_company_profile?.display_name || "Quote Company";
   const pricing = activeSession.pricing_reference?.display_name || "Pricing Reference";
   const safeSessionId = safeQuoteSessionId(activeSession.session_id || "");
@@ -9830,7 +10002,10 @@ function renderDashboardSinglePanel(activeSession = {}) {
       <dl class="dashboard-selected-summary-grid">
         <div><dt>Grand Total</dt><dd><span class="dashboard-money">${escapeHtml(formatDashboardMoney(activeSession))}</span></dd></div>
         <div><dt>Subtotal</dt><dd>${escapeHtml(formatDashboardSubtotal(activeSession))}</dd></div>
-        <div><dt>Currency / GST</dt><dd>${escapeHtml(dashboardTaxText(activeSession))}</dd></div>
+        <div><dt>Currency / FX</dt><dd>${escapeHtml(`${dashboardSessionCurrency(activeSession)} / FX ${quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1)}`)}</dd></div>
+        <div><dt>Tax / Rate</dt><dd>${escapeHtml(`${dashboardTaxText(activeSession)} / ${dashboardTaxRateText(activeSession)}`)}</dd></div>
+        <div><dt>Show Name</dt><dd>${showName ? escapeHtml(showName) : "-"}</dd></div>
+        <div><dt>Project Number</dt><dd>${projectNumber ? escapeHtml(projectNumber) : "-"}</dd></div>
         <div><dt>Quote Company</dt><dd>${escapeHtml(profile)}</dd></div>
         <div><dt>Pricing Reference</dt><dd>${escapeHtml(pricing)}</dd></div>
       </dl>
@@ -9843,7 +10018,10 @@ function renderDashboardSinglePanel(activeSession = {}) {
       </div>
     </div>
     <div class="dashboard-selected-actions dashboard-selected-actions--single">
+      <div class="dashboard-selected-action-row">
+      <button class="secondary-button sample-button dashboard-selected-action dashboard-duplicate-action" type="button" data-dashboard-panel-action="duplicate-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(canModify ? "Create a duplicated quote draft." : modifyTitle)}">Duplicate Quote</button>
       <button class="primary-button dashboard-selected-action dashboard-modify-action" type="button" data-dashboard-panel-action="modify-session" data-quote-session-id="${escapeHtml(safeSessionId)}" ${canModify ? "" : "disabled aria-disabled=\"true\""} title="${escapeHtml(modifyTitle)}">Modify quote</button>
+      </div>
       <button class="secondary-button danger-button dashboard-delete-action" type="button" data-dashboard-panel-action="delete-session" data-quote-session-id="${escapeHtml(safeSessionId)}">Delete session</button>
       <button class="secondary-button dashboard-selected-action dashboard-clear-selection-action" type="button" data-dashboard-panel-action="clear-selection">Clear selection</button>
     </div>
@@ -10189,6 +10367,8 @@ function handleDashboardSidePanelAction(event) {
   const selectedId = safeQuoteSessionId(state.dashboardActiveSessionId || dashboardSelectedSessionIds()[0] || "");
   if (action.dataset.dashboardPanelAction === "modify-session") {
     modifyDashboardQuote(action.dataset.quoteSessionId || selectedId);
+  } else if (action.dataset.dashboardPanelAction === "duplicate-session") {
+    duplicateDashboardQuote(action.dataset.quoteSessionId || selectedId);
   } else if (action.dataset.dashboardPanelAction === "continue-session") {
     continueDashboardDraft(selectedId);
   } else if (action.dataset.dashboardPanelAction === "delete-session") {
@@ -11473,6 +11653,7 @@ function wireEvents() {
     elements.clientTitle,
     elements.clientAddress,
     elements.projectTitle,
+    elements.showName,
     elements.quoteDate,
     elements.projectNumber,
     elements.headerDetails,
@@ -11490,9 +11671,13 @@ function wireEvents() {
     elements.dateLabel,
     elements.taxLabel,
     elements.taxRate,
+    elements.quoteCurrency,
+    elements.quoteTaxLabel,
+    elements.quoteTaxRate,
+    elements.quoteExchangeRate,
   ].filter(Boolean).forEach((input) => {
-    input.addEventListener("input", syncControlStates);
-    input.addEventListener("change", syncControlStates);
+    input.addEventListener("input", handleQuoteDetailFieldChange);
+    input.addEventListener("change", handleQuoteDetailFieldChange);
   });
   elements.basisChatForm.addEventListener("submit", handleBasisChatSubmit);
   elements.basisChatApplyButton.addEventListener("click", applyBasisChatProposal);

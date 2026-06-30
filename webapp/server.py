@@ -1893,6 +1893,9 @@ def normalize_tax_rate(value: Any, fallback: float = DEFAULT_TAX_RATE) -> float:
 
 
 def quote_tax_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    explicit_tax = payload.get("quote_tax") if isinstance(payload.get("quote_tax"), dict) else {}
+    if explicit_tax:
+        return {"label": normalize_tax_label(explicit_tax.get("label")), "rate": normalize_tax_rate(explicit_tax.get("rate"))}
     reference = payload.get("pricing_reference") if isinstance(payload.get("pricing_reference"), dict) else {}
     reference_tax = reference.get("tax") if isinstance(reference.get("tax"), dict) else None
     if reference_tax is None:
@@ -1908,6 +1911,9 @@ def quote_tax_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def quote_currency_from_payload(payload: dict[str, Any]) -> str:
+    explicit_currency = clean_text(payload.get("quote_currency"))
+    if explicit_currency:
+        return normalize_currency_label(explicit_currency)
     runtime_reference = runtime_pricing_reference_from_payload(payload)
     runtime_currency = clean_text(runtime_reference.get("currency")) if runtime_reference else ""
     if runtime_currency:
@@ -6732,6 +6738,13 @@ def platform_workspace_id_from_auth_session(session: dict[str, Any] | None) -> s
     return clean_text(workspace.get("workspaceId"))
 
 
+def platform_user_id_from_auth_session(session: dict[str, Any] | None) -> str:
+    user = session.get("user") if isinstance(session, dict) and isinstance(session.get("user"), dict) else {}
+    platform = platform_context_from_auth_session(session)
+    platform_user = platform.get("user") if isinstance(platform, dict) and isinstance(platform.get("user"), dict) else {}
+    return privacy_safe_tracking_id(platform_user.get("userId") or user.get("subject"), "")
+
+
 def safe_auth_session_for_async(session: dict[str, Any] | None) -> dict[str, Any] | None:
     platform = platform_context_from_auth_session(session)
     if not platform:
@@ -6863,9 +6876,11 @@ class LocalKqagStorage:
 class DatabaseKqagStorage:
     storage_backend = "database"
 
-    def __init__(self, database_url: str, workspace_id: str) -> None:
+    def __init__(self, database_url: str, workspace_id: str, role: str = "viewer", user_id: str = "") -> None:
         self.database_url = database_url
         self.workspace_id = clean_text(workspace_id)
+        self.role = role_permissions(role).get("role", "viewer")
+        self.user_id = privacy_safe_tracking_id(user_id, "")
         if not self.workspace_id:
             raise KqagStorageAccessError("Platform workspace context is required for database storage.", status=403, reason="storage_platform_session_required")
 
@@ -7208,12 +7223,43 @@ class DatabaseKqagStorage:
             public["status"]["quote_generated"] = False
         return public
 
-    def _read_quote_session_metadata(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    def can_view_other_user_quote_sessions(self) -> bool:
+        return self.role == "admin"
+
+    def _quote_session_visible_to_admin(self, metadata: dict[str, Any]) -> bool:
+        if not isinstance(metadata, dict):
+            return False
+        status = metadata.get("status") if isinstance(metadata.get("status"), dict) else {}
+        if status.get("quote_generated") is True:
+            return True
+        progress = quote_session_draft_progress(metadata.get("draft_state") if isinstance(metadata.get("draft_state"), dict) else {})
+        return progress.get("active_side_panel") in {"basis", "output"}
+
+    def _quote_session_owner_id(self, metadata: dict[str, Any]) -> str:
+        owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else {}
+        return clean_text(owner.get("user_id"))
+
+    def _quote_session_visible_to_current_user(self, metadata: dict[str, Any]) -> bool:
+        owner_id = self._quote_session_owner_id(metadata)
+        if not owner_id:
+            return True
+        if self.user_id and owner_id == self.user_id:
+            return True
+        return self.can_view_other_user_quote_sessions() and self._quote_session_visible_to_admin(metadata)
+
+    def _quote_session_editable_by_current_user(self, metadata: dict[str, Any]) -> bool:
+        owner_id = self._quote_session_owner_id(metadata)
+        return bool(not owner_id or (self.user_id and owner_id == self.user_id))
+
+    def _read_quote_session_metadata_for_workspace(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         safe_id = safe_quote_session_id(session_id, "")
         if not safe_id:
             return {}, []
         with self.connection() as connection:
-            row = connection.execute("select metadata_json, draft_files_json from kqag_quote_sessions where workspace_id = ? and session_id = ?", (self.workspace_id, safe_id)).fetchone()
+            row = connection.execute(
+                "select metadata_json, draft_files_json from kqag_quote_sessions where workspace_id = ? and session_id = ?",
+                (self.workspace_id, safe_id),
+            ).fetchone()
         if not row:
             return {}, []
         try:
@@ -7227,13 +7273,24 @@ class DatabaseKqagStorage:
             return {}, []
         return metadata, [item for item in draft_files if isinstance(item, dict)]
 
+    def _read_quote_session_metadata(self, session_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        metadata, draft_files = self._read_quote_session_metadata_for_workspace(session_id)
+        if not metadata or not self._quote_session_visible_to_current_user(metadata):
+            return {}, []
+        return metadata, draft_files
+
     def create_or_update_quote_session(self, payload: dict[str, Any], result: dict[str, Any] | None = None, output_dir: Path | None = None, session_id: str | None = None) -> dict[str, Any]:
         patch = quote_session_patch_payload(payload)
         resolved_session_id = safe_quote_session_id(session_id or patch.get("session_id") or payload.get("session_id"), "") or new_quote_session_id()
-        existing, _draft_files = self._read_quote_session_metadata(resolved_session_id)
+        existing, _draft_files = self._read_quote_session_metadata_for_workspace(resolved_session_id)
+        if existing and not self._quote_session_editable_by_current_user(existing):
+            resolved_session_id = new_quote_session_id()
+            existing = {}
         now = utc_timestamp()
         metadata = normalized_quote_session_metadata(existing) if existing else blank_quote_session_metadata(resolved_session_id, now)
         metadata["updated_at"] = now
+        if self.user_id and not self._quote_session_owner_id(metadata):
+            metadata["owner"] = {"user_id": self.user_id}
         metadata["customer_summary"] = quote_session_customer_summary(payload, patch)
         metadata["quote_company_profile"] = quote_session_profile_summary(payload, patch)
         metadata["pricing_reference"] = quote_session_pricing_reference_summary(payload, patch)
@@ -7270,10 +7327,13 @@ class DatabaseKqagStorage:
                 metadata = json.loads(row["metadata_json"])
             except (TypeError, json.JSONDecodeError):
                 continue
-            if isinstance(metadata, dict):
-                session = self._public_quote_session(metadata)
-                if session:
-                    sessions.append(session)
+            if not isinstance(metadata, dict):
+                continue
+            if not self._quote_session_visible_to_current_user(metadata):
+                continue
+            session = self._public_quote_session(metadata)
+            if session:
+                sessions.append(session)
         return sorted(sessions, key=lambda item: (iso_timestamp_sort_value(item.get("updated_at")), clean_text(item.get("session_id")).casefold()), reverse=True)
 
     def get_quote_session(self, session_id: str, *, include_draft_state: bool = False) -> dict[str, Any] | None:
@@ -7286,6 +7346,9 @@ class DatabaseKqagStorage:
     def delete_quote_session(self, session_id: str) -> bool:
         safe_id = safe_quote_session_id(session_id, "")
         if not safe_id:
+            return False
+        metadata, _draft_files = self._read_quote_session_metadata_for_workspace(safe_id)
+        if not metadata or not self._quote_session_editable_by_current_user(metadata):
             return False
         with self.connection() as connection:
             cursor = connection.execute("delete from kqag_quote_sessions where workspace_id = ? and session_id = ?", (self.workspace_id, safe_id))
@@ -7306,7 +7369,7 @@ def artifact_storage_for_auth_session(session: dict[str, Any] | None) -> Databas
     database_url = configured_database_url()
     if not database_url:
         raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
-    storage = DatabaseKqagStorage(database_url, workspace_id)
+    storage = DatabaseKqagStorage(database_url, workspace_id, permissions_for_auth_session(session).get("role", "viewer"), platform_user_id_from_auth_session(session))
     storage.ensure_artifact_ready()
     return storage
 
@@ -7320,7 +7383,7 @@ def app_storage_for_auth_session(session: dict[str, Any] | None) -> LocalKqagSto
     database_url = configured_database_url()
     if not database_url:
         raise KqagStorageAccessError("KQAG database storage is not configured.", status=503, reason="storage_database_not_configured")
-    storage = DatabaseKqagStorage(database_url, workspace_id)
+    storage = DatabaseKqagStorage(database_url, workspace_id, permissions_for_auth_session(session).get("role", "viewer"), platform_user_id_from_auth_session(session))
     storage.ensure_ready()
     if configured_artifact_storage_mode() == "database":
         storage.ensure_artifact_ready()
@@ -9103,6 +9166,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "project": {
             "title": clean_text(project.get("title") or payload.get("project_title")),
+            "show_name": clean_text(project.get("show_name") or payload.get("show_name")),
             "booth_size": booth_size,
             "booth_width": booth_width,
             "booth_depth": booth_depth,
@@ -9113,6 +9177,7 @@ def payload_to_brief(payload: dict[str, Any]) -> dict[str, Any]:
             "logo_data_url": header_logo,
         },
         "currency": quote_currency_from_payload(payload),
+        "exchange_rate": parse_float_or_none(payload.get("quote_exchange_rate")),
         "tax": quote_tax_from_payload(payload),
         "line_items": normalize_line_items_for_final_brief(payload),
         "payment_terms": multiline_list(quote_text.get("payment_terms") or payload.get("payment_terms")),
@@ -12195,6 +12260,15 @@ def dashboard_safe_number(value: Any) -> float | None:
     return round(number, 2)
 
 
+def dashboard_safe_exchange_rate(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    number = parse_float_or_none(value)
+    if number is None or not math.isfinite(number) or number <= 0:
+        return None
+    return round(number, 4)
+
+
 def quote_session_patch_payload(payload: dict[str, Any]) -> dict[str, Any]:
     patch = payload.get("quote_session") if isinstance(payload.get("quote_session"), dict) else None
     return patch if patch is not None else payload
@@ -12207,6 +12281,8 @@ def quote_session_customer_summary(payload: dict[str, Any], patch: dict[str, Any
     return {
         "customer_name": dashboard_safe_text(supplied.get("customer_name") or client.get("name")),
         "project_name": dashboard_safe_text(supplied.get("project_name") or project.get("title")),
+        "show_name": dashboard_safe_text(supplied.get("show_name") or project.get("show_name")),
+        "project_number": dashboard_safe_text(supplied.get("project_number") or payload.get("project_number")),
         "event_or_project_date": dashboard_safe_text(
             supplied.get("event_or_project_date")
             or project.get("event_or_project_date")
@@ -12259,10 +12335,14 @@ def quote_session_commercials(payload: dict[str, Any], patch: dict[str, Any]) ->
     subtotal = dashboard_safe_number(supplied.get("subtotal"))
     tax_amount = dashboard_safe_number(supplied.get("tax_amount"))
     grand_total = dashboard_safe_number(supplied.get("grand_total"))
+    exchange_rate = dashboard_safe_exchange_rate(
+        supplied.get("exchange_rate") if supplied.get("exchange_rate") not in (None, "") else payload.get("quote_exchange_rate")
+    )
     return {
         "currency": normalize_currency_label(supplied.get("currency") or quote_currency_from_payload(payload)),
         "tax_label": normalize_tax_label(supplied.get("tax_label") or tax.get("label")),
         "tax_rate": normalize_tax_rate(supplied.get("tax_rate") if supplied.get("tax_rate") not in (None, "") else tax.get("rate")),
+        "exchange_rate": exchange_rate if exchange_rate is not None else 1,
         "subtotal": subtotal,
         "tax_amount": tax_amount,
         "grand_total": grand_total,
@@ -12398,6 +12478,8 @@ def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, 
         "customer_summary": {
             "customer_name": "",
             "project_name": "",
+            "show_name": "",
+            "project_number": "",
             "event_or_project_date": "",
         },
         "quote_company_profile": {
@@ -12433,6 +12515,9 @@ def blank_quote_session_metadata(session_id: str, created_at: str) -> dict[str, 
                 "size_bytes": None,
             },
         },
+        "owner": {
+            "user_id": "",
+        },
         "draft_state": {},
     }
 
@@ -12444,10 +12529,29 @@ def normalized_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any
     created_at = dashboard_safe_text(metadata.get("created_at")) or utc_timestamp()
     normalized = blank_quote_session_metadata(session_id, created_at)
     normalized["updated_at"] = dashboard_safe_text(metadata.get("updated_at")) or created_at
-    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "draft_state"):
+    for key in ("customer_summary", "quote_company_profile", "pricing_reference", "commercials", "status", "exports", "owner", "draft_state"):
         if isinstance(metadata.get(key), dict):
             normalized[key].update(copy.deepcopy(metadata[key]))
+    quote_session_apply_draft_summary_fallbacks(normalized)
     return normalized
+
+
+def quote_session_apply_draft_summary_fallbacks(metadata: dict[str, Any]) -> None:
+    summary = metadata.get("customer_summary") if isinstance(metadata.get("customer_summary"), dict) else {}
+    draft_state = metadata.get("draft_state") if isinstance(metadata.get("draft_state"), dict) else {}
+    quote_details = draft_state.get("quoteDetails") if isinstance(draft_state.get("quoteDetails"), dict) else {}
+    client = quote_details.get("client") if isinstance(quote_details.get("client"), dict) else {}
+    project = quote_details.get("project") if isinstance(quote_details.get("project"), dict) else {}
+    fallbacks = {
+        "customer_name": client.get("name"),
+        "project_name": project.get("title"),
+        "show_name": project.get("show_name") or quote_details.get("show_name"),
+        "project_number": quote_details.get("project_number") or project.get("project_number"),
+        "event_or_project_date": project.get("event_or_project_date") or quote_details.get("quote_date"),
+    }
+    for key, value in fallbacks.items():
+        if not dashboard_safe_text(summary.get(key)):
+            summary[key] = dashboard_safe_text(value)
 
 
 def write_quote_session_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -12668,6 +12772,7 @@ def public_quote_session(metadata: dict[str, Any], *, include_draft_state: bool 
         return {}
     session_id = normalized["session_id"]
     public = copy.deepcopy(normalized)
+    public.pop("owner", None)
     draft_state = normalized.get("draft_state") if isinstance(normalized.get("draft_state"), dict) else {}
     public["has_draft_state"] = bool(draft_state)
     draft_progress = quote_session_draft_progress(draft_state)

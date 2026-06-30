@@ -574,17 +574,25 @@ class WebappServerTest(unittest.TestCase):
             payload[key] = value
         return payload
 
-    def platform_auth_session(self, workspace_id: str = "workspace-123"):
+    def platform_auth_session(self, workspace_id: str = "workspace-123", membership_role: str = "owner", user_id: str = "platform-user-123"):
         context = webapp.safe_platform_launch_context(
             self.platform_consume_payload(
+                user={
+                    "userId": user_id,
+                    "email": f"{user_id}@example.test",
+                    "displayName": f"Synthetic {user_id}",
+                    "status": "active",
+                },
                 workspace={
                     "workspaceId": workspace_id,
                     "workspaceSlug": workspace_id,
                     "workspaceName": f"Synthetic {workspace_id}",
-                }
+                },
+                membershipRole=membership_role,
             )
         )
         return {"user": webapp.user_from_platform_launch_context(context)}
+
     def no_redirect_opener(self):
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -8429,6 +8437,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     "customer_summary": {
                         "customer_name": "New Customer",
                         "project_name": "New Project",
+                        "show_name": "New Show",
+                        "project_number": "KI-NEW-001",
                     },
                     "draft_state": {
                         "outputRows": [{"description": "Edited output row", "quantity": 2}],
@@ -8462,6 +8472,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual([item["session_id"] for item in sessions], ["quote-new", "quote-old"])
             self.assertEqual(new_session["customer_summary"]["customer_name"], "New Customer")
             self.assertEqual(new_session["customer_summary"]["project_name"], "New Project")
+            self.assertEqual(new_session["customer_summary"]["show_name"], "New Show")
+            self.assertEqual(new_session["customer_summary"]["project_number"], "KI-NEW-001")
             self.assertEqual(new_session["status"]["quote_generated"], False)
             self.assertEqual(new_data["draft_state"]["outputRows"][0]["description"], "Edited output row")
             self.assertEqual(new_data["draft_state"]["analysisFindings"][0]["text"], "Synthetic visible finding")
@@ -8481,6 +8493,31 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(sessions[0]["draft_progress"]["label"], "Output")
             self.assertNotIn("draft_progress", sessions[1])
             self.assertTrue((data_root / "quote-sessions" / "quote-new" / "quote-session.json").is_file())
+
+    def test_quote_session_summary_falls_back_to_saved_draft_details(self):
+        metadata = webapp.blank_quote_session_metadata("quote-legacy", "2026-06-30T00:00:00Z")
+        metadata["customer_summary"] = {
+            "customer_name": "Legacy Customer",
+            "project_name": "Legacy Project",
+        }
+        metadata["draft_state"] = {
+            "quoteDetails": {
+                "project_number": "KI-LEGACY-001",
+                "quote_date": "2026-06-30",
+                "client": {"name": "Draft Customer"},
+                "project": {
+                    "title": "Draft Project",
+                    "show_name": "Draft Show",
+                },
+            }
+        }
+
+        session = webapp.public_quote_session(metadata)
+
+        self.assertEqual(session["customer_summary"]["customer_name"], "Legacy Customer")
+        self.assertEqual(session["customer_summary"]["project_name"], "Legacy Project")
+        self.assertEqual(session["customer_summary"]["show_name"], "Draft Show")
+        self.assertEqual(session["customer_summary"]["project_number"], "KI-LEGACY-001")
 
     def test_quote_session_exports_are_recorded_and_missing_artifacts_are_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -8502,6 +8539,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
                     "grand_total": 109,
                 },
             }
+            payload["quote_exchange_rate"] = 1.3499
             result = {
                 "status": "completed",
                 "files": [
@@ -8519,6 +8557,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             self.assertEqual(session["exports"]["xlsx"]["filename"], "quotation.xlsx")
             self.assertEqual(session["exports"]["xlsx"]["url"], "/api/quote-sessions/quote-export/download/xlsx")
             self.assertEqual(session["commercials"]["grand_total"], 109)
+            self.assertEqual(session["commercials"]["exchange_rate"], 1.3499)
             self.assertEqual(refreshed["exports"]["xlsx"]["exists"], True)
             self.assertEqual(refreshed["exports"]["pdf"]["exists"], False)
             self.assertEqual(refreshed["exports"]["pdf"]["missing"], True)
@@ -8852,12 +8891,16 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("saveQuoteSessionDraftStateAfterPanelMove", js)
         self.assertIn("saveQuoteSessionDraftState", js)
         self.assertIn("queueQuoteSessionDraftStateSave", js)
+        self.assertIn("handleQuoteDetailFieldChange", js)
         self.assertIn("ensureClientQuoteSessionId", js)
         self.assertIn("requestedSessionId = ensureClientQuoteSessionId()", js)
         self.assertIn("currentQuoteSessionPayload({ ...options, sessionId: requestedSessionId })", js)
         self.assertIn("activeAppView", js)
         self.assertIn("startQuoteSessionDraftSaveAfterCustomerStep", js)
         self.assertIn("options.includeDraftState === true && quoteSessionDraftStateCanSave()", js)
+        quote_detail_change_body = js.split("function handleQuoteDetailFieldChange", 1)[1].split("async function startQuoteSessionDraftSaveAfterCustomerStep", 1)[0]
+        self.assertIn("queueQuoteSessionDraftStateSave", quote_detail_change_body)
+        self.assertIn("quoteSessionDraftStateCanSave()", quote_detail_change_body)
         add_images_body = js.split("async function addImagesFromFiles", 1)[1].split("function removeImageAt", 1)[0]
         self.assertNotIn("ensureQuoteSession", add_images_body)
         sample_details_body = js.split("async function setSampleDetails", 1)[1].split("function buildPayload", 1)[0]
@@ -8933,6 +8976,12 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSessionCanModify", js)
         self.assertIn("dashboardSessionHasCurrentDraft", js)
         self.assertIn("Modify quote", js)
+        self.assertIn("Duplicate Quote", js)
+        self.assertIn('data-dashboard-panel-action="duplicate-session"', js)
+        self.assertIn('secondary-button sample-button dashboard-selected-action dashboard-duplicate-action', js)
+        dashboard_single_actions = js.split('dashboard-selected-actions dashboard-selected-actions--single', 1)[1].split('data-dashboard-panel-action="delete-session"', 1)[0]
+        self.assertLess(dashboard_single_actions.index('data-dashboard-panel-action="duplicate-session"'), dashboard_single_actions.index('data-dashboard-panel-action="modify-session"'))
+        self.assertIn("async function duplicateDashboardQuote", js)
         self.assertIn("Clear selection", js)
         self.assertIn("handleTopbarBrandClick", js)
         self.assertIn("dashboard-selected-body--single", js)
@@ -8961,6 +9010,27 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("formatDashboardSubtotal", js)
         self.assertIn("dashboard-session-subtotal", js)
         self.assertIn("dashboard-session-subtotal-cell", js)
+        self.assertIn("dashboardSessionShowNameText(session)", js)
+        self.assertIn("dashboardSessionProjectNumberText(session)", js)
+        search_body = js.split("function dashboardSessionSearchText", 1)[1].split("function dashboardDateFilterMatches", 1)[0]
+        self.assertIn("dashboardSessionShowNameText(session)", search_body)
+        self.assertIn("dashboardSessionProjectNumberText(session)", search_body)
+        self.assertIn("<dt>Show Name</dt>", js)
+        self.assertIn("<dt>Project Number</dt>", js)
+        self.assertIn("<dt>Currency / FX</dt>", js)
+        self.assertIn("<dt>Tax / Rate</dt>", js)
+        self.assertIn("FX ${quoteExchangeRateText(activeSession.commercials?.exchange_rate ?? 1)}", js)
+        self.assertNotIn("<dt>Exchange Rate</dt>", js)
+        self.assertNotIn("<dt>Rate</dt>", js)
+        self.assertIn("dashboardTaxRateText", js)
+        self.assertIn("commercials?.exchange_rate", js)
+        self.assertIn("Show name: ${showName ? escapeHtml(showName) : \"-\"}", js)
+        self.assertIn("Project number: ${projectNumber ? escapeHtml(projectNumber) : \"-\"}", js)
+        self.assertIn('input.addEventListener("input", handleQuoteDetailFieldChange);', js)
+        self.assertIn('input.addEventListener("change", handleQuoteDetailFieldChange);', js)
+        self.assertIn(".dashboard-selected-action-row .dashboard-selected-action", css)
+        selected_action_height_css = css.split(".dashboard-selected-action-row .dashboard-selected-action {", 1)[1].split("}", 1)[0]
+        self.assertIn("min-height: 86px;", selected_action_height_css)
         self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
         self.assertIn("<dt>Created</dt>", js)
@@ -9160,6 +9230,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "pricingEmptyState",
             "pricingTableWrap",
             "profileSelect",
+            "showName",
+            "quoteCurrency",
+            "quoteTaxLabel",
+            "quoteTaxRate",
+            "quoteExchangeRate",
             "presetSelect",
             "loadPresetButton",
             "savePresetButton",
@@ -9240,6 +9315,20 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("Repo catalog", html)
         self.assertIn('class="pricing-reference-copy"', html)
         self.assertIn('class="pricing-reference-control-group pricing-reference-card"', html)
+        self.assertIn('class="quote-commercial-card pricing-reference-card"', html)
+        self.assertLess(html.index('class="pricing-reference-control-group pricing-reference-card"'), html.index('class="quote-commercial-card pricing-reference-card"'))
+        self.assertLess(html.index('<span>Currency</span>'), html.index('id="quoteExchangeRate"'))
+        self.assertLess(html.index('<span>Tax</span>'), html.index('id="quoteTaxRate"'))
+        self.assertIn('id="quoteExchangeRateField"', html)
+        self.assertNotIn('id="quoteExchangeRateField" hidden', html)
+        quote_commercial_fields_css = css.split(".quote-commercial-fields {", 1)[1].split("}", 1)[0]
+        self.assertIn("display: grid;", quote_commercial_fields_css)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", quote_commercial_fields_css)
+        self.assertIn(".quote-commercial-row {\n  display: contents;", css)
+        customer_panel = html.split('id="customerDetailsPanel"', 1)[1].split('class="section-band first-band quote-form-section"', 1)[0]
+        self.assertNotIn("pricing-reference-pill-row", customer_panel)
+        self.assertNotIn("GST/VAT", customer_panel)
+        self.assertNotIn("Quote Commercials", customer_panel)
         self.assertIn('class="pricing-reference-source-badge">Repo catalog</span>', html)
         self.assertIn('id="selectedPricingReferenceSummary">Managed in Settings.</p>', html)
         self.assertIn('? "Managed in Settings."', js)
@@ -9276,6 +9365,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("newClientErrorReference", js)
         self.assertIn("error_reference", js)
         self.assertIn("applyPricingReferenceImportMetadata", js)
+        self.assertIn("applyPricingReferenceCommercialDefaults", js)
         self.assertIn("setPricingReferenceTaxControls(result.tax)", js)
         self.assertIn("setPricingReferenceCurrencyControls(result.currency)", js)
         self.assertNotIn("handleLayoutTemplateFileChange", js)
@@ -9388,6 +9478,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("details.quoteDate", js)
         self.assertIn(".date-format-control", css)
         self.assertIn(".rich-text-tool.is-selected", css)
+        self.assertLess(html.index('id="projectTitle"'), html.index('id="showName"'))
+        self.assertLess(html.index('id="showName"'), html.index('id="projectNumber"'))
         self.assertLess(html.index('id="projectTitle"'), html.index('id="projectNumber"'))
         self.assertIn("Company header", html)
         self.assertIn("Quotation Company", html)
@@ -9919,6 +10011,7 @@ const elements = {
   clientTitle: field("Senior Event Producer"),
   clientAddress: field("10 Sample Street\nSingapore 000010"),
   projectTitle: field("RE: Brazil Experience Pavilion - 6m x 6m Draft"),
+  showName: field("Brazil Experience Expo"),
   quoteDate: field("2026-06-08"),
   projectNumber: field("KI-001"),
   headerDetails: field("Koncept Image Pte Limited\n61 Kaki Bukit Ave 1"),
@@ -10000,6 +10093,16 @@ assert.strictEqual(
 );
 assert.ok(syncCalls > 0, "missing detail checks should sync rich-text sources first");
 elements.clientAddress.value = "10 Sample Street\nSingapore 000010";
+elements.showName.value = "";
+assert.strictEqual(
+  sidePanelBlockReason("quote_company"),
+  "Complete Customer details before opening Quote Company: Show name."
+);
+assert.strictEqual(
+  startAnalysisBlockReason(),
+  "Complete Customer details before starting analysis: Show name."
+);
+elements.showName.value = "Brazil Experience Expo";
 elements.notesHeading.value = "Notes";
 elements.acceptanceText.value = "Accepted by customer";
 assert.strictEqual(startAnalysisBlockReason(), "");
@@ -10328,6 +10431,9 @@ eval(extractFunction("rowNeedsManualInput"));
 eval(extractFunction("matchSummaryStats"));
 function selectedPricingReferenceCurrency() {
   return "SGD";
+}
+function collectQuoteCurrency() {
+  return selectedPricingReferenceCurrency();
 }
 eval(extractFunction("formatSubtotalValue"));
 function collectTaxDetails() {
@@ -12544,6 +12650,9 @@ eval([
   "normalizeTaxRate",
   "normalizeCurrencyLabel",
   "syncPricingReferenceContextPills",
+  "collectQuoteCurrency",
+  "syncQuoteExchangeRateField",
+  "applyPricingReferenceCommercialDefaults",
   "renderSelectedPricingReferenceSummary",
   "renderProfileOptions",
   "updateSidePanelNav",
@@ -14557,10 +14666,10 @@ assert.ok(source.includes("refreshOutputRowsFromLineItems();"));
         self.assertNotIn("analyseHighQualityButton", js)
         self.assertIn('id="pricingReferenceCurrency"', html)
         self.assertIn('id="pricingReferenceCurrencyCustom"', html)
-        self.assertIn('id="selectedPricingReferenceCurrency"', html)
+        self.assertNotIn('id="selectedPricingReferenceCurrency"', html)
         self.assertIn('data-pricing-reference-currency', html)
         self.assertIn('data-pricing-reference-tax', html)
-        self.assertIn("pricing-reference-pill-row", html)
+        self.assertNotIn("pricing-reference-pill-row", html)
         self.assertIn("SGD - Singapore Dollar", html)
         self.assertLess(html.index("SGD - Singapore Dollar"), html.index("AUD - Australian Dollar"))
         self.assertLess(html.index("AUD - Australian Dollar"), html.index("CNY - Chinese Yuan"))
@@ -16327,6 +16436,15 @@ const possibleMatchHtml = renderBasisLine({ id: "av-equipment-rental-items", tit
 assert.ok(possibleMatchHtml.includes("Possible match"));
 assert.ok(possibleMatchHtml.includes('nos. 85&quot; LED TV Monitor'));
 assert.ok(possibleMatchHtml.includes('data-basis-possible-match-index="0"'));
+assert.ok(possibleMatchHtml.includes("<strong>Possible match:</strong> nos. 24&quot; LED TV Monitor"));
+assert.ok(!possibleMatchHtml.includes("Possible match: nos. 24&quot;"));
+const excludedPossibleMatchHtml = renderBasisLine(
+  { id: "av-equipment-rental-items", title: "AV Equipment Rental Items" },
+  { ...possibleMatchLine, tag: "Exclude" },
+  0
+);
+assert.ok(!excludedPossibleMatchHtml.includes("basis-line-possible-match"));
+assert.ok(!excludedPossibleMatchHtml.includes("Possible match"));
 const confirmedDraftSections = confirmOnlyQuoteBasisSections([{
   id: "graphics",
   title: "Graphics",
@@ -17120,6 +17238,8 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn('id="outputSourceLabel"', html)
         self.assertIn('id="outputPricingReferenceCurrency"', html)
         self.assertIn('id="outputPricingReferenceTax"', html)
+        self.assertIn('id="outputQuoteExchangeRate"', html)
+        self.assertIn('data-quote-exchange-rate', html)
         self.assertIn('id="outputTotalLines"', html)
         self.assertIn('id="outputSourceLabel">Pricing reference</strong>', html)
         self.assertIn('<span class="pricing-reference-line-count" id="outputTotalLines"><strong>0</strong> approved lines</span>', html)
@@ -17128,6 +17248,9 @@ assert.strictEqual(line.unit, "nos");
         self.assertIn("function outputHeaderStatus", js)
         self.assertIn("function pricingReferenceContextPillsHtml", js)
         self.assertIn("function syncPricingReferenceContextPills", js)
+        self.assertIn("function syncQuoteCommercialContextPills", js)
+        self.assertIn("function quoteExchangeRateText", js)
+        self.assertIn("syncQuoteCommercialContextPills();", js)
         self.assertIn('return reference.label || "Pricing reference";', js)
         self.assertIn("pricing-reference-source-line", html)
         self.assertIn("pricing-reference-source-name", html)
@@ -17277,6 +17400,9 @@ eval([
 
 function selectedPricingReferenceCurrency() {
   return "SGD";
+}
+function collectQuoteCurrency() {
+  return selectedPricingReferenceCurrency();
 }
 function collectTaxDetails() {
   return { label: "GST", rate: 0.09 };
@@ -17498,8 +17624,8 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
             env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
             with mock.patch.dict(os.environ, env, clear=True):
                 webapp.apply_kqag_storage_migrations(database_url)
-                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-a"))
-                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-b"))
+                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-a", membership_role="operator"))
+                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-b", membership_role="operator"))
 
                 profile = webapp.normalize_profile_payload({
                     "id": "team-profile",
@@ -17548,6 +17674,87 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
                 self.assertFalse(workspace_b.delete_quote_session("quote-team-a"))
                 self.assertTrue(workspace_a.delete_quote_session("quote-team-a"))
                 self.assertEqual(workspace_a.list_quote_sessions(), [])
+
+    def test_database_storage_filters_quote_sessions_by_owner_role_and_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            database_url = f"sqlite:///{(Path(tmp) / 'kqag-storage.sqlite3').as_posix()}"
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                owner_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="operator", user_id="owner-user"))
+                operator_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="operator", user_id="operator-user"))
+                viewer_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="viewer", user_id="viewer-user"))
+                admin_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-team", membership_role="admin", user_id="admin-user"))
+                other_workspace_admin = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-other", membership_role="admin", user_id="admin-user"))
+
+                early_payload = valid_payload()
+                early_payload["quote_session"] = {
+                    "session_id": "quote-owner-early",
+                    "customer_summary": {"customer_name": "Early Customer"},
+                    "draft_state": {"activeSidePanel": "customer"},
+                }
+                owner_storage.create_or_update_quote_session(early_payload)
+
+                basis_payload = valid_payload()
+                basis_payload["quote_session"] = {
+                    "session_id": "quote-owner-basis",
+                    "customer_summary": {"customer_name": "Basis Customer"},
+                    "draft_state": {
+                        "activeSidePanel": "basis",
+                        "quoteBasisSections": [{"id": "graphics", "title": "Graphics", "lines": [{"tag": "Include", "text": "Graphics"}]}],
+                    },
+                }
+                owner_storage.create_or_update_quote_session(basis_payload)
+
+                output_payload = valid_payload()
+                output_payload["quote_session"] = {
+                    "session_id": "quote-owner-output",
+                    "customer_summary": {"customer_name": "Output Customer"},
+                    "draft_state": {"activeSidePanel": "output", "outputRows": [{"description": "Graphics"}]},
+                }
+                owner_storage.create_or_update_quote_session(output_payload)
+
+                generated_payload = valid_payload()
+                generated_payload["quote_session"] = {
+                    "session_id": "quote-owner-generated",
+                    "customer_summary": {"customer_name": "Generated Customer"},
+                    "status": {"quote_generated": True},
+                    "draft_state": {"activeSidePanel": "customer"},
+                }
+                owner_storage.create_or_update_quote_session(generated_payload)
+
+                self.assertEqual(
+                    {item["session_id"] for item in owner_storage.list_quote_sessions()},
+                    {"quote-owner-early", "quote-owner-basis", "quote-owner-output", "quote-owner-generated"},
+                )
+                self.assertIsNotNone(owner_storage.get_quote_session("quote-owner-early", include_draft_state=True))
+
+                self.assertEqual(operator_storage.list_quote_sessions(), [])
+                self.assertEqual(viewer_storage.list_quote_sessions(), [])
+                self.assertIsNone(operator_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+                self.assertIsNone(viewer_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+
+                admin_session_ids = {item["session_id"] for item in admin_storage.list_quote_sessions()}
+                self.assertEqual(admin_session_ids, {"quote-owner-basis", "quote-owner-output", "quote-owner-generated"})
+                self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+                self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-output", include_draft_state=True))
+                self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-generated", include_draft_state=True))
+                self.assertIsNone(admin_storage.get_quote_session("quote-owner-early", include_draft_state=True))
+                self.assertNotIn("owner", admin_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+
+                with owner_storage.connection() as connection:
+                    metadata_row = connection.execute(
+                        "select metadata_json from kqag_quote_sessions where workspace_id = ? and session_id = ?",
+                        ("workspace-team", "quote-owner-basis"),
+                    ).fetchone()
+                stored_metadata = json.loads(metadata_row["metadata_json"])
+                self.assertEqual(stored_metadata["owner"]["user_id"], "owner-user")
+
+                self.assertEqual(other_workspace_admin.list_quote_sessions(), [])
+                self.assertIsNone(other_workspace_admin.get_quote_session("quote-owner-basis", include_draft_state=True))
+                self.assertFalse(admin_storage.delete_quote_session("quote-owner-basis"))
+                self.assertFalse(operator_storage.delete_quote_session("quote-owner-basis"))
+                self.assertTrue(owner_storage.delete_quote_session("quote-owner-basis"))
 
     def test_database_storage_does_not_persist_raw_platform_launch_token(self):
         raw_launch_token = self.synthetic_platform_launch_token()

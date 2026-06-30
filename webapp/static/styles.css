@@ -1595,6 +1595,16 @@ h3 {
   box-shadow: 0 -10px 18px rgba(255, 255, 255, 0.86);
 }
 
+.dashboard-selected-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dashboard-selected-action-row .dashboard-selected-action {
+  min-height: 86px;
+}
+
 .dashboard-selected-actions--single {
   padding-top: 8px;
   border-top-color: var(--line-subtle);
@@ -3037,6 +3047,14 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.dashboard-session-title-group .dashboard-session-show-name,
+.dashboard-session-title-group .dashboard-session-project-number {
+  color: #536a84;
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
 .dashboard-session-meta-zone {
   display: grid;
   grid-template-columns: minmax(130px, 0.82fr) minmax(176px, 1fr) minmax(132px, 0.72fr);
@@ -4110,6 +4128,11 @@ h3 {
   grid-row: 1;
 }
 
+.pricing-reference-panel .quote-commercial-card {
+  grid-column: 3;
+  grid-row: 1;
+}
+
 .company-preset-panel .company-preset-profile-card {
   grid-column: 2;
 }
@@ -4138,6 +4161,21 @@ h3 {
 .pricing-reference-panel .pricing-reference-card,
 .company-preset-panel .company-preset-profile-card {
   min-height: 156px;
+}
+
+.quote-commercial-fields {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quote-commercial-row {
+  display: contents;
+}
+
+.quote-exchange-rate-field {
+  grid-column: auto;
 }
 
 .company-preset-panel .company-preset-profile-card {
@@ -5379,8 +5417,14 @@ select:focus {
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 500;
+  justify-content: flex-start;
+  text-align: left;
   padding: 4px 8px;
+}
+
+.basis-line-possible-match strong {
+  font-weight: 800;
 }
 
 .basis-line-possible-match:hover,
@@ -8020,6 +8064,7 @@ body.privacy-page {
   }
 
   .pricing-reference-control-group,
+  .pricing-reference-panel .quote-commercial-card,
   .company-preset-control-group {
     grid-column: auto;
     grid-row: auto;
