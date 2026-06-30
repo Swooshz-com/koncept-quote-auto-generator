@@ -9004,7 +9004,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('input.addEventListener("change", handleQuoteDetailFieldChange);', js)
         self.assertIn(".dashboard-selected-action-row .dashboard-selected-action", css)
         selected_action_height_css = css.split(".dashboard-selected-action-row .dashboard-selected-action {", 1)[1].split("}", 1)[0]
-        self.assertIn("min-height: 57px;", selected_action_height_css)
+        self.assertIn("min-height: 86px;", selected_action_height_css)
         self.assertNotIn("dashboard-session-amount-stack", js)
         self.assertIn("<dt>Modified</dt>", js)
         self.assertIn("<dt>Created</dt>", js)
