@@ -26,6 +26,10 @@ class LocalUatHelperTest(unittest.TestCase):
         self.assertLess(script.index('Command = "py"'), script.index('Command = "python"'))
         self.assertLess(script.index('Command = "python"'), script.index('Command = "python3"'))
         self.assertRegex(script, r"Arguments\s*=\s*@\('-3'\)")
+        self.assertIn("[System.Security.Cryptography.RandomNumberGenerator]::Create()", script)
+        self.assertIn("$rng.GetBytes($bytes)", script)
+        self.assertIn("$rng.Dispose()", script)
+        self.assertNotIn("RandomNumberGenerator]::Fill", script)
 
         for env_name in (
             "APP_MODE",
