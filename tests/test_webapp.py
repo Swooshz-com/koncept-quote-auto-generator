@@ -10342,6 +10342,9 @@ eval(extractFunction("matchSummaryStats"));
 function selectedPricingReferenceCurrency() {
   return "SGD";
 }
+function collectQuoteCurrency() {
+  return selectedPricingReferenceCurrency();
+}
 eval(extractFunction("formatSubtotalValue"));
 function collectTaxDetails() {
   return { label: "GST", rate: 0.09 };
@@ -12557,6 +12560,9 @@ eval([
   "normalizeTaxRate",
   "normalizeCurrencyLabel",
   "syncPricingReferenceContextPills",
+  "collectQuoteCurrency",
+  "syncQuoteExchangeRateField",
+  "applyPricingReferenceCommercialDefaults",
   "renderSelectedPricingReferenceSummary",
   "renderProfileOptions",
   "updateSidePanelNav",
@@ -17300,6 +17306,9 @@ eval([
 function selectedPricingReferenceCurrency() {
   return "SGD";
 }
+function collectQuoteCurrency() {
+  return selectedPricingReferenceCurrency();
+}
 function collectTaxDetails() {
   return { label: "GST", rate: 0.09 };
 }
@@ -17520,8 +17529,8 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
             env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
             with mock.patch.dict(os.environ, env, clear=True):
                 webapp.apply_kqag_storage_migrations(database_url)
-                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-a"))
-                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-b"))
+                workspace_a = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-a", membership_role="operator"))
+                workspace_b = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-b", membership_role="operator"))
 
                 profile = webapp.normalize_profile_payload({
                     "id": "team-profile",
