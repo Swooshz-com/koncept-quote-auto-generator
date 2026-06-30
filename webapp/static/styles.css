@@ -3037,6 +3037,13 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.dashboard-session-title-group .dashboard-session-show-name,
+.dashboard-session-title-group .dashboard-session-project-number {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .dashboard-session-meta-zone {
   display: grid;
   grid-template-columns: minmax(130px, 0.82fr) minmax(176px, 1fr) minmax(132px, 0.72fr);
@@ -4138,6 +4145,16 @@ h3 {
 .pricing-reference-panel .pricing-reference-card,
 .company-preset-panel .company-preset-profile-card {
   min-height: 156px;
+}
+
+.quote-commercial-fields {
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quote-exchange-rate-field {
+  grid-column: 1 / -1;
 }
 
 .company-preset-panel .company-preset-profile-card {
@@ -5379,8 +5396,14 @@ select:focus {
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 500;
+  justify-content: flex-start;
+  text-align: left;
   padding: 4px 8px;
+}
+
+.basis-line-possible-match strong {
+  font-weight: 800;
 }
 
 .basis-line-possible-match:hover,

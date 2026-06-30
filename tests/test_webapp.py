@@ -574,17 +574,19 @@ class WebappServerTest(unittest.TestCase):
             payload[key] = value
         return payload
 
-    def platform_auth_session(self, workspace_id: str = "workspace-123"):
+    def platform_auth_session(self, workspace_id: str = "workspace-123", membership_role: str = "owner"):
         context = webapp.safe_platform_launch_context(
             self.platform_consume_payload(
                 workspace={
                     "workspaceId": workspace_id,
                     "workspaceSlug": workspace_id,
                     "workspaceName": f"Synthetic {workspace_id}",
-                }
+                },
+                membershipRole=membership_role,
             )
         )
         return {"user": webapp.user_from_platform_launch_context(context)}
+
     def no_redirect_opener(self):
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -8933,6 +8935,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("dashboardSessionCanModify", js)
         self.assertIn("dashboardSessionHasCurrentDraft", js)
         self.assertIn("Modify quote", js)
+        self.assertIn("Duplicate Quote", js)
+        self.assertIn('data-dashboard-panel-action="duplicate-session"', js)
+        self.assertIn("async function duplicateDashboardQuote", js)
         self.assertIn("Clear selection", js)
         self.assertIn("handleTopbarBrandClick", js)
         self.assertIn("dashboard-selected-body--single", js)
@@ -9160,6 +9165,11 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
             "pricingEmptyState",
             "pricingTableWrap",
             "profileSelect",
+            "showName",
+            "quoteCurrency",
+            "quoteTaxLabel",
+            "quoteTaxRate",
+            "quoteExchangeRate",
             "presetSelect",
             "loadPresetButton",
             "savePresetButton",
@@ -9276,6 +9286,7 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("newClientErrorReference", js)
         self.assertIn("error_reference", js)
         self.assertIn("applyPricingReferenceImportMetadata", js)
+        self.assertIn("applyPricingReferenceCommercialDefaults", js)
         self.assertIn("setPricingReferenceTaxControls(result.tax)", js)
         self.assertIn("setPricingReferenceCurrencyControls(result.currency)", js)
         self.assertNotIn("handleLayoutTemplateFileChange", js)
@@ -9388,6 +9399,8 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn("details.quoteDate", js)
         self.assertIn(".date-format-control", css)
         self.assertIn(".rich-text-tool.is-selected", css)
+        self.assertLess(html.index('id="projectTitle"'), html.index('id="showName"'))
+        self.assertLess(html.index('id="showName"'), html.index('id="projectNumber"'))
         self.assertLess(html.index('id="projectTitle"'), html.index('id="projectNumber"'))
         self.assertIn("Company header", html)
         self.assertIn("Quotation Company", html)
@@ -16327,6 +16340,15 @@ const possibleMatchHtml = renderBasisLine({ id: "av-equipment-rental-items", tit
 assert.ok(possibleMatchHtml.includes("Possible match"));
 assert.ok(possibleMatchHtml.includes('nos. 85&quot; LED TV Monitor'));
 assert.ok(possibleMatchHtml.includes('data-basis-possible-match-index="0"'));
+assert.ok(possibleMatchHtml.includes("<strong>Possible match:</strong> nos. 24&quot; LED TV Monitor"));
+assert.ok(!possibleMatchHtml.includes("Possible match: nos. 24&quot;"));
+const excludedPossibleMatchHtml = renderBasisLine(
+  { id: "av-equipment-rental-items", title: "AV Equipment Rental Items" },
+  { ...possibleMatchLine, tag: "Exclude" },
+  0
+);
+assert.ok(!excludedPossibleMatchHtml.includes("basis-line-possible-match"));
+assert.ok(!excludedPossibleMatchHtml.includes("Possible match"));
 const confirmedDraftSections = confirmOnlyQuoteBasisSections([{
   id: "graphics",
   title: "Graphics",
@@ -17548,6 +17570,43 @@ assert.strictEqual(formatOutputTotalValue(invalidOverrideStats), "SGD 0.00 + ???
                 self.assertFalse(workspace_b.delete_quote_session("quote-team-a"))
                 self.assertTrue(workspace_a.delete_quote_session("quote-team-a"))
                 self.assertEqual(workspace_a.list_quote_sessions(), [])
+
+    def test_database_storage_admin_lists_other_workspace_sessions_from_quote_basis_onward(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            database_url = f"sqlite:///{(Path(tmp) / 'kqag-storage.sqlite3').as_posix()}"
+            env = {"KQAG_STORAGE_MODE": "database", "KQAG_DATABASE_URL": database_url}
+            with mock.patch.dict(os.environ, env, clear=True):
+                webapp.apply_kqag_storage_migrations(database_url)
+                owner_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-owner", membership_role="operator"))
+                viewer_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-viewer", membership_role="viewer"))
+                admin_storage = webapp.app_storage_for_auth_session(self.platform_auth_session("workspace-admin", membership_role="admin"))
+
+                early_payload = valid_payload()
+                early_payload["quote_session"] = {
+                    "session_id": "quote-owner-customer",
+                    "customer_summary": {"customer_name": "Early Customer"},
+                    "draft_state": {"activeSidePanel": "customer"},
+                }
+                owner_storage.create_or_update_quote_session(early_payload)
+
+                basis_payload = valid_payload()
+                basis_payload["quote_session"] = {
+                    "session_id": "quote-owner-basis",
+                    "customer_summary": {"customer_name": "Basis Customer"},
+                    "draft_state": {
+                        "activeSidePanel": "basis",
+                        "quoteBasisSections": [{"id": "graphics", "title": "Graphics", "lines": [{"tag": "Include", "text": "Graphics"}]}],
+                    },
+                }
+                owner_storage.create_or_update_quote_session(basis_payload)
+
+                self.assertEqual(viewer_storage.list_quote_sessions(), [])
+                admin_session_ids = [item["session_id"] for item in admin_storage.list_quote_sessions()]
+                self.assertIn("quote-owner-basis", admin_session_ids)
+                self.assertNotIn("quote-owner-customer", admin_session_ids)
+                self.assertIsNotNone(admin_storage.get_quote_session("quote-owner-basis", include_draft_state=True))
+                self.assertIsNone(admin_storage.get_quote_session("quote-owner-customer", include_draft_state=True))
+                self.assertFalse(admin_storage.delete_quote_session("quote-owner-basis"))
 
     def test_database_storage_does_not_persist_raw_platform_launch_token(self):
         raw_launch_token = self.synthetic_platform_launch_token()
