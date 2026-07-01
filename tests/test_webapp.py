@@ -4835,6 +4835,15 @@ class WebappServerTest(unittest.TestCase):
         self.assertRegex(html, r'/static/styles\.css\?v=\d+')
         self.assertRegex(html, r'/static/app\.js\?v=\d+')
 
+    def test_local_static_assets_are_served_no_store_for_uat_restarts(self):
+        with LocalRunnerServer() as runner:
+            for path in ("/", "/static/app.js", "/static/styles.css"):
+                with urllib.request.urlopen(f"{runner.base_url}{path}", timeout=3) as response:
+                    cache_control = response.headers.get("Cache-Control", "")
+
+                for directive in ("no-store", "no-cache", "must-revalidate", "max-age=0", "private"):
+                    self.assertIn(directive, cache_control)
+
     def test_pricing_reference_template_upload_accepts_seed_rows(self):
         raw = webapp.pricing_reference_template_xlsx_bytes()
         result = webapp.validate_pricing_reference_upload({
@@ -15541,6 +15550,222 @@ assert.strictEqual(elements.quoteTaxRate.value, "9");
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_quote_commercial_snapshot_survives_analysis_lifecycle_side_effects(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_TAX_LABEL = "GST";
+const DEFAULT_TAX_RATE = 0.09;
+const DEFAULT_CURRENCY_LABEL = "SGD";
+const DEFAULT_TERMS_HEADING = "Terms & Conditions:";
+const DEFAULT_NOTES_HEADING = "Note:";
+const DEFAULT_ACCEPTANCE_TEXT = "We accept the quotation amount and the terms";
+const DEFAULT_DATE_LABEL = "Date:";
+const DEFAULT_PERSON_LABEL = "Person in charge";
+const DEFAULT_STAMP_LABEL = "Company name & stamp";
+const DEFAULT_QUOTE_COMPANY_RICH_TEXT = {};
+const QUOTE_COMMERCIAL_FIELD_KEYS = ["quoteCurrency", "quoteExchangeRate", "quoteTaxLabel", "quoteTaxRate"];
+const elements = {
+  quoteCurrency: { value: "" },
+  quoteExchangeRate: { value: "" },
+  quoteExchangeRateField: { hidden: true },
+  quoteTaxLabel: { value: "" },
+  quoteTaxRate: { value: "" },
+  taxLabel: { value: "" },
+  taxRate: { value: "" },
+  selectedPricingReferenceSummary: { textContent: "" },
+  selectedPricingReferenceCurrency: { textContent: "" },
+  selectedPricingReferenceTax: { textContent: "" },
+  termsHeading: { value: "" },
+  notesHeading: { value: "" },
+  acceptanceText: { value: "" },
+  companyDateLabel: { value: "" },
+  personLabel: { value: "" },
+  stampLabel: { value: "" },
+  dateLabel: { value: "" },
+};
+const state = {
+  pricingReferenceId: "sgd-ref",
+  pricingReferenceSource: "bundled",
+  pricingReferences: [
+    { id: "sgd-ref", source: "bundled", label: "SGD Ref", currency: "SGD", tax: { label: "GST", rate: 0.09 } },
+  ],
+  outputRows: [],
+  downloadFile: null,
+  pdfFile: null,
+  headerLogo: null,
+};
+const pillNodes = {
+  currency: { textContent: "" },
+  tax: { textContent: "" },
+  exchangeRate: { textContent: "" },
+};
+const document = {
+  querySelectorAll(selector) {
+    if (selector === "[data-quote-currency]") return [pillNodes.currency];
+    if (selector === "[data-quote-tax]") return [pillNodes.tax];
+    if (selector === "[data-quote-exchange-rate]") return [pillNodes.exchangeRate];
+    return [];
+  },
+};
+function currentPricingReference() {
+  return state.pricingReferences.find((reference) => reference.id === state.pricingReferenceId && reference.source === state.pricingReferenceSource) || null;
+}
+function syncPricingReferenceContextPills() {}
+function updatePricingReferenceDeleteButton() {}
+function updateOutputHeader() {}
+function syncControlStates() {}
+function quoteSessionDraftStateCanSave() { return false; }
+function queueQuoteSessionDraftStateSave() {}
+function syncRichTextEditor() {}
+function applyDefaultQuoteDate() {}
+function renderHeaderLogoPreview() {}
+function renderPresetStatus() {}
+function restoreRichTextDetails() {}
+function applyQuoteDateFormatFromHtml() {}
+function syncRichTextSources() {}
+function normalizeBoothDimensions(project = {}) { return project; }
+function linesValue(value) { return Array.isArray(value) ? value.join("\n") : String(value || ""); }
+
+eval([
+  "hasOwnValue",
+  "normalizeTaxLabel",
+  "normalizeTaxRate",
+  "taxRatePercentText",
+  "taxRateFromPercentInput",
+  "normalizeCurrencyLabel",
+  "emptyQuoteCommercialTouched",
+  "normalizeQuoteCommercialTouched",
+  "resetQuoteCommercialTouched",
+  "quoteCommercialFieldKeyForElement",
+  "quoteCommercialFieldIsTouched",
+  "markQuoteCommercialFieldTouched",
+  "quoteCommercialFieldHasValue",
+  "shouldApplyQuoteCommercialField",
+  "quoteDetailsCommercialTouched",
+  "selectedPricingReferenceTax",
+  "selectedPricingReferenceCurrency",
+  "selectedPricingReferenceTaxText",
+  "collectTaxDetails",
+  "collectQuoteCurrency",
+  "collectQuoteExchangeRate",
+  "syncQuoteExchangeRateField",
+  "quoteCommercialTaxText",
+  "quoteExchangeRateText",
+  "syncQuoteCommercialContextPills",
+  "applyPricingReferenceCommercialDefaults",
+  "renderSelectedPricingReferenceSummary",
+  "quoteCommercialOverrideSnapshot",
+  "quoteCommercialSnapshotHasUserValues",
+  "restoreQuoteCommercialOverrideSnapshot",
+  "quoteCommercialFieldChanged",
+  "handleQuoteDetailFieldChange",
+  "shouldApply",
+  "setInputValue",
+  "applyQuoteDetails",
+  "applyDefaultQuoteCompanyFields",
+].map(extractFunction).join("\n"));
+
+renderSelectedPricingReferenceSummary();
+assert.strictEqual(elements.quoteCurrency.value, "SGD");
+assert.strictEqual(elements.quoteExchangeRate.value, "1");
+assert.strictEqual(elements.quoteTaxLabel.value, "GST");
+assert.strictEqual(elements.quoteTaxRate.value, "9");
+
+elements.quoteCurrency.value = "AUD";
+elements.quoteExchangeRate.value = "2";
+elements.quoteTaxLabel.value = "VAT";
+elements.quoteTaxRate.value = "8";
+[
+  elements.quoteCurrency,
+  elements.quoteExchangeRate,
+  elements.quoteTaxLabel,
+  elements.quoteTaxRate,
+].forEach((target) => handleQuoteDetailFieldChange({ target }));
+
+const snapshot = quoteCommercialOverrideSnapshot();
+assert.strictEqual(quoteCommercialSnapshotHasUserValues(snapshot), true);
+assert.deepStrictEqual(snapshot.values, {
+  quoteCurrency: "AUD",
+  quoteExchangeRate: "2",
+  quoteTaxLabel: "VAT",
+  quoteTaxRate: "8",
+});
+
+applyQuoteDetails({}, { clearLogo: true });
+applyDefaultQuoteCompanyFields();
+renderSelectedPricingReferenceSummary();
+assert.strictEqual(elements.quoteCurrency.value, "SGD");
+assert.strictEqual(elements.quoteExchangeRate.value, "1");
+assert.strictEqual(elements.quoteTaxLabel.value, "GST");
+assert.strictEqual(elements.quoteTaxRate.value, "9");
+
+restoreQuoteCommercialOverrideSnapshot(snapshot, { reason: "analysis_completion" });
+assert.strictEqual(elements.quoteCurrency.value, "AUD");
+assert.strictEqual(elements.quoteExchangeRate.value, "2");
+assert.strictEqual(elements.quoteTaxLabel.value, "VAT");
+assert.strictEqual(elements.quoteTaxRate.value, "8");
+assert.deepStrictEqual(collectTaxDetails(), { label: "VAT", rate: 0.08 });
+assert.strictEqual(collectQuoteCurrency(), "AUD");
+assert.strictEqual(collectQuoteExchangeRate(), 2);
+assert.deepStrictEqual(state.quoteCommercialTouched, {
+  quoteCurrency: true,
+  quoteExchangeRate: true,
+  quoteTaxLabel: true,
+  quoteTaxRate: true,
+});
+assert.strictEqual(pillNodes.currency.textContent, "AUD");
+assert.strictEqual(pillNodes.tax.textContent, "VAT 8%");
+assert.strictEqual(pillNodes.exchangeRate.textContent, "2");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_analysis_completion_restores_quote_commercial_snapshot_before_save(self):
+        js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function quoteCommercialOverrideSnapshot", js)
+        self.assertIn("function restoreQuoteCommercialOverrideSnapshot", js)
+        handle_body = js.split("async function handleDraftBasis(options = {})", 1)[1].split("async function confirmBasis", 1)[0]
+        resume_body = js.split("async function resumeSavedJob()", 1)[1].split("async function checkHealth", 1)[0]
+
+        self.assertIn("const quoteCommercialSnapshot = quoteCommercialOverrideSnapshot()", handle_body)
+        self.assertGreaterEqual(handle_body.count("restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot"), 5)
+        self.assertLess(
+            handle_body.index("restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot"),
+            handle_body.index("await saveQuoteSessionDraftState({ quoteGenerated: false })"),
+        )
+        self.assertIn("const quoteCommercialSnapshot = quoteCommercialOverrideSnapshot()", resume_body)
+        self.assertGreaterEqual(resume_body.count("restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot"), 4)
 
     def test_static_quote_commercial_payload_and_draft_paths_use_quote_controls(self):
         js = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")

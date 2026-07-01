@@ -1766,6 +1766,41 @@ function quoteDetailsCommercialTouched(details = {}) {
   });
 }
 
+function quoteCommercialOverrideSnapshot() {
+  return {
+    values: QUOTE_COMMERCIAL_FIELD_KEYS.reduce((snapshot, key) => {
+      snapshot[key] = String(elements[key]?.value || "");
+      return snapshot;
+    }, {}),
+    quoteCommercialTouched: normalizeQuoteCommercialTouched(state.quoteCommercialTouched || {}),
+  };
+}
+
+function quoteCommercialSnapshotHasUserValues(snapshot = {}) {
+  const values = snapshot.values && typeof snapshot.values === "object" ? snapshot.values : {};
+  const touched = normalizeQuoteCommercialTouched(snapshot.quoteCommercialTouched || {});
+  return QUOTE_COMMERCIAL_FIELD_KEYS.some((key) => (
+    touched[key] || String(values[key] || "").trim()
+  ));
+}
+
+function restoreQuoteCommercialOverrideSnapshot(snapshot = {}, options = {}) {
+  if (!quoteCommercialSnapshotHasUserValues(snapshot)) return false;
+  const values = snapshot.values && typeof snapshot.values === "object" ? snapshot.values : {};
+  const touched = normalizeQuoteCommercialTouched(snapshot.quoteCommercialTouched || {});
+  state.quoteCommercialTouched = touched;
+  QUOTE_COMMERCIAL_FIELD_KEYS.forEach((key) => {
+    const value = String(values[key] || "");
+    if ((touched[key] || value.trim()) && elements[key]) {
+      elements[key].value = value;
+    }
+  });
+  syncQuoteExchangeRateField();
+  syncQuoteCommercialContextPills();
+  updateOutputHeader();
+  return true;
+}
+
 function collectTaxDetails() {
   const referenceTax = selectedPricingReferenceTax();
   const label = elements.quoteTaxLabel?.value || elements.taxLabel?.value || referenceTax.label;
@@ -10775,6 +10810,7 @@ async function handleDraftBasis(options = {}) {
     return;
   }
 
+  const quoteCommercialSnapshot = quoteCommercialOverrideSnapshot();
   state.isAnalysisRunning = true;
   state.aiFailed = false;
   state.draftSource = "";
@@ -10802,6 +10838,7 @@ async function handleDraftBasis(options = {}) {
     } else {
       showAiFailureBanner(genericFailureMessage(started.data));
     }
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_start_failed" });
     syncControlStates();
     return;
   }
@@ -10811,9 +10848,13 @@ async function handleDraftBasis(options = {}) {
   saveSessionState();
 
   const polled = await pollJob(started.data.job_id);
-  if (polled.aborted) return;
+  if (polled.aborted) {
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_poll_aborted" });
+    return;
+  }
   if (isInterruptedJobPoll(polled)) {
     handleInterruptedJobPoll("draft", polled);
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_poll_interrupted" });
     return;
   }
   state.isAnalysisRunning = false;
@@ -10828,6 +10869,7 @@ async function handleDraftBasis(options = {}) {
     } else {
       showAiFailureBanner(genericFailureMessage(polled.data.result || polled.data));
     }
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_poll_failed" });
     syncControlStates();
     return;
   }
@@ -10836,12 +10878,14 @@ async function handleDraftBasis(options = {}) {
   if (Array.isArray(data.blocking_clarification_questions) && data.blocking_clarification_questions.length) {
     clearAiFailureBanner();
     openBlockingClarifications(data.blocking_clarification_questions, data.analysis_findings || state.analysisFindings || [], data.project || state.boothDimensions || {});
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_blocking_clarification" });
     await saveQuoteSessionDraftState({ quoteGenerated: false });
     return;
   }
   const hasFinalBasis = Array.isArray(data.quote_basis_sections) && data.quote_basis_sections.length && Array.isArray(data.line_items) && data.line_items.length;
   if (options.finalAfterClarifications && !hasFinalBasis) {
     renderClarificationQuestions();
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_missing_final_basis" });
     return;
   }
   state.blockingClarificationQuestions = [];
@@ -10849,6 +10893,7 @@ async function handleDraftBasis(options = {}) {
   const aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
   if (aiFailed) {
     showAiFailedDraftState(data);
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_ai_failed" });
     await saveQuoteSessionDraftState({ quoteGenerated: false });
     return;
   }
@@ -10859,6 +10904,7 @@ async function handleDraftBasis(options = {}) {
   state.lastAnalysisMode = normalizeAnalysisMode(data.analysis_mode || analysisMode);
   captureOriginalAnalysisSnapshot(data);
   state.aiFailed = false;
+  restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "draft_success" });
   setWorkflowStage("basis_review");
   clearAiFailureBanner();
   updateQuoteBasisCard(data.source);
@@ -11050,6 +11096,7 @@ async function resumeSavedJob() {
   if (!activeJob || !activeJob.id) return;
 
   if (activeJob.type === "draft") {
+    const quoteCommercialSnapshot = quoteCommercialOverrideSnapshot();
     state.isAnalysisRunning = true;
     state.isGenerating = false;
     setWorkflowStage("analyzing");
@@ -11065,9 +11112,13 @@ async function resumeSavedJob() {
         saveSessionState();
       }
     });
-    if (polled.aborted) return;
+    if (polled.aborted) {
+      restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "resume_draft_poll_aborted" });
+      return;
+    }
     if (isInterruptedJobPoll(polled)) {
       handleInterruptedJobPoll("draft", polled);
+      restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "resume_draft_poll_interrupted" });
       return;
     }
     state.isAnalysisRunning = false;
@@ -11076,6 +11127,7 @@ async function resumeSavedJob() {
     if (!polled.ok || ["blocked", "failed"].includes(polled.data.status)) {
       setWorkflowStage("ready_to_analyze");
       showAiFailureBanner(genericFailureMessage(polled.data.result || polled.data));
+      restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "resume_draft_failed" });
       syncControlStates();
       return;
     }
@@ -11084,6 +11136,7 @@ async function resumeSavedJob() {
     const aiFailed = Boolean(data.ai_failed || polled.data.status === "degraded" || (data.source === "local" && Array.isArray(data.warnings) && data.warnings.length));
     if (aiFailed) {
       showAiFailedDraftState(data);
+      restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "resume_draft_ai_failed" });
       await saveQuoteSessionDraftState({ quoteGenerated: false });
       return;
     }
@@ -11093,6 +11146,7 @@ async function resumeSavedJob() {
     state.draftSource = data.source || "";
     captureOriginalAnalysisSnapshot(data);
     state.aiFailed = false;
+    restoreQuoteCommercialOverrideSnapshot(quoteCommercialSnapshot, { reason: "resume_draft_success" });
     setWorkflowStage("basis_review");
     clearAiFailureBanner();
     updateQuoteBasisCard(data.source);
