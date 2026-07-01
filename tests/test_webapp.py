@@ -2901,6 +2901,30 @@ class WebappServerTest(unittest.TestCase):
                 self.assertTrue(login_params["state"][0])
                 self.assertIn(webapp.OIDC_STATE_COOKIE_NAME, login_redirect.exception.headers["Set-Cookie"])
 
+    def test_deploy_platform_auth_pages_link_back_to_platform_home(self):
+        platform_url = "http://127.0.0.1:4317"
+        env = self.deploy_auth_env(
+            KQAG_PLATFORM_LAUNCH_MODE="platform",
+            KQAG_PLATFORM_BASE_URL=platform_url,
+            OIDC_AUTHORIZE_URL="",
+        )
+        with mock.patch.dict(os.environ, env, clear=True):
+            with LocalRunnerServer() as runner:
+                parsed = urllib.parse.urlparse(runner.base_url)
+                connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+                try:
+                    connection.request("GET", "/signed-out")
+                    signed_out_response = connection.getresponse()
+                    signed_out_html = signed_out_response.read().decode("utf-8")
+                    connection.request("GET", "/login")
+                    login_response = connection.getresponse()
+                    login_html = login_response.read().decode("utf-8")
+                finally:
+                    connection.close()
+
+        self.assertIn(f'href="{platform_url}/">Sign in again</a>', signed_out_html)
+        self.assertIn(f'href="{platform_url}/">Back</a>', login_html)
+
     def test_deploy_oidc_callback_exchanges_code_fetches_userinfo_and_sets_session_cookie(self):
         env = self.deploy_auth_env()
         opener = self.no_redirect_opener()
