@@ -215,6 +215,12 @@ const state = {
   pricingMatches: [],
   pricingIssues: [],
   activeJob: null,
+  quoteCommercialTouched: {
+    quoteCurrency: false,
+    quoteExchangeRate: false,
+    quoteTaxLabel: false,
+    quoteTaxRate: false,
+  },
   pendingPricingReference: null,
   editingPricingReferenceId: "",
   editingPricingReferenceSource: "",
@@ -1696,6 +1702,70 @@ function syncPricingReferenceCurrencyCustomInput() {
   if (!isCustom) elements.pricingReferenceCurrencyCustom.value = "";
 }
 
+const QUOTE_COMMERCIAL_FIELD_KEYS = ["quoteCurrency", "quoteExchangeRate", "quoteTaxLabel", "quoteTaxRate"];
+
+function emptyQuoteCommercialTouched() {
+  return QUOTE_COMMERCIAL_FIELD_KEYS.reduce((touched, key) => {
+    touched[key] = false;
+    return touched;
+  }, {});
+}
+
+function normalizeQuoteCommercialTouched(touched = {}) {
+  const normalized = emptyQuoteCommercialTouched();
+  QUOTE_COMMERCIAL_FIELD_KEYS.forEach((key) => {
+    normalized[key] = Boolean(touched && touched[key]);
+  });
+  return normalized;
+}
+
+function resetQuoteCommercialTouched() {
+  state.quoteCommercialTouched = emptyQuoteCommercialTouched();
+}
+
+function quoteCommercialFieldKeyForElement(target = null) {
+  return QUOTE_COMMERCIAL_FIELD_KEYS.find((key) => elements[key] && elements[key] === target) || "";
+}
+
+function quoteCommercialFieldIsTouched(field = "") {
+  const key = typeof field === "string" ? field : quoteCommercialFieldKeyForElement(field);
+  const touched = normalizeQuoteCommercialTouched(state.quoteCommercialTouched || {});
+  return Boolean(key && touched[key]);
+}
+
+function markQuoteCommercialFieldTouched(target = null) {
+  const key = quoteCommercialFieldKeyForElement(target);
+  if (!key) return false;
+  state.quoteCommercialTouched = normalizeQuoteCommercialTouched(state.quoteCommercialTouched || {});
+  state.quoteCommercialTouched[key] = true;
+  return true;
+}
+
+function quoteCommercialFieldHasValue(field = "") {
+  const key = typeof field === "string" ? field : quoteCommercialFieldKeyForElement(field);
+  return Boolean(key && String(elements[key]?.value || "").trim());
+}
+
+function shouldApplyQuoteCommercialField(field, explicit, partial, options = {}) {
+  if (options.resetQuoteCommercialTouched === true) return true;
+  if (explicit) {
+    return partial ? !quoteCommercialFieldIsTouched(field) && !quoteCommercialFieldHasValue(field) : true;
+  }
+  if (partial) return false;
+  return !quoteCommercialFieldIsTouched(field);
+}
+
+function quoteDetailsCommercialTouched(details = {}) {
+  const quoteText = details.quote_text || {};
+  const tax = details.tax || quoteText.tax || {};
+  return normalizeQuoteCommercialTouched({
+    quoteCurrency: hasOwnValue(details, "currency"),
+    quoteExchangeRate: hasOwnValue(details, "exchange_rate"),
+    quoteTaxLabel: hasOwnValue(tax, "label") || hasOwnValue(quoteText, "tax_label"),
+    quoteTaxRate: hasOwnValue(tax, "rate") || hasOwnValue(quoteText, "tax_rate"),
+  });
+}
+
 function collectTaxDetails() {
   const referenceTax = selectedPricingReferenceTax();
   const label = elements.quoteTaxLabel?.value || elements.taxLabel?.value || referenceTax.label;
@@ -1714,13 +1784,17 @@ function collectQuoteCurrency() {
 
 function collectQuoteExchangeRate() {
   const value = Number(String(elements.quoteExchangeRate?.value || "").trim());
-  if (collectQuoteCurrency() === selectedPricingReferenceCurrency()) return 1;
+  if (collectQuoteCurrency() === selectedPricingReferenceCurrency() && !quoteCommercialFieldIsTouched("quoteExchangeRate")) return 1;
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function syncQuoteExchangeRateField() {
   if (elements.quoteExchangeRateField) elements.quoteExchangeRateField.hidden = false;
-  if (elements.quoteExchangeRate && collectQuoteCurrency() === selectedPricingReferenceCurrency()) {
+  if (
+    elements.quoteExchangeRate
+    && collectQuoteCurrency() === selectedPricingReferenceCurrency()
+    && !quoteCommercialFieldIsTouched("quoteExchangeRate")
+  ) {
     elements.quoteExchangeRate.value = "1";
   }
 }
@@ -1759,13 +1833,13 @@ function syncQuoteCommercialContextPills() {
 function applyPricingReferenceCommercialDefaults() {
   const tax = selectedPricingReferenceTax();
   const currency = selectedPricingReferenceCurrency();
-  if (elements.quoteCurrency && !String(elements.quoteCurrency.value || "").trim()) {
+  if (elements.quoteCurrency && !String(elements.quoteCurrency.value || "").trim() && !quoteCommercialFieldIsTouched("quoteCurrency")) {
     elements.quoteCurrency.value = currency;
   }
-  if (elements.quoteTaxLabel && !String(elements.quoteTaxLabel.value || "").trim()) {
+  if (elements.quoteTaxLabel && !String(elements.quoteTaxLabel.value || "").trim() && !quoteCommercialFieldIsTouched("quoteTaxLabel")) {
     elements.quoteTaxLabel.value = tax.label;
   }
-  if (elements.quoteTaxRate && !String(elements.quoteTaxRate.value || "").trim()) {
+  if (elements.quoteTaxRate && !String(elements.quoteTaxRate.value || "").trim() && !quoteCommercialFieldIsTouched("quoteTaxRate")) {
     elements.quoteTaxRate.value = taxRatePercentText(tax.rate);
   }
   syncQuoteExchangeRateField();
@@ -2174,6 +2248,8 @@ function applyQuoteDetails(details = {}, options = {}) {
   const signature = details.signature || {};
   const tax = details.tax || quoteText.tax || {};
   const partial = Boolean(options.partial);
+  const hasQuoteTaxLabel = hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_label");
+  const hasQuoteTaxRate = hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_rate");
 
   if (shouldApply(client, "name", partial)) setInputValue(elements.clientName, client.name);
   if (shouldApply(client, "attention", partial)) setInputValue(elements.clientAttention, client.attention);
@@ -2188,18 +2264,28 @@ function applyQuoteDetails(details = {}, options = {}) {
   if (shouldApply(details, "project_number", partial)) setInputValue(elements.projectNumber, details.project_number);
   if (shouldApply(company, "name", partial)) setInputValue(elements.quoteCompanyName, company.name);
   if (shouldApply(company, "header_details", partial)) setInputValue(elements.headerDetails, company.header_details);
-  if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_label")) {
+  if (!partial || hasQuoteTaxLabel) {
     if (elements.taxLabel) elements.taxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
-    if (elements.quoteTaxLabel && (!partial || !elements.quoteTaxLabel.value)) elements.quoteTaxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
+    if (
+      elements.quoteTaxLabel
+      && shouldApplyQuoteCommercialField("quoteTaxLabel", hasQuoteTaxLabel, partial, options)
+    ) {
+      elements.quoteTaxLabel.value = normalizeTaxLabel(tax.label || quoteText.tax_label || DEFAULT_TAX_LABEL);
+    }
   }
-  if (!partial || hasOwnValue(details, "tax") || hasOwnValue(quoteText, "tax") || hasOwnValue(quoteText, "tax_rate")) {
+  if (!partial || hasQuoteTaxRate) {
     setInputValue(elements.taxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
-    if (elements.quoteTaxRate && (!partial || !elements.quoteTaxRate.value)) setInputValue(elements.quoteTaxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
+    if (
+      elements.quoteTaxRate
+      && shouldApplyQuoteCommercialField("quoteTaxRate", hasQuoteTaxRate, partial, options)
+    ) {
+      setInputValue(elements.quoteTaxRate, taxRatePercentText(tax.rate ?? quoteText.tax_rate ?? DEFAULT_TAX_RATE));
+    }
   }
-  if (!partial || hasOwnValue(details, "currency")) {
+  if (shouldApplyQuoteCommercialField("quoteCurrency", hasOwnValue(details, "currency"), partial, options)) {
     setInputValue(elements.quoteCurrency, normalizeCurrencyLabel(details.currency || selectedPricingReferenceCurrency()));
   }
-  if (!partial || hasOwnValue(details, "exchange_rate")) {
+  if (shouldApplyQuoteCommercialField("quoteExchangeRate", hasOwnValue(details, "exchange_rate"), partial, options)) {
     setInputValue(elements.quoteExchangeRate, quoteExchangeRateText(details.exchange_rate ?? 1));
   }
   syncQuoteExchangeRateField();
@@ -2235,6 +2321,7 @@ function applyQuoteDetails(details = {}, options = {}) {
 }
 
 function applyDefaultQuoteCompanyFields() {
+  resetQuoteCommercialTouched();
   if (elements.taxLabel) elements.taxLabel.value = DEFAULT_TAX_LABEL;
   setInputValue(elements.taxRate, taxRatePercentText(DEFAULT_TAX_RATE));
   setInputValue(elements.quoteTaxLabel, "");
@@ -2429,6 +2516,7 @@ function buildSessionSnapshot() {
     quoteSessionDraftSaveStarted: state.quoteSessionDraftSaveStarted,
     quoteSessionRestoredSessionId: state.quoteSessionRestoredSessionId,
     quoteSessionRestoredDraftKey: state.quoteSessionRestoredDraftKey,
+    quoteCommercialTouched: normalizeQuoteCommercialTouched(state.quoteCommercialTouched || {}),
     images: state.images.slice(0, MAX_REFERENCE_IMAGES).map(sessionImageMetadata),
     quoteDetails: quoteDetailsWithSessionLogoMetadata(collectQuoteDetails()),
     workflowStage: state.workflowStage,
@@ -2603,6 +2691,9 @@ async function applyQuoteSessionSnapshot(saved = {}, options = {}) {
   state.quoteSessionRestoredDraftKey = state.quoteSessionRestoredSessionId ? String(saved.quoteSessionRestoredDraftKey || "") : "";
   state.activeAppView = saved.activeAppView === "quote" || options.forceQuoteView ? "quote" : "dashboard";
   state.selectedPresetValue = saved.selectedPresetValue || presetValueFromQuoteDetails(saved.quoteDetails || {}) || lastSelectedPresetValue();
+  state.quoteCommercialTouched = normalizeQuoteCommercialTouched(
+    saved.quoteCommercialTouched || quoteDetailsCommercialTouched(saved.quoteDetails || {})
+  );
   syncSelectedPricingReference();
   renderProfileOptions();
   renderPresetOptions();
@@ -3558,6 +3649,7 @@ function resetCurrentQuoteDraftState() {
   state.quoteSessionId = "";
   state.quoteSessionDraftSaveStarted = false;
   clearRestoredQuoteSessionBaseline();
+  resetQuoteCommercialTouched();
   state.profileId = "";
   state.pricingReferenceId = "";
   state.pricingReferenceSource = "";
@@ -8925,6 +9017,7 @@ function currentQuoteSessionDraftState() {
     pricingReferenceId: snapshot.pricingReferenceId,
     pricingReferenceSource: snapshot.pricingReferenceSource,
     selectedPresetValue: snapshot.selectedPresetValue,
+    quoteCommercialTouched: snapshot.quoteCommercialTouched,
     images: snapshot.images,
     quoteDetails: snapshot.quoteDetails,
     workflowStage: snapshot.workflowStage,
@@ -9113,6 +9206,7 @@ function quoteCommercialFieldChanged(target = null) {
 
 function handleQuoteDetailFieldChange(event = {}) {
   const commercialChanged = quoteCommercialFieldChanged(event.target);
+  markQuoteCommercialFieldTouched(event.target);
   syncQuoteExchangeRateField();
   if (commercialChanged && (state.outputRows.length || state.downloadFile || state.pdfFile)) {
     markOutputRowsDirty();
