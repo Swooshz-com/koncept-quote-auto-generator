@@ -1880,6 +1880,21 @@ function applyPricingReferenceCommercialDefaults() {
   syncQuoteExchangeRateField();
 }
 
+function resetQuoteCommercialFieldsToSelectedPricingReference() {
+  const tax = selectedPricingReferenceTax();
+  const currency = selectedPricingReferenceCurrency();
+  resetQuoteCommercialTouched();
+  if (elements.taxLabel) elements.taxLabel.value = normalizeTaxLabel(tax.label || DEFAULT_TAX_LABEL);
+  setInputValue(elements.taxRate, taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE));
+  setInputValue(elements.quoteCurrency, currency);
+  setInputValue(elements.quoteExchangeRate, "1");
+  setInputValue(elements.quoteTaxLabel, normalizeTaxLabel(tax.label || DEFAULT_TAX_LABEL));
+  setInputValue(elements.quoteTaxRate, taxRatePercentText(tax.rate ?? DEFAULT_TAX_RATE));
+  syncQuoteExchangeRateField();
+  syncQuoteCommercialContextPills();
+  updateOutputHeader();
+}
+
 function renderSelectedPricingReferenceSummary() {
   const reference = currentPricingReference();
   const tax = selectedPricingReferenceTax();
@@ -2356,14 +2371,7 @@ function applyQuoteDetails(details = {}, options = {}) {
 }
 
 function applyDefaultQuoteCompanyFields() {
-  resetQuoteCommercialTouched();
-  if (elements.taxLabel) elements.taxLabel.value = DEFAULT_TAX_LABEL;
-  setInputValue(elements.taxRate, taxRatePercentText(DEFAULT_TAX_RATE));
-  setInputValue(elements.quoteTaxLabel, "");
-  setInputValue(elements.quoteTaxRate, "");
-  setInputValue(elements.quoteCurrency, "");
-  setInputValue(elements.quoteExchangeRate, "");
-  applyPricingReferenceCommercialDefaults();
+  resetQuoteCommercialFieldsToSelectedPricingReference();
   setInputValue(elements.termsHeading, DEFAULT_TERMS_HEADING);
   setInputValue(elements.notesHeading, DEFAULT_NOTES_HEADING);
   setInputValue(elements.acceptanceText, DEFAULT_ACCEPTANCE_TEXT);
@@ -3625,6 +3633,7 @@ function clearCustomerDetails() {
   setInputValue(elements.quoteDate, todayDateInputValue());
   applyQuoteDateFormatFromHtml("");
   setInputValue(elements.projectNumber, "");
+  resetQuoteCommercialFieldsToSelectedPricingReference();
   clearGeneratedQuoteState();
   renderProfileOptions();
   setWorkflowStage(state.images.length ? "ready_to_analyze" : "needs_images");
