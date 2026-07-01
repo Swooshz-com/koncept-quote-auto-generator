@@ -1335,6 +1335,11 @@ def configured_platform_base_url() -> str:
     return base_url
 
 
+def configured_platform_home_url() -> str:
+    base_url = configured_platform_base_url()
+    return f"{base_url}/" if base_url else ""
+
+
 def platform_launch_consume_url() -> str:
     base_url = configured_platform_base_url()
     return f"{base_url}/api/platform/apps/launch/consume?{urlencode({'appKey': PLATFORM_APP_KEY})}" if base_url else ""
@@ -13299,7 +13304,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             self.send_auth_page(
                 "Signed out",
                 "You have been signed out of the internal UAT quote runner.",
-                action_href="/login",
+                action_href=configured_platform_home_url() or "/login",
                 action_label="Sign in again",
             )
             return
@@ -13882,7 +13887,7 @@ class QuoteRunnerHandler(BaseHTTPRequestHandler):
             self.send_auth_page(
                 "Platform launch required",
                 "Open this quote runner from an approved Swooshz Platform workspace.",
-                action_href="/signed-out",
+                action_href=configured_platform_home_url() or "/signed-out",
                 action_label="Back",
                 status=401,
             )
