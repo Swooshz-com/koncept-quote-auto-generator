@@ -11329,6 +11329,12 @@ function setSidePanel(panelName, options = {}) {
   const previousPanel = state.activeSidePanel;
   const [title, eyebrow, subtitle] = panelTitles[nextPanel] || panelTitles.images;
   state.activeSidePanel = nextPanel;
+  if (
+    state.activeSidePanel === "customer"
+    && !QUOTE_COMMERCIAL_FIELD_KEYS.some((field) => quoteCommercialFieldIsTouched(field))
+  ) {
+    resetQuoteCommercialFieldsToSelectedPricingReference();
+  }
   document.body.dataset.sidePanel = state.activeSidePanel;
   elements.sideDrawerTitle.textContent = title;
   elements.sideDrawerEyebrow.textContent = eyebrow;
