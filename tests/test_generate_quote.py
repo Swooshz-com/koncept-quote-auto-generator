@@ -1143,6 +1143,81 @@ class GenerateQuoteRowsTest(unittest.TestCase):
 
         self.assertTrue(any(row and row[-1] == "Included" for row in rows))
 
+    def test_build_quote_rows_includes_zero_tax_row_from_quote_config(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "currency": "IDR",
+            "tax": {"label": "VAT", "rate": 0},
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [],
+            "payment_terms": [],
+        }
+        line = quote.QuoteLine(
+            section="Graphics",
+            quantity=1,
+            unit="lot",
+            description="Printed backdrop",
+            pricing_keyword="printed backdrop",
+            display_price="",
+            matched_price=None,
+            amount=120,
+            match_status="manual",
+            match_candidates=[],
+        )
+
+        rows = quote.build_quote_rows(brief, [line])
+        pdf_lines = quote.build_pdf_lines(rows)
+
+        self.assertIn(["", "", "Total", "120.00", "IDR"], rows)
+        self.assertIn(["", "", "VAT 0%", "0.00", "IDR"], rows)
+        self.assertIn(["", "", "Total including VAT", "120.00", "IDR"], rows)
+        self.assertTrue(any("VAT 0%  0.00  IDR" in line for line in pdf_lines))
+
+    def test_pdf_cell_map_includes_zero_tax_row_from_quote_config(self):
+        brief = {
+            "company_identity": "Koncept Image",
+            "quote_date": "2026-06-04",
+            "currency": "IDR",
+            "tax": {"label": "VAT", "rate": 0},
+            "client": {
+                "name": "Sample Client",
+                "attention": "Alex Tan",
+            },
+            "project": {
+                "title": "Sample Project",
+            },
+            "line_items": [],
+            "payment_terms": [],
+        }
+        line = quote.QuoteLine(
+            section="Graphics",
+            quantity=1,
+            unit="lot",
+            description="Printed backdrop",
+            pricing_keyword="printed backdrop",
+            display_price="",
+            matched_price=None,
+            amount=120,
+            match_status="manual",
+            match_candidates=[],
+        )
+
+        cells = quote.build_pdf_cell_map(brief, [line])
+
+        self.assertEqual(cells[(92, 5)], 120)
+        self.assertEqual(cells[(93, 4)], "VAT 0%")
+        self.assertEqual(cells[(93, 5)], 0)
+        self.assertEqual(cells[(93, 6)], "IDR")
+        self.assertEqual(cells[(94, 4)], "Total including VAT")
+        self.assertEqual(cells[(94, 5)], 120)
+
     def test_unresolved_manual_display_rows_require_confirmation(self):
         unresolved = quote.QuoteLine(
             section="Furniture Rental",
@@ -1433,6 +1508,29 @@ class GenerateQuoteRowsTest(unittest.TestCase):
         self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.200000,2)", "SUM(E27:E28)"])
         self.assertAlmostEqual(float(cell_value(sheet, "E28")), 960.0)
         self.assertAlmostEqual(float(cell_value(sheet, "E29")), 5760.0)
+
+    def test_layout_totals_show_zero_tax_row_from_quote_config(self):
+        tmp, path = generate_layout_workbook({"currency": "IDR", "exchange_rate": 1, "tax": {"label": "VAT", "rate": 0}})
+        self.addCleanup(tmp.cleanup)
+
+        with zipfile.ZipFile(path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+            styles = ET.fromstring(zf.read("xl/styles.xml"))
+
+        total_ref = find_cell_ref(sheet, "Total")
+        tax_ref = find_cell_ref(sheet, "VAT 0%")
+        grand_ref = find_cell_ref(sheet, "Total including VAT")
+        self.assertEqual(total_ref, "D27")
+        self.assertEqual(tax_ref, "D28")
+        self.assertEqual(grand_ref, "D29")
+        self.assertEqual(cell_value(sheet, "F27"), "IDR")
+        self.assertEqual(cell_value(sheet, "F28"), "IDR")
+        self.assertEqual(cell_value(sheet, "F29"), "IDR")
+        self.assertEqual(worksheet_formulas(sheet), ["SUM(E22:E26)", "ROUND(E27*0.000000,2)", "SUM(E27:E28)"])
+        self.assertAlmostEqual(float(cell_value(sheet, "E27")), 2400.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E28")), 0.0)
+        self.assertAlmostEqual(float(cell_value(sheet, "E29")), 2400.0)
+        self.assertEqual(num_fmt_for_style(styles, cell_style(sheet, "E28")), "4")
 
     def test_layout_tax_rounds_to_cents_not_whole_dollars(self):
         brief = {

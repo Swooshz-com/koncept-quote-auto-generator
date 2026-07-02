@@ -1010,13 +1010,12 @@ def build_quote_rows(brief: dict[str, Any], lines: list[QuoteLine]) -> list[list
     discount = as_float(brief.get("discount"), 0.0)
     subtotal = max(quote_subtotal(entries) - discount, 0.0)
     tax_rate = quote_tax_rate(brief)
-    tax_amount = round(subtotal * tax_rate, 2) if tax_rate else 0
+    tax_amount = round(subtotal * tax_rate, 2)
     final_total = subtotal + tax_amount
     rows.extend([[], ["", "", "Total", money(subtotal), currency]])
     if discount:
         rows.insert(-1, ["", "", "Less goodwill discount", money(discount), currency])
-    if tax_amount:
-        rows.append(["", "", quote_tax_label(brief), money(tax_amount), currency])
+    rows.append(["", "", quote_tax_label(brief), money(tax_amount), currency])
     rows.append(["", "", quote_total_including_tax_label(brief), money(final_total), currency])
     terms_heading = clean_text(brief.get("terms_heading"))
     payment_terms = brief.get("payment_terms") or []
@@ -2603,7 +2602,7 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
     grand_row = total_row + 2
     tax_rate = quote_tax_rate(brief)
     cached_total = sum(formula_cache_amount(entry.get("amount")) for entry in entries)
-    cached_tax = round(cached_total * tax_rate, 2) if tax_rate else 0.0
+    cached_tax = round(cached_total * tax_rate, 2)
     cached_grand = cached_total + cached_tax
     set_ooxml_cell(root, total_row, 4, "Total", layout_styles["total_label"])
     set_ooxml_formula(
@@ -2615,17 +2614,16 @@ def write_quote_layout_xlsx(layout_template: Path, path: Path, brief: dict[str, 
         cached_total,
     )
     set_ooxml_cell(root, total_row, 6, currency, layout_styles["total_currency"])
-    if tax_rate:
-        set_ooxml_cell(root, gst_row, 4, quote_tax_label(brief), layout_styles["gst_label"])
-        set_ooxml_formula(
-            root,
-            gst_row,
-            5,
-            f"ROUND(E{total_row}*{tax_rate:.6f},2)",
-            layout_styles["gst_amount"],
-            cached_tax,
-        )
-        set_ooxml_cell(root, gst_row, 6, currency, layout_styles["gst_currency"])
+    set_ooxml_cell(root, gst_row, 4, quote_tax_label(brief), layout_styles["gst_label"])
+    set_ooxml_formula(
+        root,
+        gst_row,
+        5,
+        f"ROUND(E{total_row}*{tax_rate:.6f},2)",
+        layout_styles["gst_amount"],
+        cached_tax,
+    )
+    set_ooxml_cell(root, gst_row, 6, currency, layout_styles["gst_currency"])
     set_ooxml_cell(root, grand_row, 4, quote_total_including_tax_label(brief), layout_styles["grand_label"])
     set_ooxml_formula(
         root,
@@ -2862,7 +2860,7 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
         (53, 5): "Estimate",
         (92, 4): "Total",
         (92, 6): currency,
-        (93, 4): quote_tax_label(brief) if quote_tax_rate(brief) else "",
+        (93, 4): quote_tax_label(brief),
         (94, 4): quote_total_including_tax_label(brief),
         (94, 6): currency,
         (106, 5): clean_text(acceptance.get("text")),
@@ -2913,11 +2911,10 @@ def build_pdf_cell_map(brief: dict[str, Any], lines: list[QuoteLine]) -> dict[tu
 
     subtotal = quote_subtotal(entries)
     tax_rate = quote_tax_rate(brief)
-    tax_amount = round(subtotal * tax_rate, 2) if tax_rate else 0
+    tax_amount = round(subtotal * tax_rate, 2)
     cells[(92, 5)] = subtotal
-    if tax_amount:
-        cells[(93, 5)] = tax_amount
-        cells[(93, 6)] = currency
+    cells[(93, 5)] = tax_amount
+    cells[(93, 6)] = currency
     cells[(94, 5)] = subtotal + tax_amount
     text_row = 99
     terms_heading = clean_text(brief.get("terms_heading"))
