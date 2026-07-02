@@ -15551,6 +15551,289 @@ assert.strictEqual(elements.quoteTaxRate.value, "9");
 
         self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
+    def test_static_customer_reset_restores_selected_pricing_reference_commercial_defaults(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_TAX_LABEL = "GST";
+const DEFAULT_TAX_RATE = 0.09;
+const DEFAULT_CURRENCY_LABEL = "SGD";
+const DEFAULT_BOOTH_DIMENSIONS = { booth_width: "6", booth_depth: "6", booth_size: "6m x 6m", dimension_source: "default" };
+const QUOTE_COMMERCIAL_FIELD_KEYS = ["quoteCurrency", "quoteExchangeRate", "quoteTaxLabel", "quoteTaxRate"];
+const elements = {
+  clientName: { value: "Client" },
+  clientAttention: { value: "Attention" },
+  clientTitle: { value: "Title" },
+  clientAddress: { value: "Address" },
+  projectTitle: { value: "Project" },
+  showName: { value: "Show" },
+  quoteDate: { value: "" },
+  projectNumber: { value: "P-1" },
+  quoteCurrency: { value: "AUD" },
+  quoteExchangeRate: { value: "2" },
+  quoteExchangeRateField: { hidden: true },
+  quoteTaxLabel: { value: "VAT" },
+  quoteTaxRate: { value: "0" },
+  taxLabel: { value: "VAT" },
+  taxRate: { value: "0" },
+  selectedPricingReferenceSummary: { textContent: "" },
+  selectedPricingReferenceCurrency: { textContent: "" },
+  selectedPricingReferenceTax: { textContent: "" },
+};
+const state = {
+  pricingReferenceId: "koncept-eq",
+  pricingReferenceSource: "local",
+  pricingReferences: [
+    { id: "koncept-eq", source: "local", label: "Koncept EQ", currency: "SGD", tax: { label: "GST", rate: 0.09 } },
+    { id: "other-ref", source: "local", label: "Other", currency: "MYR", tax: { label: "SST", rate: 0.08 } },
+  ],
+  quoteCommercialTouched: {
+    quoteCurrency: true,
+    quoteExchangeRate: true,
+    quoteTaxLabel: true,
+    quoteTaxRate: true,
+  },
+  images: [{ name: "reference.png" }],
+};
+const document = { querySelectorAll() { return []; } };
+let generatedCleared = false;
+let renderedProfiles = false;
+let workflowStage = "";
+
+function currentPricingReference() {
+  return state.pricingReferences.find((reference) => reference.id === state.pricingReferenceId && reference.source === state.pricingReferenceSource) || null;
+}
+function syncPricingReferenceContextPills() {}
+function updatePricingReferenceDeleteButton() {}
+function updateOutputHeader() {}
+function clearGeneratedQuoteState() { generatedCleared = true; }
+function renderProfileOptions() { renderedProfiles = true; renderSelectedPricingReferenceSummary(); }
+function setWorkflowStage(stage) { workflowStage = stage; }
+function syncControlStates() {}
+function todayDateInputValue() { return "2026-07-02"; }
+function applyQuoteDateFormatFromHtml() {}
+function setInputValue(element, value = "") { if (element) element.value = String(value || ""); }
+
+eval([
+  "hasOwnValue",
+  "normalizeTaxLabel",
+  "normalizeTaxRate",
+  "taxRatePercentText",
+  "taxRateFromPercentInput",
+  "normalizeCurrencyLabel",
+  "emptyQuoteCommercialTouched",
+  "normalizeQuoteCommercialTouched",
+  "resetQuoteCommercialTouched",
+  "quoteCommercialFieldKeyForElement",
+  "quoteCommercialFieldIsTouched",
+  "quoteCommercialFieldHasValue",
+  "selectedPricingReferenceTax",
+  "selectedPricingReferenceCurrency",
+  "selectedPricingReferenceTaxText",
+  "collectTaxDetails",
+  "collectQuoteCurrency",
+  "collectQuoteExchangeRate",
+  "syncQuoteExchangeRateField",
+  "quoteCommercialTaxText",
+  "quoteExchangeRateText",
+  "syncQuoteCommercialContextPills",
+  "applyPricingReferenceCommercialDefaults",
+  "resetQuoteCommercialFieldsToSelectedPricingReference",
+  "renderSelectedPricingReferenceSummary",
+  "clearCustomerDetails",
+].map(extractFunction).join("\n"));
+
+clearCustomerDetails();
+
+assert.strictEqual(state.pricingReferenceId, "koncept-eq");
+assert.strictEqual(state.pricingReferenceSource, "local");
+assert.strictEqual(elements.quoteCurrency.value, "SGD");
+assert.strictEqual(elements.quoteExchangeRate.value, "1");
+assert.strictEqual(elements.quoteTaxLabel.value, "GST");
+assert.strictEqual(elements.quoteTaxRate.value, "9");
+assert.strictEqual(elements.taxLabel.value, "GST");
+assert.strictEqual(elements.taxRate.value, "9");
+assert.deepStrictEqual(state.quoteCommercialTouched, {
+  quoteCurrency: false,
+  quoteExchangeRate: false,
+  quoteTaxLabel: false,
+  quoteTaxRate: false,
+});
+assert.deepStrictEqual(collectTaxDetails(), { label: "GST", rate: 0.09 });
+assert.strictEqual(collectQuoteCurrency(), "SGD");
+assert.strictEqual(collectQuoteExchangeRate(), 1);
+assert.strictEqual(generatedCleared, true);
+assert.strictEqual(renderedProfiles, true);
+assert.strictEqual(workflowStage, "ready_to_analyze");
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
+    def test_static_next_to_customer_initializes_untouched_commercial_defaults(self):
+        node = require_node(self)
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("webapp/static/app.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`Missing function ${name}`);
+  const bodyStart = source.indexOf(") {", start) + 2;
+  if (bodyStart < 2) throw new Error(`Missing body for function ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`Unclosed function ${name}`);
+}
+
+const DEFAULT_TAX_LABEL = "GST";
+const DEFAULT_TAX_RATE = 0.09;
+const DEFAULT_CURRENCY_LABEL = "SGD";
+const SIDE_PANEL_SEQUENCE = ["images", "customer", "quote_company", "basis", "output"];
+const QUOTE_COMMERCIAL_FIELD_KEYS = ["quoteCurrency", "quoteExchangeRate", "quoteTaxLabel", "quoteTaxRate"];
+const elements = {
+  quoteCurrency: { value: "SGD" },
+  quoteExchangeRate: { value: "1" },
+  quoteExchangeRateField: { hidden: true },
+  quoteTaxLabel: { value: "GST" },
+  quoteTaxRate: { value: "0" },
+  taxLabel: { value: "GST" },
+  taxRate: { value: "0" },
+  sideNextButton: {
+    title: "",
+    getAttribute(name) { return name === "aria-disabled" ? "false" : ""; },
+    blur() {},
+  },
+  sideDrawerTitle: { textContent: "" },
+  sideDrawerEyebrow: { textContent: "" },
+  sideDrawerSubtitle: { textContent: "" },
+  sideWorkspace: { setAttribute() {} },
+};
+const state = {
+  activeSidePanel: "images",
+  pricingReferenceId: "koncept-eq",
+  pricingReferenceSource: "local",
+  pricingReferences: [
+    { id: "koncept-eq", source: "local", label: "Koncept EQ", currency: "SGD", tax: { label: "GST", rate: 0.09 } },
+  ],
+  quoteCommercialTouched: {
+    quoteCurrency: false,
+    quoteExchangeRate: false,
+    quoteTaxLabel: false,
+    quoteTaxRate: false,
+  },
+  images: [{ name: "booth.pdf" }],
+};
+const document = {
+  body: { dataset: {} },
+  querySelectorAll() { return []; },
+  querySelector() { return null; },
+};
+const window = { scrollTo() {} };
+
+function currentGenerator() { return { intakeSubtitle: "Reference images and PDFs." }; }
+function currentPricingReference() {
+  return state.pricingReferences.find((reference) => reference.id === state.pricingReferenceId && reference.source === state.pricingReferenceSource) || null;
+}
+function sidePanelBlockReason() { return ""; }
+function updateSidePanelNav() {}
+function saveSessionState() {}
+function resetQuoteFlowScroll() {}
+function syncPricingReferenceContextPills() {}
+function updateOutputHeader() {}
+function setInputValue(element, value = "") { if (element) element.value = String(value || ""); }
+
+eval([
+  "hasOwnValue",
+  "normalizeTaxLabel",
+  "normalizeTaxRate",
+  "taxRatePercentText",
+  "taxRateFromPercentInput",
+  "normalizeCurrencyLabel",
+  "emptyQuoteCommercialTouched",
+  "normalizeQuoteCommercialTouched",
+  "resetQuoteCommercialTouched",
+  "quoteCommercialFieldKeyForElement",
+  "quoteCommercialFieldIsTouched",
+  "quoteCommercialFieldHasValue",
+  "selectedPricingReferenceTax",
+  "selectedPricingReferenceCurrency",
+  "collectTaxDetails",
+  "collectQuoteCurrency",
+  "collectQuoteExchangeRate",
+  "syncQuoteExchangeRateField",
+  "quoteCommercialTaxText",
+  "quoteExchangeRateText",
+  "syncQuoteCommercialContextPills",
+  "applyPricingReferenceCommercialDefaults",
+  "resetQuoteCommercialFieldsToSelectedPricingReference",
+  "activeSidePanelIndex",
+  "setSidePanel",
+].map(extractFunction).join("\n"));
+
+assert.strictEqual(setSidePanel("customer", { notify: true }), true);
+assert.strictEqual(state.activeSidePanel, "customer");
+assert.strictEqual(elements.quoteCurrency.value, "SGD");
+assert.strictEqual(elements.quoteExchangeRate.value, "1");
+assert.strictEqual(elements.quoteTaxLabel.value, "GST");
+assert.strictEqual(elements.quoteTaxRate.value, "9");
+assert.strictEqual(elements.taxLabel.value, "GST");
+assert.strictEqual(elements.taxRate.value, "9");
+assert.deepStrictEqual(state.quoteCommercialTouched, {
+  quoteCurrency: false,
+  quoteExchangeRate: false,
+  quoteTaxLabel: false,
+  quoteTaxRate: false,
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", script],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+
     def test_static_quote_commercial_snapshot_survives_analysis_lifecycle_side_effects(self):
         node = require_node(self)
 
@@ -15677,6 +15960,7 @@ eval([
   "quoteExchangeRateText",
   "syncQuoteCommercialContextPills",
   "applyPricingReferenceCommercialDefaults",
+  "resetQuoteCommercialFieldsToSelectedPricingReference",
   "renderSelectedPricingReferenceSummary",
   "quoteCommercialOverrideSnapshot",
   "quoteCommercialSnapshotHasUserValues",
