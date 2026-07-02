@@ -173,6 +173,157 @@ async function dashboardPanelActionMetrics(page, label) {
   };
 }
 
+async function verifyMobileHeaderOrder(page) {
+  await page.setViewportSize({ width: 520, height: 720 });
+  const metrics = await page.evaluate(() => {
+    const visibleRect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element || element.hidden) return null;
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden") return null;
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      return {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        text: element.textContent?.trim() || "",
+      };
+    };
+    return {
+      auth: visibleRect("#topbarAuthState"),
+      dashboard: visibleRect("#backToDashboardButton"),
+      pricing: visibleRect("#settingsButton"),
+      privacy: visibleRect(".topbar-privacy-link"),
+    };
+  });
+  if (!metrics.dashboard || !metrics.pricing || !metrics.privacy) {
+    throw new Error(`Mobile header actions were not measurable: ${JSON.stringify(metrics)}.`);
+  }
+  const actionTop = Math.min(metrics.dashboard.top, metrics.pricing.top);
+  const actionBottom = Math.max(metrics.dashboard.bottom, metrics.pricing.bottom);
+  if (metrics.auth && metrics.auth.bottom > actionTop + 4) {
+    throw new Error(`Mobile auth status should appear before dashboard/pricing actions: ${JSON.stringify(metrics)}.`);
+  }
+  if (actionBottom > metrics.privacy.top + 4) {
+    throw new Error(`Mobile Privacy Notice should appear below dashboard/pricing actions: ${JSON.stringify(metrics)}.`);
+  }
+  if (metrics.dashboard.width < 120 || metrics.pricing.width < 120) {
+    throw new Error(`Mobile dashboard/pricing actions should remain prominent: ${JSON.stringify(metrics)}.`);
+  }
+}
+
+async function verifyMobileBasisLegendAndOutputCards(page) {
+  await page.setViewportSize({ width: 520, height: 720 });
+  await page.evaluate(() => {
+    state.quoteBasis = {};
+    state.quoteBasisSections = [{
+      id: "graphics",
+      title: "Graphics",
+      lines: [
+        { tag: "Include", text: "Printed wall graphics", confidence: 92, quantity: 12, unit: "sqm" },
+        { tag: "Confirm", text: "Confirm counter finish", confidence: 71, quantity: 1, unit: "lot" },
+        { tag: "Custom", text: "AI proposed curved counter", confidence: 88, custom_confirmed: true, quantity: 1, unit: "set" },
+        { tag: "Exclude", text: "Exclude back-room storage", confidence: 93, quantity: 1, unit: "lot" },
+      ],
+    }];
+    state.aiFailed = false;
+    state.draftSource = "edited";
+    updateQuoteBasisCard("edited");
+    setSidePanel("basis", { force: true });
+  });
+  await page.locator(".basis-tag-legend").waitFor({ state: "visible", timeout: 15000 });
+  const legendMetrics = await page.locator(".basis-tag-legend").evaluate((legend) => {
+    const items = Array.from(legend.querySelectorAll(".basis-tag-legend-item")).map((item) => {
+      const rect = item.getBoundingClientRect();
+      const text = item.querySelector("span")?.getBoundingClientRect();
+      return {
+        width: Math.round(rect.width),
+        left: Math.round(rect.left),
+        textWidth: text ? Math.round(text.width) : 0,
+        text: item.textContent?.trim() || "",
+      };
+    });
+    return {
+      columns: window.getComputedStyle(legend).gridTemplateColumns,
+      width: Math.round(legend.getBoundingClientRect().width),
+      items,
+    };
+  });
+  if (!legendMetrics.items.some((item) => item.text.includes("Include"))
+    || !legendMetrics.items.some((item) => item.text.includes("AI Proposal"))
+    || !legendMetrics.items.some((item) => item.text.includes("92%"))) {
+    throw new Error(`Mobile basis legend is missing expected labels: ${JSON.stringify(legendMetrics)}.`);
+  }
+  if (legendMetrics.items.some((item) => item.width < 260 || item.textWidth < 140)) {
+    throw new Error(`Mobile basis legend items are too cramped: ${JSON.stringify(legendMetrics)}.`);
+  }
+
+  await page.evaluate(() => {
+    state.basisConfirmed = true;
+    state.outputRows = [
+      {
+        section: "Graphics",
+        description: "Printed wall graphics",
+        quantity: 12,
+        unit: "sqm",
+        price_mode: "Priced",
+        unit_price_override: 45,
+        catalog_unit_price: 45,
+        amount: 540,
+      },
+      {
+        section: "Custom",
+        description: "Curved service counter",
+        quantity: 1,
+        unit: "set",
+        price_mode: "Included",
+        unit_price_override: "Included",
+        catalog_unit_price: "",
+        amount: 0,
+      },
+    ];
+    state.lineItems = outputRowsToLineItems();
+    renderPricingMatches(state.outputRows);
+    setSidePanel("output", { force: true });
+  });
+  await page.locator("#pricingMatchesBody tr").first().waitFor({ state: "visible", timeout: 15000 });
+  const outputMetrics = await page.locator("#pricingMatchesBody tr").first().evaluate((row) => {
+    const cells = Array.from(row.querySelectorAll("td")).map((cell) => ({
+      label: cell.getAttribute("data-output-label") || "",
+      display: window.getComputedStyle(cell).display,
+      before: window.getComputedStyle(cell, "::before").content,
+      width: Math.round(cell.getBoundingClientRect().width),
+    }));
+    const rowRect = row.getBoundingClientRect();
+    return {
+      rowDisplay: window.getComputedStyle(row).display,
+      rowWidth: Math.round(rowRect.width),
+      tableHeadDisplay: window.getComputedStyle(document.querySelector(".output-match-table thead")).display,
+      cells,
+    };
+  });
+  const expectedLabels = ["Section", "Description", "Quantity", "Unit", "Unit price", "Amount", "Delete"];
+  if (outputMetrics.rowDisplay !== "grid" || outputMetrics.tableHeadDisplay !== "none") {
+    throw new Error(`Mobile output rows should render as cards: ${JSON.stringify(outputMetrics)}.`);
+  }
+  if (expectedLabels.some((label) => !outputMetrics.cells.some((cell) => cell.label === label && cell.before.includes(label)))) {
+    throw new Error(`Mobile output card labels were missing: ${JSON.stringify(outputMetrics)}.`);
+  }
+  if (outputMetrics.rowWidth > 500 || outputMetrics.cells.some((cell) => cell.width > 500)) {
+    throw new Error(`Mobile output card overflows the viewport: ${JSON.stringify(outputMetrics)}.`);
+  }
+  await page.locator('#pricingMatchesBody tr:first-child [data-output-edit-field="unit_price_override"]').click();
+  await page.locator('[data-output-editor-field="unit_price_override"]').waitFor({ state: "visible", timeout: 15000 });
+  await page.locator('[data-output-included-action="true"]').waitFor({ state: "visible", timeout: 15000 });
+  await page.keyboard.press("Escape");
+  await page.locator('#pricingMatchesBody tr:first-child [data-output-delete-row]').click();
+  await page.locator("#outputDeleteModal").waitFor({ state: "visible", timeout: 15000 });
+  await page.locator("#cancelOutputDeleteButton").click();
+  await page.locator("#outputDeleteModal").waitFor({ state: "hidden", timeout: 15000 });
+}
+
 async function installMockProfiles(page) {
   await page.route("**/api/settings/pricing-references/synthetic-exhibition-fixture-pricing**", async (route) => {
     await route.fulfill({
@@ -1139,6 +1290,10 @@ async function main() {
     }
     await page.keyboard.press("Enter");
     await currentDashboardCard.waitFor({ state: "detached", timeout: 15000 });
+    await page.locator("#newQuoteButton:not([disabled])").click();
+    await page.locator("#imageIntake").waitFor({ state: "visible", timeout: 15000 });
+    await verifyMobileHeaderOrder(page);
+    await verifyMobileBasisLegendAndOutputCards(page);
 
     console.log(JSON.stringify({
       status: "ok",

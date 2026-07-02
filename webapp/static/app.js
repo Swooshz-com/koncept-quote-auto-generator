@@ -6978,6 +6978,14 @@ function renderOutputEditCell(row = {}, index = 0, field = "", extraClass = "") 
   const display = outputCellDisplayValue(row, field);
   const pending = display === "???";
   const unitPriceCell = field === "unit_price_override";
+  const label = ({
+    section: "Section",
+    description: "Description",
+    quantity: "Quantity",
+    unit: "Unit",
+    unit_price_override: "Unit price",
+    amount: "Amount",
+  })[field] || field;
   const className = [
     "output-edit-cell",
     extraClass,
@@ -6988,7 +6996,7 @@ function renderOutputEditCell(row = {}, index = 0, field = "", extraClass = "") 
     ? `<span class="output-unit-price-content"><span class="output-cell-text">${escapeHtml(display)}</span></span>`
     : `<span class="output-cell-text">${escapeHtml(display)}</span>`;
   return `
-    <td class="${className}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Click to edit">
+    <td class="${className}" data-output-label="${escapeHtml(label)}" data-output-edit-field="${field}" data-output-row="${index}" tabindex="0" title="Click to edit">
       ${cellBody}
     </td>
   `;
@@ -7279,8 +7287,8 @@ function renderPricingMatches(rows = [], options = {}) {
         ${renderOutputEditCell(row, index, "quantity")}
         ${renderOutputEditCell(row, index, "unit")}
         ${renderOutputEditCell(row, index, "unit_price_override")}
-        <td class="amount-cell ${outputCellDisplayValue(row, "amount") === "???" ? "is-pending" : ""}">${escapeHtml(outputCellDisplayValue(row, "amount"))}</td>
-        <td class="output-row-actions">
+        <td class="amount-cell ${outputCellDisplayValue(row, "amount") === "???" ? "is-pending" : ""}" data-output-label="Amount">${escapeHtml(outputCellDisplayValue(row, "amount"))}</td>
+        <td class="output-row-actions" data-output-label="Delete">
           <button class="output-delete-button" type="button" data-output-delete-row="${index}" aria-label="Delete row">Del</button>
         </td>
       </tr>
