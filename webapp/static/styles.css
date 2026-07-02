@@ -8074,6 +8074,27 @@ body.privacy-page {
     gap: 8px;
   }
 
+  .topbar-auth-state {
+    justify-content: center;
+    grid-column: 1 / -1;
+    order: 1;
+    min-height: 34px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  #backToDashboardButton {
+    order: 2;
+  }
+
+  #settingsButton {
+    order: 3;
+  }
+
+  #newQuoteButton {
+    order: 4;
+  }
+
   .topbar-action {
     width: 100%;
   }
@@ -8081,15 +8102,9 @@ body.privacy-page {
   .topbar-privacy-link {
     justify-content: center;
     grid-column: 1 / -1;
+    order: 5;
     min-height: 32px;
-  }
-
-  .topbar-auth-state {
-    justify-content: center;
-    grid-column: 1 / -1;
-    min-height: 34px;
-    white-space: normal;
-    text-align: center;
+    font-size: 12px;
   }
 
   .workspace-pane-header {
@@ -8232,6 +8247,149 @@ body.privacy-page {
   .pricing-reference-table-panel {
     width: calc(100vw - 20px);
     max-height: calc(100dvh - 20px);
+  }
+
+  .basis-tag-legend {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin: 0 12px 12px;
+    padding: 12px;
+  }
+
+  .basis-tag-legend-column {
+    grid-template-columns: 1fr;
+  }
+
+  .basis-tag-legend-item {
+    display: grid;
+    grid-template-columns: var(--basis-legend-pill-width) minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    width: 100%;
+    line-height: 1.4;
+  }
+
+  .basis-tag-legend .basis-line-pill,
+  .basis-tag-legend .basis-confidence-pill {
+    justify-self: start;
+  }
+
+  .output-table-toolbar {
+    float: none;
+    margin: 10px 12px;
+  }
+
+  .output-table-toolbar label,
+  .output-table-toolbar select {
+    width: 100%;
+  }
+
+  .output-edit-hint {
+    margin: 12px;
+  }
+
+  .output-table-wrap {
+    overflow-x: visible;
+  }
+
+  .output-match-table,
+  .output-match-table tbody,
+  .output-match-table tr,
+  .output-match-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .output-match-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    padding: 0 12px 12px;
+  }
+
+  .output-match-table colgroup,
+  .output-match-table thead {
+    display: none;
+  }
+
+  .output-match-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .output-match-table tr {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: #ffffff;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .output-match-table td,
+  .output-match-table td:nth-child(3),
+  .output-match-table td:nth-child(4),
+  .output-match-table td:nth-child(5),
+  .output-match-table td:nth-child(6),
+  .output-match-table td:nth-child(7) {
+    display: grid;
+    grid-template-columns: minmax(84px, 30%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 0;
+    text-align: left;
+  }
+
+  .output-match-table td::before {
+    content: attr(data-output-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 820;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .output-match-table td:nth-child(3) .output-cell-text,
+  .output-match-table td:nth-child(4) .output-cell-text,
+  .output-match-table td:nth-child(5) .output-cell-text,
+  .output-match-table td:nth-child(6) .output-cell-text,
+  .output-match-table td:nth-child(3) .output-cell-input,
+  .output-match-table td:nth-child(4) .output-cell-input,
+  .output-match-table td:nth-child(5) .output-cell-input,
+  .output-match-table td:nth-child(6) .output-cell-input,
+  .output-match-table .output-unit-price-content,
+  .output-match-table .output-unit-price-editor {
+    justify-content: start;
+    text-align: left;
+  }
+
+  .output-match-table .output-unit-price-content .output-cell-text {
+    justify-content: start;
+    justify-self: start;
+  }
+
+  .output-match-table .amount-cell,
+  .output-match-table .output-row-actions {
+    min-width: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .output-unit-price-editor {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .output-included-button {
+    position: static;
+    transform: none;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .output-delete-button {
+    width: fit-content;
+    min-width: 74px;
   }
 
   .pricing-reference-table-wrap {

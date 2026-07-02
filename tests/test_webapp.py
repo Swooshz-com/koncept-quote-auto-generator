@@ -9762,6 +9762,9 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertIn('elements.newQuoteButton.hidden = state.activeAppView !== "dashboard"', js)
         self.assertNotIn('elements.newQuoteButton.hidden = state.activeAppView === "dashboard"', js)
         self.assertIn("--topbar-height: 68px", css)
+        self.assertIn("#backToDashboardButton {\n    order: 2;", css)
+        self.assertIn("#settingsButton {\n    order: 3;", css)
+        self.assertIn(".topbar-privacy-link {\n    justify-content: center;\n    grid-column: 1 / -1;\n    order: 5;", css)
         topbar_action_css = css.split(".topbar-action {", 1)[1].split("}", 1)[0]
         self.assertIn("min-height: 40px", topbar_action_css)
         self.assertIn("font-size: 14px", topbar_action_css)
@@ -9792,6 +9795,44 @@ assert.strictEqual(referenceFileTypeLabel(stalePdf), "PDF");
         self.assertNotIn("loadConfiguredProfilePreset({ silent: true })", sample_loader_body)
         self.assertNotIn("state.profileId = data.profile_id", sample_loader_body)
         self.assertNotIn("data.pricing_reference_id", sample_loader_body)
+
+    def test_static_mobile_ui_polish_has_responsive_header_legend_and_output_cards(self):
+        static_dir = ROOT / "webapp" / "static"
+        css = (static_dir / "styles.css").read_text(encoding="utf-8")
+        js = (static_dir / "app.js").read_text(encoding="utf-8")
+        smoke_script = (ROOT / "scripts" / "playwright-smoke.mjs").read_text(encoding="utf-8")
+
+        mobile_css = css.split("@media (max-width: 880px)", 1)[1].split("/* ============================================================", 1)[0]
+
+        self.assertIn(".topbar-auth-state", mobile_css)
+        self.assertIn("order: 1;", mobile_css)
+        self.assertIn("#backToDashboardButton", mobile_css)
+        self.assertIn("order: 2;", mobile_css)
+        self.assertIn("#settingsButton", mobile_css)
+        self.assertIn("order: 3;", mobile_css)
+        self.assertIn(".topbar-privacy-link", mobile_css)
+        self.assertIn("order: 5;", mobile_css)
+
+        self.assertIn(".basis-tag-legend {\n    grid-template-columns: 1fr;", mobile_css)
+        self.assertIn(".basis-tag-legend-item {\n    display: grid;\n    grid-template-columns: var(--basis-legend-pill-width) minmax(0, 1fr);", mobile_css)
+        self.assertIn(".basis-tag-legend .basis-line-pill,\n  .basis-tag-legend .basis-confidence-pill {\n    justify-self: start;", mobile_css)
+
+        self.assertIn(".output-match-table colgroup,\n  .output-match-table thead {\n    display: none;", mobile_css)
+        self.assertIn(".output-match-table tbody {\n    display: grid;\n    gap: 12px;", mobile_css)
+        self.assertIn(".output-match-table tr {\n    display: grid;\n    gap: 8px;", mobile_css)
+        self.assertIn(".output-match-table td::before {\n    content: attr(data-output-label);", mobile_css)
+        self.assertIn(".output-unit-price-editor {\n    align-items: stretch;\n    flex-direction: column;", mobile_css)
+        self.assertIn(".output-included-button {\n    position: static;", mobile_css)
+
+        for label in ("Section", "Description", "Quantity", "Unit", "Unit price", "Amount"):
+            self.assertIn(label, js)
+        self.assertIn('data-output-label="${escapeHtml(label)}"', js)
+        self.assertIn('data-output-label="Amount"', js)
+        self.assertIn('data-output-label="Delete"', js)
+        self.assertIn("async function verifyMobileHeaderOrder", smoke_script)
+        self.assertIn("async function verifyMobileBasisLegendAndOutputCards", smoke_script)
+        self.assertIn("Mobile Privacy Notice should appear below dashboard/pricing actions", smoke_script)
+        self.assertIn("Mobile output rows should render as cards", smoke_script)
 
     def test_static_solution_ui_stays_on_approved_post_pr29_baseline(self):
         static_dir = ROOT / "webapp" / "static"
